@@ -1,0 +1,21 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Node
+node_modules/
+.next/
+web/.next_corrupt_*/
+*.tsbuildinfo
+
+# Env
+.env
+.env.local
+infra/env/prod/*.env
+
+# Docker
+*.log

@@ -1,0 +1,72 @@
+import { cookies } from "next/headers";
+import Link from "next/link";
+
+import { ModuleTile } from "@/components/module-tile";
+import { serverApiBaseUrl } from "@/lib/api-base";
+import { UI_BODY_MUTED, UI_CARD_MD, UI_CARD_LG, UI_KICKER, UI_TITLE_LG } from "@/lib/ui";
+import { requireUser } from "@/lib/server-auth";
+import type { BominalModule, ModulesResponse } from "@/lib/types";
+
+const FALLBACK_MODULES: BominalModule[] = [
+  { slug: "train", name: "Train", coming_soon: false },
+  { slug: "restaurant", name: "Restaurant", coming_soon: true },
+  { slug: "calendar", name: "Calendar", coming_soon: true },
+];
+
+async function getModules() {
+  const cookieHeader = cookies().toString();
+  const response = await fetch(`${serverApiBaseUrl}/api/modules`, {
+    headers: { cookie: cookieHeader },
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    return FALLBACK_MODULES;
+  }
+
+  const data = (await response.json()) as ModulesResponse;
+  return data.modules;
+}
+
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams?: { denied?: string };
+}) {
+  const user = await requireUser();
+  const modules = await getModules();
+
+  return (
+    <section className="space-y-8">
+      {searchParams?.denied === "1" ? (
+        <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-700">
+          Admin access is restricted to users with the admin role.
+        </p>
+      ) : null}
+
+      <div className={UI_CARD_LG}>
+        <p className={UI_KICKER}>Dashboard</p>
+        <h1 className={`mt-2 ${UI_TITLE_LG}`}>
+          Hi {user.display_name || user.email}, welcome to bominal.
+        </h1>
+        <p className={`mt-3 max-w-2xl ${UI_BODY_MUTED}`}>
+          Your modular workspace is ready. Pick a module to explore the shell while feature work is on the way.
+        </p>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        {modules.map((module) => (
+          <ModuleTile key={module.slug} module={module} />
+        ))}
+      </div>
+
+      <div className={`${UI_CARD_MD} text-sm text-slate-600`}>
+        Need role checks? Visit{" "}
+        <Link href="/admin" className="font-medium text-blossom-600 hover:text-blossom-700">
+          /admin
+        </Link>
+        .
+      </div>
+    </section>
+  );
+}
