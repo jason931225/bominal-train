@@ -55,6 +55,7 @@ async def test_admin_route_requires_admin_role(client, db_session):
         display_name="Access Admin User",
     )
 
+    client.cookies.clear()
     unauthorized = await client.get("/api/admin")
     assert unauthorized.status_code == 401
 

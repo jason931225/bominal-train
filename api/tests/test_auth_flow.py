@@ -261,10 +261,11 @@ async def test_delete_account_scrubs_user_and_marks_tasks_for_removal(client, db
     assert session_cookie
 
     user = (await db_session.execute(select(User).where(User.email == email))).scalar_one()
+    user_id = user.id
     now = datetime.now(timezone.utc)
     db_session.add(
         Task(
-            user_id=user.id,
+            user_id=user_id,
             module="train",
             state="COMPLETED",
             deadline_at=now + timedelta(hours=2),
@@ -275,7 +276,7 @@ async def test_delete_account_scrubs_user_and_marks_tasks_for_removal(client, db
     )
     db_session.add(
         Secret(
-            user_id=user.id,
+            user_id=user_id,
             kind="payment_card",
             ciphertext="ciphertext",
             nonce="nonce",
@@ -286,8 +287,8 @@ async def test_delete_account_scrubs_user_and_marks_tasks_for_removal(client, db
         )
     )
     await db_session.commit()
-    await fake_redis.set(f"{PAYMENT_CVV_REDIS_KEY_PREFIX}:{user.id}", "encrypted-cvv")
-    await fake_redis.set(f"{LEGACY_PAYMENT_CVV_REDIS_KEY_PREFIX}:{user.id}", "legacy-cvv")
+    await fake_redis.set(f"{PAYMENT_CVV_REDIS_KEY_PREFIX}:{user_id}", "encrypted-cvv")
+    await fake_redis.set(f"{LEGACY_PAYMENT_CVV_REDIS_KEY_PREFIX}:{user_id}", "legacy-cvv")
 
     delete_res = await client.delete("/api/auth/account", cookies={"bominal_session": session_cookie})
     assert delete_res.status_code == 200
@@ -297,8 +298,9 @@ async def test_delete_account_scrubs_user_and_marks_tasks_for_removal(client, db
     me_res = await client.get("/api/auth/me", cookies={"bominal_session": session_cookie})
     assert me_res.status_code == 401
 
-    deleted_user = (await db_session.execute(select(User).where(User.id == user.id))).scalar_one()
-    assert deleted_user.email.startswith(f"deleted-{user.id}")
+    db_session.expire_all()
+    deleted_user = (await db_session.execute(select(User).where(User.id == user_id))).scalar_one()
+    assert deleted_user.email.startswith(f"deleted-{user_id}")
     assert deleted_user.email.endswith("@deleted.bominal.local")
     assert deleted_user.display_name is None
     assert deleted_user.phone_number is None
@@ -311,15 +313,15 @@ async def test_delete_account_scrubs_user_and_marks_tasks_for_removal(client, db
     assert deleted_user.birthday is None
     assert deleted_user.email_verified_at is None
 
-    sessions = (await db_session.execute(select(Session).where(Session.user_id == user.id))).scalars().all()
+    sessions = (await db_session.execute(select(Session).where(Session.user_id == user_id))).scalars().all()
     assert sessions == []
 
-    secrets = (await db_session.execute(select(Secret).where(Secret.user_id == user.id))).scalars().all()
+    secrets = (await db_session.execute(select(Secret).where(Secret.user_id == user_id))).scalars().all()
     assert secrets == []
-    assert await fake_redis.get(f"{PAYMENT_CVV_REDIS_KEY_PREFIX}:{user.id}") is None
-    assert await fake_redis.get(f"{LEGACY_PAYMENT_CVV_REDIS_KEY_PREFIX}:{user.id}") is None
+    assert await fake_redis.get(f"{PAYMENT_CVV_REDIS_KEY_PREFIX}:{user_id}") is None
+    assert await fake_redis.get(f"{LEGACY_PAYMENT_CVV_REDIS_KEY_PREFIX}:{user_id}") is None
 
-    tasks = (await db_session.execute(select(Task).where(Task.user_id == user.id))).scalars().all()
+    tasks = (await db_session.execute(select(Task).where(Task.user_id == user_id))).scalars().all()
     assert len(tasks) == 1
     assert tasks[0].hidden_at is not None
     removal_safe = tasks[0].spec_json.get("account_removal_safe")

@@ -6,6 +6,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 os.environ["TRAIN_PROVIDER_MODE"] = "mock"
+os.environ["RATE_LIMIT_MAX_REQUESTS"] = "1000000"
 
 from app.core.config import get_settings
 get_settings.cache_clear()
