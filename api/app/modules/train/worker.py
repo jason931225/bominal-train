@@ -981,11 +981,41 @@ def _build_ticket_data(
     return payload
 
 
+def _is_shutdown_requested(ctx: dict) -> bool:
+    """Check if worker shutdown has been requested."""
+    shutdown_event = ctx.get("shutdown_event")
+    if shutdown_event and shutdown_event.is_set():
+        return True
+    return False
+
+
 async def run_train_task(ctx: dict, task_id: str) -> None:
     db_factory = ctx["db_factory"]
     redis = ctx["redis"]
     limiter = RedisTokenBucketLimiter(redis)
+    
+    # Register task as in-flight for graceful shutdown tracking
+    register_fn = ctx.get("register_in_flight")
+    unregister_fn = ctx.get("unregister_in_flight")
+    if register_fn:
+        register_fn(task_id)
+    
+    try:
+        await _run_train_task_inner(ctx, task_id, db_factory, redis, limiter)
+    finally:
+        # Unregister from in-flight tracking
+        if unregister_fn:
+            unregister_fn(task_id)
 
+
+async def _run_train_task_inner(
+    ctx: dict,
+    task_id: str,
+    db_factory,
+    redis,
+    limiter: RedisTokenBucketLimiter,
+) -> None:
+    """Inner implementation of train task processing."""
     async with db_factory() as db:
         task = await db.get(Task, UUID(task_id))
         if task is None or task.module != TASK_MODULE:
@@ -1280,14 +1310,59 @@ async def run_train_task(ctx: dict, task_id: str) -> None:
         await _mark_completed(db, task)
 
 
+# Stale task threshold: tasks stuck in a processing state longer than this
+# are considered interrupted and will be recovered
+STALE_TASK_THRESHOLD_SECONDS = 600  # 10 minutes
+
+
 async def enqueue_recoverable_tasks(db: AsyncSession) -> int:
+    """
+    Re-enqueue active tasks on worker startup.
+    
+    This handles:
+    1. Tasks that were queued but not yet processed
+    2. Tasks that were in-progress when worker crashed/restarted
+    3. Tasks stuck in processing states (stale tasks)
+    
+    Tasks in PAUSED state are not re-enqueued - they require explicit resume.
+    """
+    now = _utc_now_aware()
+    
     stmt = (
         select(Task)
         .where(Task.module == TASK_MODULE)
         .where(Task.state.in_(ACTIVE_TASK_STATES))
     )
     tasks = (await db.execute(stmt)).scalars().all()
+    
+    recovered_count = 0
+    stale_count = 0
+    
     for task in tasks:
-        if task.state != "PAUSED":
-            await enqueue_train_task(str(task.id))
-    return len(tasks)
+        if task.state == "PAUSED":
+            continue
+            
+        # Check for stale tasks (stuck in processing states)
+        is_processing = task.state in ("RUNNING", "RESERVING", "PAYING", "POLLING")
+        if is_processing and task.updated_at:
+            updated_at = _as_aware_utc(task.updated_at)
+            age_seconds = (now - updated_at).total_seconds()
+            
+            if age_seconds > STALE_TASK_THRESHOLD_SECONDS:
+                # Reset stale task to QUEUED for clean re-processing
+                logger.warning(
+                    "Recovering stale task %s (state=%s, age=%.0fs)",
+                    task.id, task.state, age_seconds
+                )
+                task.state = "QUEUED"
+                task.updated_at = now
+                await db.commit()
+                stale_count += 1
+        
+        await enqueue_train_task(str(task.id))
+        recovered_count += 1
+    
+    if stale_count:
+        logger.info("Reset %d stale tasks to QUEUED", stale_count)
+    
+    return recovered_count
