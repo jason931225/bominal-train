@@ -23,13 +23,13 @@ export function UserMenu({ displayName }: UserMenuProps) {
 
       <div className="absolute right-0 z-30 mt-2 w-44 rounded-xl border border-blossom-100 bg-white p-1 shadow-lg">
         <Link
-          href="/account-settings"
+          href="/settings/account"
           className="block rounded-lg px-3 py-2 text-sm text-slate-700 transition hover:bg-blossom-50"
         >
           Account settings
         </Link>
         <Link
-          href="/payment-settings"
+          href="/settings/payment"
           className="block rounded-lg px-3 py-2 text-sm text-slate-700 transition hover:bg-blossom-50"
         >
           Payment settings

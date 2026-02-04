@@ -112,10 +112,10 @@ export function NavBurgerMenu() {
 
         <div className="my-1 border-t border-blossom-100" />
 
-        <Link href="/account-settings" className={UI_MENU_ITEM}>
+        <Link href="/settings/account" className={UI_MENU_ITEM}>
           Account settings
         </Link>
-        <Link href="/payment-settings" className={UI_MENU_ITEM}>
+        <Link href="/settings/payment" className={UI_MENU_ITEM}>
           Payment settings
         </Link>
         <div className="mt-1 border-t border-blossom-100 pt-1">

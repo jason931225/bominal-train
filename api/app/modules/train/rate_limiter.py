@@ -6,6 +6,7 @@ import time
 from dataclasses import dataclass
 
 from redis.asyncio import Redis
+from redis.exceptions import NoScriptError, ResponseError
 
 from app.modules.train.constants import DEFAULT_BUCKET_CONFIG
 
@@ -63,11 +64,79 @@ class RedisTokenBucketLimiter:
     def __init__(self, redis: Redis):
         self._redis = redis
         self._sha: str | None = None
+        self._script_supported: bool | None = None
+        self._fallback_lock = asyncio.Lock()
 
-    async def _ensure_script(self) -> str:
+    async def _ensure_script(self) -> str | None:
+        if self._script_supported is False:
+            return None
         if self._sha is None:
-            self._sha = await self._redis.script_load(TOKEN_BUCKET_LUA)
+            try:
+                self._sha = await self._redis.script_load(TOKEN_BUCKET_LUA)
+            except ResponseError as exc:
+                if "unknown command" in str(exc).lower():
+                    self._script_supported = False
+                    self._sha = None
+                    return None
+                raise
+            self._script_supported = True
         return self._sha
+
+    @staticmethod
+    def _to_float(value: object, *, default: float) -> float:
+        if value is None:
+            return default
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return default
+
+    async def _acquire_once_fallback(
+        self,
+        key: str,
+        *,
+        capacity: float,
+        refill_per_second: float,
+        requested: float = 1.0,
+    ) -> tuple[bool, int]:
+        now_ms = int(time.time() * 1000)
+        refill_per_ms = refill_per_second / 1000.0
+
+        async with self._fallback_lock:
+            stored_tokens = await self._redis.hget(key, "tokens")
+            stored_ts = await self._redis.hget(key, "ts")
+
+            tokens = self._to_float(stored_tokens, default=capacity)
+            ts_ms = self._to_float(stored_ts, default=float(now_ms))
+
+            delta_ms = max(0.0, float(now_ms) - ts_ms)
+            if delta_ms > 0:
+                tokens = min(capacity, tokens + (delta_ms * refill_per_ms))
+
+            allowed = False
+            wait_ms = 0
+            if tokens >= requested:
+                tokens -= requested
+                allowed = True
+            elif refill_per_ms > 0:
+                wait_ms = int(((requested - tokens) / refill_per_ms) + 0.999999)
+            else:
+                wait_ms = 1000
+
+            await self._redis.hset(
+                key,
+                mapping={
+                    "tokens": tokens,
+                    "ts": now_ms,
+                },
+            )
+            if refill_per_ms > 0:
+                ttl_ms = max(1000, int(((capacity / refill_per_ms) * 2) + 0.999999))
+            else:
+                ttl_ms = 1000
+            await self._redis.pexpire(key, ttl_ms)
+
+        return allowed, wait_ms
 
     async def _acquire_once(
         self,
@@ -81,16 +150,31 @@ class RedisTokenBucketLimiter:
         now_ms = int(time.time() * 1000)
         refill_per_ms = refill_per_second / 1000.0
 
-        allowed, wait_ms, _ = await self._redis.evalsha(
-            sha,
-            1,
+        if sha is not None:
+            try:
+                allowed, wait_ms, _ = await self._redis.evalsha(
+                    sha,
+                    1,
+                    key,
+                    now_ms,
+                    capacity,
+                    refill_per_ms,
+                    requested,
+                )
+                return bool(allowed), int(wait_ms)
+            except NoScriptError:
+                self._sha = None
+            except ResponseError as exc:
+                if "unknown command" not in str(exc).lower():
+                    raise
+                self._script_supported = False
+
+        return await self._acquire_once_fallback(
             key,
-            now_ms,
-            capacity,
-            refill_per_ms,
-            requested,
+            capacity=capacity,
+            refill_per_second=refill_per_second,
+            requested=requested,
         )
-        return bool(allowed), int(wait_ms)
 
     async def acquire_provider_call(
         self,

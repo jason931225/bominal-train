@@ -3,11 +3,11 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user
+from app.http.deps import get_current_user
 from app.db.models import User
 from app.db.session import get_db
 from app.schemas.wallet import PaymentCardSetRequest, PaymentCardStatusResponse
-from app.services.wallet import get_payment_card_status, set_payment_card
+from app.services.wallet import clear_payment_card, get_payment_card_status, set_payment_card
 
 router = APIRouter(prefix="/api/wallet", tags=["wallet"])
 
@@ -27,3 +27,11 @@ async def save_wallet_payment_card(
     db: AsyncSession = Depends(get_db),
 ) -> PaymentCardStatusResponse:
     return await set_payment_card(db, user=user, payload=payload)
+
+
+@router.delete("/payment-card", response_model=PaymentCardStatusResponse)
+async def remove_wallet_payment_card(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> PaymentCardStatusResponse:
+    return await clear_payment_card(db, user=user)

@@ -39,10 +39,24 @@ Start stack (prod profile file):
 docker-compose -f infra/docker-compose.prod.yml up -d --build
 ```
 
+Start stack (image-based deploy profile):
+
+```bash
+export BOMINAL_IMAGE_PREFIX=ghcr.io/your-org/bominal
+export BOMINAL_IMAGE_TAG=latest
+docker compose -f infra/docker-compose.deploy.yml up -d --remove-orphans
+```
+
 Stop stack:
 
 ```bash
 docker-compose -f infra/docker-compose.yml down
+```
+
+Stop deploy stack:
+
+```bash
+docker compose -f infra/docker-compose.deploy.yml down
 ```
 
 Hard reset (destroys local DB volume):
@@ -60,11 +74,25 @@ curl -sS http://localhost:8000/health
 curl -sS -I http://localhost:3000
 ```
 
+Deploy profile proxy health (via Caddy on 80/443):
+
+```bash
+curl -sS -I http://localhost
+curl -sS https://localhost/health -k
+```
+
 Container status/logs:
 
 ```bash
 docker-compose -f infra/docker-compose.yml ps
 docker-compose -f infra/docker-compose.yml logs -f api worker web
+```
+
+Deploy profile status/logs:
+
+```bash
+docker compose -f infra/docker-compose.deploy.yml ps
+docker compose -f infra/docker-compose.deploy.yml logs -f caddy api worker web
 ```
 
 DB checks:

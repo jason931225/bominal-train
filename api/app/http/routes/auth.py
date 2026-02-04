@@ -3,25 +3,33 @@ from typing import Annotated
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
-from app.api.deps import auth_rate_limit, get_current_user
+from app.http.deps import auth_rate_limit, get_current_user
 from app.core.config import get_settings
 from app.core.security import hash_password, hash_token, new_session_token, session_expiry, verify_password
 from app.db.models import Role, Session, User
 from app.db.session import get_db
 from app.schemas.auth import AccountUpdateRequest, AuthResponse, LoginRequest, MessageResponse, RegisterRequest
-from app.services.auth import clear_session_cookie, request_ip, set_session_cookie, user_to_out, utc_now
+from app.services.auth import (
+    clear_session_cookie,
+    delete_account_data,
+    request_ip,
+    set_session_cookie,
+    user_to_out,
+    utc_now,
+)
 
-router = APIRouter()
+public_router = APIRouter()
+user_router = APIRouter(dependencies=[Depends(get_current_user)])
 settings = get_settings()
 
 INVALID_LOGIN_DETAIL = "Invalid email or password"
 
 
-@router.post(
+@public_router.post(
     "/register",
     response_model=AuthResponse,
     status_code=status.HTTP_201_CREATED,
@@ -33,6 +41,14 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
     existing = await db.execute(select(User).where(User.email == email))
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
+
+    existing_display_name = await db.execute(
+        select(User)
+        .where(User.display_name.is_not(None))
+        .where(func.lower(User.display_name) == payload.display_name.lower())
+    )
+    if existing_display_name.scalar_one_or_none():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Display name already registered")
 
     role_result = await db.execute(select(Role).where(Role.name == "user"))
     user_role = role_result.scalar_one_or_none()
@@ -56,7 +72,7 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
     return AuthResponse(user=user_to_out(created_user))
 
 
-@router.post("/login", response_model=AuthResponse, dependencies=[Depends(auth_rate_limit)])
+@public_router.post("/login", response_model=AuthResponse, dependencies=[Depends(auth_rate_limit)])
 async def login(
     payload: LoginRequest,
     request: Request,
@@ -104,7 +120,7 @@ async def get_current_session_optional(
     return result.scalar_one_or_none()
 
 
-@router.post("/logout", response_model=MessageResponse)
+@public_router.post("/logout", response_model=MessageResponse)
 async def logout(
     response: Response,
     db: AsyncSession = Depends(get_db),
@@ -118,12 +134,12 @@ async def logout(
     return MessageResponse(message="Logged out")
 
 
-@router.get("/me", response_model=AuthResponse)
+@user_router.get("/me", response_model=AuthResponse)
 async def me(current_user: User = Depends(get_current_user)) -> AuthResponse:
     return AuthResponse(user=user_to_out(current_user))
 
 
-@router.patch("/account", response_model=AuthResponse, dependencies=[Depends(auth_rate_limit)])
+@user_router.patch("/account", response_model=AuthResponse, dependencies=[Depends(auth_rate_limit)])
 async def update_account(
     payload: AccountUpdateRequest,
     current_user: User = Depends(get_current_user),
@@ -149,6 +165,15 @@ async def update_account(
     if "display_name" in provided:
         display_name = normalize_optional(payload.display_name)
         if display_name != current_user.display_name:
+            if display_name is not None:
+                existing_display_name = await db.execute(
+                    select(User)
+                    .where(User.id != current_user.id)
+                    .where(User.display_name.is_not(None))
+                    .where(func.lower(User.display_name) == display_name.lower())
+                )
+                if existing_display_name.scalar_one_or_none() is not None:
+                    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Display name already registered")
             updates["display_name"] = display_name
 
     if "phone_number" in provided:
@@ -216,11 +241,22 @@ async def update_account(
     return AuthResponse(user=user_to_out(current_user))
 
 
-@router.post("/request-email-verification", response_model=MessageResponse)
+@user_router.delete("/account", response_model=MessageResponse, dependencies=[Depends(auth_rate_limit)])
+async def delete_account(
+    response: Response,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> MessageResponse:
+    await delete_account_data(db, user=current_user)
+    clear_session_cookie(response)
+    return MessageResponse(message="Account deleted")
+
+
+@public_router.post("/request-email-verification", response_model=MessageResponse)
 async def request_email_verification() -> MessageResponse:
     return MessageResponse(message="Email verification delivery not implemented yet")
 
 
-@router.post("/request-password-reset", response_model=MessageResponse)
+@public_router.post("/request-password-reset", response_model=MessageResponse)
 async def request_password_reset() -> MessageResponse:
     return MessageResponse(message="Password reset delivery not implemented yet")

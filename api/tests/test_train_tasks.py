@@ -1479,6 +1479,9 @@ async def test_seat_preference_fallback_reserves_available_class(
         def __init__(self):
             self.reserve_calls: list[str] = []
 
+        async def login(self, **kwargs):
+            return ProviderOutcome(ok=True)
+
         async def search(self, **kwargs):
             dep = kwargs["dep"]
             arr = kwargs["arr"]
@@ -1510,6 +1513,9 @@ async def test_seat_preference_fallback_reserves_available_class(
     async def _noop_enqueue(task_id: str, defer_seconds: float = 0.0) -> None:
         return None
 
+    async def _fake_credentials(db, *, user_id, provider):
+        return {"username": "mock-user", "password": "mock-password"}
+
     class _NoLimitResult:
         waited_ms = 0
         rounds = 1
@@ -1519,6 +1525,7 @@ async def test_seat_preference_fallback_reserves_available_class(
 
     monkeypatch.setattr("app.modules.train.worker.enqueue_train_task", _noop_enqueue)
     monkeypatch.setattr("app.modules.train.worker.get_provider_client", lambda provider: fake_provider)
+    monkeypatch.setattr("app.modules.train.worker._load_provider_credentials", _fake_credentials)
     monkeypatch.setattr("app.modules.train.worker._utc_now", utc_now_naive)
     monkeypatch.setattr("app.modules.train.worker.RedisTokenBucketLimiter.acquire_provider_call", _acquire_without_wait)
 

@@ -28,38 +28,6 @@ git submodule update --init --recursive
 
 ## Development (local)
 
-Recommended local workflow is now non-containerized (faster edit/run loop).
-
-### Option A (recommended): run locally without Docker
-
-1) Install local dependencies:
-
-```bash
-./infra/scripts/local-setup.sh
-```
-
-2) Ensure local services are running:
-- Postgres on `127.0.0.1:5432`
-- Redis on `127.0.0.1:6379`
-
-3) Bootstrap local DB/user (one-time):
-
-```bash
-./infra/scripts/local-db-bootstrap.sh
-```
-
-4) Start web + api + worker:
-
-```bash
-./infra/scripts/local-run.sh
-```
-
-Services:
-- web: `http://localhost:3000`
-- api: `http://localhost:8000`
-
-### Option B: Docker dev stack (fallback)
-
 Development compose uses hot-reload, bind mounts, and env files under `infra/env/dev/`.
 
 If your machine supports Docker Compose v2 plugin:
@@ -89,52 +57,40 @@ If you pull new backend migrations while containers are already running, restart
 docker-compose -f infra/docker-compose.yml restart api worker
 ```
 
-## Deployment stages
+## Production (barebone deployment)
 
-### Stage A: local production simulation (containerized build)
+Production compose is separated in `infra/docker-compose.prod.yml` (no bind mounts, no dev reload flags).
 
-Use this locally when you want a production-like stack and image builds from source:
+1) Create prod env files from templates:
 
 ```bash
 cp infra/env/prod/postgres.env.example infra/env/prod/postgres.env
 cp infra/env/prod/api.env.example infra/env/prod/api.env
 cp infra/env/prod/web.env.example infra/env/prod/web.env
+cp infra/env/prod/caddy.env.example infra/env/prod/caddy.env
+```
+
+2) Edit those files and replace every `CHANGE_ME...` value (especially `MASTER_KEY`), and set your public host in `infra/env/prod/caddy.env`.
+
+3) Bring up production stack:
+
+```bash
 docker compose -f infra/docker-compose.prod.yml up -d --build
 ```
 
-### Stage B: VM deployment (containerized pull/up, Debian 12 recommended)
-
-Recommended for e2-micro: keep runtime simple and avoid `next build` on the VM.
-Images are built in CI and VM deploy is `pull && up -d`.
-
-1) Provision a fresh VM with Debian 12 (`debian-12` image family), `e2-micro`, and standard persistent disk.
-
-2) Bootstrap Docker on VM:
+or (Compose v1):
 
 ```bash
-sudo /opt/bominal/repo/infra/scripts/vm-docker-bootstrap.sh
+docker-compose -f infra/docker-compose.prod.yml up -d --build
 ```
 
-3) Configure prod env files:
+4) Verify health:
 
 ```bash
-cp infra/env/prod/postgres.env.example infra/env/prod/postgres.env
-cp infra/env/prod/api.env.example infra/env/prod/api.env
-cp infra/env/prod/web.env.example infra/env/prod/web.env
-```
-
-4) Deploy by pulling prebuilt images:
-
-```bash
-sudo -u bominal /opt/bominal/repo/infra/scripts/vm-docker-deploy.sh latest
-```
-
-5) Verify:
-
-```bash
-curl -sS https://www.bominal.com/health
-curl -sS -I https://www.bominal.com/login
-docker compose -f infra/docker-compose.deploy.yml ps
+curl -sS http://localhost:8000/health
+curl -sS http://localhost:3000
+curl -sS -I http://localhost
+docker-compose -f infra/docker-compose.prod.yml ps
 ```
 
 ## Layout
@@ -142,8 +98,7 @@ docker compose -f infra/docker-compose.deploy.yml ps
 - `web/`
 - `api/`
 - `infra/docker-compose.yml` (development)
-- `infra/docker-compose.prod.yml` (local prod simulation)
-- `infra/docker-compose.deploy.yml` (VM deploy via image pull)
+- `infra/docker-compose.prod.yml` (deployment)
 - `third_party/srtgo` (read-only reference)
 
 ## Auth + modules
@@ -155,6 +110,19 @@ Implemented auth endpoints:
 - `POST /api/auth/logout`
 - `GET /api/auth/me`
 - `PATCH /api/auth/account` (requires `current_password` for any changes)
+- `DELETE /api/auth/account` (blocked when outstanding worker tasks exist; marks user tasks for 365-day removal window)
+
+Auth uniqueness rules:
+
+- `email` is unique (case-insensitive)
+- `display_name` is unique (case-insensitive)
+
+API access tiers:
+
+- **Public (no login required):** `/api/auth/register`, `/api/auth/login`, `/api/auth/logout`, `/api/auth/request-email-verification`, `/api/auth/request-password-reset`
+- **Authenticated session required:** `/api/auth/me`, `/api/auth/account`, `/api/modules`, `/api/train/*`, `/api/wallet/*`, `/api/notifications/*`
+- **Internal-only:** `/api/internal/*` with `X-Internal-Api-Key` matching `INTERNAL_API_KEY`
+- **Admin role required:** `/api/admin`
 
 Implemented modules endpoint:
 
@@ -191,6 +159,7 @@ Shared wallet API:
 
 - `GET /api/wallet/payment-card`
 - `POST /api/wallet/payment-card`
+- `DELETE /api/wallet/payment-card`
 
 Wallet data is shared across bominal services (not Train-specific).
 
@@ -200,6 +169,10 @@ Email + notification API:
 - `POST /api/notifications/email/test`
 
 `/api/notifications/email/test` enqueues delivery through the background worker, so modules can reuse the same queue-based email pipeline.
+
+Internal API:
+
+- `GET /api/internal/health` (requires `X-Internal-Api-Key`)
 
 ## Worker behavior (current milestone)
 
@@ -284,7 +257,7 @@ docker-compose -f infra/docker-compose.yml exec web npx tsc --noEmit
 Run this checklist before first deployment:
 
 1. **Env sanity**
-   - `infra/env/prod/postgres.env`, `infra/env/prod/api.env`, `infra/env/prod/web.env` exist.
+   - `infra/env/prod/postgres.env`, `infra/env/prod/api.env`, `infra/env/prod/web.env`, `infra/env/prod/caddy.env` exist.
    - No `CHANGE_ME` placeholders remain.
    - `APP_ENV=production` in `infra/env/prod/api.env`.
    - `MASTER_KEY` is set to a real 32-byte base64 key (generate with `openssl rand -base64 32`).
@@ -305,16 +278,23 @@ docker-compose -f infra/docker-compose.yml exec web npx tsc --noEmit
 4. **Smoke test after prod up**
 
 ```bash
-curl -sS http://localhost/health
-curl -sS -I http://localhost/login
-docker-compose -f infra/docker-compose.prod.yml logs --tail=100 api worker web
+curl -sS http://localhost:8000/health
+curl -sS -I http://localhost:3000
+curl -sS -I http://localhost
+docker-compose -f infra/docker-compose.prod.yml logs --tail=100 caddy api worker web
+```
+
+Duplicate display name pre-migration check (optional manual run):
+
+```bash
+docker compose -f infra/docker-compose.prod.yml run --rm api python scripts/check_duplicate_display_names.py
 ```
 
 5. **Email configuration**
-   - Recommended (industry standard transactional): set `EMAIL_PROVIDER=resend`.
-   - Configure `RESEND_API_KEY` (+ optional `RESEND_API_BASE_URL`).
-   - For SMTP relay fallback, set `EMAIL_PROVIDER=smtp` and configure `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`.
-   - Set `EMAIL_FROM_ADDRESS` / `EMAIL_FROM_NAME` to your sender identity.
+   - If email is not in use yet, keep `EMAIL_PROVIDER=disabled` (default in prod template).
+   - Optional: for transactional email later, set `EMAIL_PROVIDER=resend` and configure `RESEND_API_KEY`.
+   - Optional SMTP relay: set `EMAIL_PROVIDER=smtp` and configure `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`.
+   - When enabled, set `EMAIL_FROM_ADDRESS` / `EMAIL_FROM_NAME` to your sender identity.
 
 Or run the bundled checker:
 

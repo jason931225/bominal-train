@@ -23,6 +23,9 @@ type AccountFormState = {
   current_password: string;
 };
 
+const DELETE_ACCOUNT_BUTTON_CLASS =
+  "inline-flex h-10 items-center justify-center rounded-full border border-rose-200 bg-white px-4 text-sm font-medium text-rose-700 transition hover:bg-rose-50 focus:outline-none focus:ring-2 focus:ring-rose-100 disabled:cursor-not-allowed disabled:opacity-60";
+
 function normalizeBirthdayInput(value: string | null): string {
   if (!value) return "";
   return value.slice(0, 10);
@@ -78,6 +81,7 @@ export function AccountSettingsPanel({ initialUser }: { initialUser: BominalUser
   const [form, setForm] = useState<AccountFormState>(buildInitialForm(initialUser));
   const [baseline, setBaseline] = useState<AccountFormState>(buildInitialForm(initialUser));
   const [submitting, setSubmitting] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -210,6 +214,31 @@ export function AccountSettingsPanel({ initialUser }: { initialUser: BominalUser
     }
   };
 
+  const onDeleteAccount = async () => {
+    setError(null);
+    setNotice(null);
+    const confirmed = window.confirm("All your data will be permanently deleted. Are you sure you want to continue?");
+    if (!confirmed) return;
+
+    setDeletingAccount(true);
+    try {
+      const response = await fetch(`${clientApiBaseUrl}/api/auth/account`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!response.ok) {
+        setError(await parseApiErrorMessage(response, "Could not delete account."));
+        return;
+      }
+      router.push("/login");
+      router.refresh();
+    } catch {
+      setError("Could not delete account.");
+    } finally {
+      setDeletingAccount(false);
+    }
+  };
+
   return (
     <section>
       <div className={UI_CARD_MD}>
@@ -221,6 +250,8 @@ export function AccountSettingsPanel({ initialUser }: { initialUser: BominalUser
         {notice ? <p className="mt-4 rounded-xl bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{notice}</p> : null}
 
         <form onSubmit={onSubmit} className="mt-5 grid gap-3 md:grid-cols-2">
+          <p className="mt-2 text-xs uppercase tracking-[0.16em] text-blossom-500 md:col-span-2">General</p>
+
           <label className="text-sm text-slate-700">
             Email
             <input
@@ -334,6 +365,8 @@ export function AccountSettingsPanel({ initialUser }: { initialUser: BominalUser
             />
           </label>
 
+          <p className="mt-2 text-xs uppercase tracking-[0.16em] text-blossom-500 md:col-span-2">Security</p>
+
           <label className="text-sm text-slate-700">
             New password
             <input
@@ -386,11 +419,26 @@ export function AccountSettingsPanel({ initialUser }: { initialUser: BominalUser
           </label>
 
           <div className="md:col-span-2">
-            <button type="submit" disabled={submitting} className={UI_BUTTON_PRIMARY}>
+            <button type="submit" disabled={submitting || deletingAccount} className={UI_BUTTON_PRIMARY}>
               {submitting ? "Saving..." : "Save account settings"}
             </button>
           </div>
         </form>
+
+        <div className="mt-8 border-t border-rose-100 pt-5">
+          <p className="text-xs uppercase tracking-[0.16em] text-rose-500">Danger zone</p>
+          <p className="mt-2 text-sm text-slate-600">
+            Delete your account and remove saved profile data. Outstanding worker instances must be completed first.
+          </p>
+          <button
+            type="button"
+            onClick={onDeleteAccount}
+            disabled={submitting || deletingAccount}
+            className={`mt-3 ${DELETE_ACCOUNT_BUTTON_CLASS}`}
+          >
+            {deletingAccount ? "Deleting account..." : "Delete account"}
+          </button>
+        </div>
       </div>
     </section>
   );

@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 
 import { clientApiBaseUrl } from "@/lib/api-base";
-import { UI_BUTTON_PRIMARY, UI_CARD_MD, UI_FIELD, UI_KICKER, UI_TITLE_MD } from "@/lib/ui";
+import { UI_BUTTON_OUTLINE, UI_BUTTON_PRIMARY, UI_CARD_MD, UI_FIELD, UI_KICKER, UI_TITLE_MD } from "@/lib/ui";
 import type { WalletPaymentCardStatus } from "@/lib/types";
 
 type PaymentFormState = {
@@ -42,6 +42,7 @@ export function PaymentSettingsPanel() {
   const [status, setStatus] = useState<WalletPaymentCardStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [removing, setRemoving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [form, setForm] = useState<PaymentFormState>(EMPTY_FORM);
@@ -112,6 +113,34 @@ export function PaymentSettingsPanel() {
       setError("Could not save wallet settings.");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const onRemove = async () => {
+    const confirmed = window.confirm("Are you sure you want to remove saved payment settings?");
+    if (!confirmed) return;
+
+    setRemoving(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const response = await fetch(`${clientApiBaseUrl}/api/wallet/payment-card`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!response.ok) {
+        setError(await parseApiErrorMessage(response, "Could not remove payment settings."));
+        return;
+      }
+
+      const payload = (await response.json()) as WalletPaymentCardStatus;
+      setStatus(payload);
+      setForm(EMPTY_FORM);
+      setNotice("Payment settings removed.");
+    } catch {
+      setError("Could not remove payment settings.");
+    } finally {
+      setRemoving(false);
     }
   };
 
@@ -233,9 +262,21 @@ export function PaymentSettingsPanel() {
         </label>
 
         <div className="md:col-span-2">
-          <button type="submit" disabled={submitting} className={UI_BUTTON_PRIMARY}>
-            {submitting ? "Saving..." : "Save payment settings"}
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="submit" disabled={submitting || removing} className={UI_BUTTON_PRIMARY}>
+              {submitting ? "Saving..." : "Save payment settings"}
+            </button>
+            {status?.configured ? (
+              <button
+                type="button"
+                onClick={() => void onRemove()}
+                disabled={submitting || removing}
+                className={`${UI_BUTTON_OUTLINE} border-rose-200 text-rose-700 hover:bg-rose-50 focus:ring-rose-100`}
+              >
+                {removing ? "Removing..." : "Remove payment settings"}
+              </button>
+            ) : null}
+          </div>
         </div>
       </form>
     </div>

@@ -36,8 +36,8 @@ Core routes:
 - `/modules/restaurant` (coming soon)
 - `/modules/calendar` (coming soon)
 - `/admin`
-- `/account-settings`
-- `/payment-settings`
+- `/settings/account`
+- `/settings/payment`
 
 Design system:
 
@@ -49,7 +49,7 @@ Design system:
 
 ### Core domains
 
-- **Auth**: register/login/logout/me/account patch
+- **Auth**: register/login/logout/me/account patch + account delete
 - **Modules**: module availability list (train active, others coming soon)
 - **Train**: search, credentials, tasks, reservation/ticket actions
 - **Wallet**: shared payment card storage (module-agnostic)
@@ -60,6 +60,14 @@ Design system:
 - Session cookies (`bominal_session`) are httpOnly, SameSite=Lax.
 - Cookie `Secure` flag is enabled only when `APP_ENV=production`.
 - Session rows are persisted in `sessions` table with hashed token.
+- `users.email` and `users.display_name` are unique identifiers for account registration/profile updates.
+
+### API access tiers
+
+- Public routes: register/login/logout/password-reset and email-verification request endpoints.
+- Authenticated routes: account profile routes, modules, train, wallet, notifications.
+- Internal-only routes: `/api/internal/*` guarded by `X-Internal-Api-Key` against `INTERNAL_API_KEY`.
+- Admin routes: `/api/admin/*` guarded by role check (`admin`).
 
 ### Train module architecture
 
@@ -119,4 +127,4 @@ Data controls:
 - Worker startup re-enqueues recoverable active tasks from DB.
 - Provider outbound calls pass through Redis token-bucket limiter.
 - Completed task visibility is soft-delete style (`hidden_at`) for UX behavior.
-
+- Account deletion requires no outstanding worker tasks; it scrubs account/profile fields and marks tasks for 365-day removal.

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 
-from app.api.deps import get_current_user
+from app.http.deps import get_current_user
 from app.db.models import User
 from app.schemas.module import ModuleListResponse, ModuleOut
 

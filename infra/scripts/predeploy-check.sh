@@ -8,6 +8,7 @@ required_files=(
   "infra/env/prod/postgres.env"
   "infra/env/prod/api.env"
   "infra/env/prod/web.env"
+  "infra/env/prod/caddy.env"
 )
 
 echo "==> Checking required production env files"
@@ -25,6 +26,17 @@ if grep -RIn "CHANGE_ME" infra/env/prod/*.env >/tmp/bominal-prod-placeholders.tx
   exit 1
 fi
 
+echo "==> Checking required API security settings"
+required_api_keys=(
+  "INTERNAL_API_KEY"
+)
+for key in "${required_api_keys[@]}"; do
+  if ! grep -Eq "^${key}=.+" infra/env/prod/api.env; then
+    echo "Missing or empty ${key} in infra/env/prod/api.env"
+    exit 1
+  fi
+done
+
 echo "==> Validating production compose configuration"
 docker-compose -f infra/docker-compose.prod.yml config >/tmp/bominal-prod-compose.txt
 
@@ -35,4 +47,3 @@ echo "==> Running frontend type check"
 docker-compose -f infra/docker-compose.yml exec -T web sh -lc 'cd /app && npx tsc --noEmit'
 
 echo "Pre-deploy checks passed."
-

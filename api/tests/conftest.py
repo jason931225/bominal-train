@@ -5,6 +5,11 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+os.environ["TRAIN_PROVIDER_MODE"] = "mock"
+
+from app.core.config import get_settings
+get_settings.cache_clear()
+
 from app.db.models import Base, Role
 from app.db.session import get_db
 from app.main import app

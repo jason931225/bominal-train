@@ -41,7 +41,7 @@ async def test_send_test_email_queues_job(client, monkeypatch):
         captured["defer_seconds"] = defer_seconds
         return "job-test-123"
 
-    monkeypatch.setattr("app.api.routes.notifications.enqueue_email", _fake_enqueue)
+    monkeypatch.setattr("app.http.routes.notifications.enqueue_email", _fake_enqueue)
 
     response = await client.post(
         "/api/notifications/email/test",
@@ -65,7 +65,7 @@ async def test_send_test_email_queues_job(client, monkeypatch):
 async def test_send_test_email_returns_503_when_disabled(client, monkeypatch):
     cookie = await _register_and_login(client, email=f"notify-disabled-{uuid4().hex[:8]}@example.com")
 
-    monkeypatch.setattr("app.api.routes.notifications.settings.email_provider", "disabled")
+    monkeypatch.setattr("app.http.routes.notifications.settings.email_provider", "disabled")
 
     response = await client.post(
         "/api/notifications/email/test",

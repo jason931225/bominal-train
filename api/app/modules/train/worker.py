@@ -82,6 +82,10 @@ def _as_aware_utc(value: datetime) -> datetime:
     return value.astimezone(timezone.utc)
 
 
+def _utc_now_aware() -> datetime:
+    return _as_aware_utc(_utc_now())
+
+
 def _seat_preference_order(seat_class: str) -> tuple[str, ...]:
     if seat_class == "special":
         return ("special",)
@@ -987,7 +991,7 @@ async def run_train_task(ctx: dict, task_id: str) -> None:
         if task is None or task.module != TASK_MODULE:
             return
 
-        now = _utc_now()
+        now = _utc_now_aware()
         if task.state in TERMINAL_TASK_STATES or task.state == "PAUSED":
             return
         if task.cancelled_at is not None:
@@ -1042,7 +1046,7 @@ async def run_train_task(ctx: dict, task_id: str) -> None:
             )
             if login_attempt is not None:
                 await _persist_attempts(db, task=task, attempts=[login_attempt])
-                if login_retryable and _utc_now() < _as_aware_utc(task.deadline_at):
+                if login_retryable and _utc_now_aware() < _as_aware_utc(task.deadline_at):
                     await _schedule_retry(db, task, _poll_delay_seconds(search_attempt_count + 1))
                 else:
                     await _mark_failed(db, task)
@@ -1069,7 +1073,7 @@ async def run_train_task(ctx: dict, task_id: str) -> None:
             await _persist_attempts(db, task=task, attempts=[pay_attempt])
 
             if not pay_outcome.ok:
-                if pay_outcome.retryable and _utc_now() < _as_aware_utc(task.deadline_at):
+                if pay_outcome.retryable and _utc_now_aware() < _as_aware_utc(task.deadline_at):
                     await _schedule_retry(db, task, _poll_delay_seconds(search_attempt_count + 1))
                 else:
                     await _mark_failed(db, task)
@@ -1162,14 +1166,14 @@ async def run_train_task(ctx: dict, task_id: str) -> None:
         for result in provider_results:
             await _persist_attempts(db, task=task, attempts=result.attempts)
 
-        if _utc_now() >= _as_aware_utc(task.deadline_at):
+        if _utc_now_aware() >= _as_aware_utc(task.deadline_at):
             await _mark_expired(db, task)
             return
 
         candidates = [result.candidate for result in provider_results if result.candidate is not None]
         if not candidates:
             retryable_any = any(result.retryable for result in provider_results)
-            if retryable_any and _utc_now() < _as_aware_utc(task.deadline_at):
+            if retryable_any and _utc_now_aware() < _as_aware_utc(task.deadline_at):
                 await _schedule_retry(db, task, _poll_delay_seconds(search_attempt_count + 1))
             else:
                 await _mark_failed(db, task)
@@ -1218,7 +1222,7 @@ async def run_train_task(ctx: dict, task_id: str) -> None:
                 continue
             if cancel_outcome.error_code == "not_supported":
                 continue
-            if cancel_outcome.retryable and _utc_now() < _as_aware_utc(task.deadline_at):
+            if cancel_outcome.retryable and _utc_now_aware() < _as_aware_utc(task.deadline_at):
                 await _schedule_retry(db, task, _poll_delay_seconds(search_attempt_count + 1))
             else:
                 await _mark_failed(db, task)
@@ -1244,7 +1248,7 @@ async def run_train_task(ctx: dict, task_id: str) -> None:
         await _persist_attempts(db, task=task, attempts=[pay_attempt])
 
         if not pay_outcome.ok:
-            if pay_outcome.retryable and _utc_now() < _as_aware_utc(task.deadline_at):
+            if pay_outcome.retryable and _utc_now_aware() < _as_aware_utc(task.deadline_at):
                 await _schedule_retry(db, task, _poll_delay_seconds(search_attempt_count + 1))
             else:
                 await _mark_failed(db, task)

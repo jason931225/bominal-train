@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.api.deps import auth_rate_limit, get_current_user
+from app.http.deps import auth_rate_limit, get_current_user
 from app.core.config import get_settings
 from app.db.models import User
 from app.schemas.notification import EmailJobPayload, EmailStatusResponse, EmailTestRequest, EmailTestResponse

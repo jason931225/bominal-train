@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
 
-export default async function PaymentSettingsPage() {
+export default async function PaymentPage() {
   redirect("/settings/payment");
 }

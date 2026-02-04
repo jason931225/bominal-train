@@ -1,0 +1,16 @@
+{
+	email {$CADDY_ACME_EMAIL}
+}
+
+{$CADDY_SITE_ADDRESS} {
+	encode zstd gzip
+
+	@api path /api /api/* /docs /docs/* /openapi.json /redoc /health /healthz
+	handle @api {
+		reverse_proxy api:8000
+	}
+
+	handle {
+		reverse_proxy web:3000
+	}
+}

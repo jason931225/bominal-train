@@ -15,9 +15,13 @@ export function TopNavBrand({ href }: { href: string }) {
       ? "restaurant"
       : pathname.startsWith("/modules/calendar")
         ? "calendar"
-        : pathname.startsWith("/payment-settings")
+        : pathname.startsWith("/settings/payment") ||
+            pathname.startsWith("/payment") ||
+            pathname.startsWith("/payment-settings")
           ? "payment settings"
-          : pathname.startsWith("/account-settings")
+          : pathname.startsWith("/settings/account") ||
+              pathname.startsWith("/account") ||
+              pathname.startsWith("/account-settings")
             ? "account settings"
             : pathname.startsWith("/admin")
               ? "admin"

@@ -32,7 +32,7 @@ class User(Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     email: Mapped[str] = mapped_column(String(320), unique=True, nullable=False, index=True)
     password_hash: Mapped[str] = mapped_column(Text, nullable=False)
-    display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    display_name: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True)
     phone_number: Mapped[str | None] = mapped_column(String(32), nullable=True)
     billing_address: Mapped[str | None] = mapped_column(Text, nullable=True)
     billing_address_line1: Mapped[str | None] = mapped_column(String(255), nullable=True)

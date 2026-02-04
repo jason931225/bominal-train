@@ -60,6 +60,8 @@ const SMALL_BUTTON_CLASS = UI_BUTTON_OUTLINE_SM;
 const SMALL_DANGER_BUTTON_CLASS = UI_BUTTON_DANGER_SM;
 const SMALL_SUCCESS_BUTTON_CLASS =
   "inline-flex h-8 items-center justify-center rounded-full border border-emerald-200 bg-emerald-50 px-2.5 text-xs font-medium text-emerald-700 shadow-sm transition hover:bg-emerald-100 focus:outline-none focus:ring-2 focus:ring-emerald-100 disabled:cursor-not-allowed disabled:opacity-60";
+const SMALL_DISABLED_BUTTON_CLASS =
+  "inline-flex h-8 items-center justify-center rounded-full border border-slate-200 bg-slate-100 px-2.5 text-xs font-medium text-slate-500 shadow-sm transition focus:outline-none focus:ring-2 focus:ring-slate-100";
 const SEAT_CLASS_LABELS: Record<TrainSeatClass, string> = {
   general_preferred: "General Preferred",
   general: "General",
@@ -308,13 +310,6 @@ export function TrainDashboard() {
     [selectedScheduleIds, scheduleById]
   );
   const selectedDateLabel = useMemo(() => formatScheduleTitleDate(searchForm.date), [searchForm.date]);
-  const selectedPriorityByScheduleId = useMemo(() => {
-    const map = new Map<string, number>();
-    selectedScheduleIds.forEach((id, index) => {
-      map.set(id, index + 1);
-    });
-    return map;
-  }, [selectedScheduleIds]);
 
   const ktxVerified = Boolean(credentialStatus?.ktx.verified);
   const srtVerified = Boolean(credentialStatus?.srt.verified);
@@ -323,7 +318,6 @@ export function TrainDashboard() {
   const showRanking = hasSearched && hasSearchResults;
   const selectedProviders = new Set(selectedSchedules.map((schedule) => schedule.provider));
   const selectedProviderList = Array.from(selectedProviders).sort();
-  const showPriorityNumbers = selectedScheduleIds.length > 1;
   const suggestedCredentialProvider =
     credentialStatus == null
       ? "KTX"
@@ -1025,7 +1019,7 @@ export function TrainDashboard() {
             <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
               <div className="rounded-2xl border border-blossom-100 bg-blossom-50/40 p-4">
                 <p className="text-xs font-medium uppercase tracking-[0.14em] text-blossom-500">Station / Date / Time</p>
-                <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:items-end">
+                <div className="mt-3 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-end gap-2 sm:gap-3">
                   <label className="text-sm text-slate-700">
                     Departure station
                     <select
@@ -1042,7 +1036,7 @@ export function TrainDashboard() {
                       ))}
                     </select>
                   </label>
-                  <div className="flex items-center justify-center md:self-end">
+                  <div className="flex items-center justify-center self-end">
                     <button
                       type="button"
                       onClick={() =>
@@ -1201,7 +1195,7 @@ export function TrainDashboard() {
               </div>
             </div>
 
-            <div className="mt-4">
+            <div className="mt-4 flex justify-end">
               <button
                 type="submit"
                 disabled={searchDisabled}
@@ -1221,21 +1215,19 @@ export function TrainDashboard() {
                 <table className="min-w-full table-fixed text-left text-sm">
                   <thead>
                     <tr className="text-slate-500">
-                      <th className="w-[11.111%] px-2 pb-2 text-center">Status</th>
-                      <th className="w-[11.111%] px-2 pb-2 text-center">Priority</th>
-                      <th className="w-[11.111%] px-2 pb-2">Provider</th>
-                      <th className="w-[11.111%] px-2 pb-2">Train</th>
-                      <th className="w-[11.111%] px-2 pb-2">Departure</th>
-                      <th className="w-[11.111%] px-2 pb-2">Arrival</th>
-                      <th className="w-[11.111%] px-2 pb-2">Duration</th>
-                      <th className="w-[11.111%] px-2 pb-2">General</th>
-                      <th className="w-[11.111%] px-2 pb-2">Special</th>
+                      <th className="px-2 pb-2 text-center">Status</th>
+                      <th className="px-2 pb-2">Train</th>
+                      <th className="px-2 pb-2">Departure</th>
+                      <th className="px-2 pb-2">Arrival</th>
+                      <th className="px-2 pb-2">Duration</th>
+                      <th className="px-2 pb-2 text-center" colSpan={2}>
+                        Availability
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
                     {schedules.map((schedule) => {
                       const checked = selectedScheduleIds.includes(schedule.schedule_id);
-                      const priority = selectedPriorityByScheduleId.get(schedule.schedule_id);
                       return (
                         <tr
                           key={schedule.schedule_id}
@@ -1275,20 +1267,32 @@ export function TrainDashboard() {
                               ) : null}
                             </span>
                           </td>
-                          <td className="px-2 py-2 text-center">
-                            {checked && showPriorityNumbers ? (
-                              <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-blossom-500 px-2 text-xs font-semibold text-white">
-                                {priority}
-                              </span>
-                            ) : null}
+                          <td className="px-2 py-2">
+                            {schedule.provider} {schedule.train_no}
                           </td>
-                          <td className="px-2 py-2">{schedule.provider}</td>
-                          <td className="px-2 py-2">{schedule.train_no}</td>
                           <td className="px-2 py-2">{formatTimeKst(schedule.departure_at)}</td>
                           <td className="px-2 py-2">{formatTimeKst(schedule.arrival_at)}</td>
                           <td className="px-2 py-2">{formatTransitDuration(schedule.departure_at, schedule.arrival_at)}</td>
-                          <td className="px-2 py-2">{schedule.availability.general ? "Available" : "Sold out"}</td>
-                          <td className="px-2 py-2">{schedule.availability.special ? "Available" : "Sold out"}</td>
+                          <td className="px-2 py-2 text-center">
+                            <span
+                              title={schedule.availability.general ? "General available" : "General sold out"}
+                              className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-semibold ${
+                                schedule.availability.general ? "bg-blossom-500 text-white" : "bg-slate-200 text-slate-500"
+                              }`}
+                            >
+                              G
+                            </span>
+                          </td>
+                          <td className="px-2 py-2 text-center">
+                            <span
+                              title={schedule.availability.special ? "Special available" : "Special sold out"}
+                              className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-semibold ${
+                                schedule.availability.special ? "bg-blossom-500 text-white" : "bg-slate-200 text-slate-500"
+                              }`}
+                            >
+                              S
+                            </span>
+                          </td>
                         </tr>
                       );
                     })}
@@ -1308,7 +1312,7 @@ export function TrainDashboard() {
                 ) : null}
                 {selectedSchedules.length > 1 ? (
                   <>
-                    <p className="text-sm font-medium text-slate-700">Priority order (1 = highest)</p>
+                    <p className="text-sm font-medium text-slate-700">Priority order</p>
                     <ul className="mt-3 space-y-2 text-sm">
                       {selectedSchedules.map((schedule, index) => (
                         <li
@@ -1356,70 +1360,73 @@ export function TrainDashboard() {
                       <span className="font-medium">Passengers:</span> {createForm.adults} adult / {createForm.children} child
                     </p>
                   </div>
-                  <div className="flex flex-wrap items-center gap-3">
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={createForm.autoPay}
-                      onClick={() => {
-                        if (!autoPayAvailable) return;
-                        setCreateForm((cur) => ({ ...cur, autoPay: !cur.autoPay }));
-                      }}
-                      disabled={!autoPayAvailable}
-                      title={autoPayAvailable ? "Auto-pay" : "Save wallet details first to enable auto-pay"}
-                      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition focus:outline-none focus:ring-2 focus:ring-blossom-100 disabled:cursor-not-allowed disabled:opacity-60 ${
-                        createForm.autoPay
-                          ? "border-blossom-300 bg-blossom-50 text-blossom-700"
-                          : "border-slate-200 bg-white text-slate-600"
-                      }`}
-                    >
-                      <span>Auto-pay</span>
-                      <span
-                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition ${
-                          createForm.autoPay ? "bg-blossom-500" : "bg-slate-300"
+                  <div className="flex flex-col gap-1">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={createForm.autoPay}
+                        onClick={() => {
+                          if (!autoPayAvailable) return;
+                          setCreateForm((cur) => ({ ...cur, autoPay: !cur.autoPay }));
+                        }}
+                        disabled={!autoPayAvailable}
+                        title={autoPayAvailable ? "Auto-pay" : "Save wallet details first to enable auto-pay"}
+                        className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition focus:outline-none focus:ring-2 focus:ring-blossom-100 disabled:cursor-not-allowed disabled:opacity-60 ${
+                          createForm.autoPay
+                            ? "border-blossom-300 bg-blossom-50 text-blossom-700"
+                            : "border-slate-200 bg-white text-slate-600"
                         }`}
                       >
+                        <span>Auto-pay</span>
                         <span
-                          className={`inline-block h-4 w-4 rounded-full bg-white shadow transition ${
-                            createForm.autoPay ? "translate-x-4" : "translate-x-0.5"
+                          className={`relative inline-flex h-5 w-9 items-center rounded-full transition ${
+                            createForm.autoPay ? "bg-blossom-500" : "bg-slate-300"
                           }`}
-                        />
-                      </span>
-                    </button>
+                        >
+                          <span
+                            className={`inline-block h-4 w-4 rounded-full bg-white shadow transition ${
+                              createForm.autoPay ? "translate-x-4" : "translate-x-0.5"
+                            }`}
+                          />
+                        </span>
+                      </button>
 
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={createForm.notify}
-                      onClick={() => setCreateForm((cur) => ({ ...cur, notify: !cur.notify }))}
-                      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition focus:outline-none focus:ring-2 focus:ring-blossom-100 ${
-                        createForm.notify
-                          ? "border-blossom-300 bg-blossom-50 text-blossom-700"
-                          : "border-slate-200 bg-white text-slate-600"
-                      }`}
-                    >
-                      <span>Notify</span>
-                      <span
-                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition ${
-                          createForm.notify ? "bg-blossom-500" : "bg-slate-300"
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={createForm.notify}
+                        onClick={() => setCreateForm((cur) => ({ ...cur, notify: !cur.notify }))}
+                        className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition focus:outline-none focus:ring-2 focus:ring-blossom-100 ${
+                          createForm.notify
+                            ? "border-blossom-300 bg-blossom-50 text-blossom-700"
+                            : "border-slate-200 bg-white text-slate-600"
                         }`}
                       >
+                        <span>Notify</span>
                         <span
-                          className={`inline-block h-4 w-4 rounded-full bg-white shadow transition ${
-                            createForm.notify ? "translate-x-4" : "translate-x-0.5"
+                          className={`relative inline-flex h-5 w-9 items-center rounded-full transition ${
+                            createForm.notify ? "bg-blossom-500" : "bg-slate-300"
                           }`}
-                        />
-                      </span>
-                    </button>
+                        >
+                          <span
+                            className={`inline-block h-4 w-4 rounded-full bg-white shadow transition ${
+                              createForm.notify ? "translate-x-4" : "translate-x-0.5"
+                            }`}
+                          />
+                        </span>
+                      </button>
 
-                    <button
-                      type="button"
-                      onClick={createTask}
-                      disabled={createDisabled}
-                      className={PRIMARY_BUTTON_CLASS}
-                    >
-                      {creatingTask ? "Creating Task..." : "Create Task"}
-                    </button>
+                      <button
+                        type="button"
+                        onClick={createTask}
+                        disabled={createDisabled}
+                        className={PRIMARY_BUTTON_CLASS}
+                      >
+                        {creatingTask ? "Creating Task..." : "Create Task"}
+                      </button>
+                    </div>
+
                   </div>
                 </div>
                 {!autoPayAvailable ? (
@@ -1428,7 +1435,7 @@ export function TrainDashboard() {
                       <span className="font-medium">Wallet required for auto-pay.</span>
                       <span>Configure in</span>
                       <Link
-                        href="/payment-settings"
+                        href="/settings/payment"
                         className="font-medium underline decoration-amber-300 underline-offset-2 hover:text-amber-800"
                       >
                         Payment settings
@@ -1493,7 +1500,7 @@ export function TrainDashboard() {
                       type="button"
                       onClick={() => void payAwaitingPaymentTask(task.id)}
                       disabled={payingTaskId === task.id}
-                      className={SMALL_SUCCESS_BUTTON_CLASS}
+                      className={payingTaskId === task.id ? SMALL_DISABLED_BUTTON_CLASS : SMALL_SUCCESS_BUTTON_CLASS}
                     >
                       {payingTaskId === task.id ? "Paying..." : "Pay"}
                     </button>
@@ -1561,8 +1568,13 @@ export function TrainDashboard() {
                     <button
                       type="button"
                       onClick={() => void payAwaitingPaymentTask(task.id)}
-                      disabled={payingTaskId === task.id}
-                      className={SMALL_SUCCESS_BUTTON_CLASS}
+                      disabled={payingTaskId === task.id || !autoPayAvailable}
+                      title={autoPayAvailable ? "Pay now" : "Payment settings required"}
+                      className={
+                        payingTaskId === task.id || !autoPayAvailable
+                          ? SMALL_DISABLED_BUTTON_CLASS
+                          : SMALL_SUCCESS_BUTTON_CLASS
+                      }
                     >
                       {payingTaskId === task.id ? "Paying..." : "Pay"}
                     </button>

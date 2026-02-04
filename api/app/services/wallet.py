@@ -6,7 +6,7 @@ from uuid import UUID
 
 from fastapi import HTTPException, status
 from redis.asyncio import Redis
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -131,6 +131,18 @@ async def _cache_cvv(*, user_id: UUID, cvv: str) -> datetime:
         await redis.aclose()
 
     return expires_at
+
+
+async def _clear_cached_cvv(*, user_id: UUID) -> None:
+    redis = Redis.from_url(settings.redis_url)
+    try:
+        await redis.delete(_payment_cvv_redis_key(user_id), _legacy_payment_cvv_redis_key(user_id))
+    finally:
+        await redis.aclose()
+
+
+async def clear_payment_card_cache(*, user_id: UUID) -> None:
+    await _clear_cached_cvv(user_id=user_id)
 
 
 async def get_payment_card_status(
@@ -265,4 +277,23 @@ async def set_payment_card(
         expiry_year=payload.expiry_year,
         updated_at=now,
         cvv_cached_until=cvv_cached_until,
+    )
+
+
+async def clear_payment_card(
+    db: AsyncSession,
+    *,
+    user: User,
+) -> PaymentCardStatusResponse:
+    await db.execute(
+        delete(Secret)
+        .where(Secret.user_id == user.id)
+        .where(Secret.kind == SECRET_KIND_PAYMENT_CARD)
+    )
+    await db.commit()
+    await _clear_cached_cvv(user_id=user.id)
+
+    return PaymentCardStatusResponse(
+        configured=False,
+        detail="Payment settings removed",
     )

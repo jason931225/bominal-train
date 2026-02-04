@@ -18,7 +18,11 @@ Security controls and expectations for Bominal.
 ## Authorization
 
 - Role-based user model (`roles`, `users.role_id`)
-- Admin-only route stubs in API/UI
+- API access separation:
+  - Public: unauthenticated auth bootstrap routes
+  - Authenticated: session-cookie required user routes
+  - Internal-only: `X-Internal-Api-Key` header must match `INTERNAL_API_KEY`
+  - Admin: session + `admin` role required
 
 ## Secrets at rest
 
@@ -78,4 +82,3 @@ Recommended next steps for production maturity:
 - Rotate `MASTER_KEY` and provider credentials after compromise suspicion.
 - Revoke active sessions (`sessions.revoked_at`) for impacted users.
 - Review worker and API logs for abnormal provider/payment actions.
-

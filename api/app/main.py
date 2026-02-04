@@ -1,9 +1,10 @@
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import admin, auth, modules, notifications, wallet
-from app.modules.train.router import router as train_router
+from app.http.deps import get_current_user
+from app.http.routes import admin, auth, internal, modules, notifications, wallet
 from app.core.config import get_settings
+from app.modules.train.router import router as train_router
 
 settings = get_settings()
 
@@ -17,12 +18,31 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
-app.include_router(modules.router, prefix="/api", tags=["modules"])
+app.include_router(auth.public_router, prefix="/api/auth", tags=["auth", "public"])
+app.include_router(auth.user_router, prefix="/api/auth", tags=["auth", "authenticated"])
+app.include_router(
+    modules.router,
+    prefix="/api",
+    tags=["modules", "authenticated"],
+    dependencies=[Depends(get_current_user)],
+)
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
-app.include_router(wallet.router)
-app.include_router(notifications.router)
-app.include_router(train_router)
+app.include_router(
+    wallet.router,
+    tags=["wallet", "authenticated"],
+    dependencies=[Depends(get_current_user)],
+)
+app.include_router(
+    notifications.router,
+    tags=["notifications", "authenticated"],
+    dependencies=[Depends(get_current_user)],
+)
+app.include_router(
+    train_router,
+    tags=["train", "authenticated"],
+    dependencies=[Depends(get_current_user)],
+)
+app.include_router(internal.router)
 
 
 @app.get("/health")

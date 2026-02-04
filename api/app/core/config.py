@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     rate_limit_max_requests: int = Field(default=20, alias="RATE_LIMIT_MAX_REQUESTS")
 
     redis_url: str = Field(default="redis://redis:6379/0", alias="REDIS_URL")
+    internal_api_key: str | None = Field(default=None, alias="INTERNAL_API_KEY")
 
     master_key: str = Field(
         default=DEFAULT_MASTER_KEY_B64,
@@ -91,6 +92,8 @@ class Settings(BaseSettings):
         # Keep local developer convenience, but hard-stop weak defaults in production.
         if self.app_env.lower() == "production" and self.master_key == DEFAULT_MASTER_KEY_B64:
             raise ValueError("MASTER_KEY must be overridden in production")
+        if self.app_env.lower() == "production" and not self.internal_api_key:
+            raise ValueError("INTERNAL_API_KEY must be set in production")
         if self.smtp_use_ssl and self.smtp_starttls:
             raise ValueError("SMTP_USE_SSL and SMTP_STARTTLS cannot both be true")
         if self.email_provider == "resend" and not self.resend_api_key:

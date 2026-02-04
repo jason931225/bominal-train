@@ -1,12 +1,20 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from uuid import UUID
 
-from fastapi import Response
+from fastapi import HTTPException, Response, status
+from sqlalchemy import delete, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
-from app.db.models import User
+from app.core.security import hash_password, new_session_token
+from app.db.models import PasswordResetToken, Secret, Session, Task, User, VerificationToken
+from app.modules.train.constants import ACTIVE_TASK_STATES
 from app.schemas.auth import UserOut
+from app.services.wallet import clear_payment_card_cache
 
 settings = get_settings()
+ACCOUNT_TASK_REMOVAL_RETENTION_DAYS = 365
+ACCOUNT_TASK_REMOVAL_MARKER_KEY = "account_removal_safe"
 
 
 def user_to_out(user: User) -> UserOut:
@@ -62,3 +70,64 @@ def request_ip(remote: str | None, forwarded: str | None) -> str | None:
 
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _deleted_email_for_user(user_id: UUID) -> str:
+    return f"deleted-{user_id}@deleted.bominal.local"
+
+
+def _task_removal_marker(*, now: datetime) -> dict[str, str]:
+    return {
+        "marked_for_removal_at": now.isoformat(),
+        "remove_after_at": (now + timedelta(days=ACCOUNT_TASK_REMOVAL_RETENTION_DAYS)).isoformat(),
+        "reason": "account_deleted",
+    }
+
+
+async def delete_account_data(db: AsyncSession, *, user: User) -> None:
+    outstanding_task = (
+        await db.execute(
+            select(Task.id)
+            .where(Task.user_id == user.id)
+            .where(Task.state.in_(ACTIVE_TASK_STATES))
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if outstanding_task is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cannot delete account while outstanding worker instances exist.",
+        )
+
+    now = utc_now()
+    removal_safe = _task_removal_marker(now=now)
+    tasks = (await db.execute(select(Task).where(Task.user_id == user.id))).scalars().all()
+    for task in tasks:
+        spec_json = dict(task.spec_json) if isinstance(task.spec_json, dict) else {}
+        spec_json[ACCOUNT_TASK_REMOVAL_MARKER_KEY] = dict(removal_safe)
+        task.spec_json = spec_json
+        task.hidden_at = task.hidden_at or now
+        task.updated_at = now
+
+    await db.execute(delete(Session).where(Session.user_id == user.id))
+    await db.execute(delete(VerificationToken).where(VerificationToken.user_id == user.id))
+    await db.execute(delete(PasswordResetToken).where(PasswordResetToken.user_id == user.id))
+    await db.execute(delete(Secret).where(Secret.user_id == user.id))
+
+    user.email = _deleted_email_for_user(user.id)
+    user.password_hash = hash_password(new_session_token())
+    user.display_name = None
+    user.phone_number = None
+    user.billing_address = None
+    user.billing_address_line1 = None
+    user.billing_address_line2 = None
+    user.billing_city = None
+    user.billing_state_province = None
+    user.billing_country = None
+    user.billing_postal_code = None
+    user.birthday = None
+    user.email_verified_at = None
+    user.updated_at = now
+
+    await clear_payment_card_cache(user_id=user.id)
+    await db.commit()

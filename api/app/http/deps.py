@@ -1,6 +1,7 @@
+import hmac
 from datetime import datetime, timezone
 
-from fastapi import Cookie, Depends, HTTPException, Request, status
+from fastapi import Cookie, Depends, Header, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
@@ -16,6 +17,10 @@ settings = get_settings()
 
 def _unauthorized() -> HTTPException:
     return HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
+
+
+def _forbidden(detail: str = "Insufficient permissions") -> HTTPException:
+    return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
 
 
 async def auth_rate_limit(request: Request) -> None:
@@ -61,10 +66,30 @@ async def get_current_user(auth_session: Session = Depends(get_current_session))
     return auth_session.user
 
 
+async def get_current_admin(user: User = Depends(get_current_user)) -> User:
+    if user.role.name != "admin":
+        raise _forbidden()
+    return user
+
+
+async def require_internal_access(
+    internal_api_key: str | None = Header(default=None, alias="X-Internal-Api-Key"),
+) -> None:
+    configured_key = settings.internal_api_key
+    if not configured_key:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Internal API access is not configured",
+        )
+
+    if not internal_api_key or not hmac.compare_digest(internal_api_key, configured_key):
+        raise _forbidden("Internal API access denied")
+
+
 def require_role(role_name: str):
     async def dependency(user: User = Depends(get_current_user)) -> User:
         if user.role.name != role_name:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+            raise _forbidden()
         return user
 
     return dependency
