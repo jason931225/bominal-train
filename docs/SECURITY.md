@@ -52,7 +52,9 @@ Used for:
 
 ## Rate limiting
 
-- Auth endpoints use in-memory limiter (single-process baseline)
+- Auth endpoints support both in-memory and Redis-backed limiting:
+  - Set `RATE_LIMIT_USE_REDIS=1` in production for distributed rate limiting
+  - Uses sliding window algorithm with Redis sorted sets
 - Train provider calls use Redis-backed token-bucket limits:
   - global host bucket
   - per-provider bucket
@@ -70,7 +72,6 @@ Used for:
 
 Recommended next steps for production maturity:
 
-- Replace in-memory auth limiter with Redis/distributed limiter.
 - Add CSP and stricter security headers via reverse proxy.
 - Add secret manager integration for `MASTER_KEY` and provider API keys.
 - Implement key rotation workflow with `kek_version` migration path.

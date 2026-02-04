@@ -6,16 +6,25 @@ Operational procedures for local/dev/prod maintenance.
 
 ### VM production (Debian 12 + Docker deploy)
 
+**Shell Aliases** (available after SSH login):
+
+| Alias | Command |
+|-------|---------|
+| `bominal-deploy` | Zero-downtime deployment |
+| `bominal-admin` | Admin CLI for user/task/db management |
+
 Deploy with zero-downtime (recommended):
 
 ```bash
-sudo -u bominal /opt/bominal/repo/infra/scripts/deploy-zero-downtime.sh
+bominal-deploy
+# Or: sudo -u bominal /opt/bominal/repo/infra/scripts/deploy-zero-downtime.sh
 ```
 
 Rollback to previous deployment:
 
 ```bash
-sudo -u bominal /opt/bominal/repo/infra/scripts/deploy-zero-downtime.sh --rollback
+bominal-deploy --rollback
+# Or: sudo -u bominal /opt/bominal/repo/infra/scripts/deploy-zero-downtime.sh --rollback
 ```
 
 Deploy without rebuilding images (faster, uses existing images):
@@ -103,22 +112,22 @@ Admin CLI (production):
 
 ```bash
 # List users
-/opt/bominal/repo/infra/scripts/bominal-admin user list
+bominal-admin user list
 
 # User info
-/opt/bominal/repo/infra/scripts/bominal-admin user info <user_id>
+bominal-admin user info <user_id>
 
 # Promote to admin
-/opt/bominal/repo/infra/scripts/bominal-admin user promote <user_id>
+bominal-admin user set-role <email> admin
 
 # List tasks
-/opt/bominal/repo/infra/scripts/bominal-admin task list
+bominal-admin task list
 
 # DB stats
-/opt/bominal/repo/infra/scripts/bominal-admin db stats
+bominal-admin db stats
 
 # Check encryption status
-/opt/bominal/repo/infra/scripts/bominal-admin secret check
+bominal-admin secret check
 ```
 
 DB checks:
