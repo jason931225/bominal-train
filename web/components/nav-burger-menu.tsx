@@ -5,7 +5,7 @@ import Link from "next/link";
 
 import { LogoutButton } from "@/components/logout-button";
 import { useTheme } from "@/components/theme-provider";
-import { THEME_BUILD_LABEL, THEME_MODE_OPTIONS, type ThemeMode } from "@/lib/theme";
+import { THEME_MODE_OPTIONS, type ThemeMode } from "@/lib/theme";
 import { UI_MENU_ITEM } from "@/lib/ui";
 
 const THEME_DOT_COLORS = {
@@ -107,7 +107,7 @@ export function NavBurgerMenu({ isAdmin = false }: { isAdmin?: boolean }) {
             </div>
           ) : null}
 
-          <p className="px-1 pt-1 text-[11px] text-slate-500">Current: {THEME_BUILD_LABEL[theme]}</p>
+          <p className="px-1 pt-1 text-[11px] text-slate-500">v{process.env.BUILD_VERSION}</p>
         </div>
 
         <div className="my-1 border-t border-blossom-100" />

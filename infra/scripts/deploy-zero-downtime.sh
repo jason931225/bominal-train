@@ -125,7 +125,9 @@ do_rollback() {
 # Build images (this doesn't cause downtime)
 build_images() {
   log_info "Building new images (no downtime)..."
-  "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" build --parallel api worker web
+  local short_version
+  short_version=$(git rev-parse --short HEAD)
+  "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" build --parallel --build-arg BUILD_VERSION="$short_version" api worker web
 }
 
 # Deploy services with zero downtime
