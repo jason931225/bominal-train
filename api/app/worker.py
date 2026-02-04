@@ -48,6 +48,17 @@ async def _recover_in_flight_tasks() -> int:
             try:
                 task = await db.get(Task, UUID(task_id))
                 if task and task.module == TASK_MODULE and task.state not in TERMINAL_TASK_STATES:
+                    # Skip deleted, cancelled, or paused tasks
+                    if task.hidden_at is not None:
+                        logger.debug("Skipping hidden/deleted in-flight task %s", task_id)
+                        continue
+                    if task.cancelled_at is not None:
+                        logger.debug("Skipping cancelled in-flight task %s", task_id)
+                        continue
+                    if task.paused_at is not None or task.state == "PAUSED":
+                        logger.debug("Skipping paused in-flight task %s", task_id)
+                        continue
+                    
                     # Reset to QUEUED for clean re-processing
                     if task.state not in ("PAUSED", "QUEUED"):
                         task.state = "QUEUED"

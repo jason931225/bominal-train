@@ -1022,7 +1022,19 @@ async def _run_train_task_inner(
             return
 
         now = _utc_now_aware()
+        
+        # Skip tasks that are in terminal states, paused, or hidden (deleted)
         if task.state in TERMINAL_TASK_STATES or task.state == "PAUSED":
+            return
+        if task.hidden_at is not None:
+            # Task was deleted by user - don't process
+            logger.debug("Skipping hidden/deleted task %s", task_id)
+            return
+        if task.paused_at is not None and task.state != "PAUSED":
+            # Task was paused but state not updated - fix it
+            task.state = "PAUSED"
+            task.updated_at = now
+            await db.commit()
             return
         if task.cancelled_at is not None:
             task.state = "CANCELLED"
@@ -1324,7 +1336,10 @@ async def enqueue_recoverable_tasks(db: AsyncSession) -> int:
     2. Tasks that were in-progress when worker crashed/restarted
     3. Tasks stuck in processing states (stale tasks)
     
-    Tasks in PAUSED state are not re-enqueued - they require explicit resume.
+    Skipped tasks:
+    - PAUSED: require explicit resume action
+    - hidden_at set: user deleted the task
+    - cancelled_at set: user cancelled the task
     """
     now = _utc_now_aware()
     
@@ -1332,14 +1347,19 @@ async def enqueue_recoverable_tasks(db: AsyncSession) -> int:
         select(Task)
         .where(Task.module == TASK_MODULE)
         .where(Task.state.in_(ACTIVE_TASK_STATES))
+        .where(Task.hidden_at.is_(None))  # Exclude deleted tasks
+        .where(Task.cancelled_at.is_(None))  # Exclude cancelled tasks
     )
     tasks = (await db.execute(stmt)).scalars().all()
     
     recovered_count = 0
     stale_count = 0
+    skipped_paused = 0
     
     for task in tasks:
-        if task.state == "PAUSED":
+        # Skip paused tasks - they need explicit resume
+        if task.state == "PAUSED" or task.paused_at is not None:
+            skipped_paused += 1
             continue
             
         # Check for stale tasks (stuck in processing states)
@@ -1364,5 +1384,7 @@ async def enqueue_recoverable_tasks(db: AsyncSession) -> int:
     
     if stale_count:
         logger.info("Reset %d stale tasks to QUEUED", stale_count)
+    if skipped_paused:
+        logger.debug("Skipped %d paused tasks (require explicit resume)", skipped_paused)
     
     return recovered_count
