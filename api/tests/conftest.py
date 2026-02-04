@@ -1,6 +1,8 @@
 import os
 from pathlib import Path
+from contextlib import asynccontextmanager
 
+import fakeredis.aioredis
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -58,3 +60,54 @@ async def client(db_session_factory):
         yield async_client
 
     app.dependency_overrides.clear()
+
+
+# --- Shared Redis test helpers ---
+
+
+class MockRedisContextManager:
+    """Async context manager wrapper for fakeredis in tests.
+    
+    Used to mock get_redis_pool() which returns an async context manager.
+    
+    Usage:
+        fake_redis = fakeredis.aioredis.FakeRedis()
+        monkeypatch.setattr("app.services.wallet.get_redis_pool", 
+                            lambda: MockRedisContextManager(fake_redis))
+    """
+    def __init__(self, redis):
+        self._redis = redis
+
+    async def __aenter__(self):
+        return self._redis
+
+    async def __aexit__(self, *_):
+        pass
+
+
+def make_fake_get_redis_client(fake_redis):
+    """Create a fake get_redis_client that returns the provided fake redis instance.
+    
+    Used to mock get_redis_client() which returns a Redis client directly.
+    
+    Usage:
+        fake_redis = fakeredis.aioredis.FakeRedis()
+        monkeypatch.setattr("app.modules.train.service.get_redis_client", 
+                            make_fake_get_redis_client(fake_redis))
+    """
+    async def _get_fake_redis():
+        return fake_redis
+    return _get_fake_redis
+
+
+@asynccontextmanager
+async def fake_redis_pool():
+    """Fixture-style async context manager for fake redis.
+    
+    Usage:
+        fake_redis = fakeredis.aioredis.FakeRedis()
+        monkeypatch.setattr("app.services.wallet.get_redis_pool", 
+                            lambda: fake_redis_pool_wrapper(fake_redis))
+    """
+    redis = fakeredis.aioredis.FakeRedis()
+    yield redis

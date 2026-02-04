@@ -6,18 +6,7 @@ from sqlalchemy import select
 
 from app.db.models import Secret, Session, Task, User
 from app.services.wallet import LEGACY_PAYMENT_CVV_REDIS_KEY_PREFIX, PAYMENT_CVV_REDIS_KEY_PREFIX
-
-
-class _MockRedisContextManager:
-    """Async context manager wrapper for fakeredis in tests."""
-    def __init__(self, redis):
-        self._redis = redis
-
-    async def __aenter__(self):
-        return self._redis
-
-    async def __aexit__(self, *_):
-        pass
+from tests.conftest import MockRedisContextManager
 
 
 @pytest.mark.asyncio
@@ -257,7 +246,7 @@ async def test_delete_account_blocks_when_outstanding_worker_instances_exist(cli
 @pytest.mark.asyncio
 async def test_delete_account_scrubs_user_and_marks_tasks_for_removal(client, db_session, monkeypatch):
     fake_redis = fakeredis.aioredis.FakeRedis()
-    monkeypatch.setattr("app.services.wallet.get_redis_pool", lambda: _MockRedisContextManager(fake_redis))
+    monkeypatch.setattr("app.services.wallet.get_redis_pool", lambda: MockRedisContextManager(fake_redis))
 
     email = "account-delete-success@example.com"
     password = "SuperSecret123"
