@@ -76,11 +76,11 @@ services:
         limits:
           memory: 256M
     healthcheck:
-      test: ["CMD-SHELL", "pgrep -f 'arq' || exit 1"]
+      test: ["CMD-SHELL", "python -c \"import os; exit(0 if any('arq' in open(f'/proc/{p}/cmdline').read() for p in os.listdir('/proc') if p.isdigit() and os.path.exists(f'/proc/{p}/cmdline')) else 1)\""]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 10s
+      start_period: 15s
     depends_on:
       postgres:
         condition: service_healthy
