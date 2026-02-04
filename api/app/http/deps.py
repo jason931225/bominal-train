@@ -26,7 +26,7 @@ def _forbidden(detail: str = "Insufficient permissions") -> HTTPException:
 async def auth_rate_limit(request: Request) -> None:
     client_ip = request.client.host if request.client else "unknown"
     key = f"auth:{client_ip}:{request.url.path}"
-    rate_limiter.check(
+    await rate_limiter.check(
         key=key,
         limit=settings.rate_limit_max_requests,
         window_seconds=settings.rate_limit_window_seconds,

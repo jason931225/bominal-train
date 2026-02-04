@@ -57,6 +57,7 @@ class Settings(BaseSettings):
 
     rate_limit_window_seconds: int = Field(default=60, alias="RATE_LIMIT_WINDOW_SECONDS")
     rate_limit_max_requests: int = Field(default=20, alias="RATE_LIMIT_MAX_REQUESTS")
+    rate_limit_use_redis: bool = Field(default=False, alias="RATE_LIMIT_USE_REDIS")
 
     redis_url: str = Field(default="redis://redis:6379/0", alias="REDIS_URL")
     internal_api_key: str | None = Field(default=None, alias="INTERNAL_API_KEY")

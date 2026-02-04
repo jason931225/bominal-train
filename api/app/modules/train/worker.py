@@ -27,6 +27,7 @@ from app.modules.train.constants import (
     SECRET_KIND_SRT_CREDENTIALS,
     TASK_MODULE,
     TERMINAL_TASK_STATES,
+    credential_kind,
 )
 from app.modules.train.providers import get_provider_client
 from app.modules.train.providers.base import ProviderOutcome, ProviderSchedule
@@ -135,14 +136,6 @@ def _poll_delay_seconds(search_attempt_count: int) -> float:
     base = min(settings.train_poll_max_seconds, settings.train_poll_min_seconds * (2 ** min(search_attempt_count, 3)))
     jitter = random.uniform(0.1, 0.9)
     return max(settings.train_poll_min_seconds, min(settings.train_poll_max_seconds, base + jitter))
-
-
-def _credential_kind(provider: str) -> str:
-    if provider == "SRT":
-        return SECRET_KIND_SRT_CREDENTIALS
-    if provider == "KTX":
-        return SECRET_KIND_KTX_CREDENTIALS
-    raise ValueError(f"Unsupported provider: {provider}")
 
 
 def _normalize_ranked_selection(spec_json: dict[str, Any]) -> list[dict[str, Any]]:
@@ -326,7 +319,7 @@ async def _load_provider_credentials(
     user_id: UUID,
     provider: str,
 ) -> dict[str, str] | None:
-    kind = _credential_kind(provider)
+    kind = credential_kind(provider)
     stmt = (
         select(Secret)
         .where(Secret.user_id == user_id)

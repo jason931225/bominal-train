@@ -24,6 +24,7 @@ from app.modules.train.constants import (
     SECRET_KIND_SRT_CREDENTIALS,
     TASK_MODULE,
     TERMINAL_TASK_STATES,
+    credential_kind,
 )
 from app.modules.train.providers import get_provider_client
 from app.modules.train.providers.base import ProviderSchedule
@@ -116,14 +117,6 @@ async def _latest_secret_for_user(db: AsyncSession, *, user_id: UUID, kind: str)
     return (await db.execute(stmt)).scalar_one_or_none()
 
 
-def _credential_kind(provider: str) -> str:
-    if provider == "SRT":
-        return SECRET_KIND_SRT_CREDENTIALS
-    if provider == "KTX":
-        return SECRET_KIND_KTX_CREDENTIALS
-    raise ValueError(f"Unsupported provider: {provider}")
-
-
 def _credential_missing_code(provider: str) -> str:
     return "srt_credentials_missing" if provider == "SRT" else "ktx_credentials_missing"
 
@@ -134,7 +127,7 @@ async def _load_provider_credentials(
     user_id: UUID,
     provider: str,
 ) -> dict[str, str] | None:
-    secret = await _latest_secret_for_user(db, user_id=user_id, kind=_credential_kind(provider))
+    secret = await _latest_secret_for_user(db, user_id=user_id, kind=credential_kind(provider))
     if secret is None:
         return None
 
@@ -161,10 +154,10 @@ async def _save_provider_credentials(
 ) -> None:
     encrypted_secret = build_encrypted_secret(
         user_id=user_id,
-        kind=_credential_kind(provider),
+        kind=credential_kind(provider),
         payload=payload,
     )
-    existing_secret = await _latest_secret_for_user(db, user_id=user_id, kind=_credential_kind(provider))
+    existing_secret = await _latest_secret_for_user(db, user_id=user_id, kind=credential_kind(provider))
     now = utc_now()
     if existing_secret is None:
         db.add(encrypted_secret)
@@ -446,7 +439,7 @@ async def _clear_provider_credentials(
     await db.execute(
         delete(Secret)
         .where(Secret.user_id == user.id)
-        .where(Secret.kind == _credential_kind(provider))
+        .where(Secret.kind == credential_kind(provider))
     )
     await db.commit()
     return ProviderCredentialStatus(
