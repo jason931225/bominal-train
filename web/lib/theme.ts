@@ -14,10 +14,10 @@ export const THEME_MODE_OPTIONS: Array<{ mode: ThemeMode; label: string }> = [
 ];
 
 export const THEME_BUILD_LABEL: Record<ThemeName, string> = {
-  spring: "spring build",
-  summer: "summer build",
-  autumn: "autumn build",
-  winter: "winter build",
+  spring: "Spring Theme",
+  summer: "Summer Theme",
+  autumn: "Autumn Theme",
+  winter: "Winter Theme",
 };
 
 export function seasonFromMonth(month: number): ThemeName {
