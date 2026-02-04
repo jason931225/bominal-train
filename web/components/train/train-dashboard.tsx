@@ -968,7 +968,7 @@ export function TrainDashboard() {
                           value={credentialForm.username}
                           onChange={(event) => setCredentialForm((current) => ({ ...current, username: event.target.value }))}
                           className={FIELD_BASE_CLASS}
-                          placeholder="email / phone / membership number"
+                          placeholder="email, phone (01012345678), or membership #"
                           required
                         />
                       </label>

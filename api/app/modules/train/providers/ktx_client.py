@@ -31,7 +31,8 @@ KTX_API_ENDPOINTS = {
 }
 
 EMAIL_REGEX = re.compile(r"[^@]+@[^@]+\.[^@]+")
-PHONE_NUMBER_REGEX = re.compile(r"(\d{3})-(\d{3,4})-(\d{4})")
+# Korean mobile numbers: 01X-XXXX-XXXX (accepts with or without dashes)
+PHONE_NUMBER_REGEX = re.compile(r"01[0-9]-?\d{3,4}-?\d{4}")
 
 KTX_DEFAULT_HEADERS = {
     "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",

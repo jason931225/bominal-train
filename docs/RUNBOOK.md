@@ -6,23 +6,23 @@ Operational procedures for local/dev/prod maintenance.
 
 ### VM production (Debian 12 + Docker deploy)
 
-Deploy latest prebuilt images:
+Deploy with zero-downtime (recommended):
 
 ```bash
-sudo -u bominal /opt/bominal/repo/infra/scripts/vm-docker-deploy.sh latest
+sudo -u bominal /opt/bominal/repo/infra/scripts/deploy-zero-downtime.sh
 ```
 
-Deploy specific image tag:
+Rollback to previous deployment:
 
 ```bash
-sudo -u bominal /opt/bominal/repo/infra/scripts/vm-docker-deploy.sh sha-<git_sha>
+sudo -u bominal /opt/bominal/repo/infra/scripts/deploy-zero-downtime.sh --rollback
 ```
 
 Check VM stack:
 
 ```bash
-docker compose -f infra/docker-compose.deploy.yml ps
-docker compose -f infra/docker-compose.deploy.yml logs -f caddy api worker web
+docker compose -f infra/docker-compose.prod.yml ps
+docker compose -f infra/docker-compose.prod.yml logs -f caddy api worker web
 ```
 
 ### Docker (local simulation)
@@ -39,24 +39,10 @@ Start stack (prod profile file):
 docker-compose -f infra/docker-compose.prod.yml up -d --build
 ```
 
-Start stack (image-based deploy profile):
-
-```bash
-export BOMINAL_IMAGE_PREFIX=ghcr.io/your-org/bominal
-export BOMINAL_IMAGE_TAG=latest
-docker compose -f infra/docker-compose.deploy.yml up -d --remove-orphans
-```
-
 Stop stack:
 
 ```bash
 docker-compose -f infra/docker-compose.yml down
-```
-
-Stop deploy stack:
-
-```bash
-docker compose -f infra/docker-compose.deploy.yml down
 ```
 
 Hard reset (destroys local DB volume):
@@ -74,7 +60,7 @@ curl -sS http://localhost:8000/health
 curl -sS -I http://localhost:3000
 ```
 
-Deploy profile proxy health (via Caddy on 80/443):
+Production health (via Caddy on 80/443):
 
 ```bash
 curl -sS -I http://localhost
@@ -88,11 +74,11 @@ docker-compose -f infra/docker-compose.yml ps
 docker-compose -f infra/docker-compose.yml logs -f api worker web
 ```
 
-Deploy profile status/logs:
+Production status/logs:
 
 ```bash
-docker compose -f infra/docker-compose.deploy.yml ps
-docker compose -f infra/docker-compose.deploy.yml logs -f caddy api worker web
+docker compose -f infra/docker-compose.prod.yml ps
+docker compose -f infra/docker-compose.prod.yml logs -f caddy api worker web
 ```
 
 DB checks:
@@ -115,16 +101,22 @@ docker-compose -f infra/docker-compose.yml exec postgres \
 
 Checklist:
 
-1. `docker compose -f infra/docker-compose.deploy.yml ps`
-2. `docker compose -f infra/docker-compose.deploy.yml logs --tail=200 caddy api worker web`
+1. `docker compose -f infra/docker-compose.prod.yml ps`
+2. `docker compose -f infra/docker-compose.prod.yml logs --tail=200 caddy api worker web`
 3. Verify env files exist:
    - `infra/env/prod/postgres.env`
    - `infra/env/prod/api.env`
    - `infra/env/prod/web.env`
-4. Re-run deploy script for current ref:
+4. Re-run deploy script:
 
 ```bash
-sudo -u bominal /opt/bominal/repo/infra/scripts/vm-docker-deploy.sh latest
+sudo -u bominal /opt/bominal/repo/infra/scripts/deploy-zero-downtime.sh
+```
+
+Or rollback if previous deployment was stable:
+
+```bash
+sudo -u bominal /opt/bominal/repo/infra/scripts/deploy-zero-downtime.sh --rollback
 ```
 
 ## 1) Web route fails to load (`Cannot find module './901.js'`)

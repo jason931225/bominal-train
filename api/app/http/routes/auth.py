@@ -258,9 +258,11 @@ async def delete_account(
 
 @public_router.post("/request-email-verification", response_model=MessageResponse)
 async def request_email_verification() -> MessageResponse:
-    return MessageResponse(message="Email verification delivery not implemented yet")
+    """Request email verification link. Coming soon."""
+    return MessageResponse(message="Email verification is coming soon")
 
 
 @public_router.post("/request-password-reset", response_model=MessageResponse)
 async def request_password_reset() -> MessageResponse:
-    return MessageResponse(message="Password reset delivery not implemented yet")
+    """Request password reset link. Coming soon."""
+    return MessageResponse(message="Password reset is coming soon")

@@ -1,0 +1,38 @@
+#!/bin/bash
+# bominal-monitor - Wrapper script to run the bominal monitor CLI
+#
+# Usage:
+#   bominal-monitor           # One-time snapshot
+#   bominal-monitor --watch   # Live refresh mode
+#   bominal-monitor -w -i 5   # Refresh every 5 seconds
+#
+# Can be run:
+#   - On VM directly: /opt/bominal/repo/infra/scripts/bominal-monitor
+#   - In API container: python -m app.monitor
+#   - Via docker exec: docker compose exec api python -m app.monitor
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+
+# Check if running inside container or on host
+if [ -f "/.dockerenv" ]; then
+    # Inside container
+    cd /app
+    exec python -m app.monitor "$@"
+else
+    # On host - run via docker compose
+    COMPOSE_FILE="${REPO_ROOT}/infra/docker-compose.prod.yml"
+    
+    if [ ! -f "$COMPOSE_FILE" ]; then
+        COMPOSE_FILE="${REPO_ROOT}/infra/docker-compose.yml"
+    fi
+    
+    if [ ! -f "$COMPOSE_FILE" ]; then
+        echo "Error: Cannot find docker-compose file"
+        exit 1
+    fi
+    
+    exec docker compose -f "$COMPOSE_FILE" exec -T api python -m app.monitor "$@"
+fi

@@ -98,11 +98,20 @@ docker compose -f infra/docker-compose.yml exec web npx tsc --noEmit
 # Health check
 curl -sS http://localhost:8000/health
 
+# Monitor system status (one-time snapshot)
+docker compose -f infra/docker-compose.yml exec api python -m app.monitor
+
+# Monitor with live refresh
+docker compose -f infra/docker-compose.yml exec api python -m app.monitor --watch
+
 # Create migration
 (cd api && alembic revision -m "describe_change")
 
 # Zero-downtime production deploy (on VM)
 sudo -u bominal /opt/bominal/repo/infra/scripts/deploy-zero-downtime.sh
+
+# Production monitor (on VM)
+/opt/bominal/repo/infra/scripts/bominal-monitor --watch
 
 # Rollback production
 sudo -u bominal /opt/bominal/repo/infra/scripts/deploy-zero-downtime.sh --rollback

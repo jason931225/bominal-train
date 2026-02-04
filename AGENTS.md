@@ -37,12 +37,12 @@ Build and operate **bominal**, a modular product platform with:
 - `web/app/` page routes
 - `web/components/` UI and feature components
 - `web/lib/` shared client/server helpers and design tokens
-- `api/app/api/routes/` HTTP routes
+- `api/app/http/routes/` HTTP routes
 - `api/app/modules/train/` train domain (router, service, worker, providers)
 - `api/app/core/crypto/` envelope encryption and redaction
 - `api/app/db/` SQLAlchemy models/session
 - `api/alembic/versions/` DB migrations
-- `infra/` compose files, env files, predeploy checks
+- `infra/` compose files, env files, scripts
 
 ## Local workflow
 

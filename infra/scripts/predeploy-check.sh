@@ -1,4 +1,19 @@
 #!/usr/bin/env bash
+# -----------------------------------------------------------------------------
+# predeploy-check.sh — Validate production environment before deployment
+# -----------------------------------------------------------------------------
+# Checks:
+#   - Required env files exist (postgres.env, api.env, web.env, caddy.env)
+#   - No unresolved CHANGE_ME placeholders
+#   - Required API security keys are set
+#
+# Usage:
+#   ./infra/scripts/predeploy-check.sh
+#
+# Exit codes:
+#   0 - All checks passed
+#   1 - One or more checks failed
+# -----------------------------------------------------------------------------
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

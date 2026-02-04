@@ -1,3 +1,16 @@
+"""Application configuration management.
+
+Loads settings from environment variables with sensible defaults for development.
+Production deployments must override security-critical settings.
+
+Environment Variables:
+    See Settings class fields for all supported environment variables.
+    
+Security:
+    - MASTER_KEY must be overridden in production (used for envelope encryption)
+    - INTERNAL_API_KEY must be set in production (for internal service auth)
+"""
+
 from functools import lru_cache
 from typing import Annotated
 from typing import List
@@ -9,6 +22,16 @@ DEFAULT_MASTER_KEY_B64 = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
 
 
 class Settings(BaseSettings):
+    """Application settings loaded from environment variables.
+    
+    Grouped by functionality:
+    - Core: app_name, app_env, database_url, redis_url
+    - Auth: session_*, rate_limit_*
+    - Security: master_key, kek_version, internal_api_key
+    - Train: train_provider_*, payment_*
+    - Email: email_*, smtp_*, resend_*
+    """
+    
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     app_name: str = "bominal"

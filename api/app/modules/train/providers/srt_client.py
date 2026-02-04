@@ -62,7 +62,8 @@ SRT_NETFUNNEL_HEADERS = {
 }
 
 EMAIL_REGEX = re.compile(r"[^@]+@[^@]+\.[^@]+")
-PHONE_NUMBER_REGEX = re.compile(r"(\d{3})-(\d{3,4})-(\d{4})")
+# Korean mobile numbers: 01X-XXXX-XXXX (accepts with or without dashes)
+PHONE_NUMBER_REGEX = re.compile(r"01[0-9]-?\d{3,4}-?\d{4}")
 SRT_STATION_NAME_BY_CODE = {code: name for name, code in SRT_STATION_CODE.items()}
 
 
