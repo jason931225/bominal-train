@@ -28,8 +28,9 @@ Build and operate **bominal**, a modular product platform with:
 1. `docs/README.md`
 2. `docs/ARCHITECTURE.md`
 3. `docs/CONTRIBUTING.md`
-4. `docs/RUNBOOK.md`
-5. `README.md`
+4. `docs/DEPLOYMENT.md` (for production deploys and rollbacks)
+5. `docs/RUNBOOK.md`
+6. `README.md`
 
 ## Repo map
 
@@ -73,4 +74,35 @@ docker-compose -f infra/docker-compose.yml exec web npx tsc --noEmit
 - No broken auth/session flow regressions.
 - No unresolved placeholders in production env templates.
 - Docs updated in `docs/` when behavior or operations change.
+
+## Production Deployment (IMPORTANT)
+
+**Always use zero-downtime deployment** for production:
+
+```bash
+# On VM (via SSH)
+sudo -u bominal /opt/bominal/repo/infra/scripts/deploy-zero-downtime.sh
+
+# Remote deploy
+gcloud compute ssh bominal-deploy --zone=us-central1-a --tunnel-through-iap \
+  --command="cd /opt/bominal/repo && sudo -u bominal infra/scripts/deploy-zero-downtime.sh"
+```
+
+**Rollback if needed**:
+
+```bash
+sudo -u bominal /opt/bominal/repo/infra/scripts/deploy-zero-downtime.sh --rollback
+```
+
+**Never**:
+- Use `docker compose down` in production (causes downtime)
+- Modify `/opt/bominal/deployments/*` version tracking files
+- Skip health check verification after deploy
+
+**Always**:
+- Use `--wait` flag with `docker compose up -d`
+- Verify health after deploy: `curl https://www.bominal.com/health`
+- Keep rollback info handy before deploying
+
+See `docs/DEPLOYMENT.md` for full procedures.
 
