@@ -22,7 +22,7 @@ if [ -f "/.dockerenv" ]; then
     cd /app
     exec python -m app.monitor "$@"
 else
-    # On host - run via docker compose
+    # On host - show container status first, then run monitor in container
     COMPOSE_FILE="${REPO_ROOT}/infra/docker-compose.prod.yml"
     
     if [ ! -f "$COMPOSE_FILE" ]; then
@@ -34,5 +34,13 @@ else
         exit 1
     fi
     
+    # Print container status from host (where docker works)
+    echo ""
+    echo "🐳 Container Status (from host)"
+    echo "════════════════════════════════════════════════════════════"
+    docker compose -f "$COMPOSE_FILE" ps --format "table {{.Name}}\t{{.Status}}" 2>/dev/null || echo "  Unable to get container status"
+    echo ""
+    
+    # Run the rest of the monitor inside the container
     exec docker compose -f "$COMPOSE_FILE" exec -T api python -m app.monitor "$@"
 fi
