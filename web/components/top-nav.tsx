@@ -17,7 +17,7 @@ export async function TopNav() {
             <span className="inline-flex h-9 items-center rounded-full border border-blossom-200 bg-white px-3 text-sm font-medium text-slate-700 shadow-sm">
               {user.display_name || user.email || "Member"}
             </span>
-            <NavBurgerMenu />
+            <NavBurgerMenu isAdmin={user.role === "admin"} />
           </div>
         ) : (
           <div className="flex items-center gap-2">

@@ -27,7 +27,7 @@ function themeDotStyle(mode: ThemeMode): CSSProperties {
   };
 }
 
-export function NavBurgerMenu() {
+export function NavBurgerMenu({ isAdmin = false }: { isAdmin?: boolean }) {
   const { mode, theme, setMode } = useTheme();
   const [themeMenuOpen, setThemeMenuOpen] = useState(false);
   const selectedThemeLabel = useMemo(
@@ -111,6 +111,15 @@ export function NavBurgerMenu() {
         </div>
 
         <div className="my-1 border-t border-blossom-100" />
+
+        {isAdmin && (
+          <>
+            <Link href="/admin/maintenance" className={UI_MENU_ITEM}>
+              Maintenance
+            </Link>
+            <div className="my-1 border-t border-blossom-100" />
+          </>
+        )}
 
         <Link href="/settings/account" className={UI_MENU_ITEM}>
           Account settings
