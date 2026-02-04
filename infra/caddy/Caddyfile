@@ -2,6 +2,11 @@
 	email {$CADDY_ACME_EMAIL}
 }
 
+# Redirect apex domain to www
+bominal.com {
+	redir https://www.bominal.com{uri} permanent
+}
+
 {$CADDY_SITE_ADDRESS} {
 	encode zstd gzip
 
