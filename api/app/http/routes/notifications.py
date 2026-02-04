@@ -6,16 +6,13 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.http.deps import auth_rate_limit, get_current_user
 from app.core.config import get_settings
+from app.core.time import utc_now
 from app.db.models import User
 from app.schemas.notification import EmailJobPayload, EmailStatusResponse, EmailTestRequest, EmailTestResponse
 from app.services.email_queue import enqueue_email
 
 router = APIRouter(prefix="/api/notifications", tags=["notifications"])
 settings = get_settings()
-
-
-def _utc_now() -> datetime:
-    return datetime.now(timezone.utc)
 
 
 @router.get("/email/status", response_model=EmailStatusResponse)
@@ -53,7 +50,7 @@ async def send_test_email(
             f"Hi {display_name},\n\n"
             "This is a bominal test email.\n"
             "Your notification pipeline is ready for module events and service alerts.\n\n"
-            f"Requested at: {_utc_now().isoformat()}\n"
+            f"Requested at: {utc_now().isoformat()}\n"
             f"User id: {user.id}\n"
         )
 
@@ -76,5 +73,5 @@ async def send_test_email(
         recipient=recipient,
         provider=settings.email_provider,
         detail="Test email queued",
-        queued_at=_utc_now(),
+        queued_at=utc_now(),
     )

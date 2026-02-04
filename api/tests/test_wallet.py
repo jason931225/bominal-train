@@ -10,6 +10,18 @@ from app.services.wallet import (
 )
 
 
+class _MockRedisContextManager:
+    """Async context manager wrapper for fakeredis in tests."""
+    def __init__(self, redis):
+        self._redis = redis
+
+    async def __aenter__(self):
+        return self._redis
+
+    async def __aexit__(self, *_):
+        pass
+
+
 async def _register_and_login(client, *, email: str) -> str:
     await client.post(
         "/api/auth/register",
@@ -28,7 +40,11 @@ async def _register_and_login(client, *, email: str) -> str:
 @pytest.mark.asyncio
 async def test_remove_payment_settings_wipes_saved_data(client, db_session, monkeypatch):
     fake_redis = fakeredis.aioredis.FakeRedis()
-    monkeypatch.setattr("app.services.wallet.Redis.from_url", lambda *_args, **_kwargs: fake_redis)
+
+    async def _get_fake_redis():
+        return fake_redis
+
+    monkeypatch.setattr("app.services.wallet.get_redis_pool", lambda: _MockRedisContextManager(fake_redis))
 
     email = "wallet-remove@example.com"
     cookie = await _register_and_login(client, email=email)
@@ -88,7 +104,7 @@ async def test_remove_payment_settings_wipes_saved_data(client, db_session, monk
 @pytest.mark.asyncio
 async def test_remove_payment_settings_is_idempotent(client, monkeypatch):
     fake_redis = fakeredis.aioredis.FakeRedis()
-    monkeypatch.setattr("app.services.wallet.Redis.from_url", lambda *_args, **_kwargs: fake_redis)
+    monkeypatch.setattr("app.services.wallet.get_redis_pool", lambda: _MockRedisContextManager(fake_redis))
 
     cookie = await _register_and_login(client, email="wallet-remove-idempotent@example.com")
 

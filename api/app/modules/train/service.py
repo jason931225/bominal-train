@@ -8,7 +8,6 @@ from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from redis.asyncio import Redis
 from sqlalchemy import Select, and_, delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -16,6 +15,8 @@ from sqlalchemy.orm import selectinload
 from app.core.config import get_settings
 from app.core.crypto.secrets_store import build_encrypted_secret, decrypt_secret
 from app.core.crypto.redaction import redact_sensitive
+from app.core.redis import get_redis_client
+from app.core.time import utc_now
 from app.db.models import Artifact, Secret, Task, TaskAttempt, User
 from app.modules.train.constants import (
     ACTIVE_TASK_STATES,
@@ -63,10 +64,6 @@ TASK_VISIBILITY_RETENTION_DAYS = 365
 TICKET_SYNC_MIN_SECONDS = 15
 
 
-def _utc_now() -> datetime:
-    return datetime.now(timezone.utc)
-
-
 def _parse_iso_datetime(value: str | None) -> datetime | None:
     if not value:
         return None
@@ -104,7 +101,7 @@ def _build_task_attempt(
         duration_ms=duration_ms,
         meta_json_safe=redact_sensitive(meta_json_safe) if meta_json_safe else None,
         started_at=started_at,
-        finished_at=finished_at or _utc_now(),
+        finished_at=finished_at or utc_now(),
     )
 
 
@@ -168,7 +165,7 @@ async def _save_provider_credentials(
         payload=payload,
     )
     existing_secret = await _latest_secret_for_user(db, user_id=user_id, kind=_credential_kind(provider))
-    now = _utc_now()
+    now = utc_now()
     if existing_secret is None:
         db.add(encrypted_secret)
     else:
@@ -196,7 +193,7 @@ def _is_recent_verification(verified_at: datetime | None) -> bool:
     cache_seconds = max(settings.train_credential_cache_seconds, 0)
     if cache_seconds <= 0:
         return False
-    return (_utc_now() - verified_at) <= timedelta(seconds=cache_seconds)
+    return (utc_now() - verified_at) <= timedelta(seconds=cache_seconds)
 
 
 async def _verify_provider_credentials(
@@ -281,7 +278,7 @@ async def _verify_provider_credentials(
             detail=login_outcome.error_message_safe or f"{provider} login failed",
         )
 
-    fresh_verified_at = _utc_now()
+    fresh_verified_at = utc_now()
     secret_payload = {
         "username": creds["username"],
         "password": creds["password"],
@@ -391,7 +388,7 @@ async def set_srt_credentials(
             detail=login_outcome.error_message_safe or "SRT login failed",
         )
 
-    now = _utc_now()
+    now = utc_now()
     secret_payload = {
         "username": username,
         "password": password,
@@ -427,7 +424,7 @@ async def set_ktx_credentials(
             detail=login_outcome.error_message_safe or "KTX login failed",
         )
 
-    now = _utc_now()
+    now = utc_now()
     secret_payload = {
         "username": username,
         "password": password,
@@ -632,11 +629,10 @@ async def search_schedules(
 
     schedules: list[ScheduleOut] = []
     provider_errors: dict[str, dict[str, str | None]] = {}
-    redis = Redis.from_url(settings.redis_url)
+    redis = await get_redis_client()
     limiter = RedisTokenBucketLimiter(redis)
 
-    try:
-        for provider in payload.providers:
+    for provider in payload.providers:
             creds = await _load_provider_credentials(db, user_id=user.id, provider=provider)
             if creds is None:
                 provider_errors[provider] = {
@@ -710,8 +706,6 @@ async def search_schedules(
                         metadata=schedule.metadata,
                     )
                 )
-    finally:
-        await redis.aclose()
 
     if not schedules and provider_errors and len(provider_errors) == len(payload.providers):
         detail = "; ".join(
@@ -825,7 +819,7 @@ def _task_list_stmt(user: User, status_filter: str) -> Select[tuple[Task]]:
         .where(Task.module == TASK_MODULE)
         .where(Task.hidden_at.is_(None))
     )
-    cutoff = _utc_now() - timedelta(days=TASK_VISIBILITY_RETENTION_DAYS)
+    cutoff = utc_now() - timedelta(days=TASK_VISIBILITY_RETENTION_DAYS)
     terminal_visible_expr = func.coalesce(
         Task.completed_at,
         Task.failed_at,
@@ -857,7 +851,7 @@ def _is_terminal_task_expired_for_visibility(task: Task) -> bool:
         return False
     if completed_at.tzinfo is None:
         completed_at = completed_at.replace(tzinfo=timezone.utc)
-    return completed_at < (_utc_now() - timedelta(days=TASK_VISIBILITY_RETENTION_DAYS))
+    return completed_at < (utc_now() - timedelta(days=TASK_VISIBILITY_RETENTION_DAYS))
 
 
 async def list_tasks(
@@ -875,12 +869,11 @@ async def list_tasks(
 
     should_refresh_completed = refresh_completed and status_filter in {"completed", "all"}
     if should_refresh_completed and ticket_artifacts:
-        redis = Redis.from_url(settings.redis_url)
+        redis = await get_redis_client()
         limiter = RedisTokenBucketLimiter(redis)
         updated = False
         client_cache: dict[str, object] = {}
-        try:
-            for task in tasks:
+        for task in tasks:
                 if task.state not in TERMINAL_TASK_STATES:
                     continue
                 artifact = ticket_artifacts.get(task.id)
@@ -897,8 +890,6 @@ async def list_tasks(
                     )
                     or updated
                 )
-        finally:
-            await redis.aclose()
 
         if updated:
             await db.commit()
@@ -937,7 +928,7 @@ def _should_refresh_ticket_artifact(artifact_data: dict, *, force: bool) -> bool
     synced_at = _parse_iso_datetime(str(artifact_data.get("last_provider_sync_at") or ""))
     if synced_at is None:
         return True
-    return (_utc_now() - synced_at) >= timedelta(seconds=TICKET_SYNC_MIN_SECONDS)
+    return (utc_now() - synced_at) >= timedelta(seconds=TICKET_SYNC_MIN_SECONDS)
 
 
 def _latest_ticket_artifact_for_task(task: Task) -> Artifact | None:
@@ -976,7 +967,7 @@ async def _refresh_ticket_artifact_status(
             sync_meta = dict(current_data.get("provider_sync") or {})
             sync_meta["error"] = exc.detail
             current_data["provider_sync"] = sync_meta
-            current_data["last_provider_sync_at"] = _utc_now().isoformat()
+            current_data["last_provider_sync_at"] = utc_now().isoformat()
             artifact.data_json_safe = current_data
             return True
         clients[provider] = client
@@ -993,7 +984,7 @@ async def _refresh_ticket_artifact_status(
         sync_meta = dict(current_data.get("provider_sync") or {})
         sync_meta["error"] = f"provider_sync_error:{type(exc).__name__}"
         current_data["provider_sync"] = sync_meta
-        current_data["last_provider_sync_at"] = _utc_now().isoformat()
+        current_data["last_provider_sync_at"] = utc_now().isoformat()
         artifact.data_json_safe = current_data
         return True
 
@@ -1011,7 +1002,7 @@ async def _refresh_ticket_artifact_status(
         "tickets": snapshot.get("tickets", current_data.get("tickets", [])),
         "reservation_snapshot": snapshot.get("reservation_snapshot", current_data.get("reservation_snapshot")),
         "provider_sync": snapshot.get("provider_sync", current_data.get("provider_sync")),
-        "last_provider_sync_at": snapshot.get("synced_at", _utc_now().isoformat()),
+        "last_provider_sync_at": snapshot.get("synced_at", utc_now().isoformat()),
     }
     snapshot_http = snapshot.get("provider_http")
     if isinstance(snapshot_http, dict):
@@ -1028,12 +1019,11 @@ async def _refresh_ticket_artifact_status(
 
 async def get_task_detail(db: AsyncSession, *, task_id: UUID, user: User) -> TaskDetailOut:
     task = await get_task_for_user(db, task_id=task_id, user=user)
-    redis = Redis.from_url(settings.redis_url)
+    redis = await get_redis_client()
     limiter = RedisTokenBucketLimiter(redis)
     updated = False
     client_cache: dict[str, object] = {}
-    try:
-        for artifact in task.artifacts:
+    for artifact in task.artifacts:
             updated = (
                 await _refresh_ticket_artifact_status(
                     db,
@@ -1045,8 +1035,6 @@ async def get_task_detail(db: AsyncSession, *, task_id: UUID, user: User) -> Tas
                 )
                 or updated
             )
-    finally:
-        await redis.aclose()
 
     if updated:
         await db.commit()
@@ -1094,7 +1082,7 @@ async def pause_task(db: AsyncSession, *, task_id: UUID, user: User) -> TaskActi
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot pause terminal task")
 
     task.state = "PAUSED"
-    task.paused_at = _utc_now()
+    task.paused_at = utc_now()
     await db.commit()
     await db.refresh(task)
     return TaskActionResponse(task=task_to_summary(task))
@@ -1121,7 +1109,7 @@ async def cancel_task(db: AsyncSession, *, task_id: UUID, user: User) -> TaskAct
         return TaskActionResponse(task=task_to_summary(task))
 
     task.state = "CANCELLED"
-    task.cancelled_at = _utc_now()
+    task.cancelled_at = utc_now()
     await db.commit()
     await db.refresh(task)
     return TaskActionResponse(task=task_to_summary(task))
@@ -1136,192 +1124,186 @@ async def pay_task(db: AsyncSession, *, task_id: UUID, user: User) -> TaskAction
     if artifact is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No ticket artifact found for this task")
 
-    redis = Redis.from_url(settings.redis_url)
+    redis = await get_redis_client()
     limiter = RedisTokenBucketLimiter(redis)
     client_cache: dict[str, object] = {}
     updated = False
 
-    try:
-        updated = (
-            await _refresh_ticket_artifact_status(
-                db,
-                user=user,
-                artifact=artifact,
-                limiter=limiter,
-                force=True,
-                client_cache=client_cache,
-            )
-            or updated
-        )
+    updated = await _refresh_ticket_artifact_status(
+        db,
+        user=user,
+        artifact=artifact,
+        limiter=limiter,
+        force=True,
+        client_cache=client_cache,
+    ) or updated
 
-        artifact_data = dict(artifact.data_json_safe or {})
-        provider = str(artifact_data.get("provider") or "")
-        reservation_id = str(artifact_data.get("reservation_id") or "")
-        ticket_status = str(artifact_data.get("status") or "")
-        ticket_paid = bool(artifact_data.get("paid"))
-        ticket_cancelled = bool(artifact_data.get("cancelled"))
+    artifact_data = dict(artifact.data_json_safe or {})
+    provider = str(artifact_data.get("provider") or "")
+    reservation_id = str(artifact_data.get("reservation_id") or "")
+    ticket_status = str(artifact_data.get("status") or "")
+    ticket_paid = bool(artifact_data.get("paid"))
+    ticket_cancelled = bool(artifact_data.get("cancelled"))
 
-        if provider not in {"SRT", "KTX"} or not reservation_id:
-            if updated:
-                await db.commit()
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Ticket artifact is missing provider reservation data")
-
-        if ticket_cancelled or ticket_status == "cancelled":
-            if updated:
-                await db.commit()
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Reservation is already cancelled")
-
-        if ticket_paid:
-            if updated:
-                await db.commit()
-            task = await get_task_for_user(db, task_id=task_id, user=user)
-            last_attempt_at = (await _last_attempt_map(db, [task.id])).get(task.id)
-            ticket_summary = _ticket_summary_from_artifact(_latest_ticket_artifact_for_task(task))
-            return TaskActionResponse(
-                task=task_to_summary(task, last_attempt_at=last_attempt_at, ticket_summary=ticket_summary)
-            )
-
-        if ticket_status not in {"awaiting_payment", "reserved"}:
-            if updated:
-                await db.commit()
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"Reservation is not payable in its current state ({ticket_status or 'unknown'})",
-            )
-
-        payment_deadline_at = _parse_iso_datetime(str(artifact_data.get("payment_deadline_at") or ""))
-        if payment_deadline_at is not None and _utc_now() >= payment_deadline_at:
-            if updated:
-                await db.commit()
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Reservation payment window has expired. Refresh reservation status and try again.",
-            )
-
-        payment_card = await get_payment_card_for_execution(db, user_id=user.id)
-        if payment_card is None:
-            if updated:
-                await db.commit()
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Configure payment settings before paying for reservations.",
-            )
-
-        client = client_cache.get(provider)
-        if client is None:
-            client = await _get_logged_in_provider_client(db, user=user, provider=provider)
-            client_cache[provider] = client
-
-        started_at = _utc_now()
-        timer = time.perf_counter()
-        limit = await limiter.acquire_provider_call(
-            provider=provider,
-            user_bucket_key=str(user.id),
-            host_bucket_key="default-host",
-        )
-        outcome = await client.pay(
-            reservation_id=reservation_id,
-            user_id=str(user.id),
-            payment_card=payment_card,
-        )
-        finished_at = _utc_now()
-        duration_ms = int((time.perf_counter() - timer) * 1000)
-
-        attempt = TaskAttempt(
-            task_id=task.id,
-            action="PAY",
-            provider=provider,
-            ok=outcome.ok,
-            retryable=bool(outcome.retryable),
-            error_code=outcome.error_code,
-            error_message_safe=outcome.error_message_safe,
-            duration_ms=duration_ms,
-            meta_json_safe={
-                "manual_trigger": True,
-                "rate_limit_wait_ms": limit.waited_ms,
-                "rate_limit_rounds": limit.rounds,
-                "reservation_id": reservation_id,
-                "payment_card_configured": bool(payment_card),
-                "payment_id": outcome.data.get("payment_id"),
-            },
-            started_at=started_at,
-            finished_at=finished_at,
-        )
-        db.add(attempt)
-
-        if not outcome.ok:
+    if provider not in {"SRT", "KTX"} or not reservation_id:
+        if updated:
             await db.commit()
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY if outcome.retryable else status.HTTP_400_BAD_REQUEST,
-                detail=outcome.error_message_safe or "Payment failed",
-            )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Ticket artifact is missing provider reservation data")
 
-        provider_http = dict(artifact_data.get("provider_http") or {})
-        pay_trace = outcome.data.get("http_trace")
-        if pay_trace:
-            provider_http["pay"] = redact_sensitive(pay_trace)
+    if ticket_cancelled or ticket_status == "cancelled":
+        if updated:
+            await db.commit()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Reservation is already cancelled")
 
-        artifact.data_json_safe = {
-            **artifact_data,
-            "paid": True,
-            "status": "paid",
+    if ticket_paid:
+        if updated:
+            await db.commit()
+        task = await get_task_for_user(db, task_id=task_id, user=user)
+        last_attempt_at = (await _last_attempt_map(db, [task.id])).get(task.id)
+        ticket_summary = _ticket_summary_from_artifact(_latest_ticket_artifact_for_task(task))
+        return TaskActionResponse(
+            task=task_to_summary(task, last_attempt_at=last_attempt_at, ticket_summary=ticket_summary)
+        )
+
+    if ticket_status not in {"awaiting_payment", "reserved"}:
+        if updated:
+            await db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Reservation is not payable in its current state ({ticket_status or 'unknown'})",
+        )
+
+    payment_deadline_at = _parse_iso_datetime(str(artifact_data.get("payment_deadline_at") or ""))
+    if payment_deadline_at is not None and utc_now() >= payment_deadline_at:
+        if updated:
+            await db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Reservation payment window has expired. Refresh reservation status and try again.",
+        )
+
+    payment_card = await get_payment_card_for_execution(db, user_id=user.id)
+    if payment_card is None:
+        if updated:
+            await db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Configure payment settings before paying for reservations.",
+        )
+
+    client = client_cache.get(provider)
+    if client is None:
+        client = await _get_logged_in_provider_client(db, user=user, provider=provider)
+        client_cache[provider] = client
+
+    started_at = utc_now()
+    timer = time.perf_counter()
+    limit = await limiter.acquire_provider_call(
+        provider=provider,
+        user_bucket_key=str(user.id),
+        host_bucket_key="default-host",
+    )
+    outcome = await client.pay(
+        reservation_id=reservation_id,
+        user_id=str(user.id),
+        payment_card=payment_card,
+    )
+    finished_at = utc_now()
+    duration_ms = int((time.perf_counter() - timer) * 1000)
+
+    attempt = TaskAttempt(
+        task_id=task.id,
+        action="PAY",
+        provider=provider,
+        ok=outcome.ok,
+        retryable=bool(outcome.retryable),
+        error_code=outcome.error_code,
+        error_message_safe=outcome.error_message_safe,
+        duration_ms=duration_ms,
+        meta_json_safe={
+            "manual_trigger": True,
+            "rate_limit_wait_ms": limit.waited_ms,
+            "rate_limit_rounds": limit.rounds,
+            "reservation_id": reservation_id,
+            "payment_card_configured": bool(payment_card),
             "payment_id": outcome.data.get("payment_id"),
-            "ticket_no": outcome.data.get("ticket_no"),
-            "provider_http": provider_http,
-        }
-        updated = True
+        },
+        started_at=started_at,
+        finished_at=finished_at,
+    )
+    db.add(attempt)
 
-        try:
-            snapshot = await fetch_ticket_sync_snapshot(
-                client=client,
-                provider=provider,
-                reservation_id=reservation_id,
-                user_id=user.id,
-                limiter=limiter,
-            )
-        except Exception as exc:
-            sync_meta = dict(artifact.data_json_safe.get("provider_sync") or {})
-            sync_meta["pay_sync_error"] = f"provider_sync_error:{type(exc).__name__}"
-            artifact.data_json_safe = {
-                **artifact.data_json_safe,
-                "provider_sync": sync_meta,
-                "last_provider_sync_at": _utc_now().isoformat(),
-            }
-        else:
-            merged_data = dict(artifact.data_json_safe)
-            for key in (
-                "waiting",
-                "payment_deadline_at",
-                "seat_count",
-                "tickets",
-                "reservation_snapshot",
-                "provider_sync",
-            ):
-                value = snapshot.get(key)
-                if value is not None:
-                    merged_data[key] = value
-
-            snapshot_http = snapshot.get("provider_http")
-            if isinstance(snapshot_http, dict):
-                merged_data["provider_http"] = {
-                    **dict(merged_data.get("provider_http") or {}),
-                    **snapshot_http,
-                }
-
-            merged_data["paid"] = True
-            merged_data["status"] = "paid"
-            merged_data["last_provider_sync_at"] = snapshot.get("synced_at", _utc_now().isoformat())
-            artifact.data_json_safe = merged_data
-
-        if task.state in ACTIVE_TASK_STATES or task.state in {"FAILED", "PAUSED"}:
-            task.state = "COMPLETED"
-        task.completed_at = task.completed_at or _utc_now()
-        task.failed_at = None
-        task.updated_at = _utc_now()
-
+    if not outcome.ok:
         await db.commit()
-    finally:
-        await redis.aclose()
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY if outcome.retryable else status.HTTP_400_BAD_REQUEST,
+            detail=outcome.error_message_safe or "Payment failed",
+        )
+
+    provider_http = dict(artifact_data.get("provider_http") or {})
+    pay_trace = outcome.data.get("http_trace")
+    if pay_trace:
+        provider_http["pay"] = redact_sensitive(pay_trace)
+
+    artifact.data_json_safe = {
+        **artifact_data,
+        "paid": True,
+        "status": "paid",
+        "payment_id": outcome.data.get("payment_id"),
+        "ticket_no": outcome.data.get("ticket_no"),
+        "provider_http": provider_http,
+    }
+    updated = True
+
+    try:
+        snapshot = await fetch_ticket_sync_snapshot(
+            client=client,
+            provider=provider,
+            reservation_id=reservation_id,
+            user_id=user.id,
+            limiter=limiter,
+        )
+    except Exception as exc:
+        sync_meta = dict(artifact.data_json_safe.get("provider_sync") or {})
+        sync_meta["pay_sync_error"] = f"provider_sync_error:{type(exc).__name__}"
+        artifact.data_json_safe = {
+            **artifact.data_json_safe,
+            "provider_sync": sync_meta,
+            "last_provider_sync_at": utc_now().isoformat(),
+        }
+    else:
+        merged_data = dict(artifact.data_json_safe)
+        for key in (
+            "waiting",
+            "payment_deadline_at",
+            "seat_count",
+            "tickets",
+            "reservation_snapshot",
+            "provider_sync",
+        ):
+            value = snapshot.get(key)
+            if value is not None:
+                merged_data[key] = value
+
+        snapshot_http = snapshot.get("provider_http")
+        if isinstance(snapshot_http, dict):
+            merged_data["provider_http"] = {
+                **dict(merged_data.get("provider_http") or {}),
+                **snapshot_http,
+            }
+
+        merged_data["paid"] = True
+        merged_data["status"] = "paid"
+        merged_data["last_provider_sync_at"] = snapshot.get("synced_at", utc_now().isoformat())
+        artifact.data_json_safe = merged_data
+
+    if task.state in ACTIVE_TASK_STATES or task.state in {"FAILED", "PAUSED"}:
+        task.state = "COMPLETED"
+    task.completed_at = task.completed_at or utc_now()
+    task.failed_at = None
+    task.updated_at = utc_now()
+
+    await db.commit()
 
     task = await get_task_for_user(db, task_id=task_id, user=user)
     last_attempt_at = (await _last_attempt_map(db, [task.id])).get(task.id)
@@ -1334,8 +1316,8 @@ async def delete_task(db: AsyncSession, *, task_id: UUID, user: User) -> TaskAct
     if task.state not in TERMINAL_TASK_STATES:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only completed tasks can be deleted")
 
-    task.hidden_at = _utc_now()
-    task.updated_at = _utc_now()
+    task.hidden_at = utc_now()
+    task.updated_at = utc_now()
     await db.commit()
     await db.refresh(task)
     return TaskActionResponse(task=task_to_summary(task))
@@ -1360,76 +1342,49 @@ async def cancel_ticket(db: AsyncSession, *, artifact_id: UUID, user: User) -> T
     if provider not in {"SRT", "KTX"}:
         return TicketCancelResponse(status="not_supported", detail="Provider does not support ticket cancellation")
 
-    redis = Redis.from_url(settings.redis_url)
+    redis = await get_redis_client()
     limiter = RedisTokenBucketLimiter(redis)
     client_cache: dict[str, object] = {}
     updated = False
-    cancel_started_at = _utc_now()
+    cancel_started_at = utc_now()
     cancel_duration_ms = 0
     cancel_limit_wait_ms = 0
     cancel_limit_rounds = 0
+
+    updated = await _refresh_ticket_artifact_status(
+        db,
+        user=user,
+        artifact=artifact,
+        limiter=limiter,
+        force=True,
+        client_cache=client_cache,
+    ) or updated
+    client = client_cache.get(provider)
+    if client is None:
+        client = await _get_logged_in_provider_client(db, user=user, provider=provider)
+        client_cache[provider] = client
+
+    cancel_timer = time.perf_counter()
     try:
-        updated = await _refresh_ticket_artifact_status(
-            db,
-            user=user,
-            artifact=artifact,
-            limiter=limiter,
-            force=True,
-            client_cache=client_cache,
-        ) or updated
-        client = client_cache.get(provider)
-        if client is None:
-            client = await _get_logged_in_provider_client(db, user=user, provider=provider)
-            client_cache[provider] = client
-
-        cancel_timer = time.perf_counter()
-        try:
-            limit = await limiter.acquire_provider_call(
-                provider=provider,
-                user_bucket_key=str(user.id),
-                host_bucket_key="default-host",
-            )
-            cancel_limit_wait_ms = int(limit.waited_ms)
-            cancel_limit_rounds = int(limit.rounds)
-            outcome = await client.cancel(artifact_data=artifact.data_json_safe, user_id=str(user.id))
-        except Exception as exc:
-            cancel_duration_ms = int((time.perf_counter() - cancel_timer) * 1000)
-            db.add(
-                _build_task_attempt(
-                    task_id=artifact.task_id,
-                    action="CANCEL",
-                    provider=provider,
-                    ok=False,
-                    retryable=True,
-                    error_code="provider_transport_error",
-                    error_message_safe=f"{provider} cancel transport error: {type(exc).__name__}",
-                    duration_ms=cancel_duration_ms,
-                    meta_json_safe={
-                        "manual_trigger": True,
-                        "rate_limit_wait_ms": cancel_limit_wait_ms,
-                        "rate_limit_rounds": cancel_limit_rounds,
-                        "reservation_id": artifact.data_json_safe.get("reservation_id"),
-                        "artifact_id": str(artifact.id),
-                    },
-                    started_at=cancel_started_at,
-                )
-            )
-            await db.commit()
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=f"{provider} cancel transport error",
-            ) from exc
+        limit = await limiter.acquire_provider_call(
+            provider=provider,
+            user_bucket_key=str(user.id),
+            host_bucket_key="default-host",
+        )
+        cancel_limit_wait_ms = int(limit.waited_ms)
+        cancel_limit_rounds = int(limit.rounds)
+        outcome = await client.cancel(artifact_data=artifact.data_json_safe, user_id=str(user.id))
+    except Exception as exc:
         cancel_duration_ms = int((time.perf_counter() - cancel_timer) * 1000)
-
         db.add(
             _build_task_attempt(
                 task_id=artifact.task_id,
                 action="CANCEL",
                 provider=provider,
-                ok=outcome.ok,
-                retryable=bool(outcome.retryable),
-                error_code=outcome.error_code,
-                error_message_safe=outcome.error_message_safe,
+                ok=False,
+                retryable=True,
+                error_code="provider_transport_error",
+                error_message_safe=f"{provider} cancel transport error: {type(exc).__name__}",
                 duration_ms=cancel_duration_ms,
                 meta_json_safe={
                     "manual_trigger": True,
@@ -1441,62 +1396,87 @@ async def cancel_ticket(db: AsyncSession, *, artifact_id: UUID, user: User) -> T
                 started_at=cancel_started_at,
             )
         )
+        await db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"{provider} cancel transport error",
+        ) from exc
+    cancel_duration_ms = int((time.perf_counter() - cancel_timer) * 1000)
 
-        provider_http = dict(artifact.data_json_safe.get("provider_http") or {})
-        cancel_trace = outcome.data.get("http_trace")
-        if cancel_trace:
-            provider_http["cancel"] = redact_sensitive(cancel_trace)
+    db.add(
+        _build_task_attempt(
+            task_id=artifact.task_id,
+            action="CANCEL",
+            provider=provider,
+            ok=outcome.ok,
+            retryable=bool(outcome.retryable),
+            error_code=outcome.error_code,
+            error_message_safe=outcome.error_message_safe,
+            duration_ms=cancel_duration_ms,
+            meta_json_safe={
+                "manual_trigger": True,
+                "rate_limit_wait_ms": cancel_limit_wait_ms,
+                "rate_limit_rounds": cancel_limit_rounds,
+                "reservation_id": artifact.data_json_safe.get("reservation_id"),
+                "artifact_id": str(artifact.id),
+            },
+            started_at=cancel_started_at,
+        )
+    )
 
-        if not outcome.ok and outcome.error_code == "not_supported":
-            artifact.data_json_safe = {
-                **artifact.data_json_safe,
-                "provider_http": provider_http,
-            }
-            await db.commit()
-            return TicketCancelResponse(status="not_supported", detail=outcome.error_message_safe or "not supported")
+    provider_http = dict(artifact.data_json_safe.get("provider_http") or {})
+    cancel_trace = outcome.data.get("http_trace")
+    if cancel_trace:
+        provider_http["cancel"] = redact_sensitive(cancel_trace)
 
-        if not outcome.ok and outcome.error_code == "reservation_not_found":
-            artifact.data_json_safe = {
-                **artifact.data_json_safe,
-                "status": "reservation_not_found",
-                "provider_http": provider_http,
-            }
-            await db.commit()
-            return TicketCancelResponse(status="not_found", detail=outcome.error_message_safe or "Reservation not found")
-
-        if not outcome.ok:
-            artifact.data_json_safe = {
-                **artifact.data_json_safe,
-                "provider_http": provider_http,
-            }
-            await db.commit()
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=outcome.error_message_safe or "Cancel failed")
-
+    if not outcome.ok and outcome.error_code == "not_supported":
         artifact.data_json_safe = {
             **artifact.data_json_safe,
-            "cancelled": True,
-            "status": "cancelled",
             "provider_http": provider_http,
         }
-        updated = True
-        updated = await _refresh_ticket_artifact_status(
-            db,
-            user=user,
-            artifact=artifact,
-            limiter=limiter,
-            force=True,
-            client_cache=client_cache,
-        ) or updated
+        await db.commit()
+        return TicketCancelResponse(status="not_supported", detail=outcome.error_message_safe or "not supported")
 
+    if not outcome.ok and outcome.error_code == "reservation_not_found":
         artifact.data_json_safe = {
             **artifact.data_json_safe,
-            "cancelled": True,
-            "status": "cancelled",
+            "status": "reservation_not_found",
+            "provider_http": provider_http,
         }
         await db.commit()
-        return TicketCancelResponse(status="cancelled", detail="Ticket cancelled")
-    finally:
-        await redis.aclose()
+        return TicketCancelResponse(status="not_found", detail=outcome.error_message_safe or "Reservation not found")
+
+    if not outcome.ok:
+        artifact.data_json_safe = {
+            **artifact.data_json_safe,
+            "provider_http": provider_http,
+        }
+        await db.commit()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=outcome.error_message_safe or "Cancel failed")
+
+    artifact.data_json_safe = {
+        **artifact.data_json_safe,
+        "cancelled": True,
+        "status": "cancelled",
+        "provider_http": provider_http,
+    }
+    updated = True
+    updated = await _refresh_ticket_artifact_status(
+        db,
+        user=user,
+        artifact=artifact,
+        limiter=limiter,
+        force=True,
+        client_cache=client_cache,
+    ) or updated
+
+    artifact.data_json_safe = {
+        **artifact.data_json_safe,
+        "cancelled": True,
+        "status": "cancelled",
+    }
+    await db.commit()
+    return TicketCancelResponse(status="cancelled", detail="Ticket cancelled")
 
 
 async def list_provider_reservations(

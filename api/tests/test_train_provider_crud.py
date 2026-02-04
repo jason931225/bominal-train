@@ -94,7 +94,7 @@ async def test_srt_get_reservations_parses_ticket_info():
 async def test_ktx_cancel_uses_reservation_lookup_when_metadata_missing():
     transport = _QueueTransport(
         [
-            {"app.login.cphd": {"idx": "1", "key": "1234567890123456"}},
+            {"strResult": "SUCC", "app.login.cphd": {"idx": "1", "key": "1234567890123456"}},
             {
                 "strResult": "SUCC",
                 "strMbCrdNo": "1234567890",
@@ -260,7 +260,7 @@ async def test_srt_pay_uses_saved_card_payload():
 async def test_ktx_pay_uses_saved_card_payload():
     transport = _QueueTransport(
         [
-            {"app.login.cphd": {"idx": "1", "key": "1234567890123456"}},
+            {"strResult": "SUCC", "app.login.cphd": {"idx": "1", "key": "1234567890123456"}},
             {
                 "strResult": "SUCC",
                 "strMbCrdNo": "1234567890",
@@ -403,7 +403,7 @@ async def test_srt_cancel_paid_uses_refund_flow():
 async def test_ktx_cancel_paid_uses_refund_flow():
     transport = _QueueTransport(
         [
-            {"app.login.cphd": {"idx": "1", "key": "1234567890123456"}},
+            {"strResult": "SUCC", "app.login.cphd": {"idx": "1", "key": "1234567890123456"}},
             {
                 "strResult": "SUCC",
                 "strMbCrdNo": "1234567890",

@@ -284,19 +284,31 @@ class KTXClient:
             )
         try:
             code_payload = json.loads(code_response.text)
+            # Check for SUCC status first (aligned with third_party/srtgo/ktx.py)
+            if code_payload.get("strResult") != "SUCC":
+                return ProviderOutcome(
+                    ok=False,
+                    retryable=True,
+                    error_code="ktx_login_bootstrap_failed",
+                    error_message_safe=code_payload.get("h_msg_txt", "KTX login bootstrap failed"),
+                )
             code_data = code_payload.get("app.login.cphd", {})
             idx = code_data.get("idx")
             key = code_data.get("key")
         except json.JSONDecodeError:
-            idx = None
-            key = None
+            return ProviderOutcome(
+                ok=False,
+                retryable=True,
+                error_code="ktx_login_bootstrap_invalid_json",
+                error_message_safe="KTX login bootstrap returned invalid JSON",
+            )
 
         if not idx or not key:
             return ProviderOutcome(
                 ok=False,
                 retryable=True,
-                error_code="ktx_login_bootstrap_failed",
-                error_message_safe="KTX login bootstrap failed",
+                error_code="ktx_login_bootstrap_missing_keys",
+                error_message_safe="KTX login bootstrap missing idx or key",
             )
 
         encrypted_password = self._encrypt_password(password, key)

@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.crypto import redact_sensitive
 from app.core.crypto.secrets_store import decrypt_secret
+from app.core.time import utc_now
 from app.db.models import Artifact, Secret, Task, TaskAttempt, User
 from app.modules.train.constants import (
     ACTIVE_TASK_STATES,
@@ -72,10 +73,6 @@ class ProviderExecutionResult:
     retryable: bool
 
 
-def _utc_now() -> datetime:
-    return datetime.now(timezone.utc)
-
-
 def _as_aware_utc(value: datetime) -> datetime:
     if value.tzinfo is None:
         return value.replace(tzinfo=timezone.utc)
@@ -83,7 +80,7 @@ def _as_aware_utc(value: datetime) -> datetime:
 
 
 def _utc_now_aware() -> datetime:
-    return _as_aware_utc(_utc_now())
+    return _as_aware_utc(utc_now())
 
 
 def _seat_preference_order(seat_class: str) -> tuple[str, ...]:
@@ -203,7 +200,7 @@ async def _save_attempt(
         duration_ms=duration_ms,
         meta_json_safe=redact_sensitive(meta_json_safe) if meta_json_safe else None,
         started_at=started_at,
-        finished_at=_utc_now(),
+        finished_at=utc_now(),
     )
     db.add(attempt)
     await db.flush()
@@ -246,7 +243,7 @@ async def _enqueue_terminal_notification(
     dep = str(spec.get("dep") or "-")
     arr = str(spec.get("arr") or "-")
     created_at = _as_aware_utc(task.created_at).isoformat()
-    completed_at = _utc_now().isoformat()
+    completed_at = utc_now().isoformat()
 
     subject = f"bominal Train Task {final_state}: {dep} -> {arr}"
     body = (
@@ -284,41 +281,41 @@ async def _enqueue_terminal_notification(
         return
 
     next_spec = dict(spec)
-    next_spec["notify_email_sent_at"] = _utc_now().isoformat()
+    next_spec["notify_email_sent_at"] = utc_now().isoformat()
     next_spec["notify_email_state"] = final_state
     if job_id:
         next_spec["notify_email_job_id"] = job_id
     task.spec_json = next_spec
-    task.updated_at = _utc_now()
+    task.updated_at = utc_now()
     await db.commit()
 
 
 async def _mark_expired(db: AsyncSession, task: Task) -> None:
     task.state = "EXPIRED"
-    task.updated_at = _utc_now()
+    task.updated_at = utc_now()
     await db.commit()
     await _enqueue_terminal_notification(db, task=task, final_state="EXPIRED")
 
 
 async def _mark_failed(db: AsyncSession, task: Task) -> None:
     task.state = "FAILED"
-    task.failed_at = _utc_now()
-    task.updated_at = _utc_now()
+    task.failed_at = utc_now()
+    task.updated_at = utc_now()
     await db.commit()
     await _enqueue_terminal_notification(db, task=task, final_state="FAILED")
 
 
 async def _mark_completed(db: AsyncSession, task: Task) -> None:
     task.state = "COMPLETED"
-    task.completed_at = _utc_now()
-    task.updated_at = _utc_now()
+    task.completed_at = utc_now()
+    task.updated_at = utc_now()
     await db.commit()
     await _enqueue_terminal_notification(db, task=task, final_state="COMPLETED")
 
 
 async def _schedule_retry(db: AsyncSession, task: Task, delay_seconds: float) -> None:
     task.state = "POLLING"
-    task.updated_at = _utc_now()
+    task.updated_at = utc_now()
     await db.commit()
     await enqueue_train_task(str(task.id), defer_seconds=delay_seconds)
 
@@ -388,7 +385,7 @@ async def _provider_search_and_reserve(
     attempts: list[PendingAttempt] = []
     client = get_provider_client(provider)
 
-    login_started = _utc_now()
+    login_started = utc_now()
     login_timer = time.perf_counter()
     try:
         login_outcome = await client.login(
@@ -434,7 +431,7 @@ async def _provider_search_and_reserve(
             retryable=bool(login_outcome.retryable),
         )
 
-    search_started = _utc_now()
+    search_started = utc_now()
     search_timer = time.perf_counter()
     try:
         limit_result = await limiter.acquire_provider_call(
@@ -552,7 +549,7 @@ async def _provider_search_and_reserve(
         )
     )
 
-    reserve_started = _utc_now()
+    reserve_started = utc_now()
     reserve_limit_wait_ms = 0
     reserve_limit_rounds = 0
     reserve_duration = 0
@@ -712,7 +709,7 @@ async def _attempt_cancel_candidate(
     task_user_id: UUID,
     limiter: RedisTokenBucketLimiter,
 ) -> tuple[PendingAttempt, ProviderOutcome]:
-    started_at = _utc_now()
+    started_at = utc_now()
     timer = time.perf_counter()
 
     limit = await limiter.acquire_provider_call(
@@ -756,7 +753,7 @@ async def _attempt_pay_reservation(
     payment_card: dict[str, Any] | None = None,
     credentials: dict[str, str] | None = None,
 ) -> tuple[PendingAttempt, ProviderOutcome]:
-    started_at = _utc_now()
+    started_at = utc_now()
     duration = 0
     rate_limit_wait_ms = 0
     rate_limit_rounds = 0
@@ -863,13 +860,13 @@ async def _login_provider_client_for_worker(
                 error_message_safe=f"{provider} credentials are missing",
                 duration_ms=0,
                 meta_json_safe={"stage": "login"},
-                started_at=_utc_now(),
+                started_at=utc_now(),
             ),
             False,
         )
 
     client = get_provider_client(provider)
-    started_at = _utc_now()
+    started_at = utc_now()
     timer = time.perf_counter()
     try:
         login_outcome = await client.login(
@@ -1095,7 +1092,7 @@ async def _run_train_task_inner(
                 return
 
             task.state = "PAYING"
-            task.updated_at = _utc_now()
+            task.updated_at = utc_now()
             await db.commit()
 
             provider_credentials = await _load_provider_credentials(
@@ -1149,7 +1146,7 @@ async def _run_train_task_inner(
                 "seat_count": sync_snapshot.get("seat_count"),
                 "payment_deadline_at": sync_snapshot.get("payment_deadline_at"),
             }
-            task.updated_at = _utc_now()
+            task.updated_at = utc_now()
             await db.commit()
             await _mark_completed(db, task)
             return
@@ -1178,7 +1175,7 @@ async def _run_train_task_inner(
                                 error_message_safe=f"{provider} credentials are missing",
                                 duration_ms=0,
                                 meta_json_safe={"stage": "login"},
-                                started_at=_utc_now(),
+                                started_at=utc_now(),
                             )
                         ],
                         candidate=None,
@@ -1225,7 +1222,7 @@ async def _run_train_task_inner(
         losers = [candidate for candidate in candidates if candidate is not winner]
 
         task.state = "RESERVING"
-        task.updated_at = _utc_now()
+        task.updated_at = utc_now()
 
         try:
             reservation_sync_snapshot = await fetch_ticket_sync_snapshot(
@@ -1275,7 +1272,7 @@ async def _run_train_task_inner(
             return
 
         task.state = "PAYING"
-        task.updated_at = _utc_now()
+        task.updated_at = utc_now()
         await db.commit()
 
         pay_attempt, pay_outcome = await _attempt_pay_reservation(
@@ -1316,7 +1313,7 @@ async def _run_train_task_inner(
             sync_snapshot=post_pay_sync_snapshot,
             extra_provider_http={"pay": pay_outcome.data.get("http_trace")},
         )
-        task.updated_at = _utc_now()
+        task.updated_at = utc_now()
         await db.commit()
 
         await _mark_completed(db, task)

@@ -5,11 +5,8 @@ from typing import Any
 from uuid import UUID
 
 from app.core.crypto.redaction import redact_sensitive
+from app.core.time import utc_now
 from app.modules.train.rate_limiter import RedisTokenBucketLimiter
-
-
-def _utc_now() -> datetime:
-    return datetime.now(timezone.utc)
 
 
 def find_reservation_by_number(reservations: list[dict[str, Any]], reservation_id: str) -> dict[str, Any] | None:
@@ -40,7 +37,7 @@ async def fetch_ticket_sync_snapshot(
     snapshot: dict[str, Any] = {
         "provider": provider,
         "reservation_id": reservation_id,
-        "synced_at": _utc_now().isoformat(),
+        "synced_at": utc_now().isoformat(),
     }
 
     provider_http: dict[str, Any] = {}

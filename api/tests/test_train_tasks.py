@@ -22,6 +22,13 @@ def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _make_fake_get_redis_client(fake_redis):
+    """Create a fake get_redis_client that returns the provided fake redis instance."""
+    async def _get_fake_redis():
+        return fake_redis
+    return _get_fake_redis
+
+
 async def _register_and_login(client, *, email: str = "train-user@example.com") -> str:
     await client.post(
         "/api/auth/register",
@@ -45,7 +52,7 @@ async def test_train_task_creation_idempotency(client, monkeypatch):
         return None
 
     monkeypatch.setattr("app.modules.train.service.enqueue_train_task", _noop_enqueue)
-    monkeypatch.setattr("app.modules.train.service.Redis.from_url", lambda *_args, **_kwargs: fake_redis)
+    monkeypatch.setattr("app.modules.train.service.get_redis_client", _make_fake_get_redis_client(fake_redis))
 
     cookie = await _register_and_login(client)
 
@@ -122,7 +129,7 @@ async def test_train_task_creation_accepts_mixed_provider_selection(client, monk
         )
 
     monkeypatch.setattr("app.modules.train.service.enqueue_train_task", _noop_enqueue)
-    monkeypatch.setattr("app.modules.train.service.Redis.from_url", lambda *_args, **_kwargs: fake_redis)
+    monkeypatch.setattr("app.modules.train.service.get_redis_client", _make_fake_get_redis_client(fake_redis))
     monkeypatch.setattr("app.modules.train.service._verify_provider_credentials", _always_verified)
 
     cookie = await _register_and_login(client, email="mixed-task@example.com")
@@ -179,7 +186,7 @@ async def test_train_search_returns_provider_errors_when_all_fail(client, monkey
         async def cancel(self, **kwargs):
             return ProviderOutcome(ok=False)
 
-    monkeypatch.setattr("app.modules.train.service.Redis.from_url", lambda *_args, **_kwargs: fake_redis)
+    monkeypatch.setattr("app.modules.train.service.get_redis_client", _make_fake_get_redis_client(fake_redis))
     monkeypatch.setattr("app.modules.train.service.get_provider_client", lambda provider: FailingProvider())
 
     cookie = await _register_and_login(client, email="search-fail@example.com")
@@ -215,7 +222,7 @@ async def test_train_search_returns_provider_errors_when_all_fail(client, monkey
 @pytest.mark.asyncio
 async def test_srt_credentials_required_for_srt_search(client, monkeypatch):
     fake_redis = fakeredis.aioredis.FakeRedis()
-    monkeypatch.setattr("app.modules.train.service.Redis.from_url", lambda *_args, **_kwargs: fake_redis)
+    monkeypatch.setattr("app.modules.train.service.get_redis_client", _make_fake_get_redis_client(fake_redis))
 
     cookie = await _register_and_login(client, email="credential-check@example.com")
 
@@ -259,7 +266,7 @@ async def test_srt_credentials_required_for_srt_search(client, monkeypatch):
 @pytest.mark.asyncio
 async def test_provider_credentials_status_checks_both(client, monkeypatch):
     fake_redis = fakeredis.aioredis.FakeRedis()
-    monkeypatch.setattr("app.modules.train.service.Redis.from_url", lambda *_args, **_kwargs: fake_redis)
+    monkeypatch.setattr("app.modules.train.service.get_redis_client", _make_fake_get_redis_client(fake_redis))
 
     cookie = await _register_and_login(client, email="status-check@example.com")
 
@@ -901,7 +908,7 @@ async def test_task_detail_refreshes_ticket_artifact_status_from_provider(db_ses
     async def _fake_client(db, *, user, provider):
         return FakeClient()
 
-    monkeypatch.setattr("app.modules.train.service.Redis.from_url", lambda *_args, **_kwargs: fake_redis)
+    monkeypatch.setattr("app.modules.train.service.get_redis_client", _make_fake_get_redis_client(fake_redis))
     monkeypatch.setattr("app.modules.train.service.RedisTokenBucketLimiter.acquire_provider_call", _no_limit)
     monkeypatch.setattr("app.modules.train.service._get_logged_in_provider_client", _fake_client)
 
@@ -993,7 +1000,7 @@ async def test_list_tasks_refreshes_completed_ticket_status_on_page_load(client,
     async def _fake_client(db, *, user, provider):
         return FakeClient()
 
-    monkeypatch.setattr("app.modules.train.service.Redis.from_url", lambda *_args, **_kwargs: fake_redis)
+    monkeypatch.setattr("app.modules.train.service.get_redis_client", _make_fake_get_redis_client(fake_redis))
     monkeypatch.setattr("app.modules.train.service.RedisTokenBucketLimiter.acquire_provider_call", _no_limit)
     monkeypatch.setattr("app.modules.train.service._get_logged_in_provider_client", _fake_client)
 
@@ -1157,7 +1164,7 @@ async def test_payment_idempotency_does_not_double_pay(db_session_factory, db_se
 @pytest.mark.asyncio
 async def test_manual_pay_rejects_expired_payment_window(client, db_session, monkeypatch):
     fake_redis = fakeredis.aioredis.FakeRedis()
-    monkeypatch.setattr("app.modules.train.service.Redis.from_url", lambda *_args, **_kwargs: fake_redis)
+    monkeypatch.setattr("app.modules.train.service.get_redis_client", _make_fake_get_redis_client(fake_redis))
 
     cookie = await _register_and_login(client, email="manual-pay-expired@example.com")
     user = (await db_session.execute(select(User).where(User.email == "manual-pay-expired@example.com"))).scalar_one()
@@ -1200,7 +1207,7 @@ async def test_manual_pay_rejects_expired_payment_window(client, db_session, mon
 @pytest.mark.asyncio
 async def test_manual_pay_marks_ticket_paid(client, db_session, monkeypatch):
     fake_redis = fakeredis.aioredis.FakeRedis()
-    monkeypatch.setattr("app.modules.train.service.Redis.from_url", lambda *_args, **_kwargs: fake_redis)
+    monkeypatch.setattr("app.modules.train.service.get_redis_client", _make_fake_get_redis_client(fake_redis))
     class _NoLimitResult:
         waited_ms = 0
         rounds = 1
@@ -1339,7 +1346,7 @@ async def test_manual_pay_marks_ticket_paid(client, db_session, monkeypatch):
 @pytest.mark.asyncio
 async def test_manual_cancel_records_cancel_attempt(client, db_session, monkeypatch):
     fake_redis = fakeredis.aioredis.FakeRedis()
-    monkeypatch.setattr("app.modules.train.service.Redis.from_url", lambda *_args, **_kwargs: fake_redis)
+    monkeypatch.setattr("app.modules.train.service.get_redis_client", _make_fake_get_redis_client(fake_redis))
 
     class _NoLimitResult:
         waited_ms = 0
@@ -1526,7 +1533,7 @@ async def test_seat_preference_fallback_reserves_available_class(
     monkeypatch.setattr("app.modules.train.worker.enqueue_train_task", _noop_enqueue)
     monkeypatch.setattr("app.modules.train.worker.get_provider_client", lambda provider: fake_provider)
     monkeypatch.setattr("app.modules.train.worker._load_provider_credentials", _fake_credentials)
-    monkeypatch.setattr("app.modules.train.worker._utc_now", utc_now_naive)
+    monkeypatch.setattr("app.core.time.utc_now", utc_now_naive)
     monkeypatch.setattr("app.modules.train.worker.RedisTokenBucketLimiter.acquire_provider_call", _acquire_without_wait)
 
     user = User(

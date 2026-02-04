@@ -5,13 +5,14 @@ from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from redis.asyncio import Redis
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.crypto.secrets_store import build_encrypted_secret, decrypt_secret
 from app.core.crypto.service import get_envelope_crypto
+from app.core.redis import get_redis_pool
+from app.core.time import utc_now
 from app.db.models import Secret, User
 from app.schemas.wallet import PaymentCardSetRequest, PaymentCardStatusResponse
 
@@ -20,10 +21,6 @@ settings = get_settings()
 SECRET_KIND_PAYMENT_CARD = "payment_card"
 PAYMENT_CVV_REDIS_KEY_PREFIX = "wallet:payment:cvv"
 LEGACY_PAYMENT_CVV_REDIS_KEY_PREFIX = "train:payment:cvv"
-
-
-def _utc_now() -> datetime:
-    return datetime.now(timezone.utc)
 
 
 async def _latest_payment_secret_for_user(db: AsyncSession, *, user_id: UUID) -> Secret | None:
@@ -81,8 +78,7 @@ def _deserialize_cached_cvv_payload(value: str) -> dict | None:
 
 
 async def _load_cached_cvv_payload(*, user_id: UUID) -> dict | None:
-    redis = Redis.from_url(settings.redis_url)
-    try:
+    async with get_redis_pool() as redis:
         for key in (_payment_cvv_redis_key(user_id), _legacy_payment_cvv_redis_key(user_id)):
             encrypted_blob = await redis.get(key)
             if not encrypted_blob:
@@ -93,8 +89,6 @@ async def _load_cached_cvv_payload(*, user_id: UUID) -> dict | None:
             if parsed is not None:
                 return parsed
         return None
-    finally:
-        await redis.aclose()
 
 
 async def _load_cached_cvv_until(*, user_id: UUID) -> datetime | None:
@@ -106,14 +100,13 @@ async def _load_cached_cvv_until(*, user_id: UUID) -> datetime | None:
 
 async def _cache_cvv(*, user_id: UUID, cvv: str) -> datetime:
     ttl_seconds = max(60, settings.payment_cvv_ttl_seconds)
-    expires_at = _utc_now() + timedelta(seconds=ttl_seconds)
+    expires_at = utc_now() + timedelta(seconds=ttl_seconds)
     encrypted = get_envelope_crypto().encrypt_payload(
         payload={"cvv": cvv, "expires_at": expires_at.isoformat()},
         aad_text=f"payment_cvv:{user_id}",
     )
 
-    redis = Redis.from_url(settings.redis_url)
-    try:
+    async with get_redis_pool() as redis:
         await redis.set(
             _payment_cvv_redis_key(user_id),
             _serialize_encrypted_payload(
@@ -127,18 +120,13 @@ async def _cache_cvv(*, user_id: UUID, cvv: str) -> datetime:
             ),
             ex=ttl_seconds,
         )
-    finally:
-        await redis.aclose()
 
     return expires_at
 
 
 async def _clear_cached_cvv(*, user_id: UUID) -> None:
-    redis = Redis.from_url(settings.redis_url)
-    try:
+    async with get_redis_pool() as redis:
         await redis.delete(_payment_cvv_redis_key(user_id), _legacy_payment_cvv_redis_key(user_id))
-    finally:
-        await redis.aclose()
 
 
 async def clear_payment_card_cache(*, user_id: UUID) -> None:
@@ -234,7 +222,7 @@ async def set_payment_card(
     user: User,
     payload: PaymentCardSetRequest,
 ) -> PaymentCardStatusResponse:
-    now = _utc_now()
+    now = utc_now()
     now_utc = now.astimezone(timezone.utc)
     if payload.expiry_year < now_utc.year or (
         payload.expiry_year == now_utc.year and payload.expiry_month < now_utc.month
