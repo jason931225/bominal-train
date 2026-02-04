@@ -32,12 +32,15 @@ Each service has a health check in `docker-compose.prod.yml`:
 |----------|--------------|--------------|
 | postgres | `pg_isready` | 0s |
 | redis    | `redis-cli ping` | 0s |
-| api      | `curl http://localhost:8000/health` | 30s |
-| worker   | `pgrep -f arq` | 10s |
-| web      | `wget --spider http://localhost:3000` | 30s |
-| caddy    | `wget --spider http://localhost:80` | 10s |
+| api      | Python urllib (port 8000/health) | 30s |
+| worker   | Python proc check for arq | 15s |
+| web      | `wget --spider` (port 3000) | 60s |
+| caddy    | `wget` (admin API port 2019) | 30s |
 
 The `start_period` gives the container time to initialize before health checks begin counting failures.
+
+> **Note**: Health checks use Python for api/worker (slim images lack curl/pgrep)
+> and 127.0.0.1 instead of localhost (Alpine DNS issue).
 
 ### Deploy Commands
 
