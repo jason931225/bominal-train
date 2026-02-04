@@ -59,14 +59,6 @@ export default async function DashboardPage({
           <ModuleTile key={module.slug} module={module} />
         ))}
       </div>
-
-      <div className={`${UI_CARD_MD} text-sm text-slate-600`}>
-        Need role checks? Visit{" "}
-        <Link href="/admin" className="font-medium text-blossom-600 hover:text-blossom-700">
-          /admin
-        </Link>
-        .
-      </div>
     </section>
   );
 }
