@@ -110,8 +110,19 @@ docker compose -f infra/docker-compose.yml exec api python -m app.monitor --watc
 # Zero-downtime production deploy (on VM)
 sudo -u bominal /opt/bominal/repo/infra/scripts/deploy-zero-downtime.sh
 
+# Deploy without rebuilding (faster, uses cached images)
+sudo -u bominal /opt/bominal/repo/infra/scripts/deploy-zero-downtime.sh --skip-build
+
+# Quick restart after VM reset (no rebuild)
+sudo -u bominal /opt/bominal/repo/infra/scripts/quick-restart.sh
+
 # Production monitor (on VM)
 /opt/bominal/repo/infra/scripts/bominal-monitor --watch
+
+# Admin CLI (on VM)
+/opt/bominal/repo/infra/scripts/bominal-admin user list
+/opt/bominal/repo/infra/scripts/bominal-admin task list --active
+/opt/bominal/repo/infra/scripts/bominal-admin db stats
 
 # Rollback production
 sudo -u bominal /opt/bominal/repo/infra/scripts/deploy-zero-downtime.sh --rollback

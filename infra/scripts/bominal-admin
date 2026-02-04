@@ -1,0 +1,37 @@
+#!/bin/bash
+# bominal-admin - Wrapper script to run the bominal admin CLI
+#
+# Usage:
+#   bominal-admin user list
+#   bominal-admin user promote admin@example.com
+#   bominal-admin task list --all
+#   bominal-admin db stats
+#
+# Run on production:
+#   /opt/bominal/repo/infra/scripts/bominal-admin user list
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+
+# Check if running inside container or on host
+if [ -f "/.dockerenv" ]; then
+    # Inside container
+    cd /app
+    exec python -m app.admin_cli "$@"
+else
+    # On host - run via docker compose
+    COMPOSE_FILE="${REPO_ROOT}/infra/docker-compose.prod.yml"
+    
+    if [ ! -f "$COMPOSE_FILE" ]; then
+        COMPOSE_FILE="${REPO_ROOT}/infra/docker-compose.yml"
+    fi
+    
+    if [ ! -f "$COMPOSE_FILE" ]; then
+        echo "Error: Cannot find docker-compose file"
+        exit 1
+    fi
+    
+    exec docker compose -f "$COMPOSE_FILE" exec -T api python -m app.admin_cli "$@"
+fi

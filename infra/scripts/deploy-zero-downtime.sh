@@ -10,6 +10,11 @@
 #   ./deploy-zero-downtime.sh              # Deploy current HEAD
 #   ./deploy-zero-downtime.sh <commit>     # Deploy specific commit
 #   ./deploy-zero-downtime.sh --rollback   # Rollback to previous deployment
+#   ./deploy-zero-downtime.sh --skip-build # Deploy without rebuilding images
+#   ./deploy-zero-downtime.sh --status     # Show deployment status
+#
+# For quick restarts after VM reboot (no rebuild), use:
+#   ./quick-restart.sh
 #
 # The script maintains version history in /opt/bominal/deployments/ for
 # rollback capability.
@@ -21,6 +26,7 @@ REPO_DIR="${REPO_DIR:-/opt/bominal/repo}"
 COMPOSE_FILE="infra/docker-compose.prod.yml"
 DEPLOY_HISTORY_DIR="/opt/bominal/deployments"
 MAX_HISTORY=10  # Keep last N deployment records
+SKIP_BUILD=false
 
 # Colors for output
 RED='\033[0;31m'
@@ -223,13 +229,21 @@ main() {
       show_status
       exit 0
       ;;
+    --skip-build|-S)
+      SKIP_BUILD=true
+      shift || true
+      target_commit="${1:-}"
+      ;;
     --help|-h)
-      echo "Usage: $0 [commit|--rollback|--status]"
+      echo "Usage: $0 [options] [commit]"
       echo ""
-      echo "Commands:"
-      echo "  <commit>     Deploy specific commit (default: current HEAD)"
-      echo "  --rollback   Rollback to previous deployment"
-      echo "  --status     Show current deployment status"
+      echo "Options:"
+      echo "  <commit>       Deploy specific commit (default: current HEAD)"
+      echo "  --rollback     Rollback to previous deployment"
+      echo "  --skip-build   Deploy without rebuilding images (faster)"
+      echo "  --status       Show current deployment status"
+      echo ""
+      echo "For quick restarts after VM reboot, use: ./quick-restart.sh"
       exit 0
       ;;
   esac
@@ -264,7 +278,11 @@ main() {
   fi
   
   # Build and deploy
-  build_images
+  if [[ "$SKIP_BUILD" == "true" ]]; then
+    log_info "Skipping build (--skip-build specified)"
+  else
+    build_images
+  fi
   deploy_services
   
   # Verify

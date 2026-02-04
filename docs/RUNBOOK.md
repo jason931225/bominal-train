@@ -18,6 +18,18 @@ Rollback to previous deployment:
 sudo -u bominal /opt/bominal/repo/infra/scripts/deploy-zero-downtime.sh --rollback
 ```
 
+Deploy without rebuilding images (faster, uses existing images):
+
+```bash
+sudo -u bominal /opt/bominal/repo/infra/scripts/deploy-zero-downtime.sh --skip-build
+```
+
+Quick restart after VM reset (no rebuild, existing images):
+
+```bash
+sudo -u bominal /opt/bominal/repo/infra/scripts/quick-restart.sh
+```
+
 Check VM stack:
 
 ```bash
@@ -81,6 +93,34 @@ docker compose -f infra/docker-compose.prod.yml ps
 docker compose -f infra/docker-compose.prod.yml logs -f caddy api worker web
 ```
 
+Live system monitor (production):
+
+```bash
+/opt/bominal/repo/infra/scripts/bominal-monitor --watch
+```
+
+Admin CLI (production):
+
+```bash
+# List users
+/opt/bominal/repo/infra/scripts/bominal-admin user list
+
+# User info
+/opt/bominal/repo/infra/scripts/bominal-admin user info <user_id>
+
+# Promote to admin
+/opt/bominal/repo/infra/scripts/bominal-admin user promote <user_id>
+
+# List tasks
+/opt/bominal/repo/infra/scripts/bominal-admin task list
+
+# DB stats
+/opt/bominal/repo/infra/scripts/bominal-admin db stats
+
+# Check encryption status
+/opt/bominal/repo/infra/scripts/bominal-admin secret check
+```
+
 DB checks:
 
 ```bash
@@ -117,6 +157,29 @@ Or rollback if previous deployment was stable:
 
 ```bash
 sudo -u bominal /opt/bominal/repo/infra/scripts/deploy-zero-downtime.sh --rollback
+```
+
+## 0.1) VM restart / GCE reset recovery
+
+After an abrupt VM restart (GCE preemption, maintenance, etc.), containers stop but images remain cached.
+
+Quick recovery without rebuilding:
+
+```bash
+sudo -u bominal /opt/bominal/repo/infra/scripts/quick-restart.sh
+```
+
+This starts containers in the correct order using existing images. For a specific service only:
+
+```bash
+sudo -u bominal /opt/bominal/repo/infra/scripts/quick-restart.sh api
+```
+
+Verify after restart:
+
+```bash
+curl -sS https://www.bominal.com/health
+/opt/bominal/repo/infra/scripts/bominal-monitor
 ```
 
 ## 1) Web route fails to load (`Cannot find module './901.js'`)

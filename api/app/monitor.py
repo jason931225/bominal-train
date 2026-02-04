@@ -96,8 +96,12 @@ async def get_redis_stats(redis_client: aioredis.Redis) -> dict:
         "connected": False,
         "queue_pending": 0,
         "queue_processing": 0,
+        "queue_completed": 0,
+        "queue_failed": 0,
         "rate_limiters": [],
         "memory_used": "N/A",
+        "uptime_seconds": 0,
+        "total_connections": 0,
     }
     
     try:
@@ -108,6 +112,12 @@ async def get_redis_stats(redis_client: aioredis.Redis) -> dict:
         # arq queue stats (queue name is 'arq:queue')
         stats["queue_pending"] = await redis_client.zcard("arq:queue") or 0
         stats["queue_processing"] = await redis_client.zcard("arq:in-progress") or 0
+        
+        # arq result counts (approximate from keys)
+        result_keys = []
+        async for key in redis_client.scan_iter("arq:result:*"):
+            result_keys.append(key)
+        stats["queue_completed"] = len(result_keys)
         
         # Get rate limiter keys
         rate_limit_keys = []
@@ -123,9 +133,15 @@ async def get_redis_stats(redis_client: aioredis.Redis) -> dict:
                 "ttl": ttl,
             })
         
-        # Memory usage
+        # Server info
         info = await redis_client.info("memory")
         stats["memory_used"] = info.get("used_memory_human", "N/A")
+        
+        server_info = await redis_client.info("server")
+        stats["uptime_seconds"] = server_info.get("uptime_in_seconds", 0)
+        
+        client_info = await redis_client.info("clients")
+        stats["total_connections"] = client_info.get("connected_clients", 0)
         
     except Exception as e:
         stats["error"] = str(e)
@@ -141,6 +157,10 @@ async def get_db_stats() -> dict:
         "total_tasks": 0,
         "active_tasks": 0,
         "tasks_today": 0,
+        "failed_today": 0,
+        "completed_today": 0,
+        "total_attempts_today": 0,
+        "error_rate_today": 0.0,
         "recent_tasks": [],
     }
     
@@ -171,6 +191,41 @@ async def get_db_stats() -> dict:
                 select(func.count(Task.id)).where(Task.created_at >= today_start)
             )
             stats["tasks_today"] = result.scalar() or 0
+            
+            # Completed today
+            result = await db.execute(
+                select(func.count(Task.id)).where(
+                    Task.completed_at >= today_start
+                )
+            )
+            stats["completed_today"] = result.scalar() or 0
+            
+            # Failed today
+            result = await db.execute(
+                select(func.count(Task.id)).where(
+                    Task.failed_at >= today_start
+                )
+            )
+            stats["failed_today"] = result.scalar() or 0
+            
+            # Today's attempt stats (for error rate)
+            result = await db.execute(
+                select(func.count(TaskAttempt.id)).where(
+                    TaskAttempt.started_at >= today_start
+                )
+            )
+            stats["total_attempts_today"] = result.scalar() or 0
+            
+            result = await db.execute(
+                select(func.count(TaskAttempt.id)).where(
+                    TaskAttempt.started_at >= today_start,
+                    TaskAttempt.ok == False,  # noqa: E712
+                )
+            )
+            failed_attempts = result.scalar() or 0
+            
+            if stats["total_attempts_today"] > 0:
+                stats["error_rate_today"] = (failed_attempts / stats["total_attempts_today"]) * 100
             
             # Recent tasks with attempts (include hidden for full visibility)
             result = await db.execute(
@@ -272,6 +327,20 @@ def print_containers(containers: list[dict]) -> None:
         print(f"  {color(icon, status_color)} {name:20} {color(status_text, status_color)}")
 
 
+def format_uptime(seconds: int) -> str:
+    """Format uptime in human-readable form."""
+    if seconds < 60:
+        return f"{seconds}s"
+    elif seconds < 3600:
+        return f"{seconds // 60}m"
+    elif seconds < 86400:
+        return f"{seconds // 3600}h {(seconds % 3600) // 60}m"
+    else:
+        days = seconds // 86400
+        hours = (seconds % 86400) // 3600
+        return f"{days}d {hours}h"
+
+
 def print_redis_stats(stats: dict) -> None:
     """Print Redis statistics."""
     print_header("📊 Queue & Rate Limiting (Redis)")
@@ -282,11 +351,13 @@ def print_redis_stats(stats: dict) -> None:
             print(f"    {color(stats['error'], Colors.DIM)}")
         return
     
-    print(f"  {color('✓', Colors.GREEN)} Connected  |  Memory: {stats['memory_used']}")
+    uptime_str = format_uptime(stats.get("uptime_seconds", 0))
+    print(f"  {color('✓', Colors.GREEN)} Connected  |  Memory: {stats['memory_used']}  |  Uptime: {uptime_str}  |  Clients: {stats.get('total_connections', 0)}")
     print()
     print(f"  {color('arq Queue:', Colors.BOLD)}")
     print(f"    Pending:    {color(str(stats['queue_pending']), Colors.YELLOW if stats['queue_pending'] > 0 else Colors.DIM)}")
     print(f"    Processing: {color(str(stats['queue_processing']), Colors.BLUE if stats['queue_processing'] > 0 else Colors.DIM)}")
+    print(f"    Completed:  {color(str(stats.get('queue_completed', 0)), Colors.GREEN if stats.get('queue_completed', 0) > 0 else Colors.DIM)}")
     
     if stats["rate_limiters"]:
         print()
@@ -311,7 +382,18 @@ def print_db_stats(stats: dict) -> None:
     print(f"  Users:        {stats['total_users']}")
     print(f"  Total Tasks:  {stats['total_tasks']}")
     print(f"  Active Tasks: {color(str(stats['active_tasks']), Colors.YELLOW if stats['active_tasks'] > 0 else Colors.DIM)}")
-    print(f"  Tasks Today:  {stats['tasks_today']}")
+    
+    print()
+    print(f"  {color('Today:', Colors.BOLD)}")
+    print(f"    Created:    {stats['tasks_today']}")
+    print(f"    Completed:  {color(str(stats.get('completed_today', 0)), Colors.GREEN if stats.get('completed_today', 0) > 0 else Colors.DIM)}")
+    print(f"    Failed:     {color(str(stats.get('failed_today', 0)), Colors.RED if stats.get('failed_today', 0) > 0 else Colors.DIM)}")
+    
+    error_rate = stats.get('error_rate_today', 0)
+    attempts = stats.get('total_attempts_today', 0)
+    if attempts > 0:
+        error_color = Colors.RED if error_rate > 50 else Colors.YELLOW if error_rate > 20 else Colors.GREEN
+        print(f"    Attempts:   {attempts} ({color(f'{error_rate:.1f}% errors', error_color)})")
 
 
 def print_recent_tasks(tasks: list[dict]) -> None:
