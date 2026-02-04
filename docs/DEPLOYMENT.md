@@ -1,17 +1,52 @@
 # Deployment
 
-This project supports separated dev/prod compose stacks.
+Bominal deployment is split into two practical stages:
 
-## Environments
+- local production simulation (`build` on your machine)
+- VM production deployment (`pull && up -d` on VM)
 
-- Dev compose: `infra/docker-compose.yml`
-- Prod compose: `infra/docker-compose.prod.yml`
-- Dev env files: `infra/env/dev/*`
-- Prod env files: `infra/env/prod/*.example` -> copy to real `.env` files
+## Recommended VM baseline (free-tier friendly)
 
-## Production bootstrap
+- GCP zone: `us-central1-a`
+- Machine type: `e2-micro`
+- Disk: `pd-standard`, 10GB
+- OS image: `debian-12` (minimal/default Debian)
+- VM tags: `bominal-web`, `bominal-ops`
 
-1. Create env files:
+## Stage A: local production simulation
+
+```bash
+cp infra/env/prod/postgres.env.example infra/env/prod/postgres.env
+cp infra/env/prod/api.env.example infra/env/prod/api.env
+cp infra/env/prod/web.env.example infra/env/prod/web.env
+bash infra/scripts/predeploy-check.sh
+docker compose -f infra/docker-compose.prod.yml up -d --build
+```
+
+## Stage B: VM production deploy (CI images + compose pull/up)
+
+### 1) Build images in CI
+
+Workflow file:
+
+- `.github/workflows/build-images.yml`
+
+Produced images:
+
+- `ghcr.io/<owner>/bominal-api:<tag>`
+- `ghcr.io/<owner>/bominal-web:<tag>`
+
+Worker uses the same API image.
+
+### 2) Fresh VM bootstrap (Debian 12)
+
+After copying repo to VM:
+
+```bash
+sudo /opt/bominal/repo/infra/scripts/vm-docker-bootstrap.sh
+```
+
+### 3) Configure prod envs
 
 ```bash
 cp infra/env/prod/postgres.env.example infra/env/prod/postgres.env
@@ -19,86 +54,42 @@ cp infra/env/prod/api.env.example infra/env/prod/api.env
 cp infra/env/prod/web.env.example infra/env/prod/web.env
 ```
 
-2. Replace all `CHANGE_ME...` values.
+Replace all `CHANGE_ME...` values, especially:
 
-3. Generate secure `MASTER_KEY`:
+- `MASTER_KEY`
+- DB password fields in `api.env` and `postgres.env`
 
-```bash
-openssl rand -base64 32
-```
-
-4. Run predeploy checks:
+### 4) Deploy images
 
 ```bash
-bash infra/scripts/predeploy-check.sh
+sudo -u bominal /opt/bominal/repo/infra/scripts/vm-docker-deploy.sh latest
 ```
 
-5. Deploy:
+Or deploy a specific CI tag:
 
 ```bash
-docker-compose -f infra/docker-compose.prod.yml up -d --build
+sudo -u bominal /opt/bominal/repo/infra/scripts/vm-docker-deploy.sh sha-<git_sha>
 ```
 
-## GCP single-VM baseline (recommended first deployment)
-
-Suggested approach:
-
-- One Ubuntu VM running Docker/Compose
-- Reverse proxy (Caddy or Nginx) terminates TLS
-- Containers private on bridge network; expose only 80/443 publicly
-
-Network guidance:
-
-- VM tags: `bominal-web`, `bominal-ops`
-- Public ingress: TCP `443` (and optionally `80` for redirect)
-- SSH via IAP only (`35.235.240.0/20`)
-- Do not open Postgres/Redis/API internal ports publicly
-
-## Domain layout
-
-You can start with one domain:
-
-- `app.bominal.com` -> reverse proxy -> web (`3000`) and api (`8000`) by path or host routing
-
-Or split hosts:
-
-- `app.bominal.com` (web)
-- `api.bominal.com` (api)
-
-## Post-deploy smoke test
+### 5) Verify
 
 ```bash
-curl -sS http://localhost:8000/health
-curl -sS -I http://localhost:3000
-docker-compose -f infra/docker-compose.prod.yml ps
-docker-compose -f infra/docker-compose.prod.yml logs --tail=150 api worker web
+curl -sS https://www.bominal.com/health
+curl -sS -I https://www.bominal.com/login
+docker compose -f infra/docker-compose.deploy.yml ps
 ```
+
+## DNS and Cloudflare
+
+- `A @ -> <VM_PUBLIC_IP>`
+- `CNAME www -> @`
+
+Start DNS-only while validating; move to proxied once health checks and login are stable.
 
 ## Rollback
 
-If a new image is unhealthy:
-
-1. Revert to previous commit/tag.
-2. Rebuild/restart:
+Redeploy a previous immutable image tag:
 
 ```bash
-docker-compose -f infra/docker-compose.prod.yml up -d --build
+sudo -u bominal /opt/bominal/repo/infra/scripts/vm-docker-deploy.sh sha-<older_sha>
 ```
-
-3. Verify health endpoints and core routes again.
-
-## Scaling path
-
-Phase 1 (current): single VM.
-
-Phase 2:
-
-- Move Postgres to managed DB.
-- Move Redis to managed Redis.
-- Keep API/worker on Compute Engine or GKE.
-
-Phase 3:
-
-- Add load balancer/redundant app nodes.
-- Formal CI/CD + migration gating + secret manager integration.
-

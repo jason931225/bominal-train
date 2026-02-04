@@ -5,6 +5,7 @@ import "./globals.css";
 import { ThemeInitScript } from "@/components/theme-init-script";
 import { ThemeProvider } from "@/components/theme-provider";
 import { TopNav } from "@/components/top-nav";
+import { seasonFromMonth } from "@/lib/theme";
 
 export const metadata: Metadata = {
   title: "bominal",
@@ -16,8 +17,9 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const initialTheme = seasonFromMonth(new Date().getMonth() + 1);
   return (
-    <html lang="en">
+    <html lang="en" data-theme-mode="auto" data-theme={initialTheme} suppressHydrationWarning>
       <body>
         <ThemeInitScript />
         <ThemeProvider>

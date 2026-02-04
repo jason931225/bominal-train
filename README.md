@@ -28,6 +28,38 @@ git submodule update --init --recursive
 
 ## Development (local)
 
+Recommended local workflow is now non-containerized (faster edit/run loop).
+
+### Option A (recommended): run locally without Docker
+
+1) Install local dependencies:
+
+```bash
+./infra/scripts/local-setup.sh
+```
+
+2) Ensure local services are running:
+- Postgres on `127.0.0.1:5432`
+- Redis on `127.0.0.1:6379`
+
+3) Bootstrap local DB/user (one-time):
+
+```bash
+./infra/scripts/local-db-bootstrap.sh
+```
+
+4) Start web + api + worker:
+
+```bash
+./infra/scripts/local-run.sh
+```
+
+Services:
+- web: `http://localhost:3000`
+- api: `http://localhost:8000`
+
+### Option B: Docker dev stack (fallback)
+
 Development compose uses hot-reload, bind mounts, and env files under `infra/env/dev/`.
 
 If your machine supports Docker Compose v2 plugin:
@@ -57,11 +89,33 @@ If you pull new backend migrations while containers are already running, restart
 docker-compose -f infra/docker-compose.yml restart api worker
 ```
 
-## Production (barebone deployment)
+## Deployment stages
 
-Production compose is separated in `infra/docker-compose.prod.yml` (no bind mounts, no dev reload flags).
+### Stage A: local production simulation (containerized build)
 
-1) Create prod env files from templates:
+Use this locally when you want a production-like stack and image builds from source:
+
+```bash
+cp infra/env/prod/postgres.env.example infra/env/prod/postgres.env
+cp infra/env/prod/api.env.example infra/env/prod/api.env
+cp infra/env/prod/web.env.example infra/env/prod/web.env
+docker compose -f infra/docker-compose.prod.yml up -d --build
+```
+
+### Stage B: VM deployment (containerized pull/up, Debian 12 recommended)
+
+Recommended for e2-micro: keep runtime simple and avoid `next build` on the VM.
+Images are built in CI and VM deploy is `pull && up -d`.
+
+1) Provision a fresh VM with Debian 12 (`debian-12` image family), `e2-micro`, and standard persistent disk.
+
+2) Bootstrap Docker on VM:
+
+```bash
+sudo /opt/bominal/repo/infra/scripts/vm-docker-bootstrap.sh
+```
+
+3) Configure prod env files:
 
 ```bash
 cp infra/env/prod/postgres.env.example infra/env/prod/postgres.env
@@ -69,26 +123,18 @@ cp infra/env/prod/api.env.example infra/env/prod/api.env
 cp infra/env/prod/web.env.example infra/env/prod/web.env
 ```
 
-2) Edit those files and replace every `CHANGE_ME...` value (especially `MASTER_KEY`).
-
-3) Bring up production stack:
+4) Deploy by pulling prebuilt images:
 
 ```bash
-docker compose -f infra/docker-compose.prod.yml up -d --build
+sudo -u bominal /opt/bominal/repo/infra/scripts/vm-docker-deploy.sh latest
 ```
 
-or (Compose v1):
+5) Verify:
 
 ```bash
-docker-compose -f infra/docker-compose.prod.yml up -d --build
-```
-
-4) Verify health:
-
-```bash
-curl -sS http://localhost:8000/health
-curl -sS http://localhost:3000
-docker-compose -f infra/docker-compose.prod.yml ps
+curl -sS https://www.bominal.com/health
+curl -sS -I https://www.bominal.com/login
+docker compose -f infra/docker-compose.deploy.yml ps
 ```
 
 ## Layout
@@ -96,7 +142,8 @@ docker-compose -f infra/docker-compose.prod.yml ps
 - `web/`
 - `api/`
 - `infra/docker-compose.yml` (development)
-- `infra/docker-compose.prod.yml` (deployment)
+- `infra/docker-compose.prod.yml` (local prod simulation)
+- `infra/docker-compose.deploy.yml` (VM deploy via image pull)
 - `third_party/srtgo` (read-only reference)
 
 ## Auth + modules
@@ -258,8 +305,8 @@ docker-compose -f infra/docker-compose.yml exec web npx tsc --noEmit
 4. **Smoke test after prod up**
 
 ```bash
-curl -sS http://localhost:8000/health
-curl -sS -I http://localhost:3000
+curl -sS http://localhost/health
+curl -sS -I http://localhost/login
 docker-compose -f infra/docker-compose.prod.yml logs --tail=100 api worker web
 ```
 

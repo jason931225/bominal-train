@@ -1412,16 +1412,6 @@ export function TrainDashboard() {
                       </span>
                     </button>
 
-                    {!autoPayAvailable ? (
-                      <span className="text-xs text-amber-700">
-                        Wallet required for auto-pay. Configure in{" "}
-                        <Link href="/payment-settings" className="font-medium underline decoration-blossom-300 underline-offset-2">
-                          Payment settings
-                        </Link>
-                        .
-                      </span>
-                    ) : null}
-
                     <button
                       type="button"
                       onClick={createTask}
@@ -1432,6 +1422,21 @@ export function TrainDashboard() {
                     </button>
                   </div>
                 </div>
+                {!autoPayAvailable ? (
+                  <div className="mt-3">
+                    <div className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50/90 px-3 py-1.5 text-xs text-amber-700 shadow-sm">
+                      <span className="font-medium">Wallet required for auto-pay.</span>
+                      <span>Configure in</span>
+                      <Link
+                        href="/payment-settings"
+                        className="font-medium underline decoration-amber-300 underline-offset-2 hover:text-amber-800"
+                      >
+                        Payment settings
+                      </Link>
+                      <span>.</span>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             </div>
           ) : searchUnlocked && hasSearched ? (

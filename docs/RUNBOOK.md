@@ -4,6 +4,29 @@ Operational procedures for local/dev/prod maintenance.
 
 ## Service commands
 
+### VM production (Debian 12 + Docker deploy)
+
+Deploy latest prebuilt images:
+
+```bash
+sudo -u bominal /opt/bominal/repo/infra/scripts/vm-docker-deploy.sh latest
+```
+
+Deploy specific image tag:
+
+```bash
+sudo -u bominal /opt/bominal/repo/infra/scripts/vm-docker-deploy.sh sha-<git_sha>
+```
+
+Check VM stack:
+
+```bash
+docker compose -f infra/docker-compose.deploy.yml ps
+docker compose -f infra/docker-compose.deploy.yml logs -f caddy api worker web
+```
+
+### Docker (local simulation)
+
 Start stack (dev):
 
 ```bash
@@ -59,6 +82,22 @@ docker-compose -f infra/docker-compose.yml exec postgres \
 ```
 
 ## Common incidents
+
+## 0) VM docker deploy unhealthy after deploy
+
+Checklist:
+
+1. `docker compose -f infra/docker-compose.deploy.yml ps`
+2. `docker compose -f infra/docker-compose.deploy.yml logs --tail=200 caddy api worker web`
+3. Verify env files exist:
+   - `infra/env/prod/postgres.env`
+   - `infra/env/prod/api.env`
+   - `infra/env/prod/web.env`
+4. Re-run deploy script for current ref:
+
+```bash
+sudo -u bominal /opt/bominal/repo/infra/scripts/vm-docker-deploy.sh latest
+```
 
 ## 1) Web route fails to load (`Cannot find module './901.js'`)
 
@@ -153,4 +192,3 @@ docker-compose -f infra/docker-compose.yml restart api worker
 - Do not print decrypted secrets or raw provider credentials.
 - Use redacted metadata fields for persisted attempt context.
 - For debugging provider payloads, keep only safe subsets in `meta_json_safe`.
-

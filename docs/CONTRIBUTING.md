@@ -4,8 +4,11 @@ Thanks for contributing to Bominal.
 
 ## Prerequisites
 
-- Docker + Docker Compose (v1 or v2)
+- Python 3.12+
+- Node.js 20+
+- Postgres + Redis (local services)
 - Git with submodule support
+- Docker + Docker Compose (optional, for containerized simulation)
 
 ## Initial setup
 
@@ -13,10 +16,14 @@ From repo root:
 
 ```bash
 git submodule update --init --recursive
-docker-compose -f infra/docker-compose.yml up --build
+./infra/scripts/local-setup.sh
+./infra/scripts/local-run.sh
 ```
+If you prefer containerized local simulation, use:
 
-If your environment uses Compose v2 plugin, use `docker compose` instead of `docker-compose`.
+```bash
+docker compose -f infra/docker-compose.yml up --build
+```
 
 ## Development conventions
 
@@ -54,13 +61,13 @@ If touching auth, wallet, or provider credentials:
 Backend tests:
 
 ```bash
-docker-compose -f infra/docker-compose.yml exec api pytest -q
+(cd api && ./.venv/bin/pytest -q)
 ```
 
 Frontend type check:
 
 ```bash
-docker-compose -f infra/docker-compose.yml exec web npx tsc --noEmit
+(cd web && npx tsc --noEmit)
 ```
 
 Recommended targeted smoke tests after major changes:
@@ -75,13 +82,13 @@ curl -sS -I http://localhost:3000
 Create a migration:
 
 ```bash
-docker-compose -f infra/docker-compose.yml exec api alembic revision -m "describe_change"
+(cd api && ./.venv/bin/alembic revision -m "describe_change")
 ```
 
 Apply migrations:
 
 ```bash
-docker-compose -f infra/docker-compose.yml exec api alembic upgrade head
+(cd api && ./.venv/bin/alembic upgrade head)
 ```
 
 ## Pull request checklist
@@ -91,4 +98,3 @@ docker-compose -f infra/docker-compose.yml exec api alembic upgrade head
 - [ ] No secrets added to code or git history
 - [ ] Env changes reflected in `.env.example`/`infra/env/*`
 - [ ] Docs updated (`README.md` and/or `docs/*.md`)
-
