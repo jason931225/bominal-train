@@ -28,6 +28,20 @@ mkdir -p "$APP_HOME"
 chown -R "$APP_USER:$APP_USER" "$APP_HOME"
 usermod -aG docker "$APP_USER"
 
+# Add swap for e2-micro (1GB RAM) to prevent OOM during builds
+SWAPFILE="/swapfile"
+if [[ ! -f "$SWAPFILE" ]]; then
+  echo "==> Creating 1GB swap file"
+  fallocate -l 1G "$SWAPFILE"
+  chmod 600 "$SWAPFILE"
+  mkswap "$SWAPFILE"
+  swapon "$SWAPFILE"
+  echo "$SWAPFILE none swap sw 0 0" >> /etc/fstab
+  echo "Swap enabled: $(swapon --show)"
+else
+  echo "==> Swap file already exists"
+fi
+
 echo "Bootstrap complete."
 echo "Next:"
 echo "  1) Copy repo to $APP_HOME/repo"

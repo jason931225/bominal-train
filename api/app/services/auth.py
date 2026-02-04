@@ -62,7 +62,10 @@ def clear_session_cookie(response: Response) -> None:
     )
 
 
-def request_ip(remote: str | None, forwarded: str | None) -> str | None:
+def request_ip(remote: str | None, forwarded: str | None, cf_connecting_ip: str | None = None) -> str | None:
+    """Extract client IP, preferring Cloudflare header if present."""
+    if cf_connecting_ip:
+        return cf_connecting_ip.strip()
     if forwarded:
         return forwarded.split(",")[0].strip()
     return remote

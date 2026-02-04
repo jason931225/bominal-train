@@ -5,6 +5,17 @@
 {$CADDY_SITE_ADDRESS} {
 	encode zstd gzip
 
+	# Security headers
+	header {
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		X-XSS-Protection "1; mode=block"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "geolocation=(), microphone=(), camera=()"
+		# Remove server identification
+		-Server
+	}
+
 	@api path /api /api/* /docs /docs/* /openapi.json /redoc /health /healthz
 	handle @api {
 		reverse_proxy api:8000

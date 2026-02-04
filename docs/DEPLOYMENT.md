@@ -6,11 +6,10 @@ This project supports separated dev/prod compose stacks.
 
 - Dev compose: `infra/docker-compose.yml`
 - Prod compose: `infra/docker-compose.prod.yml`
-- CI/CD image-based deploy compose: `infra/docker-compose.deploy.yml`
 - Dev env files: `infra/env/dev/*`
 - Prod env files: `infra/env/prod/*.example` -> copy to real `.env` files
 
-## Production bootstrap
+## Production bootstrap (GCE e2-micro)
 
 1. Create env files:
 
@@ -45,108 +44,99 @@ docker compose -f infra/docker-compose.prod.yml run --rm api python scripts/chec
 5. Deploy:
 
 ```bash
-docker-compose -f infra/docker-compose.prod.yml up -d --build
+bash infra/scripts/deploy.sh
+```
+
+Or manually:
+
+```bash
+docker compose -f infra/docker-compose.prod.yml build --pull
+docker compose -f infra/docker-compose.prod.yml up -d --remove-orphans
 ```
 
 The API startup command runs the duplicate `display_name` check before `alembic upgrade head`.
 
-Image-based deploy (recommended for small VMs):
+## GCE e2-micro (Free Tier) Setup
+
+The e2-micro has 1GB RAM and 0.25 vCPU. Key optimizations:
+
+- **Swap**: 1GB swap file is created by `vm-docker-bootstrap.sh`
+- **Memory limits**: All containers have memory caps to prevent OOM
+- **Pre-built images**: `Dockerfile.prod` builds during `docker compose build`, not at runtime
+
+### 1) One-time VM bootstrap
+
+Run the bootstrap script as root:
 
 ```bash
-export BOMINAL_IMAGE_PREFIX=ghcr.io/your-org/bominal
-export BOMINAL_IMAGE_TAG=latest
-docker compose -f infra/docker-compose.deploy.yml pull
-docker compose -f infra/docker-compose.deploy.yml up -d --remove-orphans
+sudo bash infra/scripts/vm-docker-bootstrap.sh
 ```
 
-## GCP single-VM baseline (recommended first deployment)
+This installs Docker, creates a `bominal` user, and adds 1GB swap.
 
-Suggested approach:
+### 2) Clone repo and configure
+
+```bash
+sudo -u bominal -i
+cd /opt/bominal
+git clone https://github.com/<owner>/<repo>.git repo
+cd repo
+git submodule update --init --recursive
+```
+
+Create prod env files:
+
+```bash
+for f in infra/env/prod/*.env.example; do cp "$f" "${f%.example}"; done
+```
+
+Edit each file and replace all `CHANGE_ME` values:
+- `infra/env/prod/postgres.env` - database credentials
+- `infra/env/prod/api.env` - MASTER_KEY, INTERNAL_API_KEY, DATABASE_URL
+- `infra/env/prod/web.env` - NEXT_PUBLIC_API_BASE_URL
+- `infra/env/prod/caddy.env` - CADDY_SITE_ADDRESS, CADDY_ACME_EMAIL
+
+Generate secrets:
+
+```bash
+# MASTER_KEY (for encryption)
+openssl rand -base64 32
+
+# INTERNAL_API_KEY
+openssl rand -hex 32
+```
+
+### 3) Deploy
+
+```bash
+bash infra/scripts/deploy.sh
+```
+
+This will:
+1. Pull latest code
+2. Build all container images (takes ~5-10 min on e2-micro)
+3. Start services with memory limits
+4. Wait for health checks
+
+### 4) Verify
+
+```bash
+curl -sS https://www.bominal.com/health
+docker compose -f infra/docker-compose.prod.yml logs --tail=50
+```
+
+## Network guidance
 
 - One Ubuntu VM running Docker/Compose
-- Reverse proxy (Caddy or Nginx) terminates TLS
+- Caddy terminates TLS via ACME (Let's Encrypt)
 - Containers private on bridge network; expose only 80/443 publicly
 
-Network guidance:
+Firewall rules:
 
 - VM tags: `bominal-web`, `bominal-ops`
 - Public ingress: TCP `443` and `80` (for ACME challenge + HTTP->HTTPS redirect)
 - SSH via IAP only (`35.235.240.0/20`)
 - Do not open Postgres/Redis/API/Web internal ports publicly
-
-## GitHub CI -> GCE (e2-micro)
-
-This repo includes:
-
-- Workflow: `.github/workflows/deploy-gce.yml`
-- VM deploy script: `infra/scripts/deploy-gce.sh`
-- Production image Dockerfiles:
-  - `api/Dockerfile.prod`
-  - `web/Dockerfile.prod`
-
-### 1) One-time VM bootstrap
-
-On the VM, install Docker/Compose and clone repo:
-
-```bash
-sudo apt-get update
-sudo apt-get install -y docker.io docker-compose-plugin git
-sudo usermod -aG docker "$USER"
-sudo mkdir -p /opt
-sudo chown -R "$USER":"$USER" /opt
-git clone https://github.com/<owner>/<repo>.git /opt/bominal
-cd /opt/bominal
-git submodule update --init --recursive
-```
-
-If the repo is private, clone via SSH with a read-only GitHub deploy key installed on the VM:
-
-```bash
-git clone git@github.com:<owner>/<repo>.git /opt/bominal
-```
-
-(Recommended) Keep the GitHub deploy key **only** on the VM, and use a separate SSH key for CI -> VM access.
-
-Create prod env files on the VM:
-
-```bash
-cp infra/env/prod/postgres.env.example infra/env/prod/postgres.env
-cp infra/env/prod/api.env.example infra/env/prod/api.env
-cp infra/env/prod/web.env.example infra/env/prod/web.env
-cp infra/env/prod/caddy.env.example infra/env/prod/caddy.env
-cp infra/env/prod/deploy.env.example infra/env/prod/deploy.env
-```
-
-Fill all production values (no `CHANGE_ME` placeholders).
-Ensure `INTERNAL_API_KEY` is set in `infra/env/prod/api.env` before first deploy.
-If you use `infra/scripts/deploy-gce.sh` manually, set `GHCR_USERNAME` and `GHCR_TOKEN` in `infra/env/prod/deploy.env` (or provide them as exported env vars).
-
-### 2) GitHub secrets required
-
-Set repository secrets:
-
-- `GCE_HOST` - VM public IP or DNS
-- `GCE_SSH_USER` - SSH user on VM
-- `GCE_SSH_KEY` - private key for that user
-- `GCE_DEPLOY_PATH` - repo path on VM (example: `/opt/bominal`)
-- `GHCR_USERNAME` - GHCR user/org with read access
-- `GHCR_TOKEN` - GHCR token (`read:packages`)
-
-### 3) Deploy flow
-
-On push to `main` (or manual run):
-
-1. Runs API tests + web typecheck
-2. Builds and pushes images to GHCR (`api`, `web`) tagged with commit SHA
-3. SSHs to VM and runs `infra/scripts/deploy-gce.sh`
-4. Pulls images and rolls containers with `infra/docker-compose.deploy.yml`
-
-### 4) e2-micro notes
-
-- Prefer image-based deploy (`docker-compose.deploy.yml`), not source builds on VM.
-- Keep only required public ports open (usually `80/443`).
-- Add swap on VM to reduce OOM risk under pressure.
-- Run DB backups externally; do not rely on VM disk alone.
 
 ## Domain layout
 

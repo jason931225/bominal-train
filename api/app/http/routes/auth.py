@@ -93,7 +93,11 @@ async def login(
         expires_at=session_expiry(payload.remember_me),
         last_seen_at=datetime.now(timezone.utc),
         user_agent=request.headers.get("user-agent"),
-        ip_address=request_ip(request.client.host if request.client else None, request.headers.get("x-forwarded-for")),
+        ip_address=request_ip(
+            request.client.host if request.client else None,
+            request.headers.get("x-forwarded-for"),
+            request.headers.get("cf-connecting-ip"),
+        ),
     )
 
     db.add(session)
