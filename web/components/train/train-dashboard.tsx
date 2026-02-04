@@ -46,6 +46,36 @@ const DEFAULT_DEP_STATION = "수서";
 const DEFAULT_ARR_STATION = "마산";
 const TASK_LIST_ERROR_MESSAGE = "Could not load task lists.";
 const SESSION_EXPIRED_MESSAGE = "Session expired. Please log in again.";
+
+/**
+ * Normalize Korean phone numbers to 11-digit format (e.g., 01012345678).
+ * Handles: 010-1234-5678, 010 1234 5678, +82-10-1234-5678, +8210-1234-5678, etc.
+ * Returns original input if not a recognizable phone pattern.
+ */
+function normalizePhoneNumber(input: string): string {
+  const trimmed = input.trim();
+  // Remove all non-digit characters except leading +
+  let digits = trimmed.replace(/[^\d+]/g, "");
+  
+  // Handle Korean international format (+82)
+  if (digits.startsWith("+82")) {
+    digits = "0" + digits.slice(3);
+  } else if (digits.startsWith("82") && digits.length >= 11) {
+    digits = "0" + digits.slice(2);
+  }
+  
+  // Remove any remaining + signs
+  digits = digits.replace(/\+/g, "");
+  
+  // Check if it looks like a Korean mobile number (starts with 01)
+  if (/^01[0-9]/.test(digits) && digits.length >= 10 && digits.length <= 11) {
+    return digits;
+  }
+  
+  // Not a phone number pattern, return original trimmed input
+  return trimmed;
+}
+
 const ACTIVE_TASK_STATES = new Set([
   "QUEUED",
   "RUNNING",
@@ -616,7 +646,7 @@ export function TrainDashboard() {
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          username: credentialForm.username.trim(),
+          username: normalizePhoneNumber(credentialForm.username),
           password: credentialForm.password,
         }),
       });
@@ -968,7 +998,7 @@ export function TrainDashboard() {
                           value={credentialForm.username}
                           onChange={(event) => setCredentialForm((current) => ({ ...current, username: event.target.value }))}
                           className={FIELD_BASE_CLASS}
-                          placeholder="email, phone (01012345678), or membership #"
+                          placeholder="email, phone, or membership #"
                           required
                         />
                       </label>
