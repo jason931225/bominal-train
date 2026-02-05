@@ -49,11 +49,11 @@ jobs:
         with:
           project_id: ${{ env.GCP_PROJECT_ID }}
 
-      - name: Generate ephemeral SSH key
+      - name: Generate ephemeral SSH key (RSA PEM)
         id: key
         shell: bash
         run: |
-          ssh-keygen -t ed25519 -N "" -f /tmp/gha_vm_key
+          ssh-keygen -t rsa -b 4096 -m PEM -N "" -f /tmp/gha_vm_key
           echo "private_key<<EOF" >> "$GITHUB_OUTPUT"
           cat /tmp/gha_vm_key >> "$GITHUB_OUTPUT"
           echo "EOF" >> "$GITHUB_OUTPUT"
