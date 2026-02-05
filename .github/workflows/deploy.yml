@@ -1,6 +1,3 @@
-# Automated deployment workflow
-# Triggers after successful image builds to deploy to production
-
 name: Deploy to Production
 
 on:
@@ -8,6 +5,7 @@ on:
     workflows: ["Build and Push Images"]
     types: [completed]
     branches: [main]
+
   workflow_dispatch:
     inputs:
       commit:
@@ -15,10 +13,9 @@ on:
         required: false
         type: string
 
-# Required for Workload Identity Federation (OIDC)
 permissions:
   contents: read
-  id-token: write
+  id-token: write   # REQUIRED for GCP OIDC
 
 env:
   DEPLOY_INSTANCE: bominal-deploy
@@ -26,101 +23,62 @@ env:
   DEPLOY_USER: bominal
   REPO_DIR: /opt/bominal/repo
   DEPLOY_SCRIPT: /opt/bominal/repo/infra/scripts/deploy-zero-downtime.sh
+  GCP_PROJECT_ID: bominal
+  GCP_SERVICE_ACCOUNT: github-actions@bominal.iam.gserviceaccount.com
+  GCP_WIF_PROVIDER: projects/123456789/locations/global/workloadIdentityPools/github/providers/github
 
 jobs:
   deploy:
-    name: Deploy to GCE via IAP
+    name: Deploy to GCE VM
     runs-on: ubuntu-latest
-    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+
+    # Prevent deploying failed builds
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
 
     steps:
-      - name: Checkout code (for metadata only)
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Get commit SHA to deploy
+      - name: Resolve commit to deploy
         id: commit
         run: |
-          if [[ -n "${{ github.event.inputs.commit }}" ]]; then
-            DEPLOY_COMMIT="${{ github.event.inputs.commit }}"
-          elif [[ "${{ github.event_name }}" == "workflow_run" ]]; then
-            DEPLOY_COMMIT="${{ github.event.workflow_run.head_sha }}"
+          if [ -n "${{ github.event.inputs.commit }}" ]; then
+            echo "sha=${{ github.event.inputs.commit }}" >> $GITHUB_OUTPUT
           else
-            DEPLOY_COMMIT="${{ github.sha }}"
+            echo "sha=${{ github.sha }}" >> $GITHUB_OUTPUT
           fi
-          echo "sha=$DEPLOY_COMMIT" >> $GITHUB_OUTPUT
-          echo "short=$(echo $DEPLOY_COMMIT | cut -c1-7)" >> $GITHUB_OUTPUT
 
-      # Auth to Google Cloud using Workload Identity Federation (recommended)
-      - name: Auth to Google Cloud
-        id: auth
-        uses: google-github-actions/auth@v3
+      # 🔐 Authenticate to GCP using OIDC (NO KEYS)
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
-          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
-          # Optional, but can help if you have multiple projects
-          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ env.GCP_WIF_PROVIDER }}
+          service_account: ${{ env.GCP_SERVICE_ACCOUNT }}
 
-      - name: Deploy to production server (via IAP SSH)
-        id: compute-ssh
-        uses: google-github-actions/ssh-compute@v2
-        env:
-          DEPLOY_COMMIT: ${{ steps.commit.outputs.sha }}
-          DEPLOY_SHORT: ${{ steps.commit.outputs.short }}
-          GH_ACTOR: ${{ github.actor }}
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
         with:
-          instance_name: ${{ env.DEPLOY_INSTANCE }}
-          zone: ${{ env.DEPLOY_ZONE }}
-          # user: ${{ env.DEPLOY_USER }}
-          # ssh_private_key: ${{ secrets.DEPLOY_SSH_KEY }}
-          # flags: "--tunnel-through-iap"
-          command: >-
-            bash -lc 'set -euo pipefail;
-            cd /opt/bominal/repo;
-            git fetch origin;
-            git checkout origin/main -- infra/scripts/deploy-zero-downtime.sh;
-            chmod +x /opt/bominal/repo/infra/scripts/deploy-zero-downtime.sh;
-            /opt/bominal/repo/infra/scripts/deploy-zero-downtime.sh "${DEPLOY_SHORT}"'
+          project_id: ${{ env.GCP_PROJECT_ID }}
 
-      - name: Report deployment status
-        if: always()
+      # 🚀 SSH into VM and deploy
+      - name: Deploy on VM (zero downtime)
         run: |
-          if [[ "${{ job.status }}" == "success" ]]; then
-            echo "✅ Deployment successful!"
-            echo "Deployed commit: ${{ steps.commit.outputs.short }}"
-            echo "Site: https://www.bominal.com"
-          else
-            echo "❌ Deployment failed!"
-            echo "Check logs above for details"
-            exit 1
-          fi
+          gcloud compute ssh \
+            "${DEPLOY_USER}@${DEPLOY_INSTANCE}" \
+            --zone="${DEPLOY_ZONE}" \
+            --command="
+              set -e
+              cd ${REPO_DIR}
 
-      - name: Create deployment record
-        if: success()
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const commit = '${{ steps.commit.outputs.sha }}';
-            const shortCommit = '${{ steps.commit.outputs.short }}';
+              echo 'Fetching latest code...'
+              git fetch origin
+              git checkout ${{ steps.commit.outputs.sha }}
 
-            const deployment = await github.rest.repos.createDeployment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              ref: commit,
-              environment: 'production',
-              auto_merge: false,
-              required_contexts: [],
-              description: `Deployed ${shortCommit} to bominal.com`
-            });
-
-            await github.rest.repos.createDeploymentStatus({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              deployment_id: deployment.data.id,
-              state: 'success',
-              environment_url: 'https://www.bominal.com',
-              description: 'Deployment completed successfully'
-            });
-
-            console.log(`✅ Deployment record created for ${shortCommit}`);
+              echo 'Running deploy script...'
+              chmod +x ${DEPLOY_SCRIPT}
+              ${DEPLOY_SCRIPT}
+            "
