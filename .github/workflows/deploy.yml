@@ -67,5 +67,5 @@ jobs:
           ssh_private_key: ${{ steps.key.outputs.private_key }}
           command: |
             set -euo pipefail
-            cd "${REPO_DIR}"
-            bash "${DEPLOY_SCRIPT}"
+            cd /opt/bominal/repo
+            bash /opt/bominal/repo/infra/scripts/deploy-zero-downtime.sh
