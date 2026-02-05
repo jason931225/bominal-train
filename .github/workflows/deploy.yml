@@ -68,4 +68,4 @@ jobs:
           command: |
             set -euo pipefail
             cd /opt/bominal/repo
-            bash /opt/bominal/repo/infra/scripts/deploy-zero-downtime.sh
+            GCP_PROJECT_ID=bominal GCP_REGION=us-central1 bash /opt/bominal/repo/infra/scripts/deploy-zero-downtime.sh
