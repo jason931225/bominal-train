@@ -18,7 +18,7 @@ on:
 
 env:
   DEPLOY_USER: bominal
-  DEPLOY_HOST: bominal.com  # Update this to your actual server hostname/IP
+  DEPLOY_HOST: 35.209.122.174  # Update this to your actual server hostname/IP
 
 jobs:
   deploy:
