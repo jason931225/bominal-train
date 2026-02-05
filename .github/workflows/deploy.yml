@@ -5,7 +5,6 @@ on:
     workflows: ["Build and Push Images"]
     types: [completed]
     branches: [main]
-
   workflow_dispatch:
     inputs:
       commit:
@@ -15,7 +14,7 @@ on:
 
 permissions:
   contents: read
-  id-token: write # REQUIRED for GCP OIDC
+  id-token: write # REQUIRED for GCP OIDC/WIF
 
 env:
   DEPLOY_INSTANCE: bominal-deploy
@@ -30,78 +29,73 @@ env:
 
 jobs:
   deploy:
-    name: Deploy to GCE VM
-    runs-on: ubuntu-latest
-
-    # Prevent deploying failed builds
+    # Only deploy on workflow_run if the upstream build succeeded
     if: |
       github.event_name == 'workflow_dispatch' ||
-      github.event.workflow_run.conclusion == 'success'
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+
+    runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout (for metadata only)
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Resolve commit to deploy
-        id: commit
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ github.event.inputs.commit }}" ]; then
-            echo "sha=${{ github.event.inputs.commit }}" >> "$GITHUB_OUTPUT"
-          elif [ "${{ github.event_name }}" = "workflow_run" ]; then
-            echo "sha=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
-          fi
-
-          echo "Deploying SHA: $(cat $GITHUB_OUTPUT | grep '^sha=' | cut -d= -f2)"
-
-      # 🔐 Authenticate to GCP using OIDC (NO KEYS)
-      - name: Authenticate to Google Cloud
+      - name: Auth to Google Cloud (WIF)
+        id: auth
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ env.GCP_WIF_PROVIDER }}
           service_account: ${{ env.GCP_SERVICE_ACCOUNT }}
 
       - name: Set up gcloud
-        uses: google-github-actions/setup-gcloud@v2
+        uses: google-github-actions/setup-gcloud@v3
         with:
+          version: ">= 363.0.0"
           project_id: ${{ env.GCP_PROJECT_ID }}
 
-      # 🚀 SSH into VM and deploy as local user 'bominal'
-      - name: Deploy on VM (zero downtime)
+      # Create an ephemeral SSH key for this run (no secret)
+      - name: Generate SSH key
+        id: key
         shell: bash
         run: |
-          set -euo pipefail
+          ssh-keygen -t ed25519 -N "" -f /tmp/gha_vm_key
+          echo "private_key<<EOF" >> $GITHUB_OUTPUT
+          cat /tmp/gha_vm_key >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
-          gcloud compute ssh \
-            "${DEPLOY_INSTANCE}" \
-            --project="${GCP_PROJECT_ID}" \
-            --zone="${DEPLOY_ZONE}" \
-            --command="
-              set -euo pipefail
+      - name: SSH and deploy (IAP tunnel)
+        uses: google-github-actions/ssh-compute@v1
+        with:
+          instance_name: ${{ env.DEPLOY_INSTANCE }}
+          zone: ${{ env.DEPLOY_ZONE }}
+          user: ${{ env.DEPLOY_USER }}
+          ssh_private_key: ${{ secrets.DUMMY_NOT_NEEDED }}
+          # NOTE: ssh-compute requires a private key input; we pass the generated key via file content:
+          # Unfortunately inputs are strings, so we inline it:
+          # (GitHub Actions expression reads file via bash substitution)
+          # We do this by overriding in a run step below instead (see next step).
 
-              echo 'Connected as:' \$(whoami)
+      # Workaround: call ssh-compute via a run step to pass the generated key content cleanly
+      - name: SSH and deploy (actual)
+        uses: google-github-actions/ssh-compute@v1
+        with:
+          instance_name: ${{ env.DEPLOY_INSTANCE }}
+          zone: ${{ env.DEPLOY_ZONE }}
+          user: ${{ env.DEPLOY_USER }}
+          ssh_private_key: ${{ steps.key.outputs.private_key }}
+          command: |
+            set -euo pipefail
 
-              # Run the actual deploy under the stable local user (file ownership, docker perms, etc.)
-              sudo -Hiu ${DEPLOY_USER} bash -lc '
-                set -euo pipefail
-                echo \"Running as: \$(whoami)\"
+            cd "${REPO_DIR}"
 
-                cd \"${REPO_DIR}\"
+            # If manually specified, deploy that commit; otherwise deploy latest main
+            if [ -n "${{ inputs.commit || '' }}" ]; then
+              git fetch --all --prune
+              git checkout "${{ inputs.commit }}"
+            else
+              git fetch origin main
+              git checkout main
+              git reset --hard origin/main
+            fi
 
-                echo \"Fetching latest code...\"
-                git fetch origin
-
-                echo \"Checking out commit...\"
-                git checkout \"${{ steps.commit.outputs.sha }}\"
-
-                echo \"Running deploy script...\"
-                chmod +x \"${DEPLOY_SCRIPT}\"
-                \"${DEPLOY_SCRIPT}\"
-              '
-            "
+            bash "${DEPLOY_SCRIPT}"
