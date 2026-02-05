@@ -33,9 +33,7 @@ services:
     restart: unless-stopped
 
   api:
-    build:
-      context: ../api
-      dockerfile: Dockerfile.prod
+    image: ${API_IMAGE}:${IMAGE_TAG}
     container_name: bominal-api
     working_dir: /app
     command: >
@@ -62,9 +60,7 @@ services:
     restart: unless-stopped
 
   worker:
-    build:
-      context: ../api
-      dockerfile: Dockerfile.prod
+    image: ${API_IMAGE:?}:${IMAGE_TAG:?}
     container_name: bominal-worker
     working_dir: /app
     command: >
@@ -89,9 +85,7 @@ services:
     restart: unless-stopped
 
   web:
-    build:
-      context: ../web
-      dockerfile: Dockerfile.prod
+    image: ${WEB_IMAGE:?}:${IMAGE_TAG:?}
     container_name: bominal-web
     env_file:
       - ./env/prod/web.env
