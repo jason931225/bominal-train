@@ -75,8 +75,13 @@ jobs:
           user: ${{ env.DEPLOY_USER }}
           ssh_private_key: ${{ secrets.DEPLOY_SSH_KEY }}
           # flags: "--tunnel-through-iap"
-          script: "infra/scripts/gha-deploy.sh"
-
+          command: >-
+            bash -lc 'set -euo pipefail;
+            cd /opt/bominal/repo;
+            git fetch origin;
+            git checkout origin/main -- infra/scripts/deploy-zero-downtime.sh;
+            chmod +x /opt/bominal/repo/infra/scripts/deploy-zero-downtime.sh;
+            /opt/bominal/repo/infra/scripts/deploy-zero-downtime.sh "${DEPLOY_SHORT}"'
 
       - name: Report deployment status
         if: always()
