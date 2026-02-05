@@ -120,7 +120,7 @@ async def on_shutdown(ctx: dict) -> None:
     logger.info("Worker shutdown complete")
 
 
-async def on_job_start(ctx: dict, job: Any) -> None:
+async def on_job_start(ctx: dict, job: Any = None) -> None:
     """Called when a job starts - track it for graceful shutdown."""
     # Extract task_id from job arguments if it's a train task
     if hasattr(job, 'args') and job.args and job.function == 'run_train_task':
