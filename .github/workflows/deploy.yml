@@ -67,17 +67,5 @@ jobs:
           ssh_private_key: ${{ steps.key.outputs.private_key }}
           command: |
             set -euo pipefail
-
             cd "${REPO_DIR}"
-
-            # If workflow_dispatch commit provided, deploy that; else deploy main tip
-            if [ -n "${{ inputs.commit || '' }}" ]; then
-              git fetch --all --prune
-              git checkout "${{ inputs.commit }}"
-            else
-              git fetch origin main
-              git checkout main
-              git reset --hard origin/main
-            fi
-
             bash "${DEPLOY_SCRIPT}"
