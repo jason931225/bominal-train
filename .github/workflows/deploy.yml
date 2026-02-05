@@ -74,36 +74,32 @@ jobs:
           zone: ${{ env.DEPLOY_ZONE }}
           user: ${{ env.DEPLOY_USER }}
           ssh_private_key: ${{ secrets.DEPLOY_SSH_KEY }}
-          # Add -vvv temporarily until it’s stable; remove later.
-          # Keep tunnel flag here, and DON'T add it anywhere else.
-          flags: "--tunnel-through-iap -vvv"
-          command: >-
-            bash -lc '
-              set -euo pipefail
+          flags: "--tunnel-through-iap"
+          command: |
+            set -euo pipefail
 
-              echo "=============================================="
-              echo "🚀 Starting Deployment"
-              echo "=============================================="
-              echo "Commit: ${DEPLOY_COMMIT} (${DEPLOY_SHORT})"
-              echo "Actor:  ${GH_ACTOR}"
-              echo "Time:   $(date -u +"%Y-%m-%d %H:%M:%S UTC")"
-              echo ""
+            echo "=============================================="
+            echo "🚀 Starting Deployment"
+            echo "=============================================="
+            echo "Commit: $DEPLOY_COMMIT ($DEPLOY_SHORT)"
+            echo "Actor:  $GH_ACTOR"
+            echo "Time:   $(date -u +"%Y-%m-%d %H:%M:%S UTC")"
+            echo ""
 
-              REPO_DIR="/opt/bominal/repo"
-              DEPLOY_SCRIPT="${REPO_DIR}/infra/scripts/deploy-zero-downtime.sh"
+            cd "${{ env.REPO_DIR }}"
+            git fetch origin
 
-              cd "${REPO_DIR}"
-              git fetch origin
-              git checkout origin/main -- infra/scripts/deploy-zero-downtime.sh
-              chmod +x "${DEPLOY_SCRIPT}"
+            # ensure script is exactly what's on main
+            git checkout origin/main -- infra/scripts/deploy-zero-downtime.sh
+            chmod +x "${{ env.DEPLOY_SCRIPT }}"
 
-              bash "${DEPLOY_SCRIPT}" "${DEPLOY_SHORT}"
+            bash "${{ env.DEPLOY_SCRIPT }}" "$DEPLOY_SHORT"
 
-              echo ""
-              echo "=============================================="
-              echo "✅ Deployment Complete!"
-              echo "=============================================="
-            '
+            echo ""
+            echo "=============================================="
+            echo "✅ Deployment Complete!"
+            echo "=============================================="
+
 
       - name: Report deployment status
         if: always()
