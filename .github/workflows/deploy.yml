@@ -74,33 +74,36 @@ jobs:
           zone: ${{ env.DEPLOY_ZONE }}
           user: ${{ env.DEPLOY_USER }}
           ssh_private_key: ${{ secrets.DEPLOY_SSH_KEY }}
-          # This is the key difference vs your current setup:
-          # force IAP tunnel so port 22 does NOT need to be open to GitHub runners.
-          flags: "--tunnel-through-iap"
-          command: |
-            set -e
+          # Add -vvv temporarily until it’s stable; remove later.
+          # Keep tunnel flag here, and DON'T add it anywhere else.
+          flags: "--tunnel-through-iap -vvv"
+          command: >-
+            bash -lc '
+              set -euo pipefail
 
-            echo "=============================================="
-            echo "🚀 Starting Deployment"
-            echo "=============================================="
-            echo "Commit: $DEPLOY_COMMIT ($DEPLOY_SHORT)"
-            echo "Actor:  $GH_ACTOR"
-            echo "Time:   $(date -u +"%Y-%m-%d %H:%M:%S UTC")"
-            echo ""
+              echo "=============================================="
+              echo "🚀 Starting Deployment"
+              echo "=============================================="
+              echo "Commit: ${DEPLOY_COMMIT} (${DEPLOY_SHORT})"
+              echo "Actor:  ${GH_ACTOR}"
+              echo "Time:   $(date -u +"%Y-%m-%d %H:%M:%S UTC")"
+              echo ""
 
-            # Make sure we have the latest deployment script
-            cd "${REPO_DIR}"
-            git fetch origin
-            git checkout origin/main -- infra/scripts/deploy-zero-downtime.sh
-            chmod +x "${DEPLOY_SCRIPT}"
+              REPO_DIR="/opt/bominal/repo"
+              DEPLOY_SCRIPT="${REPO_DIR}/infra/scripts/deploy-zero-downtime.sh"
 
-            # Run deployment (deploys latest images by default)
-            bash "${DEPLOY_SCRIPT}" "${DEPLOY_SHORT}"
+              cd "${REPO_DIR}"
+              git fetch origin
+              git checkout origin/main -- infra/scripts/deploy-zero-downtime.sh
+              chmod +x "${DEPLOY_SCRIPT}"
 
-            echo ""
-            echo "=============================================="
-            echo "✅ Deployment Complete!"
-            echo "=============================================="
+              bash "${DEPLOY_SCRIPT}" "${DEPLOY_SHORT}"
+
+              echo ""
+              echo "=============================================="
+              echo "✅ Deployment Complete!"
+              echo "=============================================="
+            '
 
       - name: Report deployment status
         if: always()
