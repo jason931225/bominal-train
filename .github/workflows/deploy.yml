@@ -75,30 +75,7 @@ jobs:
           user: ${{ env.DEPLOY_USER }}
           ssh_private_key: ${{ secrets.DEPLOY_SSH_KEY }}
           flags: "--tunnel-through-iap"
-          command: |
-            set -euo pipefail
-
-            echo "=============================================="
-            echo "🚀 Starting Deployment"
-            echo "=============================================="
-            echo "Commit: $DEPLOY_COMMIT ($DEPLOY_SHORT)"
-            echo "Actor:  $GH_ACTOR"
-            echo "Time:   $(date -u +"%Y-%m-%d %H:%M:%S UTC")"
-            echo ""
-
-            cd "${{ env.REPO_DIR }}"
-            git fetch origin
-
-            # ensure script is exactly what's on main
-            git checkout origin/main -- infra/scripts/deploy-zero-downtime.sh
-            chmod +x "${{ env.DEPLOY_SCRIPT }}"
-
-            bash "${{ env.DEPLOY_SCRIPT }}" "$DEPLOY_SHORT"
-
-            echo ""
-            echo "=============================================="
-            echo "✅ Deployment Complete!"
-            echo "=============================================="
+          script: "infra/scripts/gha-deploy.sh"
 
 
       - name: Report deployment status
