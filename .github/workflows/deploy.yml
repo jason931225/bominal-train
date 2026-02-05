@@ -6,33 +6,39 @@ name: Deploy to Production
 on:
   workflow_run:
     workflows: ["Build and Push Images"]
-    types:
-      - completed
+    types: [completed]
     branches: [main]
   workflow_dispatch:
     inputs:
       commit:
-        description: 'Specific commit SHA to deploy (optional, defaults to latest)'
+        description: "Specific commit SHA to deploy (optional, defaults to latest)"
         required: false
         type: string
 
+# Required for Workload Identity Federation (OIDC)
+permissions:
+  contents: read
+  id-token: write
+
 env:
+  DEPLOY_INSTANCE: bominal-deploy
+  DEPLOY_ZONE: us-central1-a
   DEPLOY_USER: bominal
-  DEPLOY_HOST: 35.209.122.174  # Update this to your actual server hostname/IP
+  REPO_DIR: /opt/bominal/repo
+  DEPLOY_SCRIPT: /opt/bominal/repo/infra/scripts/deploy-zero-downtime.sh
 
 jobs:
   deploy:
-    name: Deploy to bominal.com
+    name: Deploy to GCE via IAP
     runs-on: ubuntu-latest
-    # Only run if the build workflow succeeded
     if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
-    
+
     steps:
       - name: Checkout code (for metadata only)
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      
+
       - name: Get commit SHA to deploy
         id: commit
         run: |
@@ -45,22 +51,35 @@ jobs:
           fi
           echo "sha=$DEPLOY_COMMIT" >> $GITHUB_OUTPUT
           echo "short=$(echo $DEPLOY_COMMIT | cut -c1-7)" >> $GITHUB_OUTPUT
-      
-      - name: Deploy to production server
-        uses: appleboy/ssh-action@v1.0.3
+
+      # Auth to Google Cloud using Workload Identity Federation (recommended)
+      - name: Auth to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+          # Optional, but can help if you have multiple projects
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Deploy to production server (via IAP SSH)
+        id: compute-ssh
+        uses: google-github-actions/ssh-compute@v2
         env:
           DEPLOY_COMMIT: ${{ steps.commit.outputs.sha }}
           DEPLOY_SHORT: ${{ steps.commit.outputs.short }}
           GH_ACTOR: ${{ github.actor }}
         with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          port: ${{ secrets.DEPLOY_PORT || 22 }}
-          envs: DEPLOY_COMMIT,DEPLOY_SHORT,GH_ACTOR
-          script: |
+          instance_name: ${{ env.DEPLOY_INSTANCE }}
+          zone: ${{ env.DEPLOY_ZONE }}
+          user: ${{ env.DEPLOY_USER }}
+          ssh_private_key: ${{ secrets.GCP_SSH_PRIVATE_KEY }}
+          # This is the key difference vs your current setup:
+          # force IAP tunnel so port 22 does NOT need to be open to GitHub runners.
+          flags: "--tunnel-through-iap"
+          command: |
             set -e
-            
+
             echo "=============================================="
             echo "🚀 Starting Deployment"
             echo "=============================================="
@@ -68,26 +87,21 @@ jobs:
             echo "Actor:  $GH_ACTOR"
             echo "Time:   $(date -u +"%Y-%m-%d %H:%M:%S UTC")"
             echo ""
-            
-            # Run deployment script
-            REPO_DIR="/opt/bominal/repo"
-            DEPLOY_SCRIPT="$REPO_DIR/infra/scripts/deploy-zero-downtime.sh"
-            
+
             # Make sure we have the latest deployment script
-            cd "$REPO_DIR"
+            cd "${REPO_DIR}"
             git fetch origin
             git checkout origin/main -- infra/scripts/deploy-zero-downtime.sh
-            chmod +x "$DEPLOY_SCRIPT"
-            
+            chmod +x "${DEPLOY_SCRIPT}"
+
             # Run deployment (deploys latest images by default)
-            # The script will pull images tagged with :latest or specific SHA
-            bash "$DEPLOY_SCRIPT" "$DEPLOY_SHORT"
-            
+            bash "${DEPLOY_SCRIPT}" "${DEPLOY_SHORT}"
+
             echo ""
             echo "=============================================="
             echo "✅ Deployment Complete!"
             echo "=============================================="
-      
+
       - name: Report deployment status
         if: always()
         run: |
@@ -100,7 +114,7 @@ jobs:
             echo "Check logs above for details"
             exit 1
           fi
-      
+
       - name: Create deployment record
         if: success()
         uses: actions/github-script@v7
@@ -108,8 +122,7 @@ jobs:
           script: |
             const commit = '${{ steps.commit.outputs.sha }}';
             const shortCommit = '${{ steps.commit.outputs.short }}';
-            
-            // Create a deployment
+
             const deployment = await github.rest.repos.createDeployment({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -119,8 +132,7 @@ jobs:
               required_contexts: [],
               description: `Deployed ${shortCommit} to bominal.com`
             });
-            
-            // Mark deployment as successful
+
             await github.rest.repos.createDeploymentStatus({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -129,5 +141,5 @@ jobs:
               environment_url: 'https://www.bominal.com',
               description: 'Deployment completed successfully'
             });
-            
+
             console.log(`✅ Deployment record created for ${shortCommit}`);
