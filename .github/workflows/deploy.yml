@@ -25,7 +25,7 @@ env:
   DEPLOY_SCRIPT: /opt/bominal/repo/infra/scripts/deploy-zero-downtime.sh
   GCP_PROJECT_ID: bominal
   GCP_SERVICE_ACCOUNT: github-actions@bominal.iam.gserviceaccount.com
-  GCP_WIF_PROVIDER: projects/833094198766/locations/global/workloadIdentityPools/github-pool
+  GCP_WIF_PROVIDER: projects/833094198766/locations/global/workloadIdentityPools/github-pool/providers/github-provider
 
 jobs:
   deploy:
