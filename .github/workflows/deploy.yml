@@ -72,8 +72,8 @@ jobs:
         with:
           instance_name: ${{ env.DEPLOY_INSTANCE }}
           zone: ${{ env.DEPLOY_ZONE }}
-          user: ${{ env.DEPLOY_USER }}
-          ssh_private_key: ${{ secrets.DEPLOY_SSH_KEY }}
+          # user: ${{ env.DEPLOY_USER }}
+          # ssh_private_key: ${{ secrets.DEPLOY_SSH_KEY }}
           # flags: "--tunnel-through-iap"
           command: >-
             bash -lc 'set -euo pipefail;
