@@ -15,7 +15,7 @@ on:
 
 permissions:
   contents: read
-  id-token: write   # REQUIRED for GCP OIDC
+  id-token: write # REQUIRED for GCP OIDC
 
 env:
   DEPLOY_INSTANCE: bominal-deploy
@@ -23,6 +23,7 @@ env:
   DEPLOY_USER: bominal
   REPO_DIR: /opt/bominal/repo
   DEPLOY_SCRIPT: /opt/bominal/repo/infra/scripts/deploy-zero-downtime.sh
+
   GCP_PROJECT_ID: bominal
   GCP_SERVICE_ACCOUNT: github-actions@bominal.iam.gserviceaccount.com
   GCP_WIF_PROVIDER: projects/833094198766/locations/global/workloadIdentityPools/github-pool/providers/github-provider
@@ -45,12 +46,19 @@ jobs:
 
       - name: Resolve commit to deploy
         id: commit
+        shell: bash
         run: |
-          if [ -n "${{ github.event.inputs.commit }}" ]; then
-            echo "sha=${{ github.event.inputs.commit }}" >> $GITHUB_OUTPUT
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ github.event.inputs.commit }}" ]; then
+            echo "sha=${{ github.event.inputs.commit }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event_name }}" = "workflow_run" ]; then
+            echo "sha=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
           else
-            echo "sha=${{ github.sha }}" >> $GITHUB_OUTPUT
+            echo "sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
           fi
+
+          echo "Deploying SHA: $(cat $GITHUB_OUTPUT | grep '^sha=' | cut -d= -f2)"
 
       # 🔐 Authenticate to GCP using OIDC (NO KEYS)
       - name: Authenticate to Google Cloud
@@ -64,21 +72,36 @@ jobs:
         with:
           project_id: ${{ env.GCP_PROJECT_ID }}
 
-      # 🚀 SSH into VM and deploy
+      # 🚀 SSH into VM and deploy as local user 'bominal'
       - name: Deploy on VM (zero downtime)
+        shell: bash
         run: |
+          set -euo pipefail
+
           gcloud compute ssh \
-            "${DEPLOY_USER}@${DEPLOY_INSTANCE}" \
+            "${DEPLOY_INSTANCE}" \
+            --project="${GCP_PROJECT_ID}" \
             --zone="${DEPLOY_ZONE}" \
             --command="
-              set -e
-              cd ${REPO_DIR}
+              set -euo pipefail
 
-              echo 'Fetching latest code...'
-              git fetch origin
-              git checkout ${{ steps.commit.outputs.sha }}
+              echo 'Connected as:' \$(whoami)
 
-              echo 'Running deploy script...'
-              chmod +x ${DEPLOY_SCRIPT}
-              ${DEPLOY_SCRIPT}
+              # Run the actual deploy under the stable local user (file ownership, docker perms, etc.)
+              sudo -Hiu ${DEPLOY_USER} bash -lc '
+                set -euo pipefail
+                echo \"Running as: \$(whoami)\"
+
+                cd \"${REPO_DIR}\"
+
+                echo \"Fetching latest code...\"
+                git fetch origin
+
+                echo \"Checking out commit...\"
+                git checkout \"${{ steps.commit.outputs.sha }}\"
+
+                echo \"Running deploy script...\"
+                chmod +x \"${DEPLOY_SCRIPT}\"
+                \"${DEPLOY_SCRIPT}\"
+              '
             "
