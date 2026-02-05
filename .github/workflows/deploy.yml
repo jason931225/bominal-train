@@ -5,6 +5,7 @@ on:
     workflows: ["Build and Push Images"]
     types: [completed]
     branches: [main]
+
   workflow_dispatch:
     inputs:
       commit:
@@ -14,7 +15,7 @@ on:
 
 permissions:
   contents: read
-  id-token: write # REQUIRED for GCP OIDC/WIF
+  id-token: write
 
 env:
   DEPLOY_INSTANCE: bominal-deploy
@@ -29,19 +30,15 @@ env:
 
 jobs:
   deploy:
-    # Only deploy on workflow_run if the upstream build succeeded
     if: |
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
-
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout (for metadata only)
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Auth to Google Cloud (WIF)
-        id: auth
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ env.GCP_WIF_PROVIDER }}
@@ -50,33 +47,18 @@ jobs:
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@v3
         with:
-          version: ">= 363.0.0"
           project_id: ${{ env.GCP_PROJECT_ID }}
 
-      # Create an ephemeral SSH key for this run (no secret)
-      - name: Generate SSH key
+      - name: Generate ephemeral SSH key
         id: key
         shell: bash
         run: |
           ssh-keygen -t ed25519 -N "" -f /tmp/gha_vm_key
-          echo "private_key<<EOF" >> $GITHUB_OUTPUT
-          cat /tmp/gha_vm_key >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          echo "private_key<<EOF" >> "$GITHUB_OUTPUT"
+          cat /tmp/gha_vm_key >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
 
-      - name: SSH and deploy (IAP tunnel)
-        uses: google-github-actions/ssh-compute@v1
-        with:
-          instance_name: ${{ env.DEPLOY_INSTANCE }}
-          zone: ${{ env.DEPLOY_ZONE }}
-          user: ${{ env.DEPLOY_USER }}
-          ssh_private_key: ${{ secrets.DUMMY_NOT_NEEDED }}
-          # NOTE: ssh-compute requires a private key input; we pass the generated key via file content:
-          # Unfortunately inputs are strings, so we inline it:
-          # (GitHub Actions expression reads file via bash substitution)
-          # We do this by overriding in a run step below instead (see next step).
-
-      # Workaround: call ssh-compute via a run step to pass the generated key content cleanly
-      - name: SSH and deploy (actual)
+      - name: SSH and deploy
         uses: google-github-actions/ssh-compute@v1
         with:
           instance_name: ${{ env.DEPLOY_INSTANCE }}
@@ -88,7 +70,7 @@ jobs:
 
             cd "${REPO_DIR}"
 
-            # If manually specified, deploy that commit; otherwise deploy latest main
+            # If workflow_dispatch commit provided, deploy that; else deploy main tip
             if [ -n "${{ inputs.commit || '' }}" ]; then
               git fetch --all --prune
               git checkout "${{ inputs.commit }}"
