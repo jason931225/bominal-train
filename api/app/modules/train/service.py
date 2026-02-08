@@ -593,6 +593,11 @@ def task_to_summary(
     ticket_summary: dict | None = None,
 ) -> TaskSummaryOut:
     ticket_summary = ticket_summary or {}
+    next_run_at = (
+        _parse_iso_datetime(str((task.spec_json or {}).get(NEXT_RUN_AT_KEY) or ""))
+        if task.state == "POLLING"
+        else None
+    )
     return TaskSummaryOut(
         id=task.id,
         module=task.module,
@@ -606,6 +611,7 @@ def task_to_summary(
         failed_at=task.failed_at,
         hidden_at=task.hidden_at,
         last_attempt_at=last_attempt_at,
+        next_run_at=next_run_at,
         spec_json=task.spec_json,
         ticket_status=ticket_summary.get("ticket_status"),
         ticket_paid=ticket_summary.get("ticket_paid"),

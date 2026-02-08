@@ -1822,6 +1822,127 @@ async def test_retry_task_now_enforces_cooldown(db_session, monkeypatch):
     assert calls == [str(task.id)]
 
 
+@pytest.mark.asyncio
+async def test_task_summary_includes_next_run_at_for_polling(db_session, monkeypatch):
+    fake_redis = fakeredis.aioredis.FakeRedis()
+    monkeypatch.setattr("app.modules.train.service.get_redis_client", make_fake_get_redis_client(fake_redis))
+
+    user = User(
+        email="next-run@example.com",
+        password_hash="x",
+        display_name="Next Run User",
+        role_id=2,
+    )
+    db_session.add(user)
+    await db_session.flush()
+
+    task = Task(
+        user_id=user.id,
+        module="train",
+        state="POLLING",
+        deadline_at=_utc_now() + timedelta(minutes=10),
+        spec_json={"provider": "SRT", "next_run_at": (_utc_now() + timedelta(seconds=45)).isoformat()},
+        idempotency_key="next-run",
+    )
+    db_session.add(task)
+    await db_session.commit()
+
+    detail = await get_task_detail(db_session, task_id=task.id, user=user)
+    assert detail.task.next_run_at is not None
+
+
+@pytest.mark.asyncio
+async def test_worker_schedule_retry_sets_next_run_at(db_session_factory, db_session, monkeypatch):
+    fake_redis = fakeredis.aioredis.FakeRedis()
+
+    class _NoLimitResult:
+        waited_ms = 0
+        rounds = 1
+
+    async def _no_limit(self, **kwargs):
+        return _NoLimitResult()
+
+    async def _noop_enqueue(task_id: str, defer_seconds: float = 0.0) -> None:
+        return None
+
+    async def _fake_credentials(db, *, user_id, provider):
+        return {"username": "mock-user", "password": "mock-password"}
+
+    class SeatUnavailableProvider:
+        provider_name = "SRT"
+
+        async def login(self, **kwargs):
+            return ProviderOutcome(ok=True)
+
+        async def search(self, **kwargs):
+            departure = _utc_now() + timedelta(minutes=30)
+            schedule = ProviderSchedule(
+                schedule_id="srt-unavailable",
+                provider="SRT",
+                dep=kwargs["dep"],
+                arr=kwargs["arr"],
+                departure_at=departure,
+                arrival_at=departure + timedelta(minutes=120),
+                train_no="S500",
+                availability={"general": False, "special": False},
+            )
+            return ProviderOutcome(ok=True, data={"schedules": [schedule]})
+
+        async def reserve(self, **kwargs):
+            return ProviderOutcome(ok=False)
+
+        async def pay(self, **kwargs):
+            return ProviderOutcome(ok=False)
+
+        async def cancel(self, **kwargs):
+            return ProviderOutcome(ok=False)
+
+    monkeypatch.setattr("app.modules.train.worker.enqueue_train_task", _noop_enqueue)
+    monkeypatch.setattr("app.modules.train.worker.RedisTokenBucketLimiter.acquire_provider_call", _no_limit)
+    monkeypatch.setattr("app.modules.train.worker._load_provider_credentials", _fake_credentials)
+    monkeypatch.setattr("app.modules.train.worker.get_provider_client", lambda provider: SeatUnavailableProvider())
+
+    user = User(
+        email="poll-next-run@example.com",
+        password_hash="x",
+        display_name="Polling User",
+        role_id=2,
+    )
+    db_session.add(user)
+    await db_session.flush()
+
+    deadline = _utc_now() + timedelta(minutes=60)
+    task = Task(
+        user_id=user.id,
+        module="train",
+        state="QUEUED",
+        deadline_at=deadline,
+        spec_json={
+            "provider": "SRT",
+            "dep": "수서",
+            "arr": "부산",
+            "date": _utc_now().date().isoformat(),
+            "selected_trains_ranked": [
+                {"schedule_id": "srt-unavailable", "departure_at": (_utc_now() + timedelta(minutes=30)).isoformat(), "rank": 1}
+            ],
+            "passengers": {"adults": 1, "children": 0},
+            "seat_class": "general",
+            "auto_pay": False,
+        },
+        idempotency_key="poll-next-run",
+    )
+    db_session.add(task)
+    await db_session.commit()
+
+    await run_train_task({"db_factory": db_session_factory, "redis": fake_redis}, str(task.id))
+
+    async with db_session_factory() as verify_session:
+        refreshed = await verify_session.get(Task, task.id)
+        assert refreshed is not None
+        assert refreshed.state == "POLLING"
+        assert refreshed.spec_json.get("next_run_at")
+
+
 def test_parse_srt_search_response_from_srtgo_shape():
     raw = {
         "outDataSets": {
