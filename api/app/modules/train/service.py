@@ -80,6 +80,43 @@ def _parse_iso_datetime(value: str | None) -> datetime | None:
     return parsed
 
 
+def _as_aware_utc_datetime(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _compute_retry_now_status(
+    task: Task,
+    *,
+    now: datetime,
+) -> tuple[bool, str | None, datetime | None]:
+    now = _as_aware_utc_datetime(now)
+
+    if task.state == "PAUSED" or task.paused_at is not None:
+        return False, "paused_use_resume", None
+    if task.state in TERMINAL_TASK_STATES:
+        return False, "terminal_state", None
+    if task.state in {"RUNNING", "RESERVING", "PAYING"}:
+        return False, "task_running", None
+    if task.state not in {"QUEUED", "POLLING"}:
+        return False, "not_eligible_state", None
+
+    deadline_at = _as_aware_utc_datetime(task.deadline_at)
+    if now >= deadline_at:
+        return False, "deadline_passed", None
+
+    last_manual_retry_at = _parse_iso_datetime(str((task.spec_json or {}).get(MANUAL_RETRY_LAST_AT_KEY) or ""))
+    if last_manual_retry_at is None:
+        return True, None, None
+
+    available_at = _as_aware_utc_datetime(last_manual_retry_at) + timedelta(seconds=MANUAL_RETRY_COOLDOWN_SECONDS)
+    if now < available_at:
+        return False, "cooldown_active", available_at
+
+    return True, None, None
+
+
 def _build_task_attempt(
     *,
     task_id: UUID,
@@ -592,13 +629,16 @@ def task_to_summary(
     last_attempt_at: datetime | None = None,
     latest_attempt: TaskAttempt | None = None,
     ticket_summary: dict | None = None,
+    now: datetime | None = None,
 ) -> TaskSummaryOut:
     ticket_summary = ticket_summary or {}
+    now = now or utc_now()
     next_run_at = (
         _parse_iso_datetime(str((task.spec_json or {}).get(NEXT_RUN_AT_KEY) or ""))
         if task.state == "POLLING"
         else None
     )
+    retry_now_allowed, retry_now_reason, retry_now_available_at = _compute_retry_now_status(task, now=now)
     if latest_attempt is not None:
         last_attempt_at = latest_attempt.finished_at
     last_attempt_finished_at = last_attempt_at
@@ -621,6 +661,9 @@ def task_to_summary(
         last_attempt_error_message_safe=latest_attempt.error_message_safe if latest_attempt else None,
         last_attempt_finished_at=last_attempt_finished_at,
         next_run_at=next_run_at,
+        retry_now_allowed=retry_now_allowed,
+        retry_now_reason=retry_now_reason,
+        retry_now_available_at=retry_now_available_at,
         spec_json=task.spec_json,
         ticket_status=ticket_summary.get("ticket_status"),
         ticket_paid=ticket_summary.get("ticket_paid"),
@@ -890,6 +933,7 @@ async def list_tasks(
 ) -> TaskListResponse:
     stmt = _task_list_stmt(user, status_filter)
     tasks = (await db.execute(stmt)).scalars().all()
+    now = utc_now()
 
     latest_attempts = await _latest_attempt_map(db, [task.id for task in tasks])
     ticket_artifacts = await _latest_ticket_artifact_map(db, [task.id for task in tasks])
@@ -928,6 +972,7 @@ async def list_tasks(
                 task,
                 latest_attempt=latest_attempts.get(task.id),
                 ticket_summary=_ticket_summary_from_artifact(ticket_artifacts.get(task.id)),
+                now=now,
             )
             for task in tasks
         ]
@@ -1072,9 +1117,10 @@ async def get_task_detail(db: AsyncSession, *, task_id: UUID, user: User) -> Tas
 
     latest_attempt = max(attempts, key=lambda row: row.finished_at) if attempts else None
     last_attempt_at = latest_attempt.finished_at if latest_attempt else None
+    now = utc_now()
 
     return TaskDetailOut(
-        task=task_to_summary(task, last_attempt_at=last_attempt_at, latest_attempt=latest_attempt),
+        task=task_to_summary(task, last_attempt_at=last_attempt_at, latest_attempt=latest_attempt, now=now),
         attempts=[
             TaskAttemptOut(
                 id=attempt.id,
@@ -1135,34 +1181,23 @@ async def retry_task_now(db: AsyncSession, *, task_id: UUID, user: User) -> Task
     task = await get_task_for_user(db, task_id=task_id, user=user)
     now = utc_now()
 
-    # Explicitly separate from pause/resume. Paused tasks must be resumed instead.
-    if task.state == "PAUSED" or task.paused_at is not None:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Task is paused. Use Resume instead.")
-
-    # No manual retry for terminal or in-progress processing states.
-    if task.state in TERMINAL_TASK_STATES:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Task is in a terminal state.")
-    if task.state in {"RUNNING", "RESERVING", "PAYING"}:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Task is currently running.")
-
-    if task.state not in {"QUEUED", "POLLING"}:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Task is not eligible for retry.")
-
-    deadline_at = task.deadline_at
-    if deadline_at.tzinfo is None:
-        deadline_at = deadline_at.replace(tzinfo=timezone.utc)
-    if now >= deadline_at.astimezone(timezone.utc):
-        task.state = "EXPIRED"
-        task.updated_at = now
-        await db.commit()
-        await db.refresh(task)
-        raise HTTPException(status_code=status.HTTP_410_GONE, detail="Task deadline has passed.")
-
-    last_manual_retry_at = _parse_iso_datetime(str((task.spec_json or {}).get(MANUAL_RETRY_LAST_AT_KEY) or ""))
-    if last_manual_retry_at is not None:
-        elapsed = (now - last_manual_retry_at).total_seconds()
-        if elapsed < MANUAL_RETRY_COOLDOWN_SECONDS:
+    allowed, reason, _available_at = _compute_retry_now_status(task, now=now)
+    if not allowed:
+        if reason == "paused_use_resume":
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Task is paused. Use Resume instead.")
+        if reason == "terminal_state":
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Task is in a terminal state.")
+        if reason == "task_running":
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Task is currently running.")
+        if reason == "deadline_passed":
+            task.state = "EXPIRED"
+            task.updated_at = now
+            await db.commit()
+            await db.refresh(task)
+            raise HTTPException(status_code=status.HTTP_410_GONE, detail="Task deadline has passed.")
+        if reason == "cooldown_active":
             raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Retry cooldown active.")
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Task is not eligible for retry.")
 
     next_spec = dict(task.spec_json or {})
     next_spec.pop(NEXT_RUN_AT_KEY, None)
