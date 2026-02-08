@@ -154,6 +154,7 @@ class TaskSummaryOut(BaseModel):
     failed_at: datetime | None
     hidden_at: datetime | None
     last_attempt_at: datetime | None
+    next_run_at: datetime | None
     spec_json: dict
     ticket_status: str | None = None
     ticket_paid: bool | None = None
