@@ -22,6 +22,12 @@ else
     exit 1
 fi
 
+PROJECT_NAME="bominal"
+existing_project="$(docker inspect --format '{{ index .Config.Labels "com.docker.compose.project" }}' bominal-postgres 2>/dev/null || true)"
+if [[ -n "$existing_project" && "$existing_project" != "<no value>" ]]; then
+    PROJECT_NAME="$existing_project"
+fi
+
 cd "$REPO_ROOT"
 
 # Initialize git submodules (third_party/srtgo)
@@ -46,7 +52,7 @@ done
 
 # Build Docker images
 echo "→ Building Docker images..."
-"${DC[@]}" -f infra/docker-compose.yml build
+"${DC[@]}" -p "$PROJECT_NAME" -f infra/docker-compose.yml build
 
 echo ""
 echo "=== Setup complete ==="

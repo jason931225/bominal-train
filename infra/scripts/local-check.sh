@@ -24,13 +24,21 @@ else
     exit 1
 fi
 
+PROJECT_NAME="bominal"
+existing_project="$(docker inspect --format '{{ index .Config.Labels "com.docker.compose.project" }}' bominal-postgres 2>/dev/null || true)"
+if [[ -n "$existing_project" && "$existing_project" != "<no value>" ]]; then
+    PROJECT_NAME="$existing_project"
+fi
+
+COMPOSE=("${DC[@]}" -p "$PROJECT_NAME" -f infra/docker-compose.yml)
+
 debug_dump() {
     echo ""
     echo "=== Debug: docker compose ps ==="
-    "${DC[@]}" -f infra/docker-compose.yml ps || true
+    "${COMPOSE[@]}" ps || true
     echo ""
     echo "=== Debug: docker compose logs (tail 200) ==="
-    "${DC[@]}" -f infra/docker-compose.yml logs --tail=200 api worker web || true
+    "${COMPOSE[@]}" logs --tail=200 api worker web || true
 }
 
 trap debug_dump ERR
@@ -45,7 +53,7 @@ if [[ ! -f "$ENV_DEV_DIR/api.env" || ! -f "$ENV_DEV_DIR/postgres.env" || ! -f "$
 fi
 
 echo "→ Starting dev stack..."
-"${DC[@]}" -f infra/docker-compose.yml up -d --build
+"${COMPOSE[@]}" up -d --build
 
 wait_for_container_healthy() {
     local name="$1"
@@ -100,11 +108,10 @@ wait_for_container_healthy "bominal-redis" 60
 wait_for_url "http://localhost:8000/health" 60
 
 echo "→ Running backend tests..."
-"${DC[@]}" -f infra/docker-compose.yml exec -T api pytest -q
+"${COMPOSE[@]}" exec -T api pytest -q
 
 echo "→ Running web typecheck..."
-"${DC[@]}" -f infra/docker-compose.yml exec -T web npx tsc --noEmit
+"${COMPOSE[@]}" exec -T web npx tsc --noEmit
 
 echo ""
 echo "=== local-check: ok ==="
-
