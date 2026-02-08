@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 
 import fakeredis.aioredis
 import pytest
+from fastapi import HTTPException
 from sqlalchemy import select
 
 from app.db.models import Artifact, Task, TaskAttempt, User
@@ -13,7 +14,7 @@ from app.modules.train.providers.base import ProviderOutcome, ProviderSchedule
 from app.modules.train.providers.ktx_client import parse_ktx_search_response
 from app.modules.train.providers.srt_client import parse_srt_search_response
 from app.modules.train.rate_limiter import RedisTokenBucketLimiter
-from app.modules.train.service import get_task_detail
+from app.modules.train.service import get_task_detail, retry_task_now
 from app.modules.train.schemas import ProviderCredentialStatus
 from app.modules.train.worker import run_train_task
 from tests.conftest import make_fake_get_redis_client
@@ -1595,6 +1596,230 @@ async def test_seat_preference_fallback_reserves_available_class(
     assert len(artifacts) == 1
     assert artifacts[0].data_json_safe.get("seat_class_requested") == seat_class
     assert artifacts[0].data_json_safe.get("seat_class_reserved") == expected_reserved
+
+
+@pytest.mark.asyncio
+async def test_retry_task_now_allows_queued(db_session, monkeypatch):
+    calls: list[str] = []
+
+    async def _record_enqueue(task_id: str, defer_seconds: float = 0.0) -> None:
+        calls.append(task_id)
+
+    monkeypatch.setattr("app.modules.train.service.enqueue_train_task", _record_enqueue)
+
+    user = User(
+        email="retry-queued@example.com",
+        password_hash="x",
+        display_name="Retry User",
+        role_id=2,
+    )
+    db_session.add(user)
+    await db_session.flush()
+
+    task = Task(
+        user_id=user.id,
+        module="train",
+        state="QUEUED",
+        deadline_at=_utc_now() + timedelta(minutes=10),
+        spec_json={"provider": "SRT"},
+        idempotency_key="retry-queued",
+    )
+    db_session.add(task)
+    await db_session.commit()
+
+    response = await retry_task_now(db_session, task_id=task.id, user=user)
+
+    assert response.task.id == task.id
+    assert response.task.state == "QUEUED"
+    assert calls == [str(task.id)]
+
+    await db_session.refresh(task)
+    assert task.spec_json.get("manual_retry_last_at")
+
+
+@pytest.mark.asyncio
+async def test_retry_task_now_allows_polling_and_clears_next_run_at(db_session, monkeypatch):
+    async def _noop_enqueue(task_id: str, defer_seconds: float = 0.0) -> None:
+        return None
+
+    monkeypatch.setattr("app.modules.train.service.enqueue_train_task", _noop_enqueue)
+
+    user = User(
+        email="retry-polling@example.com",
+        password_hash="x",
+        display_name="Retry Polling User",
+        role_id=2,
+    )
+    db_session.add(user)
+    await db_session.flush()
+
+    task = Task(
+        user_id=user.id,
+        module="train",
+        state="POLLING",
+        deadline_at=_utc_now() + timedelta(minutes=10),
+        spec_json={"provider": "SRT", "next_run_at": (_utc_now() + timedelta(minutes=5)).isoformat()},
+        idempotency_key="retry-polling",
+    )
+    db_session.add(task)
+    await db_session.commit()
+
+    response = await retry_task_now(db_session, task_id=task.id, user=user)
+
+    assert response.task.state == "QUEUED"
+
+    await db_session.refresh(task)
+    assert task.state == "QUEUED"
+    assert "next_run_at" not in task.spec_json
+
+
+@pytest.mark.asyncio
+async def test_retry_task_now_rejects_paused(db_session, monkeypatch):
+    async def _noop_enqueue(task_id: str, defer_seconds: float = 0.0) -> None:
+        return None
+
+    monkeypatch.setattr("app.modules.train.service.enqueue_train_task", _noop_enqueue)
+
+    user = User(
+        email="retry-paused@example.com",
+        password_hash="x",
+        display_name="Retry Paused User",
+        role_id=2,
+    )
+    db_session.add(user)
+    await db_session.flush()
+
+    task = Task(
+        user_id=user.id,
+        module="train",
+        state="PAUSED",
+        paused_at=_utc_now(),
+        deadline_at=_utc_now() + timedelta(minutes=10),
+        spec_json={"provider": "SRT"},
+        idempotency_key="retry-paused",
+    )
+    db_session.add(task)
+    await db_session.commit()
+
+    with pytest.raises(HTTPException) as excinfo:
+        await retry_task_now(db_session, task_id=task.id, user=user)
+
+    assert excinfo.value.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_retry_task_now_rejects_processing_states(db_session, monkeypatch):
+    async def _noop_enqueue(task_id: str, defer_seconds: float = 0.0) -> None:
+        return None
+
+    monkeypatch.setattr("app.modules.train.service.enqueue_train_task", _noop_enqueue)
+
+    user = User(
+        email="retry-processing@example.com",
+        password_hash="x",
+        display_name="Retry Processing User",
+        role_id=2,
+    )
+    db_session.add(user)
+    await db_session.flush()
+
+    for state in ("RUNNING", "RESERVING", "PAYING"):
+        task = Task(
+            user_id=user.id,
+            module="train",
+            state=state,
+            deadline_at=_utc_now() + timedelta(minutes=10),
+            spec_json={"provider": "SRT"},
+            idempotency_key=f"retry-processing-{state}",
+        )
+        db_session.add(task)
+
+    await db_session.commit()
+
+    tasks = (await db_session.execute(select(Task).where(Task.user_id == user.id))).scalars().all()
+    processing = [task for task in tasks if task.idempotency_key.startswith("retry-processing-")]
+    assert len(processing) == 3
+
+    for task in processing:
+        with pytest.raises(HTTPException) as excinfo:
+            await retry_task_now(db_session, task_id=task.id, user=user)
+        assert excinfo.value.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_retry_task_now_marks_expired_when_deadline_passed(db_session, monkeypatch):
+    async def _noop_enqueue(task_id: str, defer_seconds: float = 0.0) -> None:
+        return None
+
+    monkeypatch.setattr("app.modules.train.service.enqueue_train_task", _noop_enqueue)
+
+    user = User(
+        email="retry-expired@example.com",
+        password_hash="x",
+        display_name="Retry Expired User",
+        role_id=2,
+    )
+    db_session.add(user)
+    await db_session.flush()
+
+    task = Task(
+        user_id=user.id,
+        module="train",
+        state="QUEUED",
+        deadline_at=_utc_now() - timedelta(seconds=1),
+        spec_json={"provider": "SRT"},
+        idempotency_key="retry-expired",
+    )
+    db_session.add(task)
+    await db_session.commit()
+
+    with pytest.raises(HTTPException) as excinfo:
+        await retry_task_now(db_session, task_id=task.id, user=user)
+
+    assert excinfo.value.status_code == 410
+
+    await db_session.refresh(task)
+    assert task.state == "EXPIRED"
+
+
+@pytest.mark.asyncio
+async def test_retry_task_now_enforces_cooldown(db_session, monkeypatch):
+    calls: list[str] = []
+
+    async def _record_enqueue(task_id: str, defer_seconds: float = 0.0) -> None:
+        calls.append(task_id)
+
+    monkeypatch.setattr("app.modules.train.service.enqueue_train_task", _record_enqueue)
+
+    user = User(
+        email="retry-cooldown@example.com",
+        password_hash="x",
+        display_name="Retry Cooldown User",
+        role_id=2,
+    )
+    db_session.add(user)
+    await db_session.flush()
+
+    task = Task(
+        user_id=user.id,
+        module="train",
+        state="POLLING",
+        deadline_at=_utc_now() + timedelta(minutes=10),
+        spec_json={"provider": "SRT"},
+        idempotency_key="retry-cooldown",
+    )
+    db_session.add(task)
+    await db_session.commit()
+
+    first = await retry_task_now(db_session, task_id=task.id, user=user)
+    assert first.task.state == "QUEUED"
+    assert calls == [str(task.id)]
+
+    with pytest.raises(HTTPException) as excinfo:
+        await retry_task_now(db_session, task_id=task.id, user=user)
+
+    assert excinfo.value.status_code == 429
+    assert calls == [str(task.id)]
 
 
 def test_parse_srt_search_response_from_srtgo_shape():

@@ -63,6 +63,9 @@ from app.services.wallet import get_payment_card_for_execution
 settings = get_settings()
 TASK_VISIBILITY_RETENTION_DAYS = 365
 TICKET_SYNC_MIN_SECONDS = 15
+MANUAL_RETRY_COOLDOWN_SECONDS = 15
+MANUAL_RETRY_LAST_AT_KEY = "manual_retry_last_at"
+NEXT_RUN_AT_KEY = "next_run_at"
 
 
 def _parse_iso_datetime(value: str | None) -> datetime | None:
@@ -1088,6 +1091,54 @@ async def resume_task(db: AsyncSession, *, task_id: UUID, user: User) -> TaskAct
 
     task.state = "QUEUED"
     task.paused_at = None
+    await db.commit()
+    await db.refresh(task)
+
+    await enqueue_train_task(str(task.id))
+
+    return TaskActionResponse(task=task_to_summary(task))
+
+
+async def retry_task_now(db: AsyncSession, *, task_id: UUID, user: User) -> TaskActionResponse:
+    task = await get_task_for_user(db, task_id=task_id, user=user)
+    now = utc_now()
+
+    # Explicitly separate from pause/resume. Paused tasks must be resumed instead.
+    if task.state == "PAUSED" or task.paused_at is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Task is paused. Use Resume instead.")
+
+    # No manual retry for terminal or in-progress processing states.
+    if task.state in TERMINAL_TASK_STATES:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Task is in a terminal state.")
+    if task.state in {"RUNNING", "RESERVING", "PAYING"}:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Task is currently running.")
+
+    if task.state not in {"QUEUED", "POLLING"}:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Task is not eligible for retry.")
+
+    deadline_at = task.deadline_at
+    if deadline_at.tzinfo is None:
+        deadline_at = deadline_at.replace(tzinfo=timezone.utc)
+    if now >= deadline_at.astimezone(timezone.utc):
+        task.state = "EXPIRED"
+        task.updated_at = now
+        await db.commit()
+        await db.refresh(task)
+        raise HTTPException(status_code=status.HTTP_410_GONE, detail="Task deadline has passed.")
+
+    last_manual_retry_at = _parse_iso_datetime(str((task.spec_json or {}).get(MANUAL_RETRY_LAST_AT_KEY) or ""))
+    if last_manual_retry_at is not None:
+        elapsed = (now - last_manual_retry_at).total_seconds()
+        if elapsed < MANUAL_RETRY_COOLDOWN_SECONDS:
+            raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Retry cooldown active.")
+
+    next_spec = dict(task.spec_json or {})
+    next_spec.pop(NEXT_RUN_AT_KEY, None)
+    next_spec[MANUAL_RETRY_LAST_AT_KEY] = now.isoformat()
+
+    task.spec_json = next_spec
+    task.state = "QUEUED"
+    task.updated_at = now
     await db.commit()
     await db.refresh(task)
 
