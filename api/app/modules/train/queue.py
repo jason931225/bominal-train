@@ -23,7 +23,8 @@ async def get_queue_pool() -> ArqRedis:
 
 async def enqueue_train_task(task_id: str, defer_seconds: float = 0.0) -> None:
     pool = await get_queue_pool()
+    job_id = f"train:{task_id}"
     if defer_seconds > 0:
-        await pool.enqueue_job("run_train_task", task_id, _defer_by=defer_seconds)
+        await pool.enqueue_job("run_train_task", task_id, _job_id=job_id, _defer_by=defer_seconds)
     else:
-        await pool.enqueue_job("run_train_task", task_id)
+        await pool.enqueue_job("run_train_task", task_id, _job_id=job_id)
