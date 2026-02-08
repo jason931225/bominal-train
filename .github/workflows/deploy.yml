@@ -20,7 +20,6 @@ permissions:
 env:
   DEPLOY_INSTANCE: bominal-deploy
   DEPLOY_ZONE: us-central1-a
-  DEPLOY_USER: bominal
   REPO_DIR: /opt/bominal/repo
   DEPLOY_SCRIPT: /opt/bominal/repo/infra/scripts/deploy-zero-downtime.sh
 
@@ -64,13 +63,26 @@ jobs:
         with:
           instance_name: ${{ env.DEPLOY_INSTANCE }}
           zone: ${{ env.DEPLOY_ZONE }}
-          user: ${{ env.DEPLOY_USER }}
           ssh_private_key: ${{ steps.key.outputs.private_key }}
           command: |
             set -euo pipefail
-            cd /opt/bominal/repo
+
+            # OS Login is enabled; SSH login user is derived from IAM identity.
+            # Run the deploy script as the app user (bominal) to match prod docs.
+            echo "=== ssh identity (oslogin) ==="
+            whoami
+            id
+
+            echo "=== sudo preflight ==="
+            sudo -n true
+            sudo -n -u bominal id
+
+            cd "${{ env.REPO_DIR }}"
+
             if [[ -n "${{ github.event.inputs.commit }}" ]]; then
-              GCP_PROJECT_ID=${{ env.GCP_PROJECT_ID }} GCP_REGION=${{ env.GCP_REGION }} bash /opt/bominal/repo/infra/scripts/deploy-zero-downtime.sh "${{ github.event.inputs.commit }}"
+              sudo -n -u bominal env GCP_PROJECT_ID=${{ env.GCP_PROJECT_ID }} GCP_REGION=${{ env.GCP_REGION }} \
+                bash "${{ env.DEPLOY_SCRIPT }}" "${{ github.event.inputs.commit }}"
             else
-              GCP_PROJECT_ID=${{ env.GCP_PROJECT_ID }} GCP_REGION=${{ env.GCP_REGION }} bash /opt/bominal/repo/infra/scripts/deploy-zero-downtime.sh
+              sudo -n -u bominal env GCP_PROJECT_ID=${{ env.GCP_PROJECT_ID }} GCP_REGION=${{ env.GCP_REGION }} \
+                bash "${{ env.DEPLOY_SCRIPT }}"
             fi
