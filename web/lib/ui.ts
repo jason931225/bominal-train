@@ -4,8 +4,8 @@ export const UI_CARD_MD = `${UI_CARD_BASE} p-6`;
 export const UI_CARD_SM = `${UI_CARD_BASE} p-4`;
 
 export const UI_KICKER = "text-xs uppercase tracking-[0.16em] text-blossom-500";
-export const UI_TITLE_LG = "text-3xl font-semibold tracking-tight text-slate-800";
-export const UI_TITLE_MD = "text-2xl font-semibold tracking-tight text-slate-800";
+export const UI_TITLE_LG = "text-3xl font-display font-semibold tracking-tight text-slate-900";
+export const UI_TITLE_MD = "text-2xl font-display font-semibold tracking-tight text-slate-900";
 export const UI_BODY_MUTED = "text-sm text-slate-500";
 
 export const UI_BUTTON_BASE =
@@ -23,4 +23,3 @@ export const UI_MENU_ITEM = "block rounded-xl px-3 py-2 text-sm text-slate-700 t
 export const UI_CHIP_BASE = "rounded-full px-2 py-1 text-xs font-medium tracking-wide";
 export const UI_CHIP_BRAND = `${UI_CHIP_BASE} border border-blossom-200 bg-blossom-50 text-blossom-600`;
 export const UI_CHIP_MUTED = `${UI_CHIP_BASE} border border-slate-200 bg-slate-100 text-slate-500`;
-
