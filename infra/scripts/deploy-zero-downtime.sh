@@ -75,7 +75,14 @@ export GCP_PROJECT_ID
 # Get current deployed version
 get_current_version() {
   if [[ -f "$DEPLOY_HISTORY_DIR/current" ]]; then
-    cat "$DEPLOY_HISTORY_DIR/current"
+    local v
+    v=$(cat "$DEPLOY_HISTORY_DIR/current" 2>/dev/null || true)
+    v=${v//$'\n'/}
+    if [[ -z "$v" || "$v" == "<no value>" ]]; then
+      echo "unknown"
+    else
+      echo "$v"
+    fi
   else
     echo "unknown"
   fi
@@ -84,6 +91,8 @@ get_current_version() {
 # Save deployment record
 save_deployment() {
   local commit="$1"
+  local api_digest="${2:-}"
+  local web_digest="${3:-}"
   local timestamp
   timestamp=$(date -u +"%Y%m%d_%H%M%S")
   
@@ -91,14 +100,18 @@ save_deployment() {
   local prev_commit
   prev_commit=$(get_current_version)
   
-  # Save to history with metadata
+  # Save to history with metadata.
+  # Use shell-escaped values so records can be safely `source`'d even if values
+  # contain spaces or quotes (e.g. OS Login usernames, future image refs).
   {
-    echo "commit=$commit"
-    echo "timestamp=$timestamp"
-    echo "api_image=$API_IMAGE"
-    echo "web_image=$WEB_IMAGE"
-    echo "deployed_by=${USER:-unknown}"
-    echo "previous=$prev_commit"
+    printf 'commit=%q\n' "$commit"
+    printf 'timestamp=%q\n' "$timestamp"
+    printf 'api_image=%q\n' "$API_IMAGE"
+    printf 'web_image=%q\n' "$WEB_IMAGE"
+    printf 'api_digest=%q\n' "$api_digest"
+    printf 'web_digest=%q\n' "$web_digest"
+    printf 'deployed_by=%q\n' "${USER:-unknown}"
+    printf 'previous=%q\n' "$prev_commit"
   } > "$DEPLOY_HISTORY_DIR/$timestamp"
   
   # Update current pointer
@@ -118,7 +131,14 @@ save_deployment() {
 # Get previous deployment for rollback
 get_previous_version() {
   if [[ -f "$DEPLOY_HISTORY_DIR/previous" ]]; then
-    cat "$DEPLOY_HISTORY_DIR/previous"
+    local v
+    v=$(cat "$DEPLOY_HISTORY_DIR/previous" 2>/dev/null || true)
+    v=${v//$'\n'/}
+    if [[ -z "$v" || "$v" == "<no value>" || "$v" == "unknown" ]]; then
+      log_error "No previous deployment found for rollback"
+      exit 1
+    fi
+    echo "$v"
   else
     log_error "No previous deployment found for rollback"
     exit 1
@@ -133,23 +153,37 @@ do_rollback() {
   
   # Load previous deployment metadata if available
   local prev_record
-  prev_record=$(ls -t "$DEPLOY_HISTORY_DIR" | grep -E '^[0-9]{8}_[0-9]{6}$' | while read -r record; do
+  prev_record=$( (ls -t "$DEPLOY_HISTORY_DIR" | grep -E '^[0-9]{8}_[0-9]{6}$' | while read -r record; do
     if grep -q "commit=$prev_commit" "$DEPLOY_HISTORY_DIR/$record" 2>/dev/null; then
       echo "$record"
       break
     fi
-  done)
+  done) || true)
   
   if [[ -n "$prev_record" ]]; then
     log_info "Found previous deployment record: $prev_record"
-    source "$DEPLOY_HISTORY_DIR/$prev_record"
-    
-    # Override image URLs from previous deployment
-    export API_IMAGE="$api_image"
-    export WEB_IMAGE="$web_image"
-    log_info "Using previous images:"
-    log_info "  API: $API_IMAGE"
-    log_info "  Web: $WEB_IMAGE"
+    api_digest=""
+    web_digest=""
+    api_image=""
+    web_image=""
+    if source "$DEPLOY_HISTORY_DIR/$prev_record" >/dev/null 2>&1; then
+      # Prefer immutable digests (deterministic rollback), fall back to commit tags.
+      if [[ -n "${api_digest:-}" && -n "${web_digest:-}" ]]; then
+        export API_IMAGE="$api_digest"
+        export WEB_IMAGE="$web_digest"
+        log_info "Using previous digests:"
+        log_info "  API: $API_IMAGE"
+        log_info "  Web: $WEB_IMAGE"
+      else
+        log_warn "Deployment record missing digests; falling back to commit tag"
+        export API_IMAGE="${REGISTRY}/${GCP_PROJECT_ID}/bominal/api:${prev_commit}"
+        export WEB_IMAGE="${REGISTRY}/${GCP_PROJECT_ID}/bominal/web:${prev_commit}"
+      fi
+    else
+      log_warn "Failed to load deployment record; falling back to commit tag"
+      export API_IMAGE="${REGISTRY}/${GCP_PROJECT_ID}/bominal/api:${prev_commit}"
+      export WEB_IMAGE="${REGISTRY}/${GCP_PROJECT_ID}/bominal/web:${prev_commit}"
+    fi
   else
     log_warn "No detailed record found, using commit tag"
     export API_IMAGE="${REGISTRY}/${GCP_PROJECT_ID}/bominal/api:${prev_commit}"
@@ -301,12 +335,20 @@ show_status() {
   fi
   echo ""
   log_info "Recent deployments:"
-  ls -t "$DEPLOY_HISTORY_DIR" | grep -E '^[0-9]{8}_[0-9]{6}$' | head -5 | while read -r record; do
+  (ls -t "$DEPLOY_HISTORY_DIR" | grep -E '^[0-9]{8}_[0-9]{6}$' | head -5 | while read -r record; do
     if [[ -f "$DEPLOY_HISTORY_DIR/$record" ]]; then
-      source "$DEPLOY_HISTORY_DIR/$record"
-      echo "  - $timestamp: $commit (by ${deployed_by:-unknown})"
+      commit=""
+      timestamp=""
+      api_digest=""
+      web_digest=""
+      deployed_by=""
+      if source "$DEPLOY_HISTORY_DIR/$record" >/dev/null 2>&1; then
+        echo "  - $timestamp: $commit (by ${deployed_by:-unknown})"
+      else
+        log_warn "Could not load deployment record: $record"
+      fi
     fi
-  done
+  done) || true
 }
 
 # Cleanup old Docker resources
@@ -386,9 +428,15 @@ main() {
   else
     # Pull to inspect the image
     docker pull "$API_IMAGE" >/dev/null 2>&1 || true
-    deploy_commit=$(docker inspect "$API_IMAGE" --format='{{.Config.Labels.org.opencontainers.image.revision}}' 2>/dev/null || echo "latest")
+    deploy_commit=$(docker inspect "$API_IMAGE" --format='{{index .Config.Labels "org.opencontainers.image.revision"}}' 2>/dev/null || true)
+    if [[ -z "$deploy_commit" || "$deploy_commit" == "<no value>" ]]; then
+      log_error "Could not determine image revision from label: org.opencontainers.image.revision"
+      log_error "This would corrupt /opt/bominal/deployments/* tracking."
+      log_error "Fix: ensure CI sets this label, or deploy a specific commit tag: $0 <commit>"
+      exit 1
+    fi
   fi
-  
+
   log_info "Deploying commit: $deploy_commit"
   log_info "  API: $API_IMAGE"
   log_info "  Web: $WEB_IMAGE"
@@ -400,11 +448,31 @@ main() {
   
   # Pull and deploy
   pull_images
+
+  # Resolve immutable repo digests after pull (used for deterministic rollback)
+  local api_digest web_digest
+  api_digest=$(docker inspect "$API_IMAGE" --format='{{if .RepoDigests}}{{index .RepoDigests 0}}{{end}}' 2>/dev/null || true)
+  web_digest=$(docker inspect "$WEB_IMAGE" --format='{{if .RepoDigests}}{{index .RepoDigests 0}}{{end}}' 2>/dev/null || true)
+
+  if [[ "$api_digest" == "<no value>" ]]; then api_digest=""; fi
+  if [[ "$web_digest" == "<no value>" ]]; then web_digest=""; fi
+
+  if [[ -n "$api_digest" && "$api_digest" != *@sha256:* ]]; then api_digest=""; fi
+  if [[ -n "$web_digest" && "$web_digest" != *@sha256:* ]]; then web_digest=""; fi
+
+  if [[ -n "$api_digest" && -n "$web_digest" ]]; then
+    log_info "Resolved image digests for rollback:"
+    log_info "  API: $api_digest"
+    log_info "  Web: $web_digest"
+  else
+    log_warn "Could not resolve one or both repo digests; rollback may fall back to commit tags"
+  fi
+
   deploy_services
-  
+
   # Verify
   if verify_deployment; then
-    save_deployment "$deploy_commit"
+    save_deployment "$deploy_commit" "$api_digest" "$web_digest"
     cleanup_docker
     log_ok "Deployment of $deploy_commit complete!"
     show_status
