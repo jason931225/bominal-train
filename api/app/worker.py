@@ -5,7 +5,6 @@ import logging
 import signal
 from contextlib import suppress
 from datetime import datetime, timezone
-from typing import Any
 from uuid import UUID
 
 from arq.connections import RedisSettings
@@ -120,30 +119,11 @@ async def on_shutdown(ctx: dict) -> None:
     logger.info("Worker shutdown complete")
 
 
-async def on_job_start(ctx: dict, job: Any = None) -> None:
-    """Called when a job starts - track it for graceful shutdown."""
-    # Extract task_id from job arguments if it's a train task
-    if hasattr(job, 'args') and job.args and job.function == 'run_train_task':
-        task_id = job.args[0] if job.args else None
-        if task_id:
-            _register_in_flight(task_id)
-
-
-async def on_job_end(ctx: dict, job: Any, result: Any) -> None:
-    """Called when a job ends - remove from tracking."""
-    if hasattr(job, 'args') and job.args and job.function == 'run_train_task':
-        task_id = job.args[0] if job.args else None
-        if task_id:
-            _unregister_in_flight(task_id)
-
-
 class WorkerSettings:
     functions = [run_train_task, deliver_email_job]
     redis_settings = RedisSettings.from_dsn(settings.redis_url)
     on_startup = on_startup
     on_shutdown = on_shutdown
-    on_job_start = on_job_start
-    on_job_end = on_job_end
     max_jobs = 20
     job_timeout = 300
     # Allow time for graceful shutdown
