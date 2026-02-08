@@ -44,7 +44,6 @@ jobs:
         with:
           instance_name: ${{ env.DEPLOY_INSTANCE }}
           zone: ${{ env.DEPLOY_ZONE }}
-          user: bominal
           ssh_private_key: ${{ steps.key.outputs.private_key }}
           command: |
             set -euo pipefail
