@@ -26,3 +26,6 @@ infra/env/prod/*.env
 *.tfstate.*
 crash.log
 crash.*.log
+
+# One-off GCP exports (often contain sensitive data)
+gcp_resources*.tf
