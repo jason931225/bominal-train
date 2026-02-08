@@ -1021,8 +1021,13 @@ async def run_train_task(ctx: dict, task_id: str) -> None:
             unregister_fn(task_id)
         try:
             await redis.eval(_TASK_LOCK_RELEASE_LUA, 1, lock_key, lock_value)
-        except Exception as exc:
-            logger.warning("Failed to release task lock %s: %s", lock_key, type(exc).__name__)
+        except Exception:
+            try:
+                current = await redis.get(lock_key)
+                if current == lock_value or current == lock_value.encode("utf-8"):
+                    await redis.delete(lock_key)
+            except Exception as exc:
+                logger.warning("Failed to release task lock %s: %s", lock_key, type(exc).__name__)
 
 
 async def _run_train_task_inner(
