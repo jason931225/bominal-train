@@ -121,6 +121,11 @@ The deployment system maintains:
 | `/opt/bominal/deployments/previous` | Previous deployment (for rollback) |
 | `/opt/bominal/deployments/<timestamp>` | Historical deployment records |
 
+Each `<timestamp>` record includes the deployed commit and image references. Newer
+records also include `api_digest` / `web_digest` (immutable `name@sha256:...`)
+which the rollback path prefers for deterministic rollbacks (even if `:latest`
+has moved).
+
 Only the last 10 deployment records are kept.
 
 ---
@@ -321,6 +326,10 @@ echo "def456a" > /opt/bominal/deployments/previous
 # Then retry rollback
 sudo -u bominal infra/scripts/deploy-zero-downtime.sh --rollback
 ```
+
+Malformed historical records (e.g. bad files under `/opt/bominal/deployments/<timestamp>`)
+should not break `--status` or deploy/rollback runs; the script will warn and skip
+records it can’t read.
 
 ---
 
