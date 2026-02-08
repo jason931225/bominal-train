@@ -100,6 +100,15 @@ export type TrainTaskSummary = {
   failed_at: string | null;
   hidden_at: string | null;
   last_attempt_at: string | null;
+  last_attempt_action: string | null;
+  last_attempt_ok: boolean | null;
+  last_attempt_error_code: string | null;
+  last_attempt_error_message_safe: string | null;
+  last_attempt_finished_at: string | null;
+  next_run_at: string | null;
+  retry_now_allowed: boolean;
+  retry_now_reason: string | null;
+  retry_now_available_at: string | null;
   spec_json: Record<string, unknown>;
   ticket_status?: string | null;
   ticket_paid?: boolean | null;

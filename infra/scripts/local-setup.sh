@@ -11,7 +11,16 @@ echo "=== bominal local setup ==="
 
 # Check prerequisites
 command -v docker >/dev/null 2>&1 || { echo "Error: docker is required"; exit 1; }
-command -v docker-compose >/dev/null 2>&1 || command -v "docker compose" >/dev/null 2>&1 || { echo "Error: docker-compose is required"; exit 1; }
+
+# Detect docker compose command (v2 plugin preferred)
+if docker compose version >/dev/null 2>&1; then
+    COMPOSE_CMD=(docker compose)
+elif command -v docker-compose >/dev/null 2>&1; then
+    COMPOSE_CMD=(docker-compose)
+else
+    echo "Error: docker compose (v2) or docker-compose (v1) is required"
+    exit 1
+fi
 
 cd "$REPO_ROOT"
 
@@ -37,7 +46,7 @@ done
 
 # Build Docker images
 echo "→ Building Docker images..."
-docker-compose -f infra/docker-compose.yml build
+"${COMPOSE_CMD[@]}" -f infra/docker-compose.yml build
 
 echo ""
 echo "=== Setup complete ==="

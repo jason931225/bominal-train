@@ -5,7 +5,7 @@ import logging
 import random
 import time
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
 
@@ -307,6 +307,9 @@ async def _mark_completed(db: AsyncSession, task: Task) -> None:
 
 
 async def _schedule_retry(db: AsyncSession, task: Task, delay_seconds: float) -> None:
+    next_spec = dict(task.spec_json or {})
+    next_spec["next_run_at"] = (utc_now() + timedelta(seconds=delay_seconds)).isoformat()
+    task.spec_json = next_spec
     task.state = "POLLING"
     task.updated_at = utc_now()
     await db.commit()
