@@ -105,6 +105,9 @@ export type TrainTaskSummary = {
   ticket_paid?: boolean | null;
   ticket_payment_deadline_at?: string | null;
   ticket_reservation_id?: string | null;
+  retry_now_available: boolean;
+  retry_now_disabled_reason: string | null;
+  retry_now_next_available_at: string | null;
 };
 
 export type TrainTaskAttempt = {

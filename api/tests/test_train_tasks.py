@@ -1456,6 +1456,213 @@ async def test_manual_cancel_records_cancel_attempt(client, db_session, monkeypa
 
 
 @pytest.mark.asyncio
+async def test_retry_now_rejects_paused_task(client, db_session):
+    cookie = await _register_and_login(client, email="retry-paused@example.com")
+    user = (await db_session.execute(select(User).where(User.email == "retry-paused@example.com"))).scalar_one()
+
+    task = Task(
+        user_id=user.id,
+        module="train",
+        state="PAUSED",
+        paused_at=_utc_now(),
+        deadline_at=_utc_now() + timedelta(hours=1),
+        spec_json={"module": "train"},
+        idempotency_key="retry-paused-task",
+    )
+    db_session.add(task)
+    await db_session.commit()
+
+    response = await client.post(
+        f"/api/train/tasks/{task.id}/retry",
+        cookies={"bominal_session": cookie},
+    )
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Task is paused. Resume it first."
+
+
+@pytest.mark.asyncio
+async def test_retry_now_rejects_terminal_task(client, db_session):
+    cookie = await _register_and_login(client, email="retry-terminal@example.com")
+    user = (await db_session.execute(select(User).where(User.email == "retry-terminal@example.com"))).scalar_one()
+
+    task = Task(
+        user_id=user.id,
+        module="train",
+        state="FAILED",
+        failed_at=_utc_now(),
+        deadline_at=_utc_now() + timedelta(hours=1),
+        spec_json={"module": "train"},
+        idempotency_key="retry-terminal-task",
+    )
+    db_session.add(task)
+    await db_session.commit()
+
+    response = await client.post(
+        f"/api/train/tasks/{task.id}/retry",
+        cookies={"bominal_session": cookie},
+    )
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Task is in a terminal state."
+
+
+@pytest.mark.asyncio
+async def test_retry_now_rejects_after_deadline(client, db_session):
+    cookie = await _register_and_login(client, email="retry-deadline@example.com")
+    user = (await db_session.execute(select(User).where(User.email == "retry-deadline@example.com"))).scalar_one()
+
+    task = Task(
+        user_id=user.id,
+        module="train",
+        state="QUEUED",
+        deadline_at=_utc_now() - timedelta(minutes=1),
+        spec_json={"module": "train"},
+        idempotency_key="retry-deadline-task",
+    )
+    db_session.add(task)
+    await db_session.commit()
+
+    response = await client.post(
+        f"/api/train/tasks/{task.id}/retry",
+        cookies={"bominal_session": cookie},
+    )
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Task deadline has passed."
+
+
+@pytest.mark.asyncio
+async def test_retry_now_enqueues_and_sets_queued(client, db_session, monkeypatch):
+    enqueue_calls: list[str] = []
+
+    async def _fake_enqueue(task_id: str, defer_seconds: float = 0.0) -> None:
+        enqueue_calls.append(task_id)
+
+    monkeypatch.setattr("app.modules.train.service.enqueue_train_task", _fake_enqueue)
+
+    cookie = await _register_and_login(client, email="retry-success@example.com")
+    user = (await db_session.execute(select(User).where(User.email == "retry-success@example.com"))).scalar_one()
+
+    task = Task(
+        user_id=user.id,
+        module="train",
+        state="POLLING",
+        deadline_at=_utc_now() + timedelta(hours=1),
+        spec_json={"module": "train", "next_run_at": (_utc_now() + timedelta(minutes=5)).isoformat()},
+        idempotency_key="retry-success-task",
+    )
+    db_session.add(task)
+    await db_session.commit()
+
+    response = await client.post(
+        f"/api/train/tasks/{task.id}/retry",
+        cookies={"bominal_session": cookie},
+    )
+    assert response.status_code == 200
+
+    await db_session.refresh(task)
+    assert task.state == "QUEUED"
+    assert str(task.id) in enqueue_calls
+    assert int(task.spec_json.get("manual_retry_count") or 0) == 1
+    assert task.spec_json.get("manual_retry_at")
+    assert "next_run_at" not in task.spec_json
+
+
+@pytest.mark.asyncio
+async def test_retry_now_cooldown(client, db_session):
+    cookie = await _register_and_login(client, email="retry-cooldown@example.com")
+    user = (await db_session.execute(select(User).where(User.email == "retry-cooldown@example.com"))).scalar_one()
+
+    task = Task(
+        user_id=user.id,
+        module="train",
+        state="QUEUED",
+        deadline_at=_utc_now() + timedelta(hours=1),
+        spec_json={"manual_retry_at": _utc_now().isoformat(), "manual_retry_count": 1},
+        idempotency_key="retry-cooldown-task",
+    )
+    db_session.add(task)
+    await db_session.commit()
+
+    response = await client.post(
+        f"/api/train/tasks/{task.id}/retry",
+        cookies={"bominal_session": cookie},
+    )
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Please wait before retrying again."
+
+    list_response = await client.get(
+        "/api/train/tasks?status=all",
+        cookies={"bominal_session": cookie},
+    )
+    assert list_response.status_code == 200
+    payload = list_response.json()
+    summary = next(item for item in payload["tasks"] if item["id"] == str(task.id))
+    assert summary["retry_now_available"] is False
+    assert summary["retry_now_disabled_reason"] == "Please wait before retrying again."
+    assert summary["retry_now_next_available_at"] is not None
+    next_available = datetime.fromisoformat(summary["retry_now_next_available_at"])
+    assert next_available > _utc_now()
+
+
+@pytest.mark.asyncio
+async def test_worker_task_lock_prevents_concurrent_processing(db_session_factory, db_session, monkeypatch):
+    fake_redis = fakeredis.aioredis.FakeRedis()
+
+    user = User(
+        email="lock-test@example.com",
+        password_hash="x",
+        display_name="Lock Test User",
+        role_id=2,
+    )
+    db_session.add(user)
+    await db_session.flush()
+
+    task = Task(
+        user_id=user.id,
+        module="train",
+        state="QUEUED",
+        deadline_at=_utc_now() + timedelta(hours=1),
+        spec_json={"module": "train"},
+        idempotency_key="lock-test-task",
+    )
+    db_session.add(task)
+    await db_session.commit()
+
+    task_id = str(task.id)
+
+    async def _fake_inner(ctx: dict, task_id: str, db_factory, redis, limiter) -> None:
+        await asyncio.sleep(0.2)
+        async with db_factory() as db:
+            db.add(
+                TaskAttempt(
+                    task_id=task.id,
+                    action="SEARCH",
+                    provider="SRT",
+                    ok=True,
+                    retryable=False,
+                    error_code=None,
+                    error_message_safe=None,
+                    duration_ms=1,
+                    meta_json_safe={"lock_test": True},
+                    started_at=_utc_now(),
+                    finished_at=_utc_now(),
+                )
+            )
+            await db.commit()
+
+    monkeypatch.setattr("app.modules.train.worker._run_train_task_inner", _fake_inner)
+
+    await asyncio.gather(
+        run_train_task({"db_factory": db_session_factory, "redis": fake_redis}, task_id),
+        run_train_task({"db_factory": db_session_factory, "redis": fake_redis}, task_id),
+    )
+
+    attempts = (
+        await db_session.execute(select(TaskAttempt).where(TaskAttempt.task_id == task.id))
+    ).scalars().all()
+    assert len(attempts) == 1
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("seat_class", "availability", "expected_reserved"),
     [

@@ -63,6 +63,9 @@ from app.services.wallet import get_payment_card_for_execution
 settings = get_settings()
 TASK_VISIBILITY_RETENTION_DAYS = 365
 TICKET_SYNC_MIN_SECONDS = 15
+MANUAL_RETRY_COOLDOWN_SECONDS = 30
+MAX_MANUAL_RETRIES_PER_TASK = 20
+RETRY_NOW_ELIGIBLE_STATES = {"QUEUED", "POLLING"}
 
 
 def _parse_iso_datetime(value: str | None) -> datetime | None:
@@ -584,12 +587,55 @@ def _ticket_summary_from_artifact(artifact: Artifact | None) -> dict | None:
     }
 
 
+def _retry_now_status(task: Task) -> tuple[bool, str | None, datetime | None]:
+    now = utc_now()
+
+    deadline_at = task.deadline_at
+    if deadline_at.tzinfo is None:
+        deadline_at = deadline_at.replace(tzinfo=timezone.utc)
+
+    if task.hidden_at is not None:
+        return False, "Task not found.", None
+    if task.cancelled_at is not None or task.state == "CANCELLED":
+        return False, "Task is cancelled.", None
+    if task.state == "PAUSED" or task.paused_at is not None:
+        return False, "Task is paused. Resume it first.", None
+    if task.state in TERMINAL_TASK_STATES:
+        return False, "Task is in a terminal state.", None
+    if task.state not in RETRY_NOW_ELIGIBLE_STATES:
+        return False, "Task can only be retried while queued or polling.", None
+    if now >= deadline_at:
+        return False, "Task deadline has passed.", None
+
+    spec = task.spec_json if isinstance(task.spec_json, dict) else {}
+    manual_retry_count_raw = spec.get("manual_retry_count")
+    try:
+        manual_retry_count = int(manual_retry_count_raw) if manual_retry_count_raw is not None else 0
+    except (TypeError, ValueError):
+        manual_retry_count = 0
+    manual_retry_count = max(0, manual_retry_count)
+
+    if manual_retry_count >= MAX_MANUAL_RETRIES_PER_TASK:
+        return False, "Manual retry limit reached.", None
+
+    manual_retry_at = _parse_iso_datetime(str(spec.get("manual_retry_at") or ""))
+    if manual_retry_at is not None:
+        if manual_retry_at.tzinfo is None:
+            manual_retry_at = manual_retry_at.replace(tzinfo=timezone.utc)
+        next_available_at = manual_retry_at + timedelta(seconds=MANUAL_RETRY_COOLDOWN_SECONDS)
+        if now < next_available_at:
+            return False, "Please wait before retrying again.", next_available_at
+
+    return True, None, None
+
+
 def task_to_summary(
     task: Task,
     last_attempt_at: datetime | None = None,
     ticket_summary: dict | None = None,
 ) -> TaskSummaryOut:
     ticket_summary = ticket_summary or {}
+    retry_now_available, retry_now_disabled_reason, retry_now_next_available_at = _retry_now_status(task)
     return TaskSummaryOut(
         id=task.id,
         module=task.module,
@@ -608,6 +654,9 @@ def task_to_summary(
         ticket_paid=ticket_summary.get("ticket_paid"),
         ticket_payment_deadline_at=ticket_summary.get("ticket_payment_deadline_at"),
         ticket_reservation_id=ticket_summary.get("ticket_reservation_id"),
+        retry_now_available=retry_now_available,
+        retry_now_disabled_reason=retry_now_disabled_reason,
+        retry_now_next_available_at=retry_now_next_available_at,
     )
 
 
@@ -1088,6 +1137,44 @@ async def resume_task(db: AsyncSession, *, task_id: UUID, user: User) -> TaskAct
 
     task.state = "QUEUED"
     task.paused_at = None
+    await db.commit()
+    await db.refresh(task)
+
+    await enqueue_train_task(str(task.id))
+
+    return TaskActionResponse(task=task_to_summary(task))
+
+
+async def retry_task_now(db: AsyncSession, *, task_id: UUID, user: User) -> TaskActionResponse:
+    task = await get_task_for_user(db, task_id=task_id, user=user)
+    retry_now_available, retry_now_disabled_reason, _ = _retry_now_status(task)
+    if not retry_now_available:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=retry_now_disabled_reason or "Retry is not available for this task",
+        )
+
+    now = utc_now()
+
+    task.state = "QUEUED"
+    task.updated_at = now
+
+    spec = task.spec_json if isinstance(task.spec_json, dict) else {}
+    next_spec = dict(spec)
+
+    manual_retry_count_raw = next_spec.get("manual_retry_count")
+    try:
+        manual_retry_count = int(manual_retry_count_raw) if manual_retry_count_raw is not None else 0
+    except (TypeError, ValueError):
+        manual_retry_count = 0
+    manual_retry_count = max(0, manual_retry_count)
+
+    next_spec["manual_retry_at"] = now.isoformat()
+    next_spec["manual_retry_count"] = manual_retry_count + 1
+    next_spec.pop("next_run_at", None)
+
+    task.spec_json = next_spec
+
     await db.commit()
     await db.refresh(task)
 

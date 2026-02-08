@@ -69,6 +69,7 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
   const [cancellingTicket, setCancellingTicket] = useState(false);
   const [payingTicket, setPayingTicket] = useState(false);
   const [deletingTask, setDeletingTask] = useState(false);
+  const [retryingTask, setRetryingTask] = useState(false);
 
   const isTerminal = useMemo(() => {
     if (!task) return false;
@@ -212,6 +213,36 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
     }
   };
 
+  const retryTaskNow = async () => {
+    if (!task) return;
+    if (!task.retry_now_available) return;
+
+    const confirmed = window.confirm("Retry this task now?");
+    if (!confirmed) return;
+
+    setRetryingTask(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const response = await fetch(`${clientApiBaseUrl}/api/train/tasks/${taskId}/retry`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const payload = (await response.json().catch(() => null)) as { detail?: string } | null;
+      if (!response.ok) {
+        setError(payload?.detail ?? "Could not retry task.");
+        return;
+      }
+
+      setNotice("Task queued for retry.");
+      await loadDetail();
+    } catch {
+      setError("Could not retry task.");
+    } finally {
+      setRetryingTask(false);
+    }
+  };
+
   return (
     <section className="space-y-6">
       <div className="rounded-3xl border border-blossom-100 bg-white p-6 shadow-petal">
@@ -247,8 +278,28 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
               <span className="font-medium">Last attempt:</span> {formatDateTimeKstSeconds(task.last_attempt_at)}
             </p>
           </div>
-          {canPayReservation || canCancelReservation || isTerminal ? (
-            <div className="mt-4 flex flex-wrap items-center gap-2">
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+              {!isTerminal ? (
+                <button
+                  type="button"
+                  onClick={() => void retryTaskNow()}
+                  disabled={
+                    retryingTask || cancellingTicket || payingTicket || deletingTask || task.retry_now_available !== true
+                  }
+                  title={
+                    task.retry_now_available
+                      ? "Retry this task now"
+                      : task.retry_now_disabled_reason ?? "Retry not available"
+                  }
+                  className={
+                    retryingTask || cancellingTicket || payingTicket || deletingTask || task.retry_now_available !== true
+                      ? "inline-flex h-8 items-center justify-center rounded-full border border-slate-200 bg-slate-100 px-2.5 text-xs font-medium text-slate-500 shadow-sm transition focus:outline-none focus:ring-2 focus:ring-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                      : SMALL_SUCCESS_BUTTON_CLASS
+                  }
+                >
+                  {retryingTask ? "Retrying..." : "Retry now"}
+                </button>
+              ) : null}
               {canPayReservation ? (
                 <button
                   type="button"
@@ -279,8 +330,7 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
                   {deletingTask ? "Deleting..." : "Delete"}
                 </button>
               ) : null}
-            </div>
-          ) : null}
+          </div>
           {!isTerminal ? <p className="mt-3 text-xs text-slate-500">Polling every 4s while active.</p> : null}
         </div>
       ) : null}

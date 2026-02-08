@@ -4,8 +4,9 @@ import asyncio
 import logging
 import random
 import time
+import uuid
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
 
@@ -40,6 +41,17 @@ from app.services.wallet import get_payment_card_for_execution
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
+
+TASK_LOCK_TTL_SECONDS = 360  # slightly > arq job_timeout=300
+_TASK_LOCK_RELEASE_LUA = """
+local key = KEYS[1]
+local expected = ARGV[1]
+local current = redis.call('GET', key)
+if current == expected then
+  return redis.call('DEL', key)
+end
+return 0
+"""
 
 
 @dataclass(slots=True)
@@ -308,6 +320,10 @@ async def _mark_completed(db: AsyncSession, task: Task) -> None:
 
 async def _schedule_retry(db: AsyncSession, task: Task, delay_seconds: float) -> None:
     task.state = "POLLING"
+    spec = task.spec_json if isinstance(task.spec_json, dict) else {}
+    next_spec = dict(spec)
+    next_spec["next_run_at"] = (utc_now() + timedelta(seconds=delay_seconds)).isoformat()
+    task.spec_json = next_spec
     task.updated_at = utc_now()
     await db.commit()
     await enqueue_train_task(str(task.id), defer_seconds=delay_seconds)
@@ -983,6 +999,13 @@ async def run_train_task(ctx: dict, task_id: str) -> None:
     db_factory = ctx["db_factory"]
     redis = ctx["redis"]
     limiter = RedisTokenBucketLimiter(redis)
+
+    lock_key = f"lock:train_task:{task_id}"
+    lock_value = uuid.uuid4().hex
+    acquired = await redis.set(lock_key, lock_value, nx=True, ex=TASK_LOCK_TTL_SECONDS)
+    if not acquired:
+        # Another worker/job is already processing this task_id.
+        return
     
     # Register task as in-flight for graceful shutdown tracking
     register_fn = ctx.get("register_in_flight")
@@ -996,6 +1019,10 @@ async def run_train_task(ctx: dict, task_id: str) -> None:
         # Unregister from in-flight tracking
         if unregister_fn:
             unregister_fn(task_id)
+        try:
+            await redis.eval(_TASK_LOCK_RELEASE_LUA, 1, lock_key, lock_value)
+        except Exception as exc:
+            logger.warning("Failed to release task lock %s: %s", lock_key, type(exc).__name__)
 
 
 async def _run_train_task_inner(

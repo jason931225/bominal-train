@@ -159,6 +159,9 @@ class TaskSummaryOut(BaseModel):
     ticket_paid: bool | None = None
     ticket_payment_deadline_at: datetime | None = None
     ticket_reservation_id: str | None = None
+    retry_now_available: bool
+    retry_now_disabled_reason: str | None = None
+    retry_now_next_available_at: datetime | None = None
 
 
 class TaskAttemptOut(BaseModel):

@@ -310,6 +310,7 @@ export function TrainDashboard() {
   const [creatingTask, setCreatingTask] = useState(false);
   const [cancellingTaskId, setCancellingTaskId] = useState<string | null>(null);
   const [payingTaskId, setPayingTaskId] = useState<string | null>(null);
+  const [retryingTaskId, setRetryingTaskId] = useState<string | null>(null);
   const [signingOutProvider, setSigningOutProvider] = useState<CredentialProvider | null>(null);
   const [activeTasks, setActiveTasks] = useState<TrainTaskSummary[]>([]);
   const [completedTasks, setCompletedTasks] = useState<TrainTaskSummary[]>([]);
@@ -820,6 +821,36 @@ export function TrainDashboard() {
       await reloadTasks();
     } catch {
       setErrorMessage(`Could not ${action} task.`);
+    }
+  };
+
+  const retryTaskNow = async (task: TrainTaskSummary) => {
+    if (!task.retry_now_available) return;
+
+    const confirmed = window.confirm("Retry this task now?");
+    if (!confirmed) return;
+
+    setErrorMessage(null);
+    setNotice(null);
+    setRetryingTaskId(task.id);
+
+    try {
+      const response = await fetch(`${clientApiBaseUrl}/api/train/tasks/${task.id}/retry`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!response.ok) {
+        const detail = await parseApiErrorMessage(response, "Could not retry task.");
+        setErrorMessage(detail);
+        return;
+      }
+
+      setNotice("Task queued for retry.");
+      await reloadTasks();
+    } catch {
+      setErrorMessage("Could not retry task.");
+    } finally {
+      setRetryingTaskId((current) => (current === task.id ? null : current));
     }
   };
 
@@ -1525,6 +1556,23 @@ export function TrainDashboard() {
                       Resume
                     </button>
                   )}
+                  <button
+                    type="button"
+                    onClick={() => void retryTaskNow(task)}
+                    disabled={retryingTaskId === task.id || !task.retry_now_available}
+                    title={
+                      task.retry_now_available
+                        ? "Retry this task now"
+                        : task.retry_now_disabled_reason ?? "Retry not available"
+                    }
+                    className={
+                      retryingTaskId === task.id || !task.retry_now_available
+                        ? SMALL_DISABLED_BUTTON_CLASS
+                        : SMALL_BUTTON_CLASS
+                    }
+                  >
+                    {retryingTaskId === task.id ? "Retrying..." : "Retry now"}
+                  </button>
                   {isAwaitingPaymentTask(task) ? (
                     <button
                       type="button"

@@ -19,6 +19,12 @@ git submodule update --init --recursive
 ./infra/scripts/local-setup.sh
 ./infra/scripts/local-run.sh
 ```
+
+To verify the full local stack is healthy (build, health checks, tests, typecheck):
+
+```bash
+./infra/scripts/local-check.sh
+```
 If you prefer containerized local simulation, use:
 
 ```bash
