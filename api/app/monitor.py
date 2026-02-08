@@ -31,6 +31,7 @@ from sqlalchemy.orm import selectinload
 from app.core.config import get_settings
 from app.db.models import Task, TaskAttempt, User
 from app.db.session import SessionLocal
+from app.modules.train.constants import ACTIVE_TASK_STATES
 
 settings = get_settings()
 
@@ -176,10 +177,10 @@ async def get_db_stats() -> dict:
             result = await db.execute(select(func.count(Task.id)))
             stats["total_tasks"] = result.scalar() or 0
             
-            # Active tasks (pending/running)
+            # Active tasks (non-terminal, visible)
             result = await db.execute(
                 select(func.count(Task.id)).where(
-                    Task.state.in_(["pending", "running"]),
+                    Task.state.in_(list(ACTIVE_TASK_STATES)),
                     Task.hidden_at.is_(None),
                 )
             )
@@ -279,14 +280,18 @@ def format_time_ago(dt: datetime) -> str:
 def state_color(state: str) -> str:
     """Get color for task state."""
     colors = {
-        "pending": Colors.YELLOW,
-        "running": Colors.BLUE,
-        "completed": Colors.GREEN,
-        "failed": Colors.RED,
-        "cancelled": Colors.DIM,
-        "paused": Colors.CYAN,
+        "QUEUED": Colors.YELLOW,
+        "RUNNING": Colors.BLUE,
+        "POLLING": Colors.BLUE,
+        "RESERVING": Colors.CYAN,
+        "PAYING": Colors.CYAN,
+        "PAUSED": Colors.DIM,
+        "COMPLETED": Colors.GREEN,
+        "FAILED": Colors.RED,
+        "CANCELLED": Colors.DIM,
+        "EXPIRED": Colors.DIM,
     }
-    return colors.get(state, Colors.RESET)
+    return colors.get(state.upper(), Colors.RESET)
 
 
 def print_header(title: str) -> None:
