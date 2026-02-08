@@ -1923,6 +1923,90 @@ async def test_task_list_includes_last_attempt_summary(db_session):
 
 
 @pytest.mark.asyncio
+async def test_task_list_includes_retry_now_status_fields(db_session):
+    now = _utc_now()
+    deadline = now + timedelta(minutes=10)
+
+    user = User(
+        email="retry-status@example.com",
+        password_hash="x",
+        display_name="Retry Status User",
+        role_id=2,
+    )
+    db_session.add(user)
+    await db_session.flush()
+
+    allowed_task = Task(
+        user_id=user.id,
+        module="train",
+        state="QUEUED",
+        deadline_at=deadline,
+        spec_json={"provider": "SRT"},
+        idempotency_key="retry-status-allowed",
+    )
+    paused_task = Task(
+        user_id=user.id,
+        module="train",
+        state="PAUSED",
+        paused_at=now,
+        deadline_at=deadline,
+        spec_json={"provider": "SRT"},
+        idempotency_key="retry-status-paused",
+    )
+    running_task = Task(
+        user_id=user.id,
+        module="train",
+        state="RUNNING",
+        deadline_at=deadline,
+        spec_json={"provider": "SRT"},
+        idempotency_key="retry-status-running",
+    )
+    deadline_passed_task = Task(
+        user_id=user.id,
+        module="train",
+        state="QUEUED",
+        deadline_at=now - timedelta(seconds=1),
+        spec_json={"provider": "SRT"},
+        idempotency_key="retry-status-deadline",
+    )
+    cooldown_task = Task(
+        user_id=user.id,
+        module="train",
+        state="POLLING",
+        deadline_at=deadline,
+        spec_json={"provider": "SRT", "manual_retry_last_at": now.isoformat()},
+        idempotency_key="retry-status-cooldown",
+    )
+
+    db_session.add_all([allowed_task, paused_task, running_task, deadline_passed_task, cooldown_task])
+    await db_session.commit()
+
+    response = await list_tasks(db_session, user=user, status_filter="active")
+
+    allowed_summary = next(item for item in response.tasks if item.id == allowed_task.id)
+    assert allowed_summary.retry_now_allowed is True
+    assert allowed_summary.retry_now_reason is None
+    assert allowed_summary.retry_now_available_at is None
+
+    paused_summary = next(item for item in response.tasks if item.id == paused_task.id)
+    assert paused_summary.retry_now_allowed is False
+    assert paused_summary.retry_now_reason == "paused_use_resume"
+
+    running_summary = next(item for item in response.tasks if item.id == running_task.id)
+    assert running_summary.retry_now_allowed is False
+    assert running_summary.retry_now_reason == "task_running"
+
+    deadline_summary = next(item for item in response.tasks if item.id == deadline_passed_task.id)
+    assert deadline_summary.retry_now_allowed is False
+    assert deadline_summary.retry_now_reason == "deadline_passed"
+
+    cooldown_summary = next(item for item in response.tasks if item.id == cooldown_task.id)
+    assert cooldown_summary.retry_now_allowed is False
+    assert cooldown_summary.retry_now_reason == "cooldown_active"
+    assert cooldown_summary.retry_now_available_at is not None
+
+
+@pytest.mark.asyncio
 async def test_worker_schedule_retry_sets_next_run_at(db_session_factory, db_session, monkeypatch):
     fake_redis = fakeredis.aioredis.FakeRedis()
 
