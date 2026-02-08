@@ -35,6 +35,10 @@ jobs:
         shell: bash
         run: |
           ssh-keygen -t rsa -b 4096 -m PEM -N "" -f /tmp/gha_vm_key
+          # Prevent private key leakage in later step logs.
+          while IFS= read -r line; do
+            echo "::add-mask::$line"
+          done < /tmp/gha_vm_key
           echo "private_key<<EOF" >> "$GITHUB_OUTPUT"
           cat /tmp/gha_vm_key >> "$GITHUB_OUTPUT"
           echo "EOF" >> "$GITHUB_OUTPUT"
