@@ -14,7 +14,7 @@ from app.modules.train.providers.base import ProviderOutcome, ProviderSchedule
 from app.modules.train.providers.ktx_client import parse_ktx_search_response
 from app.modules.train.providers.srt_client import parse_srt_search_response
 from app.modules.train.rate_limiter import RedisTokenBucketLimiter
-from app.modules.train.service import get_task_detail, retry_task_now
+from app.modules.train.service import get_task_detail, list_tasks, retry_task_now
 from app.modules.train.schemas import ProviderCredentialStatus
 from app.modules.train.worker import run_train_task
 from tests.conftest import make_fake_get_redis_client
@@ -1849,6 +1849,77 @@ async def test_task_summary_includes_next_run_at_for_polling(db_session, monkeyp
 
     detail = await get_task_detail(db_session, task_id=task.id, user=user)
     assert detail.task.next_run_at is not None
+
+
+@pytest.mark.asyncio
+async def test_task_list_includes_last_attempt_summary(db_session):
+    user = User(
+        email="attempt-summary@example.com",
+        password_hash="x",
+        display_name="Attempt Summary User",
+        role_id=2,
+    )
+    db_session.add(user)
+    await db_session.flush()
+
+    task = Task(
+        user_id=user.id,
+        module="train",
+        state="QUEUED",
+        deadline_at=_utc_now() + timedelta(minutes=10),
+        spec_json={"provider": "SRT"},
+        idempotency_key="attempt-summary",
+    )
+    db_session.add(task)
+    await db_session.flush()
+
+    started_1 = _utc_now() - timedelta(seconds=20)
+    finished_1 = _utc_now() - timedelta(seconds=18)
+    started_2 = _utc_now() - timedelta(seconds=10)
+    finished_2 = _utc_now() - timedelta(seconds=8)
+
+    db_session.add_all(
+        [
+            TaskAttempt(
+                task_id=task.id,
+                action="SEARCH",
+                provider="SRT",
+                ok=False,
+                retryable=True,
+                error_code="search_failed",
+                error_message_safe="search failed",
+                duration_ms=123,
+                meta_json_safe={},
+                started_at=started_1,
+                finished_at=finished_1,
+            ),
+            TaskAttempt(
+                task_id=task.id,
+                action="RESERVE",
+                provider="SRT",
+                ok=False,
+                retryable=True,
+                error_code="reserve_failed",
+                error_message_safe="reserve failed",
+                duration_ms=456,
+                meta_json_safe={},
+                started_at=started_2,
+                finished_at=finished_2,
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    response = await list_tasks(db_session, user=user, status_filter="active")
+    assert response.tasks
+    summary = next(item for item in response.tasks if item.id == task.id)
+
+    assert summary.last_attempt_action == "RESERVE"
+    assert summary.last_attempt_ok is False
+    assert summary.last_attempt_error_code == "reserve_failed"
+    assert summary.last_attempt_error_message_safe == "reserve failed"
+    assert summary.last_attempt_finished_at is not None
+    assert summary.last_attempt_at == summary.last_attempt_finished_at
 
 
 @pytest.mark.asyncio

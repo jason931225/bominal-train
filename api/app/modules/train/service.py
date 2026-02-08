@@ -590,6 +590,7 @@ def _ticket_summary_from_artifact(artifact: Artifact | None) -> dict | None:
 def task_to_summary(
     task: Task,
     last_attempt_at: datetime | None = None,
+    latest_attempt: TaskAttempt | None = None,
     ticket_summary: dict | None = None,
 ) -> TaskSummaryOut:
     ticket_summary = ticket_summary or {}
@@ -598,6 +599,9 @@ def task_to_summary(
         if task.state == "POLLING"
         else None
     )
+    if latest_attempt is not None:
+        last_attempt_at = latest_attempt.finished_at
+    last_attempt_finished_at = last_attempt_at
     return TaskSummaryOut(
         id=task.id,
         module=task.module,
@@ -611,6 +615,11 @@ def task_to_summary(
         failed_at=task.failed_at,
         hidden_at=task.hidden_at,
         last_attempt_at=last_attempt_at,
+        last_attempt_action=latest_attempt.action if latest_attempt else None,
+        last_attempt_ok=latest_attempt.ok if latest_attempt else None,
+        last_attempt_error_code=latest_attempt.error_code if latest_attempt else None,
+        last_attempt_error_message_safe=latest_attempt.error_message_safe if latest_attempt else None,
+        last_attempt_finished_at=last_attempt_finished_at,
         next_run_at=next_run_at,
         spec_json=task.spec_json,
         ticket_status=ticket_summary.get("ticket_status"),
@@ -797,6 +806,22 @@ async def _last_attempt_map(db: AsyncSession, task_ids: list[UUID]) -> dict[UUID
     return {task_id: last_at for task_id, last_at in rows}
 
 
+async def _latest_attempt_map(db: AsyncSession, task_ids: list[UUID]) -> dict[UUID, TaskAttempt]:
+    if not task_ids:
+        return {}
+
+    stmt = (
+        select(TaskAttempt)
+        .where(TaskAttempt.task_id.in_(task_ids))
+        .order_by(TaskAttempt.task_id.asc(), TaskAttempt.finished_at.desc())
+    )
+    attempts = (await db.execute(stmt)).scalars().all()
+    latest: dict[UUID, TaskAttempt] = {}
+    for attempt in attempts:
+        latest.setdefault(attempt.task_id, attempt)
+    return latest
+
+
 async def _latest_ticket_artifact_map(db: AsyncSession, task_ids: list[UUID]) -> dict[UUID, Artifact]:
     if not task_ids:
         return {}
@@ -866,7 +891,7 @@ async def list_tasks(
     stmt = _task_list_stmt(user, status_filter)
     tasks = (await db.execute(stmt)).scalars().all()
 
-    last_attempts = await _last_attempt_map(db, [task.id for task in tasks])
+    latest_attempts = await _latest_attempt_map(db, [task.id for task in tasks])
     ticket_artifacts = await _latest_ticket_artifact_map(db, [task.id for task in tasks])
 
     should_refresh_completed = refresh_completed and status_filter in {"completed", "all"}
@@ -901,7 +926,7 @@ async def list_tasks(
         tasks=[
             task_to_summary(
                 task,
-                last_attempt_at=last_attempts.get(task.id),
+                latest_attempt=latest_attempts.get(task.id),
                 ticket_summary=_ticket_summary_from_artifact(ticket_artifacts.get(task.id)),
             )
             for task in tasks
@@ -1045,10 +1070,11 @@ async def get_task_detail(db: AsyncSession, *, task_id: UUID, user: User) -> Tas
     attempts = sorted(task.attempts, key=lambda row: row.started_at)
     artifacts = sorted(task.artifacts, key=lambda row: row.created_at)
 
-    last_attempt_at = attempts[-1].finished_at if attempts else None
+    latest_attempt = max(attempts, key=lambda row: row.finished_at) if attempts else None
+    last_attempt_at = latest_attempt.finished_at if latest_attempt else None
 
     return TaskDetailOut(
-        task=task_to_summary(task, last_attempt_at=last_attempt_at),
+        task=task_to_summary(task, last_attempt_at=last_attempt_at, latest_attempt=latest_attempt),
         attempts=[
             TaskAttemptOut(
                 id=attempt.id,
