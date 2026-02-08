@@ -215,6 +215,20 @@ function shouldShowCompletedCancel(task: TrainTaskSummary): boolean {
   return true;
 }
 
+function retryNowDisabledTitle(task: TrainTaskSummary): string {
+  const reason = task.retry_now_reason ?? null;
+  if (!reason) return "Retry is not available.";
+  if (reason === "cooldown_active" && task.retry_now_available_at) {
+    return `Retry available at ${formatDateTimeKst(task.retry_now_available_at)}.`;
+  }
+  if (reason === "deadline_passed") return "Task deadline has passed.";
+  if (reason === "paused_use_resume") return "Task is paused. Use Resume instead.";
+  if (reason === "task_running") return "Task is currently running.";
+  if (reason === "terminal_state") return "Task is already finished.";
+  if (reason === "not_eligible_state") return "Task is not eligible for retry.";
+  return "Retry is not available.";
+}
+
 function formatScheduleTitleDate(value: string): string {
   if (!value) return "MM/DD/YYYY";
   const [year, month, day] = value.split("-");
@@ -800,7 +814,7 @@ export function TrainDashboard() {
     }
   };
 
-  const sendTaskAction = async (taskId: string, action: "pause" | "resume" | "cancel" | "delete") => {
+  const sendTaskAction = async (taskId: string, action: "pause" | "resume" | "cancel" | "delete" | "retry") => {
     if (action === "cancel") {
       const confirmed = window.confirm("Cancel this active task?");
       if (!confirmed) return;
@@ -1489,6 +1503,11 @@ export function TrainDashboard() {
             {activeTasks.length === 0 ? <li className="text-slate-500">No active tasks.</li> : null}
             {activeTasks.map((task) => {
               const info = taskInfoFromSpec(task);
+              const showRetryNow = task.state === "QUEUED" || task.state === "POLLING";
+              const lastError =
+                task.last_attempt_ok === false
+                  ? task.last_attempt_error_message_safe || task.last_attempt_error_code || "Unknown error"
+                  : null;
               return (
                 <li key={task.id} className="rounded-xl border border-blossom-100 p-3">
                 <div className="flex items-center justify-between gap-2">
@@ -1497,6 +1516,14 @@ export function TrainDashboard() {
                     <p className="text-xs text-slate-500">
                       Last attempt: {task.last_attempt_at ? formatDateTimeKst(task.last_attempt_at) : "-"}
                     </p>
+                    {task.state === "POLLING" && task.next_run_at ? (
+                      <p className="text-xs text-slate-500">Next check: {formatDateTimeKst(task.next_run_at)}</p>
+                    ) : null}
+                    {lastError ? (
+                      <p className="text-xs text-rose-600" title={lastError}>
+                        Last error: {lastError}
+                      </p>
+                    ) : null}
                     <p className="mt-1 text-xs text-slate-600">Schedule: {info.scheduleLabel}</p>
                     <p className="text-xs text-slate-600">
                       Route: {info.dep} {"->"} {info.arr}
@@ -1508,6 +1535,17 @@ export function TrainDashboard() {
                   </Link>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
+                  {showRetryNow ? (
+                    <button
+                      type="button"
+                      onClick={() => sendTaskAction(task.id, "retry")}
+                      disabled={!task.retry_now_allowed}
+                      title={task.retry_now_allowed ? "Retry now" : retryNowDisabledTitle(task)}
+                      className={task.retry_now_allowed ? SMALL_BUTTON_CLASS : SMALL_DISABLED_BUTTON_CLASS}
+                    >
+                      Retry now
+                    </button>
+                  ) : null}
                   {task.state !== "PAUSED" ? (
                     <button
                       type="button"

@@ -5,13 +5,16 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import { clientApiBaseUrl } from "@/lib/api-base";
-import { UI_BUTTON_DANGER_SM } from "@/lib/ui";
+import { UI_BUTTON_DANGER_SM, UI_BUTTON_OUTLINE_SM } from "@/lib/ui";
 import type { TrainArtifact, TrainTaskAttempt, TrainTaskSummary } from "@/lib/types";
 
 const POLL_MS = 4000;
+const SMALL_BUTTON_CLASS = UI_BUTTON_OUTLINE_SM;
 const SMALL_DANGER_BUTTON_CLASS = UI_BUTTON_DANGER_SM;
 const SMALL_SUCCESS_BUTTON_CLASS =
   "inline-flex h-8 items-center justify-center rounded-full border border-emerald-200 bg-emerald-50 px-2.5 text-xs font-medium text-emerald-700 shadow-sm transition hover:bg-emerald-100 focus:outline-none focus:ring-2 focus:ring-emerald-100 disabled:cursor-not-allowed disabled:opacity-60";
+const SMALL_DISABLED_BUTTON_CLASS =
+  "inline-flex h-8 items-center justify-center rounded-full border border-slate-200 bg-slate-100 px-2.5 text-xs font-medium text-slate-500 shadow-sm transition focus:outline-none focus:ring-2 focus:ring-slate-100";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -59,6 +62,20 @@ function formatDateTimeKstSeconds(value: string | Date | null): string {
   return `${formatted} KST`;
 }
 
+function retryNowDisabledTitle(task: TrainTaskSummary): string {
+  const reason = task.retry_now_reason ?? null;
+  if (!reason) return "Retry is not available.";
+  if (reason === "cooldown_active" && task.retry_now_available_at) {
+    return `Retry available at ${formatDateTimeKstSeconds(task.retry_now_available_at)}.`;
+  }
+  if (reason === "deadline_passed") return "Task deadline has passed.";
+  if (reason === "paused_use_resume") return "Task is paused. Use Resume instead.";
+  if (reason === "task_running") return "Task is currently running.";
+  if (reason === "terminal_state") return "Task is already finished.";
+  if (reason === "not_eligible_state") return "Task is not eligible for retry.";
+  return "Retry is not available.";
+}
+
 export function TrainTaskDetail({ taskId }: { taskId: string }) {
   const router = useRouter();
   const [task, setTask] = useState<TrainTaskSummary | null>(null);
@@ -69,6 +86,7 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
   const [cancellingTicket, setCancellingTicket] = useState(false);
   const [payingTicket, setPayingTicket] = useState(false);
   const [deletingTask, setDeletingTask] = useState(false);
+  const [retryingNow, setRetryingNow] = useState(false);
 
   const isTerminal = useMemo(() => {
     if (!task) return false;
@@ -212,6 +230,32 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
     }
   };
 
+  const retryNow = async () => {
+    if (!task) return;
+
+    setRetryingNow(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const response = await fetch(`${clientApiBaseUrl}/api/train/tasks/${taskId}/retry`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const payload = (await response.json().catch(() => null)) as { detail?: string } | null;
+      if (!response.ok) {
+        setError(payload?.detail ?? "Could not retry task.");
+        return;
+      }
+
+      setNotice("Retry requested.");
+      await loadDetail();
+    } catch {
+      setError("Could not retry task.");
+    } finally {
+      setRetryingNow(false);
+    }
+  };
+
   return (
     <section className="space-y-6">
       <div className="rounded-3xl border border-blossom-100 bg-white p-6 shadow-petal">
@@ -246,7 +290,34 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
             <p>
               <span className="font-medium">Last attempt:</span> {formatDateTimeKstSeconds(task.last_attempt_at)}
             </p>
+            {task.state === "POLLING" ? (
+              <p>
+                <span className="font-medium">Next check:</span>{" "}
+                {task.next_run_at ? formatDateTimeKstSeconds(task.next_run_at) : "-"}
+              </p>
+            ) : null}
           </div>
+          {!isTerminal && (task.state === "QUEUED" || task.state === "POLLING") ? (
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void retryNow()}
+                disabled={
+                  retryingNow ||
+                  cancellingTicket ||
+                  payingTicket ||
+                  deletingTask ||
+                  !task.retry_now_allowed
+                }
+                title={task.retry_now_allowed ? "Retry now" : retryNowDisabledTitle(task)}
+                className={
+                  task.retry_now_allowed && !retryingNow ? SMALL_BUTTON_CLASS : SMALL_DISABLED_BUTTON_CLASS
+                }
+              >
+                {retryingNow ? "Retrying..." : "Retry now"}
+              </button>
+            </div>
+          ) : null}
           {canPayReservation || canCancelReservation || isTerminal ? (
             <div className="mt-4 flex flex-wrap items-center gap-2">
               {canPayReservation ? (
