@@ -11,6 +11,7 @@ from arq.connections import RedisSettings
 from sqlalchemy import select
 
 from app.core.config import get_settings
+from app.core.redis import get_redis_client
 from app.db.models import Task
 from app.db.session import SessionLocal
 from app.modules.train.constants import TASK_MODULE, TERMINAL_TASK_STATES
@@ -24,6 +25,10 @@ logger = logging.getLogger(__name__)
 # Track in-flight task IDs for graceful shutdown recovery
 _in_flight_tasks: set[str] = set()
 _shutdown_event: asyncio.Event | None = None
+
+HEARTBEAT_KEY = b"bominal:worker:heartbeat"
+HEARTBEAT_TTL_SECONDS = 30
+HEARTBEAT_INTERVAL_SECONDS = 10
 
 
 def _register_in_flight(task_id: str) -> None:
@@ -92,6 +97,9 @@ async def on_startup(ctx: dict) -> None:
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(sig, _handle_shutdown_signal, sig)
+
+    # Heartbeat task for ops visibility.
+    ctx["heartbeat_task"] = asyncio.create_task(_heartbeat_loop(_shutdown_event))
     
     logger.info("Worker started with graceful shutdown handlers")
 
@@ -103,9 +111,35 @@ def _handle_shutdown_signal(sig: signal.Signals) -> None:
         _shutdown_event.set()
 
 
+async def _heartbeat_loop(shutdown_event: asyncio.Event) -> None:
+    """Best-effort worker heartbeat in Redis (no sensitive data)."""
+    while not shutdown_event.is_set():
+        try:
+            redis = await get_redis_client()
+            await redis.set(
+                HEARTBEAT_KEY,
+                datetime.now(timezone.utc).isoformat().encode("utf-8"),
+                ex=HEARTBEAT_TTL_SECONDS,
+            )
+        except Exception:
+            # Heartbeat failure should not stop job processing.
+            logger.debug("Worker heartbeat update failed", exc_info=True)
+
+        try:
+            await asyncio.wait_for(shutdown_event.wait(), timeout=HEARTBEAT_INTERVAL_SECONDS)
+        except asyncio.TimeoutError:
+            continue
+
+
 async def on_shutdown(ctx: dict) -> None:
     """Clean up on worker shutdown - ensure in-flight tasks are recoverable."""
     logger.info("Worker shutdown initiated, %d tasks in-flight", len(_in_flight_tasks))
+
+    heartbeat_task = ctx.get("heartbeat_task")
+    if heartbeat_task is not None:
+        heartbeat_task.cancel()
+        with suppress(Exception):
+            await heartbeat_task
     
     # Give in-flight tasks a brief moment to complete naturally
     if _in_flight_tasks:
