@@ -3,9 +3,12 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
+import { useLocale } from "@/components/locale-provider";
 import { clientApiBaseUrl } from "@/lib/api-base";
 import { formatDateTimeKst, kstDateInputValue } from "@/lib/kst";
+import { ROUTES } from "@/lib/routes";
 import { UI_BUTTON_OUTLINE_SM, UI_BUTTON_PRIMARY, UI_BUTTON_DANGER_SM, UI_FIELD } from "@/lib/ui";
+import { formatStationLabel } from "@/lib/train/stations-i18n";
 import type {
   TrainArtifact,
   TrainCredentialStatusResponse,
@@ -44,8 +47,8 @@ const POLL_MS = 12000;
 const CREDENTIAL_STATUS_TIMEOUT_MS = 10000;
 const DEFAULT_DEP_STATION = "수서";
 const DEFAULT_ARR_STATION = "마산";
-const TASK_LIST_ERROR_MESSAGE = "Could not load task lists.";
-const SESSION_EXPIRED_MESSAGE = "Session expired. Please log in again.";
+const TASK_LIST_ERROR_MESSAGE = "task_list_error";
+const SESSION_EXPIRED_MESSAGE = "session_expired";
 
 /**
  * Normalize Korean phone numbers to 11-digit format (e.g., 01012345678).
@@ -92,16 +95,9 @@ const SMALL_SUCCESS_BUTTON_CLASS =
   "inline-flex h-8 items-center justify-center rounded-full border border-emerald-200 bg-emerald-50 px-2.5 text-xs font-medium text-emerald-700 shadow-sm transition hover:bg-emerald-100 focus:outline-none focus:ring-2 focus:ring-emerald-100 disabled:cursor-not-allowed disabled:opacity-60";
 const SMALL_DISABLED_BUTTON_CLASS =
   "inline-flex h-8 items-center justify-center rounded-full border border-slate-200 bg-slate-100 px-2.5 text-xs font-medium text-slate-500 shadow-sm transition focus:outline-none focus:ring-2 focus:ring-slate-100";
-const SEAT_CLASS_LABELS: Record<TrainSeatClass, string> = {
-  general_preferred: "General Preferred",
-  general: "General",
-  special_preferred: "Special Preferred",
-  special: "Special",
-};
-
 const EMPTY_CREDENTIAL_STATUS: TrainCredentialStatusResponse = {
-  ktx: { configured: false, verified: false, username: null, verified_at: null, detail: "Credentials are missing" },
-  srt: { configured: false, verified: false, username: null, verified_at: null, detail: "Credentials are missing" },
+  ktx: { configured: false, verified: false, username: null, verified_at: null, detail: null },
+  srt: { configured: false, verified: false, username: null, verified_at: null, detail: null },
 };
 
 async function fetchAllTasks(options?: { refreshCompleted?: boolean }) {
@@ -160,12 +156,12 @@ function formatTransitDuration(departureAt: string, arrivalAt: string): string {
   return `${hours}h ${minutes}m`;
 }
 
-function formatTimeKst(value: string): string {
+function formatTimeKst(value: string, locale: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
     return "-";
   }
-  const time = new Intl.DateTimeFormat("ko-KR", {
+  const time = new Intl.DateTimeFormat(locale === "ko" ? "ko-KR" : "en-US", {
     timeZone: "Asia/Seoul",
     hour: "2-digit",
     minute: "2-digit",
@@ -187,16 +183,16 @@ function getTaskTicketBadge(task: TrainTaskSummary): { label: string; className:
 
   if (!status && !paid) return null;
   if (status === "cancelled") {
-    return { label: "Cancelled", className: "bg-slate-100 text-slate-700" };
+    return { label: "train.badge.cancelled", className: "bg-slate-100 text-slate-700" };
   }
   if (status === "reservation_not_found") {
-    return { label: "Reservation Not Found", className: "bg-rose-100 text-rose-700" };
+    return { label: "train.badge.reservationNotFound", className: "bg-rose-100 text-rose-700" };
   }
   if (status === "awaiting_payment" && !paid) {
-    return { label: "Awaiting Payment", className: "bg-amber-100 text-amber-700" };
+    return { label: "train.badge.awaitingPayment", className: "bg-amber-100 text-amber-700" };
   }
   if (paid) {
-    return { label: "Confirmed", className: "bg-emerald-100 text-emerald-700" };
+    return { label: "train.badge.confirmed", className: "bg-emerald-100 text-emerald-700" };
   }
   return {
     label: formatTicketStatus(status) ?? status ?? "Unknown",
@@ -264,7 +260,7 @@ function taskInfoFromSpec(task: TrainTaskSummary): {
 
   let scheduleLabel = "-";
   if (ranked.length > 0) {
-    const firstTime = formatTimeKst(ranked[0].departureAt);
+    const firstTime = formatTimeKst(ranked[0].departureAt, "ko");
     scheduleLabel = `${dateLabel} ${firstTime}`;
     if (ranked.length > 1) {
       scheduleLabel += ` (+${ranked.length - 1})`;
@@ -288,6 +284,16 @@ function taskInfoFromSpec(task: TrainTaskSummary): {
 }
 
 export function TrainDashboard() {
+  const { locale, t } = useLocale();
+  const seatClassLabels = useMemo<Record<TrainSeatClass, string>>(
+    () => ({
+      general_preferred: t("train.seatClassLabels.general_preferred"),
+      general: t("train.seatClassLabels.general"),
+      special_preferred: t("train.seatClassLabels.special_preferred"),
+      special: t("train.seatClassLabels.special"),
+    }),
+    [t],
+  );
   const [searchForm, setSearchForm] = useState<SearchFormState>({
     dep: DEFAULT_DEP_STATION,
     arr: DEFAULT_ARR_STATION,
@@ -391,6 +397,18 @@ export function TrainDashboard() {
     }
   };
 
+  const renderError = (value: string): string => {
+    if (value === TASK_LIST_ERROR_MESSAGE) return t("train.taskListError");
+    if (value === SESSION_EXPIRED_MESSAGE) return t("train.sessionExpired");
+    return value;
+  };
+
+  const renderMaybeKey = (value: string): string => {
+    // Some helpers return translation keys for known statuses.
+    if (value.startsWith("train.")) return t(value);
+    return value;
+  };
+
   const loadCredentialStatus = async () => {
     setCredentialLoading(true);
     const abortController = new AbortController();
@@ -425,9 +443,9 @@ export function TrainDashboard() {
     } catch (error) {
       setCredentialStatus((current) => current ?? EMPTY_CREDENTIAL_STATUS);
       if (error instanceof DOMException && error.name === "AbortError") {
-        setErrorMessage("Credential check exceeded 10 seconds. You can continue by connecting providers manually.");
+        setErrorMessage(t("train.credential.timeout"));
       } else {
-        setErrorMessage("Could not load provider credential status.");
+        setErrorMessage(t("train.error.credentialStatusLoad"));
       }
     } finally {
       window.clearTimeout(timeoutHandle);
@@ -448,7 +466,7 @@ export function TrainDashboard() {
       const payload = (await response.json()) as WalletPaymentCardStatus;
       setPaymentCardStatus(payload);
     } catch {
-      setErrorMessage((current) => current ?? "Could not load wallet status.");
+      setErrorMessage((current) => current ?? t("train.error.walletStatusLoad"));
     }
   };
 
@@ -578,7 +596,7 @@ export function TrainDashboard() {
     setNotice(null);
 
     if (!searchUnlocked) {
-      setErrorMessage("Connect to a provider to unlock search.");
+      setErrorMessage(t("train.unlockSearch"));
       setSearching(false);
       return;
     }
@@ -588,7 +606,7 @@ export function TrainDashboard() {
     if (searchForm.providers.KTX) providers.push("KTX");
 
     if (providers.length === 0) {
-      setErrorMessage("Select at least one provider.");
+      setErrorMessage(t("train.error.selectProvider"));
       setSearching(false);
       return;
     }
@@ -612,7 +630,7 @@ export function TrainDashboard() {
 
       if (!response.ok) {
         const payload = (await response.json().catch(() => null)) as { detail?: string } | null;
-        setErrorMessage(payload?.detail ?? "Search failed.");
+        setErrorMessage(payload?.detail ?? t("train.error.searchFailed"));
         setSchedules([]);
         return;
       }
@@ -622,10 +640,10 @@ export function TrainDashboard() {
       setSchedules(payload.schedules);
       setSelectedScheduleIds([]);
       if (payload.schedules.length === 0) {
-        setNotice("No schedules in this window.");
+        setNotice(t("train.notice.noSchedulesInWindow"));
       }
     } catch {
-      setErrorMessage("Could not reach API for search.");
+      setErrorMessage(t("train.error.searchUnreachable"));
     } finally {
       setSearching(false);
     }
@@ -653,7 +671,7 @@ export function TrainDashboard() {
 
       const payload = (await response.json().catch(() => null)) as { detail?: string } | null;
       if (!response.ok) {
-        setErrorMessage(payload?.detail ?? `${provider} login failed.`);
+        setErrorMessage(payload?.detail ?? t("train.provider.loginFailed", { provider }));
         return;
       }
 
@@ -663,11 +681,11 @@ export function TrainDashboard() {
         next.delete(provider);
         return next;
       });
-      setNotice(`${provider} credentials verified.`);
+      setNotice(t("train.notice.credentialsVerified", { provider }));
       setCredentialProvider(null);
       await loadCredentialStatus();
     } catch {
-      setErrorMessage(`Could not verify ${provider} credentials.`);
+      setErrorMessage(t("train.provider.verifyFailed", { provider }));
     } finally {
       setCredentialSubmitting(false);
     }
@@ -681,11 +699,11 @@ export function TrainDashboard() {
     });
     setCredentialProvider(null);
     setCredentialForm({ username: "", password: "" });
-    setNotice(`Continuing without ${provider}. ${provider} search is disabled.`);
+    setNotice(t("train.notice.continuingWithoutProvider", { provider }));
   };
 
   const signOutProvider = async (provider: CredentialProvider) => {
-    const confirmed = window.confirm(`Sign out ${provider} credentials?`);
+    const confirmed = window.confirm(t("train.confirm.signOutProvider", { provider }));
     if (!confirmed) return;
 
     setErrorMessage(null);
@@ -698,7 +716,7 @@ export function TrainDashboard() {
         credentials: "include",
       });
       if (!response.ok) {
-        const detail = await parseApiErrorMessage(response, `Could not sign out ${provider}.`);
+        const detail = await parseApiErrorMessage(response, t("train.provider.signOutFailed", { provider }));
         setErrorMessage(detail);
         return;
       }
@@ -710,10 +728,10 @@ export function TrainDashboard() {
       });
       setCredentialProvider(null);
       setCredentialForm({ username: "", password: "" });
-      setNotice(`${provider} signed out.`);
+      setNotice(t("train.notice.signedOutProvider", { provider }));
       await loadCredentialStatus();
     } catch {
-      setErrorMessage(`Could not sign out ${provider}.`);
+      setErrorMessage(t("train.provider.signOutFailed", { provider }));
     } finally {
       setSigningOutProvider((current) => (current === provider ? null : current));
     }
@@ -748,7 +766,7 @@ export function TrainDashboard() {
     setNotice(null);
 
     if (selectedSchedules.length === 0) {
-      setErrorMessage("Select at least one schedule for strict Task creation.");
+      setErrorMessage(t("train.error.selectSchedule"));
       setCreatingTask(false);
       return;
     }
@@ -781,7 +799,7 @@ export function TrainDashboard() {
       });
 
       if (!response.ok) {
-        const detail = await parseApiErrorMessage(response, "Could not create Task.");
+        const detail = await parseApiErrorMessage(response, t("train.error.createTask"));
         setErrorMessage(detail);
         return;
       }
@@ -791,10 +809,10 @@ export function TrainDashboard() {
         deduplicated: boolean;
       };
 
-      setNotice(payload.deduplicated ? "Task already active (deduplicated)." : "Task created and queued.");
+      setNotice(payload.deduplicated ? t("train.notice.taskDeduplicated") : t("train.notice.taskCreatedQueued"));
       await reloadTasks();
     } catch {
-      setErrorMessage("Could not create Task.");
+      setErrorMessage(t("train.error.createTask"));
     } finally {
       setCreatingTask(false);
     }
@@ -802,7 +820,7 @@ export function TrainDashboard() {
 
   const sendTaskAction = async (taskId: string, action: "pause" | "resume" | "cancel" | "delete") => {
     if (action === "cancel") {
-      const confirmed = window.confirm("Cancel this active task?");
+      const confirmed = window.confirm(t("train.confirm.cancelTask"));
       if (!confirmed) return;
     }
 
@@ -813,18 +831,18 @@ export function TrainDashboard() {
         credentials: "include",
       });
       if (!response.ok) {
-        const detail = await parseApiErrorMessage(response, `Could not ${action} task.`);
+        const detail = await parseApiErrorMessage(response, t("train.task.actionFailed"));
         setErrorMessage(detail);
         return;
       }
       await reloadTasks();
     } catch {
-      setErrorMessage(`Could not ${action} task.`);
+      setErrorMessage(t("train.task.actionFailed"));
     }
   };
 
   const cancelTaskTicket = async (taskId: string) => {
-    const confirmed = window.confirm("Cancel this reservation ticket?");
+    const confirmed = window.confirm(t("train.confirm.cancelTicket"));
     if (!confirmed) return;
 
     setErrorMessage(null);
@@ -837,7 +855,7 @@ export function TrainDashboard() {
         cache: "no-store",
       });
       if (!detailResponse.ok) {
-        const detail = await parseApiErrorMessage(detailResponse, "Could not load task detail.");
+        const detail = await parseApiErrorMessage(detailResponse, t("train.error.taskDetailLoad"));
         setErrorMessage(detail);
         return;
       }
@@ -845,7 +863,7 @@ export function TrainDashboard() {
       const detailPayload = (await detailResponse.json()) as { artifacts: TrainArtifact[] };
       const ticketArtifact = detailPayload.artifacts.find((artifact) => artifact.kind === "ticket");
       if (!ticketArtifact) {
-        setErrorMessage("No ticket artifact found for this task.");
+        setErrorMessage(t("train.ticket.missingArtifact"));
         return;
       }
 
@@ -855,21 +873,21 @@ export function TrainDashboard() {
       });
       const cancelPayload = (await cancelResponse.json().catch(() => null)) as { detail?: string } | null;
       if (!cancelResponse.ok) {
-        setErrorMessage(cancelPayload?.detail ?? "Could not cancel ticket.");
+        setErrorMessage(cancelPayload?.detail ?? t("train.error.ticketCancel"));
         return;
       }
 
-      setNotice(cancelPayload?.detail ?? "Ticket cancellation request completed.");
+      setNotice(cancelPayload?.detail ?? t("train.notice.ticketCancelDone"));
       await reloadTasks();
     } catch {
-      setErrorMessage("Could not cancel ticket.");
+      setErrorMessage(t("train.error.ticketCancel"));
     } finally {
       setCancellingTaskId((current) => (current === taskId ? null : current));
     }
   };
 
   const payAwaitingPaymentTask = async (taskId: string) => {
-    const confirmed = window.confirm("Process payment for this awaiting reservation now?");
+    const confirmed = window.confirm(t("train.confirm.payNow"));
     if (!confirmed) return;
 
     setErrorMessage(null);
@@ -881,15 +899,15 @@ export function TrainDashboard() {
         credentials: "include",
       });
       if (!response.ok) {
-        const detail = await parseApiErrorMessage(response, "Could not process payment.");
+        const detail = await parseApiErrorMessage(response, t("train.error.paymentProcess"));
         setErrorMessage(detail);
         return;
       }
 
-      setNotice("Payment processed.");
+      setNotice(t("train.notice.paymentProcessed"));
       await reloadTasks({ refreshCompleted: true });
     } catch {
-      setErrorMessage("Could not process payment.");
+      setErrorMessage(t("train.error.paymentProcess"));
     } finally {
       setPayingTaskId((current) => (current === taskId ? null : current));
     }
@@ -897,12 +915,14 @@ export function TrainDashboard() {
 
   return (
     <section className="space-y-8">
-      {errorMessage ? <p className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">{errorMessage}</p> : null}
+      {errorMessage ? (
+        <p className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">{renderError(errorMessage)}</p>
+      ) : null}
       {notice ? <p className="rounded-xl bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{notice}</p> : null}
 
       <div className="rounded-2xl border border-blossom-100 bg-white p-6 shadow-petal">
         <div className="flex items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold text-slate-800">Search schedules</h2>
+          <h2 className="text-lg font-semibold text-slate-800">{t("train.searchSchedules")}</h2>
           <button
             type="button"
             onClick={() => {
@@ -914,8 +934,8 @@ export function TrainDashboard() {
                 return next;
               });
             }}
-            aria-label={credentialPanelOpen ? "Hide provider credentials" : "Show provider credentials"}
-            title={credentialPanelOpen ? "Hide provider credentials" : "Show provider credentials"}
+            aria-label={credentialPanelOpen ? t("train.hideCredentials") : t("train.showCredentials")}
+            title={credentialPanelOpen ? t("train.hideCredentials") : t("train.showCredentials")}
             className={`inline-flex h-10 w-10 items-center justify-center rounded-full border shadow-sm transition focus:outline-none focus:ring-2 ${
               searchUnlocked
                 ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 focus:ring-emerald-100"
@@ -930,13 +950,13 @@ export function TrainDashboard() {
         </div>
 
         {!searchUnlocked ? (
-          <p className="mt-2 text-xs text-amber-700">Connect to a provider to unlock search.</p>
+          <p className="mt-2 text-xs text-amber-700">{t("train.unlockSearch")}</p>
         ) : null}
 
         {credentialPanelOpen ? (
           <div className="mt-4 rounded-2xl border border-blossom-100 bg-blossom-50/30 p-4">
             {credentialLoading ? (
-              <p className="text-sm text-slate-500">Checking provider credentials...</p>
+              <p className="text-sm text-slate-500">{t("train.checkingCredentials")}</p>
             ) : (
               <>
                 <div className="grid gap-3 md:grid-cols-2">
@@ -952,7 +972,11 @@ export function TrainDashboard() {
                             <p className="text-xs uppercase tracking-[0.14em] text-blossom-500">{provider}</p>
                             <p className="mt-1 break-all text-sm font-medium text-slate-700">{username}</p>
                             <p className={`text-xs ${isVerified ? "text-emerald-600" : "text-amber-700"}`}>
-                              {isVerified ? "Connected" : isSkipped ? "Skipped (disabled)" : statusInfo?.detail || "Not connected"}
+                              {isVerified
+                                ? t("train.connected")
+                                : isSkipped
+                                  ? t("train.skippedDisabled")
+                                  : statusInfo?.detail || t("train.notConnected")}
                             </p>
                           </div>
                           <div className="flex shrink-0 flex-col gap-2 self-center">
@@ -967,7 +991,7 @@ export function TrainDashboard() {
                               }}
                               className={SMALL_BUTTON_CLASS}
                             >
-                              {isVerified ? "Change" : "Connect"}
+                              {isVerified ? t("train.change") : t("train.connect")}
                             </button>
                             <button
                               type="button"
@@ -975,7 +999,7 @@ export function TrainDashboard() {
                               disabled={!statusInfo?.configured || signingOutProvider === provider}
                               className={SMALL_DANGER_BUTTON_CLASS}
                             >
-                              {signingOutProvider === provider ? "Signing out..." : "Sign out"}
+                              {signingOutProvider === provider ? t("auth.signingOut") : t("auth.signOut")}
                             </button>
                           </div>
                         </div>
@@ -986,24 +1010,26 @@ export function TrainDashboard() {
 
                 {activeCredentialProvider ? (
                   <form onSubmit={onSubmitCredentials} className="mt-4 rounded-2xl border border-blossom-100 bg-white p-4">
-                    <h3 className="text-base font-semibold text-slate-800">{activeCredentialProvider} login required</h3>
+                    <h3 className="text-base font-semibold text-slate-800">
+                      {t("train.providerLoginRequired", { provider: activeCredentialProvider })}
+                    </h3>
                     <p className="mt-1 text-sm text-slate-500">
-                      Enter {activeCredentialProvider} credentials. They are encrypted at rest and re-verified automatically.
+                      {t("train.providerCredentialsHint", { provider: activeCredentialProvider })}
                     </p>
                     <div className="mt-4 grid gap-3 md:grid-cols-2">
                       <label className="text-sm text-slate-700">
-                        {activeCredentialProvider} username
+                        {t("train.usernameLabel", { provider: activeCredentialProvider })}
                         <input
                           type="text"
                           value={credentialForm.username}
                           onChange={(event) => setCredentialForm((current) => ({ ...current, username: event.target.value }))}
                           className={FIELD_BASE_CLASS}
-                          placeholder="email, phone, or membership #"
+                          placeholder={t("train.usernamePlaceholder")}
                           required
                         />
                       </label>
                       <label className="text-sm text-slate-700">
-                        {activeCredentialProvider} password
+                        {t("train.passwordLabel", { provider: activeCredentialProvider })}
                         <input
                           type="password"
                           value={credentialForm.password}
@@ -1019,7 +1045,9 @@ export function TrainDashboard() {
                         disabled={credentialSubmitting}
                         className={PRIMARY_BUTTON_CLASS}
                       >
-                        {credentialSubmitting ? "Verifying..." : `Connect ${activeCredentialProvider}`}
+                        {credentialSubmitting
+                          ? t("train.verifying")
+                          : t("train.connectProvider", { provider: activeCredentialProvider })}
                       </button>
                       <button
                         type="button"
@@ -1027,14 +1055,14 @@ export function TrainDashboard() {
                         disabled={credentialSubmitting}
                         className={SMALL_BUTTON_CLASS}
                       >
-                        Continue without {activeCredentialProvider}
+                        {t("train.continueWithoutProvider", { provider: activeCredentialProvider })}
                       </button>
                       <button
                         type="button"
                         onClick={() => setCredentialProvider(null)}
                         className={SMALL_BUTTON_CLASS}
                       >
-                        Cancel
+                        {t("common.cancel")}
                       </button>
                     </div>
                   </form>
@@ -1048,10 +1076,12 @@ export function TrainDashboard() {
           <form onSubmit={onSearch} className="mt-4">
             <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
               <div className="rounded-2xl border border-blossom-100 bg-blossom-50/40 p-4">
-                <p className="text-xs font-medium uppercase tracking-[0.14em] text-blossom-500">Station / Date / Time</p>
+                <p className="text-xs font-medium uppercase tracking-[0.14em] text-blossom-500">
+                  {t("train.stationDateTime")}
+                </p>
                 <div className="mt-3 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-end gap-2 sm:gap-3">
                   <label className="text-sm text-slate-700">
-                    Departure station
+                    {t("train.departureStation")}
                     <select
                       value={searchForm.dep}
                       onChange={(event) => setSearchForm((cur) => ({ ...cur, dep: event.target.value }))}
@@ -1061,7 +1091,7 @@ export function TrainDashboard() {
                     >
                       {stations.map((station) => (
                         <option key={station.name} value={station.name}>
-                          {station.name}
+                          {formatStationLabel(station.name, locale)}
                         </option>
                       ))}
                     </select>
@@ -1077,8 +1107,8 @@ export function TrainDashboard() {
                         }))
                       }
                       disabled={stationsLoading || stations.length === 0 || !searchUnlocked}
-                      aria-label="Swap departure and arrival stations"
-                      title="Swap departure and arrival stations"
+                      aria-label={t("train.swapStations")}
+                      title={t("train.swapStations")}
                       className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-blossom-200 bg-blossom-50 text-blossom-700 shadow-sm transition hover:bg-blossom-100 focus:outline-none focus:ring-2 focus:ring-blossom-100 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
@@ -1090,7 +1120,7 @@ export function TrainDashboard() {
                     </button>
                   </div>
                   <label className="text-sm text-slate-700">
-                    Arrival station
+                    {t("train.arrivalStation")}
                     <select
                       value={searchForm.arr}
                       onChange={(event) => setSearchForm((cur) => ({ ...cur, arr: event.target.value }))}
@@ -1100,7 +1130,7 @@ export function TrainDashboard() {
                     >
                       {stations.map((station) => (
                         <option key={station.name} value={station.name}>
-                          {station.name}
+                          {formatStationLabel(station.name, locale)}
                         </option>
                       ))}
                     </select>
@@ -1109,7 +1139,7 @@ export function TrainDashboard() {
 
                 <div className="mt-3 grid gap-3 md:grid-cols-2">
                   <label className="text-sm text-slate-700">
-                    Date
+                    {t("train.date")}
                     <input
                       type="date"
                       value={searchForm.date}
@@ -1121,7 +1151,7 @@ export function TrainDashboard() {
                   </label>
                   <div className="grid grid-cols-2 gap-2">
                     <label className="text-sm text-slate-700">
-                      Time start
+                      {t("train.timeStart")}
                       <input
                         type="time"
                         value={searchForm.start}
@@ -1132,7 +1162,7 @@ export function TrainDashboard() {
                       />
                     </label>
                     <label className="text-sm text-slate-700">
-                      Time end
+                      {t("train.timeEnd")}
                       <input
                         type="time"
                         value={searchForm.end}
@@ -1146,9 +1176,7 @@ export function TrainDashboard() {
                 </div>
 
                 {!ktxVerified || !srtVerified ? (
-                  <p className="mt-3 text-xs text-amber-700">
-                    Providers without verified credentials are disabled for search.
-                  </p>
+                  <p className="mt-3 text-xs text-amber-700">{t("train.providersDisabled")}</p>
                 ) : null}
 
                 <div className="mt-4 flex flex-wrap items-center gap-4 text-sm text-slate-700">
@@ -1178,10 +1206,12 @@ export function TrainDashboard() {
               </div>
 
               <div className="rounded-2xl border border-blossom-100 bg-blossom-50/40 p-4">
-                <p className="text-xs font-medium uppercase tracking-[0.14em] text-blossom-500">Passenger / Seat Class</p>
+                <p className="text-xs font-medium uppercase tracking-[0.14em] text-blossom-500">
+                  {t("train.passengerSeatClass")}
+                </p>
                 <div className="mt-3 space-y-3">
                   <label className="text-sm text-slate-700">
-                    Seat class
+                    {t("train.seatClass")}
                     <select
                       value={createForm.seatClass}
                       onChange={(event) =>
@@ -1189,16 +1219,16 @@ export function TrainDashboard() {
                       }
                       className={FIELD_BASE_CLASS}
                     >
-                      <option value="general_preferred">General Preferred</option>
-                      <option value="general">General</option>
-                      <option value="special_preferred">Special Preferred</option>
-                      <option value="special">Special</option>
+                      <option value="general_preferred">{seatClassLabels.general_preferred}</option>
+                      <option value="general">{seatClassLabels.general}</option>
+                      <option value="special_preferred">{seatClassLabels.special_preferred}</option>
+                      <option value="special">{seatClassLabels.special}</option>
                     </select>
                   </label>
 
                   <div className="grid grid-cols-2 gap-2">
                     <label className="text-sm text-slate-700">
-                      Adults
+                      {t("train.adults")}
                       <input
                         type="number"
                         min={1}
@@ -1209,7 +1239,7 @@ export function TrainDashboard() {
                       />
                     </label>
                     <label className="text-sm text-slate-700">
-                      Children
+                      {t("train.children")}
                       <input
                         type="number"
                         min={0}
@@ -1231,7 +1261,7 @@ export function TrainDashboard() {
                 disabled={searchDisabled}
                 className={PRIMARY_BUTTON_CLASS}
               >
-                {searching ? "Searching..." : "Search"}
+                {searching ? t("train.searching") : t("train.search")}
               </button>
             </div>
           </form>
@@ -1240,18 +1270,20 @@ export function TrainDashboard() {
 
       {searchUnlocked && showRanking ? (
             <div className="rounded-2xl border border-blossom-100 bg-white p-6 shadow-petal">
-              <h2 className="text-lg font-semibold text-slate-800">Select schedules ({selectedDateLabel})</h2>
+              <h2 className="text-lg font-semibold text-slate-800">
+                {t("train.selectSchedulesTitle", { date: selectedDateLabel })}
+              </h2>
               <div className="mt-4 overflow-x-auto">
                 <table className="min-w-full table-fixed text-left text-sm">
                   <thead>
                     <tr className="text-slate-500">
-                      <th className="px-2 pb-2 text-center">Status</th>
-                      <th className="px-2 pb-2">Train</th>
-                      <th className="px-2 pb-2">Departure</th>
-                      <th className="px-2 pb-2">Arrival</th>
-                      <th className="px-2 pb-2">Duration</th>
+                      <th className="px-2 pb-2 text-center">{t("train.table.status")}</th>
+                      <th className="px-2 pb-2">{t("train.table.train")}</th>
+                      <th className="px-2 pb-2">{t("train.table.departure")}</th>
+                      <th className="px-2 pb-2">{t("train.table.arrival")}</th>
+                      <th className="px-2 pb-2">{t("train.table.duration")}</th>
                       <th className="px-2 pb-2 text-center" colSpan={2}>
-                        Availability
+                        {t("train.table.availability")}
                       </th>
                     </tr>
                   </thead>
@@ -1300,12 +1332,12 @@ export function TrainDashboard() {
                           <td className="px-2 py-2">
                             {schedule.provider} {schedule.train_no}
                           </td>
-                          <td className="px-2 py-2">{formatTimeKst(schedule.departure_at)}</td>
-                          <td className="px-2 py-2">{formatTimeKst(schedule.arrival_at)}</td>
+                          <td className="px-2 py-2">{formatTimeKst(schedule.departure_at, locale)}</td>
+                          <td className="px-2 py-2">{formatTimeKst(schedule.arrival_at, locale)}</td>
                           <td className="px-2 py-2">{formatTransitDuration(schedule.departure_at, schedule.arrival_at)}</td>
                           <td className="px-2 py-2 text-center">
                             <span
-                              title={schedule.availability.general ? "General available" : "General sold out"}
+                              title={schedule.availability.general ? t("train.generalAvailable") : t("train.generalSoldOut")}
                               className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-semibold ${
                                 schedule.availability.general ? "bg-blossom-500 text-white" : "bg-slate-200 text-slate-500"
                               }`}
@@ -1315,7 +1347,7 @@ export function TrainDashboard() {
                           </td>
                           <td className="px-2 py-2 text-center">
                             <span
-                              title={schedule.availability.special ? "Special available" : "Special sold out"}
+                              title={schedule.availability.special ? t("train.specialAvailable") : t("train.specialSoldOut")}
                               className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-semibold ${
                                 schedule.availability.special ? "bg-blossom-500 text-white" : "bg-slate-200 text-slate-500"
                               }`}
@@ -1332,17 +1364,17 @@ export function TrainDashboard() {
 
               <div className="mt-5 rounded-xl border border-blossom-100 bg-blossom-50/50 p-4">
                 {selectedSchedules.length === 0 ? (
-                  <p className="text-sm text-slate-500">Select schedules from the table to create a strict Task.</p>
+                  <p className="text-sm text-slate-500">{t("train.selectToCreateTask")}</p>
                 ) : null}
                 {selectedSchedules.length === 1 ? (
                   <div className="rounded-lg border border-blossom-100 bg-white px-3 py-2 text-sm text-slate-700">
-                    <span className="font-medium">Selected:</span> {selectedSchedules[0].provider} {selectedSchedules[0].train_no} ·{" "}
-                    {formatDateTimeKst(selectedSchedules[0].departure_at)}
+                    <span className="font-medium">{t("train.selected")}</span> {selectedSchedules[0].provider}{" "}
+                    {selectedSchedules[0].train_no} · {formatDateTimeKst(selectedSchedules[0].departure_at, locale)}
                   </div>
                 ) : null}
                 {selectedSchedules.length > 1 ? (
                   <>
-                    <p className="text-sm font-medium text-slate-700">Priority order</p>
+                    <p className="text-sm font-medium text-slate-700">{t("train.priorityOrder")}</p>
                     <ul className="mt-3 space-y-2 text-sm">
                       {selectedSchedules.map((schedule, index) => (
                         <li
@@ -1354,7 +1386,7 @@ export function TrainDashboard() {
                               {index + 1}
                             </span>
                             <span>
-                              {schedule.provider} {schedule.train_no} · {formatDateTimeKst(schedule.departure_at)}
+                              {schedule.provider} {schedule.train_no} · {formatDateTimeKst(schedule.departure_at, locale)}
                             </span>
                           </div>
                           <div className="flex items-center gap-2">
@@ -1363,14 +1395,14 @@ export function TrainDashboard() {
                               onClick={() => moveRank(index, "up")}
                               className={SMALL_BUTTON_CLASS}
                             >
-                              Up
+                              {t("train.up")}
                             </button>
                             <button
                               type="button"
                               onClick={() => moveRank(index, "down")}
                               className={SMALL_BUTTON_CLASS}
                             >
-                              Down
+                              {t("train.down")}
                             </button>
                           </div>
                         </li>
@@ -1382,12 +1414,13 @@ export function TrainDashboard() {
                 <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-blossom-100 bg-white px-3 py-3">
                   <div className="text-sm text-slate-600">
                     <p>
-                      <span className="font-medium">Provider:</span>{" "}
-                      {selectedSchedules.length > 0 ? selectedProviderList.join(" + ") : "Select schedules first"}
+                      <span className="font-medium">{t("train.provider")}:</span>{" "}
+                      {selectedSchedules.length > 0 ? selectedProviderList.join(" + ") : t("train.selectSchedulesFirst")}
                     </p>
                     <p>
-                      <span className="font-medium">Seat:</span> {SEAT_CLASS_LABELS[createForm.seatClass]} ·{" "}
-                      <span className="font-medium">Passengers:</span> {createForm.adults} adult / {createForm.children} child
+                      <span className="font-medium">{t("train.seat")}:</span> {seatClassLabels[createForm.seatClass]} ·{" "}
+                      <span className="font-medium">{t("train.passengers")}:</span> {createForm.adults} {t("train.adult")} /{" "}
+                      {createForm.children} {t("train.child")}
                     </p>
                   </div>
                   <div className="flex flex-col gap-1">
@@ -1401,14 +1434,14 @@ export function TrainDashboard() {
                           setCreateForm((cur) => ({ ...cur, autoPay: !cur.autoPay }));
                         }}
                         disabled={!autoPayAvailable}
-                        title={autoPayAvailable ? "Auto-pay" : "Save wallet details first to enable auto-pay"}
+                        title={autoPayAvailable ? t("train.autoPay") : t("train.autoPayHelp")}
                         className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition focus:outline-none focus:ring-2 focus:ring-blossom-100 disabled:cursor-not-allowed disabled:opacity-60 ${
                           createForm.autoPay
                             ? "border-blossom-300 bg-blossom-50 text-blossom-700"
                             : "border-slate-200 bg-white text-slate-600"
                         }`}
                       >
-                        <span>Auto-pay</span>
+                        <span>{t("train.autoPay")}</span>
                         <span
                           className={`relative inline-flex h-5 w-9 items-center rounded-full transition ${
                             createForm.autoPay ? "bg-blossom-500" : "bg-slate-300"
@@ -1433,7 +1466,7 @@ export function TrainDashboard() {
                             : "border-slate-200 bg-white text-slate-600"
                         }`}
                       >
-                        <span>Notify</span>
+                        <span>{t("train.notify")}</span>
                         <span
                           className={`relative inline-flex h-5 w-9 items-center rounded-full transition ${
                             createForm.notify ? "bg-blossom-500" : "bg-slate-300"
@@ -1453,7 +1486,7 @@ export function TrainDashboard() {
                         disabled={createDisabled}
                         className={PRIMARY_BUTTON_CLASS}
                       >
-                        {creatingTask ? "Creating Task..." : "Create Task"}
+                        {creatingTask ? t("train.creatingTask") : t("train.createTask")}
                       </button>
                     </div>
 
@@ -1462,13 +1495,13 @@ export function TrainDashboard() {
                 {!autoPayAvailable ? (
                   <div className="mt-3">
                     <div className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50/90 px-3 py-1.5 text-xs text-amber-700 shadow-sm">
-                      <span className="font-medium">Wallet required for auto-pay.</span>
-                      <span>Configure in</span>
+                      <span className="font-medium">{t("train.walletRequiredAutoPay")}</span>
+                      <span>{t("train.configureIn")}</span>
                       <Link
-                        href="/settings/payment"
+                        href={ROUTES.settings.payment}
                         className="font-medium underline decoration-amber-300 underline-offset-2 hover:text-amber-800"
                       >
-                        Payment settings
+                        {t("nav.paymentSettings")}
                       </Link>
                       <span>.</span>
                     </div>
@@ -1478,15 +1511,15 @@ export function TrainDashboard() {
             </div>
           ) : searchUnlocked && hasSearched ? (
             <div className="rounded-2xl border border-blossom-100 bg-white p-6 text-sm text-slate-500 shadow-petal">
-              No schedules returned yet. Adjust filters and search again.
+              {t("train.noSchedulesYet")}
             </div>
           ) : null}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-2xl border border-blossom-100 bg-white p-6 shadow-petal">
-          <h2 className="text-lg font-semibold text-slate-800">Active Tasks</h2>
+          <h2 className="text-lg font-semibold text-slate-800">{t("train.activeTasks")}</h2>
           <ul className="mt-4 space-y-3 text-sm">
-            {activeTasks.length === 0 ? <li className="text-slate-500">No active tasks.</li> : null}
+            {activeTasks.length === 0 ? <li className="text-slate-500">{t("train.empty.activeTasks")}</li> : null}
             {activeTasks.map((task) => {
               const info = taskInfoFromSpec(task);
               return (
@@ -1495,16 +1528,20 @@ export function TrainDashboard() {
                   <div>
                     <p className="font-medium text-slate-700">{task.state}</p>
                     <p className="text-xs text-slate-500">
-                      Last attempt: {task.last_attempt_at ? formatDateTimeKst(task.last_attempt_at) : "-"}
+                      {t("train.lastAttempt")} {task.last_attempt_at ? formatDateTimeKst(task.last_attempt_at, locale) : "-"}
                     </p>
-                    <p className="mt-1 text-xs text-slate-600">Schedule: {info.scheduleLabel}</p>
+                    <p className="mt-1 text-xs text-slate-600">
+                      {t("train.label.schedule")} {info.scheduleLabel}
+                    </p>
                     <p className="text-xs text-slate-600">
-                      Route: {info.dep} {"->"} {info.arr}
+                      {t("train.label.route")} {formatStationLabel(info.dep, locale)} {"->"} {formatStationLabel(info.arr, locale)}
                     </p>
-                    <p className="text-xs text-slate-600">Passengers: {info.passengerLabel}</p>
+                    <p className="text-xs text-slate-600">
+                      {t("train.label.passengers")} {info.passengerLabel}
+                    </p>
                   </div>
                   <Link href={`/modules/train/tasks/${task.id}`} className="text-xs font-medium text-blossom-600 hover:text-blossom-700">
-                    Detail
+                    {t("train.action.detail")}
                   </Link>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
@@ -1514,7 +1551,7 @@ export function TrainDashboard() {
                       onClick={() => sendTaskAction(task.id, "pause")}
                       className={SMALL_BUTTON_CLASS}
                     >
-                      Pause
+                      {t("train.action.pause")}
                     </button>
                   ) : (
                     <button
@@ -1522,7 +1559,7 @@ export function TrainDashboard() {
                       onClick={() => sendTaskAction(task.id, "resume")}
                       className={SMALL_BUTTON_CLASS}
                     >
-                      Resume
+                      {t("train.action.resume")}
                     </button>
                   )}
                   {isAwaitingPaymentTask(task) ? (
@@ -1532,7 +1569,7 @@ export function TrainDashboard() {
                       disabled={payingTaskId === task.id}
                       className={payingTaskId === task.id ? SMALL_DISABLED_BUTTON_CLASS : SMALL_SUCCESS_BUTTON_CLASS}
                     >
-                      {payingTaskId === task.id ? "Paying..." : "Pay"}
+                      {payingTaskId === task.id ? t("train.action.paying") : t("train.action.pay")}
                     </button>
                   ) : null}
                   {isAwaitingPaymentTask(task) ? (
@@ -1542,7 +1579,7 @@ export function TrainDashboard() {
                       disabled={cancellingTaskId === task.id || payingTaskId === task.id}
                       className={SMALL_DANGER_BUTTON_CLASS}
                     >
-                      {cancellingTaskId === task.id ? "Cancelling..." : "Cancel reservation"}
+                      {cancellingTaskId === task.id ? t("train.action.cancelling") : t("train.action.cancelReservation")}
                     </button>
                   ) : null}
                   <button
@@ -1550,7 +1587,7 @@ export function TrainDashboard() {
                     onClick={() => sendTaskAction(task.id, "cancel")}
                     className={SMALL_DANGER_BUTTON_CLASS}
                   >
-                    Cancel
+                    {t("train.action.cancel")}
                   </button>
                 </div>
                 </li>
@@ -1560,9 +1597,9 @@ export function TrainDashboard() {
         </div>
 
         <div className="rounded-2xl border border-blossom-100 bg-white p-6 shadow-petal">
-          <h2 className="text-lg font-semibold text-slate-800">Completed Tasks</h2>
+          <h2 className="text-lg font-semibold text-slate-800">{t("train.completedTasks")}</h2>
           <ul className="mt-4 space-y-3 text-sm">
-            {completedTasks.length === 0 ? <li className="text-slate-500">No completed tasks.</li> : null}
+            {completedTasks.length === 0 ? <li className="text-slate-500">{t("train.empty.completedTasks")}</li> : null}
             {completedTasks.map((task) => {
               const info = taskInfoFromSpec(task);
               const ticketBadge = getTaskTicketBadge(task);
@@ -1576,21 +1613,25 @@ export function TrainDashboard() {
                         <span
                           className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${ticketBadge.className}`}
                         >
-                          {ticketBadge.label}
+                          {renderMaybeKey(ticketBadge.label)}
                         </span>
                       ) : null}
                     </div>
                     <p className="text-xs text-slate-500">
-                      Completed: {task.completed_at ? formatDateTimeKst(task.completed_at) : "-"}
+                      {t("train.label.completed")} {task.completed_at ? formatDateTimeKst(task.completed_at, locale) : "-"}
                     </p>
-                    <p className="mt-1 text-xs text-slate-600">Schedule: {info.scheduleLabel}</p>
+                    <p className="mt-1 text-xs text-slate-600">
+                      {t("train.label.schedule")} {info.scheduleLabel}
+                    </p>
                     <p className="text-xs text-slate-600">
-                      Route: {info.dep} {"->"} {info.arr}
+                      {t("train.label.route")} {formatStationLabel(info.dep, locale)} {"->"} {formatStationLabel(info.arr, locale)}
                     </p>
-                    <p className="text-xs text-slate-600">Passengers: {info.passengerLabel}</p>
+                    <p className="text-xs text-slate-600">
+                      {t("train.label.passengers")} {info.passengerLabel}
+                    </p>
                   </div>
                   <Link href={`/modules/train/tasks/${task.id}`} className="text-xs font-medium text-blossom-600 hover:text-blossom-700">
-                    Detail
+                    {t("train.action.detail")}
                   </Link>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
@@ -1599,14 +1640,14 @@ export function TrainDashboard() {
                       type="button"
                       onClick={() => void payAwaitingPaymentTask(task.id)}
                       disabled={payingTaskId === task.id || !autoPayAvailable}
-                      title={autoPayAvailable ? "Pay now" : "Payment settings required"}
+                      title={autoPayAvailable ? t("train.action.payNow") : t("train.hint.paymentSettingsRequired")}
                       className={
                         payingTaskId === task.id || !autoPayAvailable
                           ? SMALL_DISABLED_BUTTON_CLASS
                           : SMALL_SUCCESS_BUTTON_CLASS
                       }
                     >
-                      {payingTaskId === task.id ? "Paying..." : "Pay"}
+                      {payingTaskId === task.id ? t("train.action.paying") : t("train.action.pay")}
                     </button>
                   ) : null}
                   {isAwaitingPaymentTask(task) ? (
@@ -1616,7 +1657,7 @@ export function TrainDashboard() {
                       disabled={cancellingTaskId === task.id || payingTaskId === task.id}
                       className={SMALL_DANGER_BUTTON_CLASS}
                     >
-                      {cancellingTaskId === task.id ? "Cancelling..." : "Cancel"}
+                      {cancellingTaskId === task.id ? t("train.action.cancelling") : t("train.action.cancel")}
                     </button>
                   ) : shouldShowCompletedCancel(task) ? (
                     <button
@@ -1625,7 +1666,7 @@ export function TrainDashboard() {
                       disabled={cancellingTaskId === task.id}
                       className={SMALL_DANGER_BUTTON_CLASS}
                     >
-                      {cancellingTaskId === task.id ? "Cancelling..." : "Cancel"}
+                      {cancellingTaskId === task.id ? t("train.action.cancelling") : t("train.action.cancel")}
                     </button>
                   ) : (
                     <button
@@ -1633,7 +1674,7 @@ export function TrainDashboard() {
                       onClick={() => sendTaskAction(task.id, "delete")}
                       className={SMALL_DANGER_BUTTON_CLASS}
                     >
-                      Delete
+                      {t("common.delete")}
                     </button>
                   )}
                 </div>

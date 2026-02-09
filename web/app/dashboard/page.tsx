@@ -1,8 +1,10 @@
 import { cookies } from "next/headers";
+import { headers } from "next/headers";
 import Link from "next/link";
 
 import { ModuleTile } from "@/components/module-tile";
 import { serverApiBaseUrl } from "@/lib/api-base";
+import { localeFromAcceptLanguage, localeFromUser, t } from "@/lib/i18n";
 import { UI_BODY_MUTED, UI_CARD_MD, UI_CARD_LG, UI_KICKER, UI_TITLE_LG } from "@/lib/ui";
 import { requireUser } from "@/lib/server-auth";
 import type { BominalModule, ModulesResponse } from "@/lib/types";
@@ -34,29 +36,30 @@ export default async function DashboardPage({
   searchParams?: { denied?: string };
 }) {
   const user = await requireUser();
+  const locale = localeFromUser(user) ?? localeFromAcceptLanguage(headers().get("accept-language"));
   const modules = await getModules();
 
   return (
     <section className="space-y-8">
       {searchParams?.denied === "1" ? (
         <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-700">
-          Admin access is restricted to users with the admin role.
+          {t(locale, "dashboard.denied")}
         </p>
       ) : null}
 
       <div className={UI_CARD_LG}>
-        <p className={UI_KICKER}>Dashboard</p>
+        <p className={UI_KICKER}>{t(locale, "dashboard.kicker")}</p>
         <h1 className={`mt-2 ${UI_TITLE_LG}`}>
-          Hi {user.display_name || user.email}, welcome to bominal.
+          {t(locale, "dashboard.welcome", { name: user.display_name || user.email })}
         </h1>
         <p className={`mt-3 max-w-2xl ${UI_BODY_MUTED}`}>
-          Your modular workspace is ready. Pick a module to explore the shell while feature work is on the way.
+          {t(locale, "dashboard.body")}
         </p>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
         {modules.map((module) => (
-          <ModuleTile key={module.slug} module={module} />
+          <ModuleTile key={module.slug} module={module} locale={locale} />
         ))}
       </div>
     </section>

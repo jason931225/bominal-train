@@ -59,6 +59,7 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
         email=email,
         password_hash=hash_password(payload.password),
         display_name=payload.display_name,
+        ui_locale="en",
         role_id=user_role.id,
     )
     db.add(user)
@@ -185,6 +186,12 @@ async def update_account(
         if phone_number != current_user.phone_number:
             updates["phone_number"] = phone_number
 
+    if "ui_locale" in provided:
+        if payload.ui_locale is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="ui_locale cannot be empty")
+        if payload.ui_locale != current_user.ui_locale:
+            updates["ui_locale"] = payload.ui_locale
+
     if "billing_address" in provided:
         billing_address = normalize_optional(payload.billing_address)
         if billing_address != current_user.billing_address:
@@ -231,11 +238,13 @@ async def update_account(
     if not updates:
         return AuthResponse(user=user_to_out(current_user))
 
-    if not payload.current_password or not verify_password(payload.current_password, current_user.password_hash):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Current password is required and must be valid",
-        )
+    sensitive_update = any(key in updates for key in ("email", "password_hash"))
+    if sensitive_update:
+        if not payload.current_password or not verify_password(payload.current_password, current_user.password_hash):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Current password is required and must be valid",
+            )
 
     for key, value in updates.items():
         setattr(current_user, key, value)

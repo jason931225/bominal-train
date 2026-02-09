@@ -1,21 +1,28 @@
 import type { Metadata } from "next";
-import { Fraunces, Manrope } from "next/font/google";
+import { Noto_Sans_KR, Noto_Serif_KR } from "next/font/google";
+import { headers } from "next/headers";
 
 import "./globals.css";
 
+import { LocaleProvider } from "@/components/locale-provider";
 import { ThemeInitScript } from "@/components/theme-init-script";
 import { ThemeProvider } from "@/components/theme-provider";
 import { TopNav } from "@/components/top-nav";
+import { localeFromAcceptLanguage, localeFromUser, type Locale } from "@/lib/i18n";
+import { getOptionalUser } from "@/lib/server-auth";
 import { seasonFromMonth } from "@/lib/theme";
 
-const fontSans = Manrope({
+const fontSans = Noto_Sans_KR({
+  // `next/font/google` subset typing for KR fonts currently only accepts "latin".
+  // The font itself includes Korean glyphs; this controls which subset files Next requests.
   subsets: ["latin"],
   variable: "--font-sans",
   display: "swap",
 });
 
-const fontDisplay = Fraunces({
+const fontDisplay = Noto_Serif_KR({
   subsets: ["latin"],
+  weight: ["400", "600", "700"],
   variable: "--font-display",
   display: "swap",
 });
@@ -25,15 +32,23 @@ export const metadata: Metadata = {
   description: "bominal modular dashboard and train automation.",
 };
 
-export default function RootLayout({
+function resolveRequestLocale(userLocale: Locale | null, acceptLanguage: string | null): Locale {
+  return userLocale ?? localeFromAcceptLanguage(acceptLanguage);
+}
+
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const user = await getOptionalUser();
+  const headersList = headers();
+  const acceptLanguage = headersList.get("accept-language");
+  const locale = resolveRequestLocale(localeFromUser(user), acceptLanguage);
   const initialTheme = seasonFromMonth(new Date().getMonth() + 1);
   return (
     <html
-      lang="en"
+      lang={locale}
       data-theme-mode="auto"
       data-theme={initialTheme}
       className={`${fontSans.variable} ${fontDisplay.variable}`}
@@ -42,8 +57,10 @@ export default function RootLayout({
       <body className="font-sans antialiased">
         <ThemeInitScript />
         <ThemeProvider>
-          <TopNav />
-          <main className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-6 sm:py-12">{children}</main>
+          <LocaleProvider initialLocale={locale}>
+            <TopNav user={user} locale={locale} />
+            <main className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-6 sm:py-12">{children}</main>
+          </LocaleProvider>
         </ThemeProvider>
       </body>
     </html>

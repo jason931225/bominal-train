@@ -1,7 +1,7 @@
 import uuid
 from datetime import date, datetime, timezone
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, JSON, String, Text
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, JSON, String, Text, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -34,6 +34,8 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(Text, nullable=False)
     display_name: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True)
     phone_number: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # Keep DB-level default aligned with Alembic migration (server_default) to avoid drift.
+    ui_locale: Mapped[str] = mapped_column(String(8), nullable=False, default="en", server_default=text("'en'"))
     billing_address: Mapped[str | None] = mapped_column(Text, nullable=True)
     billing_address_line1: Mapped[str | None] = mapped_column(String(255), nullable=True)
     billing_address_line2: Mapped[str | None] = mapped_column(String(255), nullable=True)
