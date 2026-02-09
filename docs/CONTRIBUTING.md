@@ -77,6 +77,11 @@ curl -sS http://localhost:8000/health
 curl -sS -I http://localhost:3000
 ```
 
+Note on local CORS:
+
+- If you open the web app via `http://0.0.0.0:3000` or `http://127.0.0.1:3000`, your browser `Origin` will not be `http://localhost:3000`.
+- Ensure `CORS_ORIGINS` includes the exact origin(s), otherwise auth requests may show “Could not reach bominal API.” due to CORS blocking.
+
 ## Migration workflow
 
 Create a migration:
