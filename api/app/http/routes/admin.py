@@ -8,12 +8,24 @@ from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
+from app.core.redis import get_redis_client
 from app.db.models import Artifact, Role, Secret, Session, Task, TaskAttempt, User
 from app.db.session import get_db
 from app.http.deps import get_current_admin
+from app.modules.train.constants import (
+    ACTIVE_TASK_STATES,
+    SPEC_KEY_NEXT_RUN_AT,
+    TASK_MODULE as TRAIN_TASK_MODULE,
+    TERMINAL_TASK_STATES,
+)
+from app.modules.train.queue import enqueue_train_task
+from app.modules.train.worker import enqueue_recoverable_tasks
 from app.schemas.auth import MessageResponse
+from app.worker import HEARTBEAT_KEY
 
 router = APIRouter(dependencies=[Depends(get_current_admin)])
+
+STALE_TASK_WINDOW = timedelta(minutes=10)
 
 
 # ---------- Schemas ----------
@@ -68,6 +80,70 @@ class UpdateUserRole(BaseModel):
 
 class RevokeSessionsRequest(BaseModel):
     user_id: UUID
+
+
+class OpsRedisStatus(BaseModel):
+    ok: bool
+    detail: str | None = None
+
+
+class OpsArqQueueStatus(BaseModel):
+    queued: int
+    in_progress: int
+
+
+class OpsWorkerHeartbeatStatus(BaseModel):
+    online: bool
+    last_heartbeat_at: datetime | None = None
+
+
+class OpsTrainStatus(BaseModel):
+    active_task_count: int
+    stale_task_count: int
+
+
+class OpsStatusResponse(BaseModel):
+    redis: OpsRedisStatus
+    arq: OpsArqQueueStatus
+    worker: OpsWorkerHeartbeatStatus
+    train: OpsTrainStatus
+
+
+class OpsStaleTaskOut(BaseModel):
+    task_id: UUID
+    state: str
+    created_at: datetime
+    updated_at: datetime
+    deadline_at: datetime
+    user_id: UUID
+    user_email: EmailStr
+    last_attempt_at: datetime | None
+    last_error_code: str | None
+    last_error_message_safe: str | None
+
+
+class OpsStaleTasksResponse(BaseModel):
+    tasks: list[OpsStaleTaskOut]
+
+
+class OpsRecentFailureOut(BaseModel):
+    task_id: UUID
+    user_id: UUID
+    user_email: EmailStr
+    action: str
+    provider: str
+    error_code: str | None
+    error_message_safe: str | None
+    started_at: datetime
+    finished_at: datetime
+
+
+class OpsRecentFailuresResponse(BaseModel):
+    failures: list[OpsRecentFailureOut]
+
+
+class OpsRecoverResponse(BaseModel):
+    enqueued_count: int
 
 
 # ---------- Endpoints ----------
@@ -128,6 +204,191 @@ async def get_system_stats(db: AsyncSession = Depends(get_db)) -> SystemStats:
         tasks_by_state=tasks_by_state,
         tasks_completed_24h=tasks_completed_24h,
     )
+
+
+@router.get("/ops/status", response_model=OpsStatusResponse)
+async def get_ops_status(db: AsyncSession = Depends(get_db)) -> OpsStatusResponse:
+    now = datetime.now(timezone.utc)
+    stale_cutoff = now - STALE_TASK_WINDOW
+
+    redis_ok = True
+    redis_detail: str | None = None
+    arq_queue = 0
+    arq_in_progress = 0
+    heartbeat_online = False
+    heartbeat_at: datetime | None = None
+
+    try:
+        redis = await get_redis_client()
+        await redis.ping()
+        arq_queue = int(await redis.zcard(b"arq:queue"))
+        arq_in_progress = int(await redis.zcard(b"arq:in-progress"))
+        heartbeat_raw = await redis.get(HEARTBEAT_KEY)
+        if isinstance(heartbeat_raw, (bytes, bytearray)) and heartbeat_raw:
+            heartbeat_online = True
+            try:
+                heartbeat_at = datetime.fromisoformat(heartbeat_raw.decode("utf-8"))
+                if heartbeat_at.tzinfo is None:
+                    heartbeat_at = heartbeat_at.replace(tzinfo=timezone.utc)
+            except ValueError:
+                heartbeat_at = None
+    except Exception as exc:
+        redis_ok = False
+        redis_detail = f"{type(exc).__name__}"
+
+    active_count = (
+        await db.execute(
+            select(func.count(Task.id))
+            .where(Task.module == TRAIN_TASK_MODULE)
+            .where(Task.state.in_(ACTIVE_TASK_STATES))
+            .where(Task.hidden_at.is_(None))
+            .where(Task.cancelled_at.is_(None))
+        )
+    ).scalar_one()
+
+    stale_count = (
+        await db.execute(
+            select(func.count(Task.id))
+            .where(Task.module == TRAIN_TASK_MODULE)
+            .where(Task.hidden_at.is_(None))
+            .where(Task.cancelled_at.is_(None))
+            .where(Task.state.in_(("RUNNING", "POLLING", "RESERVING", "PAYING")))
+            .where(Task.updated_at < stale_cutoff)
+        )
+    ).scalar_one()
+
+    return OpsStatusResponse(
+        redis=OpsRedisStatus(ok=redis_ok, detail=redis_detail),
+        arq=OpsArqQueueStatus(queued=arq_queue, in_progress=arq_in_progress),
+        worker=OpsWorkerHeartbeatStatus(online=heartbeat_online, last_heartbeat_at=heartbeat_at),
+        train=OpsTrainStatus(active_task_count=int(active_count), stale_task_count=int(stale_count)),
+    )
+
+
+@router.get("/ops/train/stale-tasks", response_model=OpsStaleTasksResponse)
+async def list_stale_train_tasks(
+    limit: int = Query(default=20, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+) -> OpsStaleTasksResponse:
+    now = datetime.now(timezone.utc)
+    stale_cutoff = now - STALE_TASK_WINDOW
+
+    stmt = (
+        select(Task, User.email)
+        .join(User, User.id == Task.user_id)
+        .where(Task.module == TRAIN_TASK_MODULE)
+        .where(Task.hidden_at.is_(None))
+        .where(Task.cancelled_at.is_(None))
+        .where(Task.state.in_(("RUNNING", "POLLING", "RESERVING", "PAYING")))
+        .where(Task.updated_at < stale_cutoff)
+        .order_by(Task.updated_at.asc())
+        .limit(limit)
+    )
+    rows = (await db.execute(stmt)).all()
+    tasks = [row[0] for row in rows]
+    email_by_task = {row[0].id: row[1] for row in rows}
+
+    task_ids = [task.id for task in tasks]
+    attempts_stmt = (
+        select(TaskAttempt)
+        .where(TaskAttempt.task_id.in_(task_ids))
+        .order_by(TaskAttempt.task_id.asc(), TaskAttempt.finished_at.desc(), TaskAttempt.started_at.desc())
+    )
+    attempts = (await db.execute(attempts_stmt)).scalars().all()
+    latest_attempt: dict[UUID, TaskAttempt] = {}
+    for attempt in attempts:
+        latest_attempt.setdefault(attempt.task_id, attempt)
+
+    out: list[OpsStaleTaskOut] = []
+    for task in tasks:
+        attempt = latest_attempt.get(task.id)
+        out.append(
+            OpsStaleTaskOut(
+                task_id=task.id,
+                state=task.state,
+                created_at=task.created_at,
+                updated_at=task.updated_at,
+                deadline_at=task.deadline_at,
+                user_id=task.user_id,
+                user_email=email_by_task[task.id],
+                last_attempt_at=attempt.finished_at if attempt else None,
+                last_error_code=attempt.error_code if attempt else None,
+                last_error_message_safe=attempt.error_message_safe if attempt else None,
+            )
+        )
+
+    return OpsStaleTasksResponse(tasks=out)
+
+
+@router.get("/ops/train/recent-failures", response_model=OpsRecentFailuresResponse)
+async def list_recent_train_failures(
+    hours: int = Query(default=24, ge=1, le=168),
+    limit: int = Query(default=50, ge=1, le=500),
+    db: AsyncSession = Depends(get_db),
+) -> OpsRecentFailuresResponse:
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(hours=hours)
+
+    stmt = (
+        select(TaskAttempt, Task.user_id, User.email)
+        .join(Task, Task.id == TaskAttempt.task_id)
+        .join(User, User.id == Task.user_id)
+        .where(Task.module == TRAIN_TASK_MODULE)
+        .where(TaskAttempt.ok.is_(False))
+        .where(TaskAttempt.started_at >= cutoff)
+        .order_by(TaskAttempt.started_at.desc())
+        .limit(limit)
+    )
+    rows = (await db.execute(stmt)).all()
+
+    failures = [
+        OpsRecentFailureOut(
+            task_id=attempt.task_id,
+            user_id=user_id,
+            user_email=email,
+            action=attempt.action,
+            provider=attempt.provider,
+            error_code=attempt.error_code,
+            error_message_safe=attempt.error_message_safe,
+            started_at=attempt.started_at,
+            finished_at=attempt.finished_at,
+        )
+        for (attempt, user_id, email) in rows
+    ]
+    return OpsRecentFailuresResponse(failures=failures)
+
+
+@router.post("/ops/train/recover", response_model=OpsRecoverResponse)
+async def recover_train_tasks(db: AsyncSession = Depends(get_db)) -> OpsRecoverResponse:
+    enqueued = await enqueue_recoverable_tasks(db)
+    return OpsRecoverResponse(enqueued_count=int(enqueued))
+
+
+@router.post("/ops/train/tasks/{task_id}/requeue", response_model=MessageResponse)
+async def requeue_train_task(task_id: UUID, db: AsyncSession = Depends(get_db)) -> MessageResponse:
+    task = (await db.execute(select(Task).where(Task.id == task_id))).scalar_one_or_none()
+    if task is None or task.module != TRAIN_TASK_MODULE:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+    if task.hidden_at is not None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+    if task.cancelled_at is not None or task.state == "CANCELLED":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Task is cancelled")
+    if task.paused_at is not None or task.state == "PAUSED":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Task is paused")
+    if task.state in TERMINAL_TASK_STATES:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Task is terminal")
+
+    next_spec = dict(task.spec_json or {})
+    next_spec.pop(SPEC_KEY_NEXT_RUN_AT, None)
+    task.spec_json = next_spec
+    task.state = "QUEUED"
+    task.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(task)
+
+    await enqueue_train_task(str(task.id))
+
+    return MessageResponse(message="Task requeued")
 
 
 @router.get("/users", response_model=AdminUserList)
