@@ -12,6 +12,8 @@ const POLL_MS = 4000;
 const SMALL_DANGER_BUTTON_CLASS = UI_BUTTON_DANGER_SM;
 const SMALL_SUCCESS_BUTTON_CLASS =
   "inline-flex h-8 items-center justify-center rounded-full border border-emerald-200 bg-emerald-50 px-2.5 text-xs font-medium text-emerald-700 shadow-sm transition hover:bg-emerald-100 focus:outline-none focus:ring-2 focus:ring-emerald-100 disabled:cursor-not-allowed disabled:opacity-60";
+const SMALL_DISABLED_BUTTON_CLASS =
+  "inline-flex h-8 items-center justify-center rounded-full border border-slate-200 bg-slate-100 px-2.5 text-xs font-medium text-slate-500 shadow-sm transition focus:outline-none focus:ring-2 focus:ring-slate-100 disabled:cursor-not-allowed disabled:opacity-60";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -69,6 +71,7 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
   const [cancellingTicket, setCancellingTicket] = useState(false);
   const [payingTicket, setPayingTicket] = useState(false);
   const [deletingTask, setDeletingTask] = useState(false);
+  const [retryingTask, setRetryingTask] = useState(false);
 
   const isTerminal = useMemo(() => {
     if (!task) return false;
@@ -212,6 +215,40 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
     }
   };
 
+  const retryNow = async () => {
+    if (!task) return;
+    if (!(task.state === "QUEUED" || task.state === "POLLING")) return;
+
+    setRetryingTask(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const response = await fetch(`${clientApiBaseUrl}/api/train/tasks/${taskId}/retry`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const payload = (await response.json().catch(() => null)) as { detail?: unknown } | null;
+      if (!response.ok) {
+        const detail = payload?.detail;
+        if (typeof detail === "string") {
+          setError(detail);
+        } else if (detail && typeof detail === "object" && "message" in detail) {
+          const message = (detail as { message?: unknown }).message;
+          setError(typeof message === "string" ? message : "Retry failed.");
+        } else {
+          setError("Retry failed.");
+        }
+        return;
+      }
+      setNotice("Retry requested.");
+      await loadDetail();
+    } catch {
+      setError("Retry failed.");
+    } finally {
+      setRetryingTask(false);
+    }
+  };
+
   return (
     <section className="space-y-6">
       <div className="rounded-3xl border border-blossom-100 bg-white p-6 shadow-petal">
@@ -246,9 +283,30 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
             <p>
               <span className="font-medium">Last attempt:</span> {formatDateTimeKstSeconds(task.last_attempt_at)}
             </p>
+            {task.state === "POLLING" && task.next_run_at ? (
+              <p>
+                <span className="font-medium">Next check:</span> {formatDateTimeKstSeconds(task.next_run_at)}
+              </p>
+            ) : null}
+            {task.last_attempt_ok === false && task.last_attempt_error_message_safe ? (
+              <p className="md:col-span-2">
+                <span className="font-medium">Last error:</span> {task.last_attempt_error_message_safe}
+              </p>
+            ) : null}
           </div>
-          {canPayReservation || canCancelReservation || isTerminal ? (
+          {task.state === "QUEUED" || task.state === "POLLING" || canPayReservation || canCancelReservation || isTerminal ? (
             <div className="mt-4 flex flex-wrap items-center gap-2">
+              {task.state === "QUEUED" || task.state === "POLLING" ? (
+                <button
+                  type="button"
+                  onClick={() => void retryNow()}
+                  disabled={retryingTask || task.retry_now_allowed !== true || cancellingTicket || payingTicket || deletingTask}
+                  title={task.retry_now_allowed === true ? "Retry now" : task.retry_now_reason ?? "Retry not available"}
+                  className={task.retry_now_allowed === true ? SMALL_SUCCESS_BUTTON_CLASS : SMALL_DISABLED_BUTTON_CLASS}
+                >
+                  {retryingTask ? "Retrying..." : "Retry now"}
+                </button>
+              ) : null}
               {canPayReservation ? (
                 <button
                   type="button"

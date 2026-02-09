@@ -129,9 +129,14 @@ async function fetchAllTasks(options?: { refreshCompleted?: boolean }) {
 async function parseApiErrorMessage(response: Response, fallback: string): Promise<string> {
   const contentType = response.headers.get("content-type") ?? "";
   if (contentType.includes("application/json")) {
-    const payload = (await response.json().catch(() => null)) as { detail?: string } | null;
-    if (payload?.detail) {
-      return payload.detail;
+    const payload = (await response.json().catch(() => null)) as { detail?: unknown } | null;
+    const detail = payload?.detail;
+    if (typeof detail === "string" && detail) {
+      return detail;
+    }
+    if (detail && typeof detail === "object" && "message" in detail) {
+      const message = (detail as { message?: unknown }).message;
+      if (typeof message === "string" && message) return message;
     }
     return fallback;
   }
@@ -800,7 +805,7 @@ export function TrainDashboard() {
     }
   };
 
-  const sendTaskAction = async (taskId: string, action: "pause" | "resume" | "cancel" | "delete") => {
+  const sendTaskAction = async (taskId: string, action: "pause" | "resume" | "retry" | "cancel" | "delete") => {
     if (action === "cancel") {
       const confirmed = window.confirm("Cancel this active task?");
       if (!confirmed) return;
@@ -1497,6 +1502,16 @@ export function TrainDashboard() {
                     <p className="text-xs text-slate-500">
                       Last attempt: {task.last_attempt_at ? formatDateTimeKst(task.last_attempt_at) : "-"}
                     </p>
+                    {task.last_attempt_ok === false && task.last_attempt_error_message_safe ? (
+                      <p className="text-xs text-rose-600">
+                        Last error: {task.last_attempt_error_message_safe}
+                      </p>
+                    ) : null}
+                    {task.state === "POLLING" && task.next_run_at ? (
+                      <p className="text-xs text-slate-600">
+                        Next check: {formatDateTimeKst(task.next_run_at)}
+                      </p>
+                    ) : null}
                     <p className="mt-1 text-xs text-slate-600">Schedule: {info.scheduleLabel}</p>
                     <p className="text-xs text-slate-600">
                       Route: {info.dep} {"->"} {info.arr}
@@ -1508,6 +1523,17 @@ export function TrainDashboard() {
                   </Link>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
+                  {task.state === "QUEUED" || task.state === "POLLING" ? (
+                    <button
+                      type="button"
+                      onClick={() => sendTaskAction(task.id, "retry")}
+                      disabled={task.retry_now_allowed !== true}
+                      title={task.retry_now_allowed === true ? "Retry now" : task.retry_now_reason ?? "Retry not available"}
+                      className={task.retry_now_allowed === true ? SMALL_BUTTON_CLASS : SMALL_DISABLED_BUTTON_CLASS}
+                    >
+                      Retry now
+                    </button>
+                  ) : null}
                   {task.state !== "PAUSED" ? (
                     <button
                       type="button"
