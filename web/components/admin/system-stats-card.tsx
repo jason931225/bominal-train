@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
+
+import { useLocale } from "@/components/locale-provider";
 import { UI_CARD_MD, UI_KICKER, UI_TITLE_MD } from "@/lib/ui";
 
 type SystemStats = {
@@ -14,6 +16,7 @@ type SystemStats = {
 };
 
 export function SystemStatsCard() {
+  const { t } = useLocale();
   const [stats, setStats] = useState<SystemStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -26,23 +29,23 @@ export function SystemStatsCard() {
           const data = await res.json();
           setStats(data);
         } else {
-          setError("Failed to load stats");
+          setError(t("admin.stats.failedLoad"));
         }
       } catch (e) {
-        setError("Connection error");
+        setError(t("admin.stats.connectionError"));
       } finally {
         setLoading(false);
       }
     }
     fetchStats();
-  }, []);
+  }, [t]);
 
   if (loading) {
     return (
       <div className={UI_CARD_MD}>
-        <p className={UI_KICKER}>Overview</p>
-        <h2 className={`mt-2 ${UI_TITLE_MD}`}>System Statistics</h2>
-        <div className="mt-4 text-center text-slate-400 py-8">Loading...</div>
+        <p className={UI_KICKER}>{t("admin.stats.overview")}</p>
+        <h2 className={`mt-2 ${UI_TITLE_MD}`}>{t("admin.stats.systemStatistics")}</h2>
+        <div className="mt-4 py-8 text-center text-slate-400">{t("admin.stats.loading")}</div>
       </div>
     );
   }
@@ -50,51 +53,51 @@ export function SystemStatsCard() {
   if (error || !stats) {
     return (
       <div className={UI_CARD_MD}>
-        <p className={UI_KICKER}>Overview</p>
-        <h2 className={`mt-2 ${UI_TITLE_MD}`}>System Statistics</h2>
-        <div className="mt-4 text-center text-rose-500 py-8">{error || "No data"}</div>
+        <p className={UI_KICKER}>{t("admin.stats.overview")}</p>
+        <h2 className={`mt-2 ${UI_TITLE_MD}`}>{t("admin.stats.systemStatistics")}</h2>
+        <div className="mt-4 py-8 text-center text-rose-500">{error || t("admin.stats.noData")}</div>
       </div>
     );
   }
 
   const statItems = [
     {
-      label: "Total Users",
+      label: t("admin.stats.totalUsers"),
       value: stats.total_users,
-      sub: `${stats.active_users_24h} active (24h)`,
+      sub: t("admin.stats.active24h", { count: stats.active_users_24h }),
       color: "bg-indigo-50 text-indigo-600",
     },
     {
-      label: "Sessions",
+      label: t("admin.stats.sessions"),
       value: stats.total_sessions,
-      sub: `${stats.active_sessions} active now`,
+      sub: t("admin.stats.activeNow", { count: stats.active_sessions }),
       color: "bg-emerald-50 text-emerald-600",
     },
     {
-      label: "Total Tasks",
+      label: t("admin.stats.totalTasks"),
       value: stats.total_tasks,
-      sub: `${stats.tasks_completed_24h} completed (24h)`,
+      sub: t("admin.stats.completed24h", { count: stats.tasks_completed_24h }),
       color: "bg-amber-50 text-amber-600",
     },
   ];
 
   const taskStates = [
-    { key: "QUEUED", label: "Queued", color: "bg-slate-100 text-slate-700" },
-    { key: "RUNNING", label: "Running", color: "bg-blue-100 text-blue-700" },
-    { key: "POLLING", label: "Polling", color: "bg-indigo-100 text-indigo-700" },
-    { key: "RESERVING", label: "Reserving", color: "bg-amber-100 text-amber-800" },
-    { key: "PAYING", label: "Paying", color: "bg-fuchsia-100 text-fuchsia-800" },
-    { key: "PAUSED", label: "Paused", color: "bg-slate-200 text-slate-700" },
-    { key: "COMPLETED", label: "Completed", color: "bg-emerald-100 text-emerald-800" },
-    { key: "FAILED", label: "Failed", color: "bg-rose-100 text-rose-700" },
-    { key: "CANCELLED", label: "Cancelled", color: "bg-orange-100 text-orange-800" },
-    { key: "EXPIRED", label: "Expired", color: "bg-slate-100 text-slate-600" },
+    { key: "QUEUED", label: t("admin.stats.stateLabels.QUEUED"), color: "bg-slate-100 text-slate-700" },
+    { key: "RUNNING", label: t("admin.stats.stateLabels.RUNNING"), color: "bg-blue-100 text-blue-700" },
+    { key: "POLLING", label: t("admin.stats.stateLabels.POLLING"), color: "bg-indigo-100 text-indigo-700" },
+    { key: "RESERVING", label: t("admin.stats.stateLabels.RESERVING"), color: "bg-amber-100 text-amber-800" },
+    { key: "PAYING", label: t("admin.stats.stateLabels.PAYING"), color: "bg-fuchsia-100 text-fuchsia-800" },
+    { key: "PAUSED", label: t("admin.stats.stateLabels.PAUSED"), color: "bg-slate-200 text-slate-700" },
+    { key: "COMPLETED", label: t("admin.stats.stateLabels.COMPLETED"), color: "bg-emerald-100 text-emerald-800" },
+    { key: "FAILED", label: t("admin.stats.stateLabels.FAILED"), color: "bg-rose-100 text-rose-700" },
+    { key: "CANCELLED", label: t("admin.stats.stateLabels.CANCELLED"), color: "bg-orange-100 text-orange-800" },
+    { key: "EXPIRED", label: t("admin.stats.stateLabels.EXPIRED"), color: "bg-slate-100 text-slate-600" },
   ] as const;
 
   return (
     <section className={UI_CARD_MD}>
-      <p className={UI_KICKER}>Overview</p>
-      <h2 className={`mt-2 ${UI_TITLE_MD}`}>System Statistics</h2>
+      <p className={UI_KICKER}>{t("admin.stats.overview")}</p>
+      <h2 className={`mt-2 ${UI_TITLE_MD}`}>{t("admin.stats.systemStatistics")}</h2>
 
       {/* Main stats */}
       <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -117,7 +120,7 @@ export function SystemStatsCard() {
       {/* Task breakdown */}
       <div className="mt-6">
         <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
-          Tasks by State
+          {t("admin.stats.tasksByState")}
         </p>
         <div className="mt-2 flex flex-wrap gap-2">
           {taskStates.map((ts) => {

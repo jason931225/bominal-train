@@ -3,7 +3,9 @@
 import { FormEvent, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { useLocale } from "@/components/locale-provider";
 import { clientApiBaseUrl } from "@/lib/api-base";
+import { ROUTES } from "@/lib/routes";
 import type { BominalUser } from "@/lib/types";
 import { UI_BUTTON_PRIMARY, UI_CARD_MD, UI_FIELD, UI_KICKER, UI_TITLE_MD } from "@/lib/ui";
 
@@ -11,6 +13,7 @@ type AccountFormState = {
   email: string;
   display_name: string;
   phone_number: string;
+  ui_locale: "en" | "ko";
   billing_address_line1: string;
   billing_address_line2: string;
   billing_city: string;
@@ -35,7 +38,19 @@ function normalize(value: string): string {
   return value.trim();
 }
 
-function passwordStrengthLabel(password: string): "weak" | "good" | "excellent" {
+function normalizeEmail(value: string): string {
+  return normalize(value).toLowerCase();
+}
+
+type PasswordStrength = "weak" | "good" | "excellent";
+
+const PASSWORD_STRENGTH_BAR_CLASS: Record<PasswordStrength, string> = {
+  weak: "w-1/3 bg-rose-400",
+  good: "w-2/3 bg-amber-400",
+  excellent: "w-full bg-emerald-500",
+};
+
+function passwordStrengthLabel(password: string): PasswordStrength {
   let score = 0;
   if (password.length >= 8) score += 1;
   if (password.length >= 12) score += 1;
@@ -48,11 +63,84 @@ function passwordStrengthLabel(password: string): "weak" | "good" | "excellent" 
   return "excellent";
 }
 
+type AccountOptionalPatchKey =
+  | "display_name"
+  | "phone_number"
+  | "billing_address_line1"
+  | "billing_address_line2"
+  | "billing_city"
+  | "billing_state_province"
+  | "billing_country"
+  | "billing_postal_code";
+
+type AccountPatchKey = AccountOptionalPatchKey | "email" | "ui_locale" | "birthday" | "new_password";
+type AccountPatchPayload = Partial<Record<AccountPatchKey, string | null>>;
+
+const OPTIONAL_PATCH_KEYS: AccountOptionalPatchKey[] = [
+  "display_name",
+  "phone_number",
+  "billing_address_line1",
+  "billing_address_line2",
+  "billing_city",
+  "billing_state_province",
+  "billing_country",
+  "billing_postal_code",
+];
+
+function setOptionalIfChanged(
+  payload: AccountPatchPayload,
+  key: AccountOptionalPatchKey,
+  nextRaw: string,
+  baselineRaw: string,
+): void {
+  const next = normalize(nextRaw);
+  const baseline = normalize(baselineRaw);
+  if (next !== baseline) {
+    payload[key] = next || null;
+  }
+}
+
+function buildAccountPatch(form: AccountFormState, baseline: AccountFormState): AccountPatchPayload {
+  const payload: AccountPatchPayload = {};
+
+  const nextEmail = normalizeEmail(form.email);
+  if (nextEmail !== normalizeEmail(baseline.email)) {
+    payload.email = nextEmail;
+  }
+
+  for (const key of OPTIONAL_PATCH_KEYS) {
+    setOptionalIfChanged(payload, key, form[key], baseline[key]);
+  }
+
+  if (form.ui_locale !== baseline.ui_locale) {
+    payload.ui_locale = form.ui_locale;
+  }
+
+  if (form.birthday !== baseline.birthday) {
+    payload.birthday = form.birthday || null;
+  }
+
+  if (form.new_password) {
+    payload.new_password = form.new_password;
+  }
+
+  return payload;
+}
+
+function isSensitiveAccountPatch(payload: AccountPatchPayload): boolean {
+  return (
+    Object.prototype.hasOwnProperty.call(payload, "email") ||
+    Object.prototype.hasOwnProperty.call(payload, "new_password")
+  );
+}
+
 function buildInitialForm(user: BominalUser): AccountFormState {
+  const locale = user.ui_locale === "ko" ? "ko" : "en";
   return {
     email: user.email ?? "",
     display_name: user.display_name ?? "",
     phone_number: user.phone_number ?? "",
+    ui_locale: locale,
     billing_address_line1: user.billing_address_line1 ?? "",
     billing_address_line2: user.billing_address_line2 ?? "",
     billing_city: user.billing_city ?? "",
@@ -78,8 +166,9 @@ async function parseApiErrorMessage(response: Response, fallback: string): Promi
 
 export function AccountSettingsPanel({ initialUser }: { initialUser: BominalUser }) {
   const router = useRouter();
-  const [form, setForm] = useState<AccountFormState>(buildInitialForm(initialUser));
-  const [baseline, setBaseline] = useState<AccountFormState>(buildInitialForm(initialUser));
+  const { t } = useLocale();
+  const [form, setForm] = useState<AccountFormState>(() => buildInitialForm(initialUser));
+  const [baseline, setBaseline] = useState<AccountFormState>(() => buildInitialForm(initialUser));
   const [submitting, setSubmitting] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -90,20 +179,12 @@ export function AccountSettingsPanel({ initialUser }: { initialUser: BominalUser
     return passwordStrengthLabel(form.new_password);
   }, [form.new_password]);
 
-  const hasChanges = useMemo(() => {
-    return (
-      normalize(form.email).toLowerCase() !== normalize(baseline.email).toLowerCase() ||
-      normalize(form.display_name) !== normalize(baseline.display_name) ||
-      normalize(form.phone_number) !== normalize(baseline.phone_number) ||
-      normalize(form.billing_address_line1) !== normalize(baseline.billing_address_line1) ||
-      normalize(form.billing_address_line2) !== normalize(baseline.billing_address_line2) ||
-      normalize(form.billing_city) !== normalize(baseline.billing_city) ||
-      normalize(form.billing_state_province) !== normalize(baseline.billing_state_province) ||
-      normalize(form.billing_country) !== normalize(baseline.billing_country) ||
-      normalize(form.billing_postal_code) !== normalize(baseline.billing_postal_code) ||
-      form.birthday !== baseline.birthday ||
-      form.new_password.length > 0
-    );
+  const patch = useMemo(() => {
+    const payload = buildAccountPatch(form, baseline);
+    const passwordChanged = Object.prototype.hasOwnProperty.call(payload, "new_password");
+    const sensitiveChanged = isSensitiveAccountPatch(payload);
+    const hasChanges = Object.keys(payload).length > 0;
+    return { payload, passwordChanged, sensitiveChanged, hasChanges };
   }, [form, baseline]);
 
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -111,79 +192,26 @@ export function AccountSettingsPanel({ initialUser }: { initialUser: BominalUser
     setError(null);
     setNotice(null);
 
-    if (!hasChanges) {
-      setNotice("No changes to save.");
+    if (!patch.hasChanges) {
+      setNotice(t("settings.noChanges"));
       return;
     }
 
-    if (form.new_password && form.new_password !== form.new_password_confirm) {
-      setError("New password confirmation does not match.");
+    if (patch.passwordChanged && form.new_password !== form.new_password_confirm) {
+      setError(t("settings.passwordConfirmMismatch"));
       return;
     }
 
-    if (!form.current_password) {
-      setError("Current password is required to apply changes.");
+    if (patch.sensitiveChanged && !form.current_password) {
+      setError(t("settings.currentPasswordRequiredSensitive"));
       return;
     }
 
     setSubmitting(true);
     try {
-      const payload: Record<string, string | null> = {
-        current_password: form.current_password,
-      };
-
-      const nextEmail = normalize(form.email).toLowerCase();
-      if (nextEmail !== normalize(baseline.email).toLowerCase()) {
-        payload.email = nextEmail;
-      }
-
-      const nextDisplayName = normalize(form.display_name);
-      if (nextDisplayName !== normalize(baseline.display_name)) {
-        payload.display_name = nextDisplayName || null;
-      }
-
-      const nextPhone = normalize(form.phone_number);
-      if (nextPhone !== normalize(baseline.phone_number)) {
-        payload.phone_number = nextPhone || null;
-      }
-
-      const nextAddressLine1 = normalize(form.billing_address_line1);
-      if (nextAddressLine1 !== normalize(baseline.billing_address_line1)) {
-        payload.billing_address_line1 = nextAddressLine1 || null;
-      }
-
-      const nextAddressLine2 = normalize(form.billing_address_line2);
-      if (nextAddressLine2 !== normalize(baseline.billing_address_line2)) {
-        payload.billing_address_line2 = nextAddressLine2 || null;
-      }
-
-      const nextCity = normalize(form.billing_city);
-      if (nextCity !== normalize(baseline.billing_city)) {
-        payload.billing_city = nextCity || null;
-      }
-
-      const nextStateProvince = normalize(form.billing_state_province);
-      if (nextStateProvince !== normalize(baseline.billing_state_province)) {
-        payload.billing_state_province = nextStateProvince || null;
-      }
-
-      const nextCountry = normalize(form.billing_country);
-      if (nextCountry !== normalize(baseline.billing_country)) {
-        payload.billing_country = nextCountry || null;
-      }
-
-      const nextPostalCode = normalize(form.billing_postal_code);
-      if (nextPostalCode !== normalize(baseline.billing_postal_code)) {
-        payload.billing_postal_code = nextPostalCode || null;
-      }
-
-      if (form.birthday !== baseline.birthday) {
-        payload.birthday = form.birthday || null;
-      }
-
-      if (form.new_password) {
-        payload.new_password = form.new_password;
-      }
+      const payload = patch.sensitiveChanged
+        ? { ...patch.payload, current_password: form.current_password }
+        : patch.payload;
 
       const response = await fetch(`${clientApiBaseUrl}/api/auth/account`, {
         method: "PATCH",
@@ -192,23 +220,18 @@ export function AccountSettingsPanel({ initialUser }: { initialUser: BominalUser
         body: JSON.stringify(payload),
       });
       if (!response.ok) {
-        setError(await parseApiErrorMessage(response, "Could not update account settings."));
+        setError(await parseApiErrorMessage(response, t("settings.updateFailed")));
         return;
       }
 
       const body = (await response.json()) as { user: BominalUser };
       const refreshed = buildInitialForm(body.user);
       setBaseline(refreshed);
-      setForm({
-        ...refreshed,
-        new_password: "",
-        new_password_confirm: "",
-        current_password: "",
-      });
-      setNotice("Account settings updated.");
+      setForm(refreshed);
+      setNotice(t("settings.updated"));
       router.refresh();
     } catch {
-      setError("Could not update account settings.");
+      setError(t("settings.updateFailed"));
     } finally {
       setSubmitting(false);
     }
@@ -217,7 +240,7 @@ export function AccountSettingsPanel({ initialUser }: { initialUser: BominalUser
   const onDeleteAccount = async () => {
     setError(null);
     setNotice(null);
-    const confirmed = window.confirm("All your data will be permanently deleted. Are you sure you want to continue?");
+    const confirmed = window.confirm(t("settings.deleteConfirm"));
     if (!confirmed) return;
 
     setDeletingAccount(true);
@@ -227,13 +250,13 @@ export function AccountSettingsPanel({ initialUser }: { initialUser: BominalUser
         credentials: "include",
       });
       if (!response.ok) {
-        setError(await parseApiErrorMessage(response, "Could not delete account."));
+        setError(await parseApiErrorMessage(response, t("settings.deleteFailed")));
         return;
       }
-      router.push("/login");
+      router.push(ROUTES.login);
       router.refresh();
     } catch {
-      setError("Could not delete account.");
+      setError(t("settings.deleteFailed"));
     } finally {
       setDeletingAccount(false);
     }
@@ -242,18 +265,33 @@ export function AccountSettingsPanel({ initialUser }: { initialUser: BominalUser
   return (
     <section>
       <div className={UI_CARD_MD}>
-        <p className={UI_KICKER}>Settings</p>
-        <h1 className={`mt-1 ${UI_TITLE_MD}`}>Account settings</h1>
-        <p className="mt-2 text-sm text-slate-600">Update profile details. Any change requires your current password.</p>
+        <p className={UI_KICKER}>{t("settings.kicker")}</p>
+        <h1 className={`mt-1 ${UI_TITLE_MD}`}>{t("settings.accountTitle")}</h1>
+        <p className="mt-2 text-sm text-slate-600">{t("settings.accountBody")}</p>
 
         {error ? <p className="mt-4 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p> : null}
         {notice ? <p className="mt-4 rounded-xl bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{notice}</p> : null}
 
         <form onSubmit={onSubmit} className="mt-5 grid gap-3 md:grid-cols-2">
-          <p className="mt-2 text-xs uppercase tracking-[0.16em] text-blossom-500 md:col-span-2">General</p>
+          <p className="mt-2 text-xs uppercase tracking-[0.16em] text-blossom-500 md:col-span-2">
+            {t("settings.generalSection")}
+          </p>
+
+          <label className="text-sm text-slate-700 md:col-span-2">
+            {t("settings.language")}
+            <select
+              value={form.ui_locale}
+              onChange={(event) => setForm((current) => ({ ...current, ui_locale: event.target.value as "en" | "ko" }))}
+              className={`mt-1 ${UI_FIELD}`}
+            >
+              <option value="en">{t("settings.langEnglish")}</option>
+              <option value="ko">{t("settings.langKorean")}</option>
+            </select>
+            <p className="mt-1 text-xs text-slate-500">{t("settings.languageHelp")}</p>
+          </label>
 
           <label className="text-sm text-slate-700">
-            Email
+            {t("settings.email")}
             <input
               type="email"
               value={form.email}
@@ -264,29 +302,29 @@ export function AccountSettingsPanel({ initialUser }: { initialUser: BominalUser
           </label>
 
           <label className="text-sm text-slate-700">
-            Display name
+            {t("settings.displayName")}
             <input
               type="text"
               value={form.display_name}
               onChange={(event) => setForm((current) => ({ ...current, display_name: event.target.value }))}
               className={`mt-1 ${UI_FIELD}`}
-              placeholder="Optional"
+              placeholder={t("common.optional")}
             />
           </label>
 
           <label className="text-sm text-slate-700">
-            Phone number
+            {t("settings.phone")}
             <input
               type="text"
               value={form.phone_number}
               onChange={(event) => setForm((current) => ({ ...current, phone_number: event.target.value }))}
               className={`mt-1 ${UI_FIELD}`}
-              placeholder="Optional"
+              placeholder={t("common.optional")}
             />
           </label>
 
           <label className="text-sm text-slate-700">
-            Birthday
+            {t("settings.birthday")}
             <input
               type="date"
               value={form.birthday}
@@ -295,43 +333,45 @@ export function AccountSettingsPanel({ initialUser }: { initialUser: BominalUser
             />
           </label>
 
-          <p className="mt-2 text-xs uppercase tracking-[0.16em] text-blossom-500 md:col-span-2">Billing address</p>
+          <p className="mt-2 text-xs uppercase tracking-[0.16em] text-blossom-500 md:col-span-2">
+            {t("settings.billingAddressSection")}
+          </p>
 
           <label className="text-sm text-slate-700">
-            Address 1
+            {t("settings.billingAddress1")}
             <input
               type="text"
               value={form.billing_address_line1}
               onChange={(event) => setForm((current) => ({ ...current, billing_address_line1: event.target.value }))}
               className={`mt-1 ${UI_FIELD}`}
-              placeholder="Optional"
+              placeholder={t("common.optional")}
             />
           </label>
 
           <label className="text-sm text-slate-700">
-            Address 2
+            {t("settings.billingAddress2")}
             <input
               type="text"
               value={form.billing_address_line2}
               onChange={(event) => setForm((current) => ({ ...current, billing_address_line2: event.target.value }))}
               className={`mt-1 ${UI_FIELD}`}
-              placeholder="Optional"
+              placeholder={t("common.optional")}
             />
           </label>
 
           <label className="text-sm text-slate-700">
-            City
+            {t("settings.billingCity")}
             <input
               type="text"
               value={form.billing_city}
               onChange={(event) => setForm((current) => ({ ...current, billing_city: event.target.value }))}
               className={`mt-1 ${UI_FIELD}`}
-              placeholder="Optional"
+              placeholder={t("common.optional")}
             />
           </label>
 
           <label className="text-sm text-slate-700">
-            State/Province
+            {t("settings.billingState")}
             <input
               type="text"
               value={form.billing_state_province}
@@ -339,55 +379,53 @@ export function AccountSettingsPanel({ initialUser }: { initialUser: BominalUser
                 setForm((current) => ({ ...current, billing_state_province: event.target.value }))
               }
               className={`mt-1 ${UI_FIELD}`}
-              placeholder="Optional"
+              placeholder={t("common.optional")}
             />
           </label>
 
           <label className="text-sm text-slate-700">
-            Country
+            {t("settings.billingCountry")}
             <input
               type="text"
               value={form.billing_country}
               onChange={(event) => setForm((current) => ({ ...current, billing_country: event.target.value }))}
               className={`mt-1 ${UI_FIELD}`}
-              placeholder="Optional"
+              placeholder={t("common.optional")}
             />
           </label>
 
           <label className="text-sm text-slate-700">
-            ZIP/Postal code
+            {t("settings.billingPostal")}
             <input
               type="text"
               value={form.billing_postal_code}
               onChange={(event) => setForm((current) => ({ ...current, billing_postal_code: event.target.value }))}
               className={`mt-1 ${UI_FIELD}`}
-              placeholder="Optional"
+              placeholder={t("common.optional")}
             />
           </label>
 
-          <p className="mt-2 text-xs uppercase tracking-[0.16em] text-blossom-500 md:col-span-2">Security</p>
+          <p className="mt-2 text-xs uppercase tracking-[0.16em] text-blossom-500 md:col-span-2">
+            {t("settings.securitySection")}
+          </p>
 
           <label className="text-sm text-slate-700">
-            New password
+            {t("settings.newPassword")}
             <input
               type="password"
               value={form.new_password}
               onChange={(event) => setForm((current) => ({ ...current, new_password: event.target.value }))}
               className={`mt-1 ${UI_FIELD}`}
-              placeholder="Optional"
+              placeholder={t("common.optional")}
             />
             {passwordStrength ? (
               <span className="mt-2 block text-xs text-slate-500">
-                <span className="mb-1 block">Strength: {passwordStrength}</span>
+                <span className="mb-1 block">
+                  {t("settings.passwordStrength.label")}: {t(`settings.passwordStrength.${passwordStrength}`)}
+                </span>
                 <span className="block h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
                   <span
-                    className={`block h-full rounded-full transition-all ${
-                      passwordStrength === "weak"
-                        ? "w-1/3 bg-rose-400"
-                        : passwordStrength === "good"
-                          ? "w-2/3 bg-amber-400"
-                          : "w-full bg-emerald-500"
-                    }`}
+                    className={`block h-full rounded-full transition-all ${PASSWORD_STRENGTH_BAR_CLASS[passwordStrength]}`}
                   />
                 </span>
               </span>
@@ -395,7 +433,7 @@ export function AccountSettingsPanel({ initialUser }: { initialUser: BominalUser
           </label>
 
           <label className="text-sm text-slate-700">
-            Confirm new password
+            {t("settings.confirmNewPassword")}
             <input
               type="password"
               value={form.new_password_confirm}
@@ -403,32 +441,32 @@ export function AccountSettingsPanel({ initialUser }: { initialUser: BominalUser
                 setForm((current) => ({ ...current, new_password_confirm: event.target.value }))
               }
               className={`mt-1 ${UI_FIELD}`}
-              placeholder="Required when changing password"
+              placeholder={t("settings.passwordConfirmRequired")}
             />
           </label>
 
           <label className="text-sm text-slate-700 md:col-span-2">
-            Current password
+            {t("settings.currentPassword")}
             <input
               type="password"
               value={form.current_password}
               onChange={(event) => setForm((current) => ({ ...current, current_password: event.target.value }))}
               className={`mt-1 ${UI_FIELD}`}
-              placeholder="Required to save changes"
+              placeholder={t("settings.currentPasswordRequired")}
             />
           </label>
 
           <div className="md:col-span-2">
             <button type="submit" disabled={submitting || deletingAccount} className={UI_BUTTON_PRIMARY}>
-              {submitting ? "Saving..." : "Save account settings"}
+              {submitting ? t("common.saving") : t("settings.saveAccountSettings")}
             </button>
           </div>
         </form>
 
         <div className="mt-8 border-t border-rose-100 pt-5">
-          <p className="text-xs uppercase tracking-[0.16em] text-rose-500">Danger zone</p>
+          <p className="text-xs uppercase tracking-[0.16em] text-rose-500">{t("settings.dangerZone")}</p>
           <p className="mt-2 text-sm text-slate-600">
-            Delete your account and remove saved profile data. Outstanding worker instances must be completed first.
+            {t("settings.dangerBody")}
           </p>
           <button
             type="button"
@@ -436,7 +474,7 @@ export function AccountSettingsPanel({ initialUser }: { initialUser: BominalUser
             disabled={submitting || deletingAccount}
             className={`mt-3 ${DELETE_ACCOUNT_BUTTON_CLASS}`}
           >
-            {deletingAccount ? "Deleting account..." : "Delete account"}
+            {deletingAccount ? t("settings.deleting") : t("settings.deleteButton")}
           </button>
         </div>
       </div>

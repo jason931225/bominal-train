@@ -2,6 +2,7 @@ from datetime import date, datetime
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
+from typing import Literal
 
 
 class RegisterRequest(BaseModel):
@@ -29,6 +30,7 @@ class UserOut(BaseModel):
     email: EmailStr
     display_name: str | None
     phone_number: str | None
+    ui_locale: str
     billing_address: str | None
     billing_address_line1: str | None
     billing_address_line2: str | None
@@ -53,6 +55,7 @@ class AccountUpdateRequest(BaseModel):
     email: EmailStr | None = None
     display_name: str | None = Field(default=None, max_length=255)
     phone_number: str | None = Field(default=None, max_length=32)
+    ui_locale: Literal["en", "ko"] | None = None
     billing_address: str | None = Field(default=None, max_length=1000)
     billing_address_line1: str | None = Field(default=None, max_length=255)
     billing_address_line2: str | None = Field(default=None, max_length=255)

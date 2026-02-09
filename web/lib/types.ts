@@ -3,6 +3,7 @@ export type BominalUser = {
   email: string;
   display_name: string | null;
   phone_number: string | null;
+  ui_locale?: "en" | "ko" | string | null;
   billing_address: string | null;
   billing_address_line1: string | null;
   billing_address_line2: string | null;

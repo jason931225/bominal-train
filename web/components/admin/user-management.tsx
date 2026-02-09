@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+
+import { useLocale } from "@/components/locale-provider";
 import {
   UI_BUTTON_DANGER_SM,
   UI_BUTTON_OUTLINE_SM,
@@ -46,6 +48,7 @@ type UserListResponse = {
 };
 
 export function UserManagement() {
+  const { locale, t } = useLocale();
   const [users, setUsers] = useState<UserSummary[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -104,14 +107,15 @@ export function UserManagement() {
         body: JSON.stringify({ role: newRole }),
       });
       if (res.ok) {
-        setMessage({ type: "success", text: `Role updated to ${newRole}` });
+        const roleLabel = newRole === "admin" ? t("admin.users.roles.admin") : t("admin.users.roles.user");
+        setMessage({ type: "success", text: t("admin.users.roleUpdated", { role: roleLabel }) });
         fetchUsers();
         if (selectedUser?.id === userId) {
           fetchUserDetail(userId);
         }
       } else {
         const data = await res.json();
-        setMessage({ type: "error", text: data.detail || "Failed to update role" });
+        setMessage({ type: "error", text: data.detail || t("admin.users.failedUpdateRole") });
       }
     } finally {
       setActionLoading(false);
@@ -119,7 +123,7 @@ export function UserManagement() {
   };
 
   const revokeSessions = async (userId: string) => {
-    if (!confirm("This will log the user out of all devices. Continue?")) return;
+    if (!confirm(t("admin.users.confirmRevokeSessions"))) return;
     setActionLoading(true);
     try {
       const res = await fetch(`/api/admin/users/${userId}/revoke-sessions`, {
@@ -134,7 +138,7 @@ export function UserManagement() {
         }
       } else {
         const data = await res.json();
-        setMessage({ type: "error", text: data.detail || "Failed to revoke sessions" });
+        setMessage({ type: "error", text: data.detail || t("admin.users.failedRevokeSessions") });
       }
     } finally {
       setActionLoading(false);
@@ -142,8 +146,8 @@ export function UserManagement() {
   };
 
   const deleteUser = async (userId: string, email: string) => {
-    if (!confirm(`PERMANENTLY DELETE user ${email}? This cannot be undone!`)) return;
-    if (!confirm("Are you absolutely sure? All user data will be lost.")) return;
+    if (!confirm(t("admin.users.confirmDeleteUser1", { email }))) return;
+    if (!confirm(t("admin.users.confirmDeleteUser2"))) return;
     setActionLoading(true);
     try {
       const res = await fetch(`/api/admin/users/${userId}`, {
@@ -151,12 +155,12 @@ export function UserManagement() {
         credentials: "include",
       });
       if (res.ok) {
-        setMessage({ type: "success", text: `User ${email} deleted` });
+        setMessage({ type: "success", text: t("admin.users.userDeleted", { email }) });
         setSelectedUser(null);
         fetchUsers();
       } else {
         const data = await res.json();
-        setMessage({ type: "error", text: data.detail || "Failed to delete user" });
+        setMessage({ type: "error", text: data.detail || t("admin.users.failedDeleteUser") });
       }
     } finally {
       setActionLoading(false);
@@ -166,8 +170,8 @@ export function UserManagement() {
   const totalPages = Math.ceil(total / pageSize);
 
   const formatDate = (dateStr: string | null) => {
-    if (!dateStr) return "Never";
-    return new Date(dateStr).toLocaleString();
+    if (!dateStr) return t("admin.users.never");
+    return new Date(dateStr).toLocaleString(locale);
   };
 
   const roleChipClass = (role: string) => {
@@ -177,10 +181,16 @@ export function UserManagement() {
     return `${UI_CHIP_BASE} bg-slate-100 text-slate-600 border border-slate-200`;
   };
 
+  const roleLabel = (role: string) => {
+    if (role === "admin") return t("admin.users.roles.admin");
+    if (role === "user") return t("admin.users.roles.user");
+    return role;
+  };
+
   return (
     <section className={UI_CARD_MD}>
-      <p className={UI_KICKER}>Users</p>
-      <h2 className={`mt-2 ${UI_TITLE_MD}`}>User Management</h2>
+      <p className={UI_KICKER}>{t("admin.users.kicker")}</p>
+      <h2 className={`mt-2 ${UI_TITLE_MD}`}>{t("admin.users.title")}</h2>
 
       {/* Message */}
       {message && (
@@ -196,7 +206,7 @@ export function UserManagement() {
             onClick={() => setMessage(null)}
             className="ml-2 font-medium hover:underline"
           >
-            Dismiss
+            {t("admin.users.dismiss")}
           </button>
         </div>
       )}
@@ -205,7 +215,7 @@ export function UserManagement() {
       <div className="mt-4">
         <input
           type="text"
-          placeholder="Search by email or display name..."
+          placeholder={t("admin.users.searchPlaceholder")}
           className={UI_FIELD}
           value={search}
           onChange={(e) => {
@@ -220,24 +230,24 @@ export function UserManagement() {
         <table className="w-full text-sm">
           <thead className="bg-blossom-50/50 text-left text-xs uppercase tracking-wide text-slate-500">
             <tr>
-              <th className="px-4 py-3">User</th>
-              <th className="px-4 py-3">Role</th>
-              <th className="px-4 py-3 hidden sm:table-cell">Sessions</th>
-              <th className="px-4 py-3 hidden md:table-cell">Last Seen</th>
-              <th className="px-4 py-3">Actions</th>
+              <th className="px-4 py-3">{t("admin.users.table.user")}</th>
+              <th className="px-4 py-3">{t("admin.users.table.role")}</th>
+              <th className="px-4 py-3 hidden sm:table-cell">{t("admin.users.table.sessions")}</th>
+              <th className="px-4 py-3 hidden md:table-cell">{t("admin.users.table.lastSeen")}</th>
+              <th className="px-4 py-3">{t("admin.users.table.actions")}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-blossom-50">
             {loading ? (
               <tr>
                 <td colSpan={5} className="px-4 py-8 text-center text-slate-400">
-                  Loading...
+                  {t("admin.users.loading")}
                 </td>
               </tr>
             ) : users.length === 0 ? (
               <tr>
                 <td colSpan={5} className="px-4 py-8 text-center text-slate-400">
-                  No users found
+                  {t("admin.users.noUsersFound")}
                 </td>
               </tr>
             ) : (
@@ -250,7 +260,7 @@ export function UserManagement() {
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    <span className={roleChipClass(user.role)}>{user.role}</span>
+                    <span className={roleChipClass(user.role)}>{roleLabel(user.role)}</span>
                   </td>
                   <td className="px-4 py-3 hidden sm:table-cell text-slate-500">
                     {user.session_count}
@@ -263,7 +273,7 @@ export function UserManagement() {
                       onClick={() => fetchUserDetail(user.id)}
                       className={UI_BUTTON_OUTLINE_SM}
                     >
-                      View
+                      {t("admin.users.actions.view")}
                     </button>
                   </td>
                 </tr>
@@ -277,7 +287,11 @@ export function UserManagement() {
       {totalPages > 1 && (
         <div className="mt-4 flex items-center justify-between">
           <p className="text-sm text-slate-500">
-            Showing {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, total)} of {total}
+            {t("admin.users.pagination.showing", {
+              from: (page - 1) * pageSize + 1,
+              to: Math.min(page * pageSize, total),
+              total,
+            })}
           </p>
           <div className="flex gap-2">
             <button
@@ -285,14 +299,14 @@ export function UserManagement() {
               disabled={page === 1}
               className={UI_BUTTON_OUTLINE_SM}
             >
-              Previous
+              {t("admin.users.pagination.previous")}
             </button>
             <button
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={page === totalPages}
               className={UI_BUTTON_OUTLINE_SM}
             >
-              Next
+              {t("admin.users.pagination.next")}
             </button>
           </div>
         </div>
@@ -304,7 +318,7 @@ export function UserManagement() {
           <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
             <div className="flex items-start justify-between">
               <div>
-                <p className={UI_KICKER}>User Details</p>
+                <p className={UI_KICKER}>{t("admin.users.detail.kicker")}</p>
                 <h3 className="mt-1 text-xl font-semibold text-slate-800">
                   {selectedUser.email}
                 </h3>
@@ -321,48 +335,48 @@ export function UserManagement() {
 
             <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
               <div>
-                <dt className="text-slate-400">Display Name</dt>
-                <dd className="text-slate-700">{selectedUser.display_name || "—"}</dd>
+                <dt className="text-slate-400">{t("auth.displayName")}</dt>
+                <dd className="text-slate-700">{selectedUser.display_name || t("common.notSet")}</dd>
               </div>
               <div>
-                <dt className="text-slate-400">Phone</dt>
-                <dd className="text-slate-700">{selectedUser.phone_number || "—"}</dd>
+                <dt className="text-slate-400">{t("settings.phone")}</dt>
+                <dd className="text-slate-700">{selectedUser.phone_number || t("common.notSet")}</dd>
               </div>
               <div>
-                <dt className="text-slate-400">Role</dt>
+                <dt className="text-slate-400">{t("admin.users.table.role")}</dt>
                 <dd>
-                  <span className={roleChipClass(selectedUser.role)}>{selectedUser.role}</span>
+                  <span className={roleChipClass(selectedUser.role)}>{roleLabel(selectedUser.role)}</span>
                 </dd>
               </div>
               <div>
-                <dt className="text-slate-400">Email Verified</dt>
+                <dt className="text-slate-400">{t("admin.users.detail.emailVerified")}</dt>
                 <dd className="text-slate-700">
-                  {selectedUser.email_verified_at ? formatDate(selectedUser.email_verified_at) : "No"}
+                  {selectedUser.email_verified_at ? formatDate(selectedUser.email_verified_at) : t("admin.users.detail.notVerified")}
                 </dd>
               </div>
               <div>
-                <dt className="text-slate-400">Active Sessions</dt>
+                <dt className="text-slate-400">{t("admin.users.detail.activeSessions")}</dt>
                 <dd className="text-slate-700">
                   {selectedUser.active_session_count} / {selectedUser.session_count}
                 </dd>
               </div>
               <div>
-                <dt className="text-slate-400">Tasks</dt>
+                <dt className="text-slate-400">{t("admin.users.detail.tasks")}</dt>
                 <dd className="text-slate-700">{selectedUser.task_count}</dd>
               </div>
               <div>
-                <dt className="text-slate-400">Secrets (Credentials)</dt>
+                <dt className="text-slate-400">{t("admin.users.detail.secrets")}</dt>
                 <dd className="text-slate-700">{selectedUser.secret_count}</dd>
               </div>
               <div>
-                <dt className="text-slate-400">Created</dt>
+                <dt className="text-slate-400">{t("common.created")}</dt>
                 <dd className="text-slate-700 text-xs">{formatDate(selectedUser.created_at)}</dd>
               </div>
             </dl>
 
             {/* Actions */}
             <div className="mt-6 space-y-3 border-t border-slate-100 pt-4">
-              <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Actions</p>
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-400">{t("admin.users.table.actions")}</p>
 
               <div className="flex flex-wrap gap-2">
                 {selectedUser.role === "user" ? (
@@ -371,7 +385,7 @@ export function UserManagement() {
                     disabled={actionLoading}
                     className={UI_BUTTON_OUTLINE_SM}
                   >
-                    Promote to Admin
+                    {t("admin.users.actions.promoteToAdmin")}
                   </button>
                 ) : (
                   <button
@@ -379,7 +393,7 @@ export function UserManagement() {
                     disabled={actionLoading}
                     className={UI_BUTTON_OUTLINE_SM}
                   >
-                    Demote to User
+                    {t("admin.users.actions.demoteToUser")}
                   </button>
                 )}
 
@@ -388,7 +402,7 @@ export function UserManagement() {
                   disabled={actionLoading || selectedUser.active_session_count === 0}
                   className={UI_BUTTON_OUTLINE_SM}
                 >
-                  Revoke Sessions ({selectedUser.active_session_count})
+                  {t("admin.users.actions.revokeSessions", { count: selectedUser.active_session_count })}
                 </button>
               </div>
 
@@ -398,7 +412,7 @@ export function UserManagement() {
                   disabled={actionLoading}
                   className={UI_BUTTON_DANGER_SM}
                 >
-                  Delete User Permanently
+                  {t("admin.users.actions.deleteUserPermanently")}
                 </button>
               </div>
             </div>

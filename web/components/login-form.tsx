@@ -4,14 +4,10 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { z } from "zod";
 
+import { useLocale } from "@/components/locale-provider";
 import { clientApiBaseUrl } from "@/lib/api-base";
+import { ROUTES } from "@/lib/routes";
 import { UI_BUTTON_PRIMARY, UI_FIELD } from "@/lib/ui";
-
-const loginSchema = z.object({
-  email: z.string().email("Please enter a valid email."),
-  password: z.string().min(8, "Password must be at least 8 characters."),
-  remember_me: z.boolean(),
-});
 
 type LoginFormData = {
   email: string;
@@ -21,6 +17,7 @@ type LoginFormData = {
 
 export function LoginForm() {
   const router = useRouter();
+  const { t } = useLocale();
   const [form, setForm] = useState<LoginFormData>({
     email: "",
     password: "",
@@ -34,6 +31,12 @@ export function LoginForm() {
     event.preventDefault();
     setFieldErrors({});
     setFormError(null);
+
+    const loginSchema = z.object({
+      email: z.string().email(t("auth.invalidEmail")),
+      password: z.string().min(8, t("auth.passwordMin")),
+      remember_me: z.boolean(),
+    });
 
     const payload = {
       email: form.email.trim(),
@@ -65,14 +68,14 @@ export function LoginForm() {
 
       if (!response.ok) {
         const body = (await response.json().catch(() => null)) as { detail?: string } | null;
-        setFormError(body?.detail ?? "Invalid email or password");
+        setFormError(body?.detail ?? t("auth.invalidLogin"));
         return;
       }
 
-      router.push("/dashboard");
+      router.push(ROUTES.dashboard);
       router.refresh();
     } catch {
-      setFormError("Could not reach bominal API.");
+      setFormError(t("auth.apiUnreachable"));
     } finally {
       setSubmitting(false);
     }
@@ -82,7 +85,7 @@ export function LoginForm() {
     <form onSubmit={onSubmit} className="space-y-4">
       <div>
         <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor="email">
-          Email
+          {t("auth.email")}
         </label>
         <input
           id="email"
@@ -98,7 +101,7 @@ export function LoginForm() {
 
       <div>
         <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor="password">
-          Password
+          {t("auth.password")}
         </label>
         <input
           id="password"
@@ -119,7 +122,7 @@ export function LoginForm() {
           onChange={(event) => setForm((prev) => ({ ...prev, remember_me: event.target.checked }))}
           className="h-4 w-4 rounded border-blossom-300 text-blossom-500 focus:ring-blossom-300"
         />
-        Remember me
+        {t("auth.rememberMe")}
       </label>
 
       {formError ? <p className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">{formError}</p> : null}
@@ -129,7 +132,7 @@ export function LoginForm() {
         disabled={submitting}
         className={`w-full ${UI_BUTTON_PRIMARY}`}
       >
-        {submitting ? "Signing in..." : "Sign in"}
+        {submitting ? t("auth.signingIn") : t("auth.signIn")}
       </button>
     </form>
   );
