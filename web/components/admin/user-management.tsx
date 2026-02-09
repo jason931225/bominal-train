@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { clientApiBaseUrl } from "@/lib/api-base";
 import {
   UI_BUTTON_DANGER_SM,
   UI_BUTTON_OUTLINE_SM,
@@ -65,7 +66,7 @@ export function UserManagement() {
       });
       if (search) params.set("search", search);
 
-      const res = await fetch(`/api/admin/users?${params}`, { credentials: "include" });
+      const res = await fetch(`${clientApiBaseUrl}/api/admin/users?${params}`, { credentials: "include" });
       if (res.ok) {
         const data: UserListResponse = await res.json();
         setUsers(data.users);
@@ -84,7 +85,7 @@ export function UserManagement() {
 
   const fetchUserDetail = async (userId: string) => {
     try {
-      const res = await fetch(`/api/admin/users/${userId}`, { credentials: "include" });
+      const res = await fetch(`${clientApiBaseUrl}/api/admin/users/${userId}`, { credentials: "include" });
       if (res.ok) {
         const data: UserDetail = await res.json();
         setSelectedUser(data);
@@ -97,7 +98,7 @@ export function UserManagement() {
   const updateRole = async (userId: string, newRole: "admin" | "user") => {
     setActionLoading(true);
     try {
-      const res = await fetch(`/api/admin/users/${userId}/role`, {
+      const res = await fetch(`${clientApiBaseUrl}/api/admin/users/${userId}/role`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -122,7 +123,7 @@ export function UserManagement() {
     if (!confirm("This will log the user out of all devices. Continue?")) return;
     setActionLoading(true);
     try {
-      const res = await fetch(`/api/admin/users/${userId}/revoke-sessions`, {
+      const res = await fetch(`${clientApiBaseUrl}/api/admin/users/${userId}/revoke-sessions`, {
         method: "POST",
         credentials: "include",
       });
@@ -146,7 +147,7 @@ export function UserManagement() {
     if (!confirm("Are you absolutely sure? All user data will be lost.")) return;
     setActionLoading(true);
     try {
-      const res = await fetch(`/api/admin/users/${userId}`, {
+      const res = await fetch(`${clientApiBaseUrl}/api/admin/users/${userId}`, {
         method: "DELETE",
         credentials: "include",
       });
