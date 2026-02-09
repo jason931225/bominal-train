@@ -17,6 +17,16 @@ if [[ ! -f "infra/env/dev/api.env" ]]; then
     exit 1
 fi
 
+# Detect docker compose command (v2 preferred)
+if docker compose version >/dev/null 2>&1; then
+    COMPOSE_CMD=(docker compose)
+elif command -v docker-compose >/dev/null 2>&1; then
+    COMPOSE_CMD=(docker-compose)
+else
+    echo "Error: docker compose (v2) or docker-compose (v1) is required"
+    exit 1
+fi
+
 # Start services
 echo "→ Starting Docker Compose services..."
-docker-compose -f infra/docker-compose.yml up --build "$@"
+"${COMPOSE_CMD[@]}" -f infra/docker-compose.yml up --build "$@"

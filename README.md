@@ -30,6 +30,14 @@ git submodule update --init --recursive
 
 Development compose uses hot-reload, bind mounts, and env files under `infra/env/dev/`.
 
+Recommended local workflow:
+
+```bash
+./infra/scripts/local-setup.sh
+./infra/scripts/local-check.sh
+./infra/scripts/local-run.sh
+```
+
 If your machine supports Docker Compose v2 plugin:
 
 ```bash

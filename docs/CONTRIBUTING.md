@@ -17,6 +17,7 @@ From repo root:
 ```bash
 git submodule update --init --recursive
 ./infra/scripts/local-setup.sh
+./infra/scripts/local-check.sh
 ./infra/scripts/local-run.sh
 ```
 If you prefer containerized local simulation, use:
