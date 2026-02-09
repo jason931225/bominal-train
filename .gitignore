@@ -27,5 +27,8 @@ infra/env/prod/*.env
 crash.log
 crash.*.log
 
+# Git worktrees (local only)
+.worktrees/
+
 # One-off GCP exports (often contain sensitive data)
 gcp_resources*.tf

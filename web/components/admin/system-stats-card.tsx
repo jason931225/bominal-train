@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { clientApiBaseUrl } from "@/lib/api-base";
 import { UI_CARD_MD, UI_KICKER, UI_TITLE_MD } from "@/lib/ui";
 
 type SystemStats = {
@@ -21,7 +22,7 @@ export function SystemStatsCard() {
   useEffect(() => {
     async function fetchStats() {
       try {
-        const res = await fetch("/api/admin/stats", { credentials: "include" });
+        const res = await fetch(`${clientApiBaseUrl}/api/admin/stats`, { credentials: "include" });
         if (res.ok) {
           const data = await res.json();
           setStats(data);
