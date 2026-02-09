@@ -11,6 +11,7 @@ bominal is a modular product foundation with:
 ## Documentation pack
 
 - Agent guide: `AGENTS.md`
+- Changelog: `CHANGELOG.md`
 - Docs index: `docs/README.md`
 - Architecture: `docs/ARCHITECTURE.md`
 - Contribution workflow: `docs/CONTRIBUTING.md`
@@ -54,12 +55,18 @@ Services started by compose:
 If you pull new backend migrations while containers are already running, restart API/worker once:
 
 ```bash
+docker compose -f infra/docker-compose.yml restart api worker
+# or (Compose v1):
 docker-compose -f infra/docker-compose.yml restart api worker
 ```
 
-## Production (barebone deployment)
+## Production (manual bootstrap)
 
 Production compose is separated in `infra/docker-compose.prod.yml` (no bind mounts, no dev reload flags).
+
+For production deployments, prefer the zero-downtime procedure in `docs/DEPLOYMENT.md`
+(script: `infra/scripts/deploy-zero-downtime.sh`). The steps below cover initial
+env-file bootstrap.
 
 1) Create prod env files from templates:
 
@@ -72,16 +79,23 @@ cp infra/env/prod/caddy.env.example infra/env/prod/caddy.env
 
 2) Edit those files and replace every `CHANGE_ME...` value (especially `MASTER_KEY`), and set your public host in `infra/env/prod/caddy.env`.
 
-3) Bring up production stack:
+3) Deploy (recommended):
 
 ```bash
-docker compose -f infra/docker-compose.prod.yml up -d --build
+bash infra/scripts/deploy-zero-downtime.sh
+```
+
+If you intentionally need a manual bring-up (not recommended for routine deploys),
+use `--wait` when available:
+
+```bash
+docker compose -f infra/docker-compose.prod.yml up -d --wait
 ```
 
 or (Compose v1):
 
 ```bash
-docker-compose -f infra/docker-compose.prod.yml up -d --build
+docker-compose -f infra/docker-compose.prod.yml up -d
 ```
 
 4) Verify health:
@@ -108,8 +122,10 @@ Implemented auth endpoints:
 - `POST /api/auth/register`
 - `POST /api/auth/login`
 - `POST /api/auth/logout`
+- `POST /api/auth/request-email-verification` (stub: returns "coming soon")
+- `POST /api/auth/request-password-reset` (stub: returns "coming soon")
 - `GET /api/auth/me`
-- `PATCH /api/auth/account` (requires `current_password` for any changes)
+- `PATCH /api/auth/account` (`current_password` required for changing `email` / `new_password`)
 - `DELETE /api/auth/account` (blocked when outstanding worker tasks exist; marks user tasks for 365-day removal window)
 
 Auth uniqueness rules:
@@ -123,6 +139,11 @@ API access tiers:
 - **Authenticated session required:** `/api/auth/me`, `/api/auth/account`, `/api/modules`, `/api/train/*`, `/api/wallet/*`, `/api/notifications/*`
 - **Internal-only:** `/api/internal/*` with `X-Internal-Api-Key` matching `INTERNAL_API_KEY`
 - **Admin role required:** `/api/admin`
+
+Admin-only OpenAPI documentation:
+
+- `GET /api/docs` (Swagger UI)
+- `GET /api/openapi.json` (schema)
 
 Implemented modules endpoint:
 
