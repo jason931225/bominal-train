@@ -5,7 +5,7 @@ import logging
 import random
 import time
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
 
@@ -25,6 +25,7 @@ from app.modules.train.constants import (
     ATTEMPT_ACTION_SEARCH,
     SECRET_KIND_KTX_CREDENTIALS,
     SECRET_KIND_SRT_CREDENTIALS,
+    SPEC_KEY_NEXT_RUN_AT,
     TASK_MODULE,
     TERMINAL_TASK_STATES,
     credential_kind,
@@ -284,6 +285,7 @@ async def _enqueue_terminal_notification(
 
 
 async def _mark_expired(db: AsyncSession, task: Task) -> None:
+    _clear_next_run_at(task)
     task.state = "EXPIRED"
     task.updated_at = utc_now()
     await db.commit()
@@ -291,6 +293,7 @@ async def _mark_expired(db: AsyncSession, task: Task) -> None:
 
 
 async def _mark_failed(db: AsyncSession, task: Task) -> None:
+    _clear_next_run_at(task)
     task.state = "FAILED"
     task.failed_at = utc_now()
     task.updated_at = utc_now()
@@ -299,6 +302,7 @@ async def _mark_failed(db: AsyncSession, task: Task) -> None:
 
 
 async def _mark_completed(db: AsyncSession, task: Task) -> None:
+    _clear_next_run_at(task)
     task.state = "COMPLETED"
     task.completed_at = utc_now()
     task.updated_at = utc_now()
@@ -306,7 +310,19 @@ async def _mark_completed(db: AsyncSession, task: Task) -> None:
     await _enqueue_terminal_notification(db, task=task, final_state="COMPLETED")
 
 
+def _clear_next_run_at(task: Task) -> None:
+    spec = dict(task.spec_json or {})
+    if SPEC_KEY_NEXT_RUN_AT not in spec:
+        return
+    spec.pop(SPEC_KEY_NEXT_RUN_AT, None)
+    task.spec_json = spec
+
+
 async def _schedule_retry(db: AsyncSession, task: Task, delay_seconds: float) -> None:
+    next_run_at = utc_now() + timedelta(seconds=delay_seconds)
+    next_spec = dict(task.spec_json or {})
+    next_spec[SPEC_KEY_NEXT_RUN_AT] = next_run_at.isoformat()
+    task.spec_json = next_spec
     task.state = "POLLING"
     task.updated_at = utc_now()
     await db.commit()
@@ -1022,11 +1038,13 @@ async def _run_train_task_inner(
             return
         if task.paused_at is not None and task.state != "PAUSED":
             # Task was paused but state not updated - fix it
+            _clear_next_run_at(task)
             task.state = "PAUSED"
             task.updated_at = now
             await db.commit()
             return
         if task.cancelled_at is not None:
+            _clear_next_run_at(task)
             task.state = "CANCELLED"
             await db.commit()
             return
@@ -1084,6 +1102,7 @@ async def _run_train_task_inner(
                     await _mark_failed(db, task)
                 return
 
+            _clear_next_run_at(task)
             task.state = "PAYING"
             task.updated_at = utc_now()
             await db.commit()
@@ -1144,6 +1163,7 @@ async def _run_train_task_inner(
             await _mark_completed(db, task)
             return
 
+        _clear_next_run_at(task)
         task.state = "RUNNING"
         task.updated_at = now
         await db.commit()
@@ -1214,6 +1234,7 @@ async def _run_train_task_inner(
         winner = min(candidates, key=lambda row: row.rank)
         losers = [candidate for candidate in candidates if candidate is not winner]
 
+        _clear_next_run_at(task)
         task.state = "RESERVING"
         task.updated_at = utc_now()
 
@@ -1264,6 +1285,7 @@ async def _run_train_task_inner(
             await _mark_completed(db, task)
             return
 
+        _clear_next_run_at(task)
         task.state = "PAYING"
         task.updated_at = utc_now()
         await db.commit()
@@ -1364,6 +1386,7 @@ async def enqueue_recoverable_tasks(db: AsyncSession) -> int:
                     "Recovering stale task %s (state=%s, age=%.0fs)",
                     task.id, task.state, age_seconds
                 )
+                _clear_next_run_at(task)
                 task.state = "QUEUED"
                 task.updated_at = now
                 await db.commit()

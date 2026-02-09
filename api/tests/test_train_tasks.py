@@ -1627,6 +1627,119 @@ def test_parse_srt_search_response_from_srtgo_shape():
     assert schedules[0].departure_at.utcoffset() == timedelta(hours=9)
 
 
+@pytest.mark.asyncio
+async def test_train_task_retry_now_allows_queued_and_polling(client, db_session, monkeypatch):
+    async def _noop_enqueue(task_id: str, defer_seconds: float = 0.0) -> None:
+        return None
+
+    monkeypatch.setattr("app.modules.train.service.enqueue_train_task", _noop_enqueue)
+
+    cookie = await _register_and_login(client, email="retry-now@example.com")
+    user = (await db_session.execute(select(User).where(User.email == "retry-now@example.com"))).scalar_one()
+
+    now = _utc_now()
+    queued = Task(
+        user_id=user.id,
+        module="train",
+        state="QUEUED",
+        deadline_at=now + timedelta(hours=1),
+        spec_json={},
+        idempotency_key="r" * 64,
+        created_at=now,
+        updated_at=now,
+    )
+    polling = Task(
+        user_id=user.id,
+        module="train",
+        state="POLLING",
+        deadline_at=now + timedelta(hours=1),
+        spec_json={"next_run_at": (now + timedelta(minutes=3)).isoformat()},
+        idempotency_key="s" * 64,
+        created_at=now,
+        updated_at=now,
+    )
+    db_session.add_all([queued, polling])
+    await db_session.commit()
+
+    for task in (queued, polling):
+        res = await client.post(
+            f"/api/train/tasks/{task.id}/retry",
+            cookies={"bominal_session": cookie},
+        )
+        assert res.status_code == 200
+        payload = res.json()
+        assert payload["task"]["state"] == "QUEUED"
+        assert payload["task"]["spec_json"].get("manual_retry_requested_at")
+        assert payload["task"]["spec_json"].get("next_run_at") is None
+
+
+@pytest.mark.asyncio
+async def test_train_task_retry_now_enforces_cooldown(client, db_session, monkeypatch):
+    async def _noop_enqueue(task_id: str, defer_seconds: float = 0.0) -> None:
+        return None
+
+    monkeypatch.setattr("app.modules.train.service.enqueue_train_task", _noop_enqueue)
+
+    cookie = await _register_and_login(client, email="retry-cooldown@example.com")
+    user = (await db_session.execute(select(User).where(User.email == "retry-cooldown@example.com"))).scalar_one()
+
+    now = _utc_now()
+    task = Task(
+        user_id=user.id,
+        module="train",
+        state="QUEUED",
+        deadline_at=now + timedelta(hours=1),
+        spec_json={"manual_retry_requested_at": now.isoformat()},
+        idempotency_key="t" * 64,
+        created_at=now,
+        updated_at=now,
+    )
+    db_session.add(task)
+    await db_session.commit()
+
+    res = await client.post(
+        f"/api/train/tasks/{task.id}/retry",
+        cookies={"bominal_session": cookie},
+    )
+    assert res.status_code == 429
+    payload = res.json()
+    assert isinstance(payload.get("detail"), dict)
+    assert payload["detail"].get("retry_after_seconds")
+
+
+@pytest.mark.asyncio
+async def test_train_task_retry_now_deadline_marks_expired(client, db_session, monkeypatch):
+    async def _noop_enqueue(task_id: str, defer_seconds: float = 0.0) -> None:
+        return None
+
+    monkeypatch.setattr("app.modules.train.service.enqueue_train_task", _noop_enqueue)
+
+    cookie = await _register_and_login(client, email="retry-expired@example.com")
+    user = (await db_session.execute(select(User).where(User.email == "retry-expired@example.com"))).scalar_one()
+
+    now = _utc_now()
+    task = Task(
+        user_id=user.id,
+        module="train",
+        state="QUEUED",
+        deadline_at=now - timedelta(seconds=1),
+        spec_json={},
+        idempotency_key="u" * 64,
+        created_at=now - timedelta(minutes=3),
+        updated_at=now - timedelta(minutes=3),
+    )
+    db_session.add(task)
+    await db_session.commit()
+
+    res = await client.post(
+        f"/api/train/tasks/{task.id}/retry",
+        cookies={"bominal_session": cookie},
+    )
+    assert res.status_code == 410
+    await db_session.refresh(task)
+    assert task.state == "EXPIRED"
+
+
 def test_parse_ktx_search_response_from_srtgo_shape():
     raw = {
         "strResult": "SUCC",

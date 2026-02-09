@@ -5,6 +5,10 @@ TASK_MODULE = "train"
 SECRET_KIND_SRT_CREDENTIALS = "srt_credentials"
 SECRET_KIND_KTX_CREDENTIALS = "ktx_credentials"
 
+MANUAL_RETRY_COOLDOWN_SECONDS = 30
+SPEC_KEY_NEXT_RUN_AT = "next_run_at"
+SPEC_KEY_MANUAL_RETRY_REQUESTED_AT = "manual_retry_requested_at"
+
 
 def credential_kind(provider: str) -> str:
     """Return the secret kind for a given train provider."""

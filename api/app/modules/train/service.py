@@ -20,8 +20,11 @@ from app.core.time import utc_now
 from app.db.models import Artifact, Secret, Task, TaskAttempt, User
 from app.modules.train.constants import (
     ACTIVE_TASK_STATES,
+    MANUAL_RETRY_COOLDOWN_SECONDS,
     SECRET_KIND_KTX_CREDENTIALS,
     SECRET_KIND_SRT_CREDENTIALS,
+    SPEC_KEY_MANUAL_RETRY_REQUESTED_AT,
+    SPEC_KEY_NEXT_RUN_AT,
     TASK_MODULE,
     TERMINAL_TASK_STATES,
     credential_kind,
@@ -586,10 +589,21 @@ def _ticket_summary_from_artifact(artifact: Artifact | None) -> dict | None:
 
 def task_to_summary(
     task: Task,
-    last_attempt_at: datetime | None = None,
+    latest_attempt: TaskAttempt | None = None,
     ticket_summary: dict | None = None,
 ) -> TaskSummaryOut:
     ticket_summary = ticket_summary or {}
+    now = utc_now()
+
+    next_run_at = _parse_iso_datetime(str((task.spec_json or {}).get(SPEC_KEY_NEXT_RUN_AT) or ""))
+    last_attempt_at = latest_attempt.finished_at if latest_attempt is not None else None
+    last_attempt_action = latest_attempt.action if latest_attempt is not None else None
+    last_attempt_ok = latest_attempt.ok if latest_attempt is not None else None
+    last_attempt_error_code = latest_attempt.error_code if latest_attempt is not None else None
+    last_attempt_error_message_safe = latest_attempt.error_message_safe if latest_attempt is not None else None
+    last_attempt_finished_at = latest_attempt.finished_at if latest_attempt is not None else None
+
+    retry_now_allowed, retry_now_reason, retry_now_available_at = compute_retry_now_status(task, now=now)
     return TaskSummaryOut(
         id=task.id,
         module=task.module,
@@ -603,12 +617,54 @@ def task_to_summary(
         failed_at=task.failed_at,
         hidden_at=task.hidden_at,
         last_attempt_at=last_attempt_at,
+        next_run_at=next_run_at,
+        last_attempt_action=last_attempt_action,
+        last_attempt_ok=last_attempt_ok,
+        last_attempt_error_code=last_attempt_error_code,
+        last_attempt_error_message_safe=last_attempt_error_message_safe,
+        last_attempt_finished_at=last_attempt_finished_at,
+        retry_now_allowed=retry_now_allowed,
+        retry_now_reason=retry_now_reason,
+        retry_now_available_at=retry_now_available_at,
         spec_json=task.spec_json,
         ticket_status=ticket_summary.get("ticket_status"),
         ticket_paid=ticket_summary.get("ticket_paid"),
         ticket_payment_deadline_at=ticket_summary.get("ticket_payment_deadline_at"),
         ticket_reservation_id=ticket_summary.get("ticket_reservation_id"),
     )
+
+
+def compute_retry_now_status(task: Task, *, now: datetime) -> tuple[bool, str | None, datetime | None]:
+    """Compute whether Retry Now is available and why not (safe for UI)."""
+    if task.hidden_at is not None:
+        return False, "Task is hidden.", None
+    if task.cancelled_at is not None or task.state == "CANCELLED":
+        return False, "Task is cancelled.", None
+    if task.paused_at is not None or task.state == "PAUSED":
+        return False, "Task is paused. Use Resume instead.", None
+    if task.state in TERMINAL_TASK_STATES:
+        return False, "Task is complete.", None
+    if task.state in {"RUNNING", "RESERVING", "PAYING"}:
+        return False, "Task is currently processing.", None
+    if task.state not in {"QUEUED", "POLLING"}:
+        return False, "Task cannot be retried in its current state.", None
+
+    deadline_at = task.deadline_at
+    if deadline_at.tzinfo is None:
+        deadline_at = deadline_at.replace(tzinfo=timezone.utc)
+    if now >= deadline_at:
+        return False, "Task deadline has passed.", None
+
+    last_requested_at = _parse_iso_datetime(
+        str((task.spec_json or {}).get(SPEC_KEY_MANUAL_RETRY_REQUESTED_AT) or "")
+    )
+    if last_requested_at is not None:
+        delta = now - last_requested_at
+        if delta < timedelta(seconds=MANUAL_RETRY_COOLDOWN_SECONDS):
+            available_at = last_requested_at + timedelta(seconds=MANUAL_RETRY_COOLDOWN_SECONDS)
+            return False, "Retry is on cooldown.", available_at
+
+    return True, None, None
 
 
 async def search_schedules(
@@ -775,17 +831,21 @@ async def create_task(db: AsyncSession, *, user: User, payload: TrainTaskCreateR
     return TrainTaskCreateResponse(task=task_to_summary(task), queued=True, deduplicated=False)
 
 
-async def _last_attempt_map(db: AsyncSession, task_ids: list[UUID]) -> dict[UUID, datetime]:
+async def _latest_attempt_map(db: AsyncSession, task_ids: list[UUID]) -> dict[UUID, TaskAttempt]:
+    """Return the latest attempt per task (SQLite-friendly)."""
     if not task_ids:
         return {}
 
     stmt = (
-        select(TaskAttempt.task_id, func.max(TaskAttempt.finished_at))
+        select(TaskAttempt)
         .where(TaskAttempt.task_id.in_(task_ids))
-        .group_by(TaskAttempt.task_id)
+        .order_by(TaskAttempt.task_id.asc(), TaskAttempt.finished_at.desc(), TaskAttempt.started_at.desc())
     )
-    rows = (await db.execute(stmt)).all()
-    return {task_id: last_at for task_id, last_at in rows}
+    attempts = (await db.execute(stmt)).scalars().all()
+    latest: dict[UUID, TaskAttempt] = {}
+    for attempt in attempts:
+        latest.setdefault(attempt.task_id, attempt)
+    return latest
 
 
 async def _latest_ticket_artifact_map(db: AsyncSession, task_ids: list[UUID]) -> dict[UUID, Artifact]:
@@ -857,7 +917,7 @@ async def list_tasks(
     stmt = _task_list_stmt(user, status_filter)
     tasks = (await db.execute(stmt)).scalars().all()
 
-    last_attempts = await _last_attempt_map(db, [task.id for task in tasks])
+    latest_attempts = await _latest_attempt_map(db, [task.id for task in tasks])
     ticket_artifacts = await _latest_ticket_artifact_map(db, [task.id for task in tasks])
 
     should_refresh_completed = refresh_completed and status_filter in {"completed", "all"}
@@ -892,7 +952,7 @@ async def list_tasks(
         tasks=[
             task_to_summary(
                 task,
-                last_attempt_at=last_attempts.get(task.id),
+                latest_attempt=latest_attempts.get(task.id),
                 ticket_summary=_ticket_summary_from_artifact(ticket_artifacts.get(task.id)),
             )
             for task in tasks
@@ -1035,11 +1095,10 @@ async def get_task_detail(db: AsyncSession, *, task_id: UUID, user: User) -> Tas
 
     attempts = sorted(task.attempts, key=lambda row: row.started_at)
     artifacts = sorted(task.artifacts, key=lambda row: row.created_at)
-
-    last_attempt_at = attempts[-1].finished_at if attempts else None
+    latest_attempt = max(attempts, key=lambda row: row.finished_at) if attempts else None
 
     return TaskDetailOut(
-        task=task_to_summary(task, last_attempt_at=last_attempt_at),
+        task=task_to_summary(task, latest_attempt=latest_attempt),
         attempts=[
             TaskAttemptOut(
                 id=attempt.id,
@@ -1094,6 +1153,63 @@ async def resume_task(db: AsyncSession, *, task_id: UUID, user: User) -> TaskAct
     await enqueue_train_task(str(task.id))
 
     return TaskActionResponse(task=task_to_summary(task))
+
+
+async def retry_task_now(db: AsyncSession, *, task_id: UUID, user: User) -> TaskActionResponse:
+    task = await get_task_for_user(db, task_id=task_id, user=user)
+    now = utc_now()
+
+    deadline_at = task.deadline_at
+    if deadline_at.tzinfo is None:
+        deadline_at = deadline_at.replace(tzinfo=timezone.utc)
+    if now >= deadline_at:
+        task.state = "EXPIRED"
+        task.updated_at = now
+        await db.commit()
+        await db.refresh(task)
+        raise HTTPException(status_code=status.HTTP_410_GONE, detail="Task deadline has passed")
+
+    if task.hidden_at is not None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+    if task.cancelled_at is not None or task.state == "CANCELLED":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Task is cancelled")
+    if task.paused_at is not None or task.state == "PAUSED":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Task is paused. Use Resume instead.")
+    if task.state in TERMINAL_TASK_STATES:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Cannot retry terminal task")
+    if task.state in {"RUNNING", "RESERVING", "PAYING"}:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Task is currently processing")
+    if task.state not in {"QUEUED", "POLLING"}:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Task cannot be retried in its current state")
+
+    last_requested_at = _parse_iso_datetime(
+        str((task.spec_json or {}).get(SPEC_KEY_MANUAL_RETRY_REQUESTED_AT) or "")
+    )
+    if last_requested_at is not None:
+        elapsed = now - last_requested_at
+        if elapsed < timedelta(seconds=MANUAL_RETRY_COOLDOWN_SECONDS):
+            remaining = int((timedelta(seconds=MANUAL_RETRY_COOLDOWN_SECONDS) - elapsed).total_seconds())
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail={
+                    "message": "Retry is on cooldown.",
+                    "retry_after_seconds": max(1, remaining),
+                },
+            )
+
+    next_spec = dict(task.spec_json or {})
+    next_spec.pop(SPEC_KEY_NEXT_RUN_AT, None)
+    next_spec[SPEC_KEY_MANUAL_RETRY_REQUESTED_AT] = now.isoformat()
+    task.spec_json = next_spec
+    task.state = "QUEUED"
+    task.updated_at = now
+    await db.commit()
+    await db.refresh(task)
+
+    await enqueue_train_task(str(task.id))
+
+    latest_attempt = (await _latest_attempt_map(db, [task.id])).get(task.id)
+    return TaskActionResponse(task=task_to_summary(task, latest_attempt=latest_attempt))
 
 
 async def cancel_task(db: AsyncSession, *, task_id: UUID, user: User) -> TaskActionResponse:
@@ -1152,10 +1268,10 @@ async def pay_task(db: AsyncSession, *, task_id: UUID, user: User) -> TaskAction
         if updated:
             await db.commit()
         task = await get_task_for_user(db, task_id=task_id, user=user)
-        last_attempt_at = (await _last_attempt_map(db, [task.id])).get(task.id)
+        latest_attempt = (await _latest_attempt_map(db, [task.id])).get(task.id)
         ticket_summary = _ticket_summary_from_artifact(_latest_ticket_artifact_for_task(task))
         return TaskActionResponse(
-            task=task_to_summary(task, last_attempt_at=last_attempt_at, ticket_summary=ticket_summary)
+            task=task_to_summary(task, latest_attempt=latest_attempt, ticket_summary=ticket_summary)
         )
 
     if ticket_status not in {"awaiting_payment", "reserved"}:
@@ -1299,9 +1415,9 @@ async def pay_task(db: AsyncSession, *, task_id: UUID, user: User) -> TaskAction
     await db.commit()
 
     task = await get_task_for_user(db, task_id=task_id, user=user)
-    last_attempt_at = (await _last_attempt_map(db, [task.id])).get(task.id)
+    latest_attempt = (await _latest_attempt_map(db, [task.id])).get(task.id)
     ticket_summary = _ticket_summary_from_artifact(_latest_ticket_artifact_for_task(task))
-    return TaskActionResponse(task=task_to_summary(task, last_attempt_at=last_attempt_at, ticket_summary=ticket_summary))
+    return TaskActionResponse(task=task_to_summary(task, latest_attempt=latest_attempt, ticket_summary=ticket_summary))
 
 
 async def delete_task(db: AsyncSession, *, task_id: UUID, user: User) -> TaskActionResponse:
