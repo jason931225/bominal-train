@@ -2,7 +2,7 @@
 
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { UI_LIQUID_GLASS_TEXT_WHITE, UI_LIQUID_GLASS_WHITE } from "@/lib/ui";
 
@@ -16,6 +16,7 @@ const LETTER_DURATION_MS = 620;
 const LOGO_HOLD_MS = 700;
 const BUTTON_ENTER_DURATION_MS = 600;
 const SKIP_ENTER_DURATION_MS = 180;
+const CTA_GAP_PX = 28;
 
 type IntroMode = "boot" | "play" | "skip";
 
@@ -40,9 +41,11 @@ export function LandingIntroOverlay() {
   const reduceMotion = useReducedMotion();
 
   const letters = useMemo(() => Array.from(WORDMARK), []);
+  const wordmarkRef = useRef<HTMLDivElement | null>(null);
   const [mode, setMode] = useState<IntroMode>("boot");
   const [logoStarted, setLogoStarted] = useState(false);
   const [ctaVisible, setCtaVisible] = useState(false);
+  const [ctaOffsetPx, setCtaOffsetPx] = useState(0);
 
   useEffect(() => {
     // Avoid drawing an overlay on the first paint until we know if we're skipping.
@@ -90,6 +93,31 @@ export function LandingIntroOverlay() {
     };
   }, [letters.length, mode]);
 
+  useLayoutEffect(() => {
+    if (mode === "boot") {
+      return;
+    }
+
+    const wordmarkEl = wordmarkRef.current;
+    if (!wordmarkEl) {
+      return;
+    }
+
+    const update = () => {
+      const rect = wordmarkEl.getBoundingClientRect();
+      const next = Math.max(0, Math.round(rect.height / 2 + CTA_GAP_PX));
+      setCtaOffsetPx(next);
+    };
+
+    update();
+
+    // Keep the button offset correct on responsive resizes.
+    window.addEventListener("resize", update);
+    return () => {
+      window.removeEventListener("resize", update);
+    };
+  }, [mode]);
+
   const onBegin = useCallback(() => {
     router.push("/login");
   }, [router]);
@@ -107,66 +135,75 @@ export function LandingIntroOverlay() {
         initial={skipFadeIn ? { opacity: 0, filter: "blur(6px)" } : false}
         animate={{ opacity: 1, filter: "blur(0px)" }}
         transition={skipFadeIn ? { duration: SKIP_ENTER_DURATION_MS / 1000, ease: "easeOut" } : { duration: 0 }}
-        className="flex flex-col items-center justify-center gap-8"
+        className="relative h-full w-full"
         style={{ willChange: skipFadeIn ? "opacity, filter" : undefined }}
       >
-        <motion.div
-          initial={playIntro ? "hidden" : false}
-          animate={logoStarted ? "show" : "hidden"}
-          variants={{
-            hidden: {},
-            show: {
-              transition: {
-                staggerChildren: LETTER_STAGGER_MS / 1000,
+        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+          <motion.div
+            ref={wordmarkRef}
+            initial={playIntro ? "hidden" : false}
+            animate={logoStarted ? "show" : "hidden"}
+            variants={{
+              hidden: {},
+              show: {
+                transition: {
+                  staggerChildren: LETTER_STAGGER_MS / 1000,
+                },
               },
-            },
-          }}
-          className={`select-none font-brand whitespace-nowrap text-[clamp(3.5rem,12vw,7rem)] font-semibold lowercase leading-none tracking-tight ${UI_LIQUID_GLASS_TEXT_WHITE}`}
-          style={{ willChange: "transform, opacity, filter" }}
-        >
-          {letters.map((letter, index) => (
-            <motion.span
-              key={`${letter}-${index}`}
-              className="inline-block"
-              variants={{
-                hidden: {
-                  opacity: 0,
-                  y: 14,
-                  filter: "blur(10px)",
-                },
-                show: {
-                  opacity: 1,
-                  y: 0,
-                  filter: "blur(0px)",
-                  transition: {
-                    duration: LETTER_DURATION_MS / 1000,
-                    ease: "easeOut",
+            }}
+            className={`select-none font-brand whitespace-nowrap text-[clamp(3.5rem,12vw,7rem)] font-semibold lowercase leading-none tracking-tight ${UI_LIQUID_GLASS_TEXT_WHITE}`}
+            style={{ willChange: "transform, opacity, filter" }}
+          >
+            {letters.map((letter, index) => (
+              <motion.span
+                key={`${letter}-${index}`}
+                className="inline-block"
+                variants={{
+                  hidden: {
+                    opacity: 0,
+                    y: 14,
+                    filter: "blur(10px)",
                   },
-                },
-              }}
-              style={{ willChange: "transform, opacity, filter" }}
-            >
-              {letter}
-            </motion.span>
-          ))}
-        </motion.div>
+                  show: {
+                    opacity: 1,
+                    y: 0,
+                    filter: "blur(0px)",
+                    transition: {
+                      duration: LETTER_DURATION_MS / 1000,
+                      ease: "easeOut",
+                    },
+                  },
+                }}
+                style={{ willChange: "transform, opacity, filter" }}
+              >
+                {letter}
+              </motion.span>
+            ))}
+          </motion.div>
+        </div>
 
         <AnimatePresence initial={false}>
           {ctaVisible ? (
-            <motion.button
-              key="intro-begin"
-              type="button"
-              onClick={onBegin}
-              initial={playIntro ? { opacity: 0, y: 10, filter: "blur(8px)" } : false}
-              animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-              transition={
-                playIntro ? { duration: BUTTON_ENTER_DURATION_MS / 1000, ease: "easeOut" } : { duration: 0 }
-              }
-              className={`pointer-events-auto inline-flex items-center justify-center px-7 py-4 text-base font-semibold tracking-tight transition hover:border-white/30 hover:from-white/25 hover:to-white/10 focus:outline-none focus:ring-2 focus:ring-white/40 sm:text-lg ${UI_LIQUID_GLASS_WHITE} ${UI_LIQUID_GLASS_TEXT_WHITE}`}
-              style={{ willChange: "transform, opacity, filter" }}
+            <div
+              key="intro-begin-wrap"
+              className="absolute left-1/2 top-1/2 -translate-x-1/2"
+              style={{ marginTop: ctaOffsetPx }}
             >
-              Let&apos;s begin!
-            </motion.button>
+              <motion.button
+                key="intro-begin"
+                type="button"
+                onClick={onBegin}
+                initial={playIntro ? { opacity: 0, y: 10, filter: "blur(8px)" } : false}
+                animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                transition={
+                  playIntro ? { duration: BUTTON_ENTER_DURATION_MS / 1000, ease: "easeOut" } : { duration: 0 }
+                }
+                className={`pointer-events-auto inline-flex items-center justify-center px-7 py-4 text-base font-semibold tracking-tight transition hover:border-white/30 hover:from-white/25 hover:to-white/10 focus:outline-none focus:ring-2 focus:ring-white/40 sm:text-lg ${UI_LIQUID_GLASS_WHITE} ${UI_LIQUID_GLASS_TEXT_WHITE}`}
+                style={{ willChange: "transform, opacity, filter" }}
+              >
+                Let&apos;s begin!
+              </motion.button>
+            </div>
           ) : null}
         </AnimatePresence>
       </motion.div>
