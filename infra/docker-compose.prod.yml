@@ -34,7 +34,7 @@ services:
 
   api:
     # Pull pre-built image from Artifact Registry instead of building
-    image: ${API_IMAGE:-us-central1-docker.pkg.dev/${GCP_PROJECT_ID:-bominal}/bominal/api:latest}
+    image: ${API_IMAGE:-us-central1-docker.pkg.dev/${GCP_PROJECT_ID}/bominal/api:latest}
     container_name: bominal-api
     working_dir: /app
     command: >
@@ -65,7 +65,7 @@ services:
 
   worker:
     # Pull pre-built image from Artifact Registry instead of building
-    image: ${API_IMAGE:-us-central1-docker.pkg.dev/${GCP_PROJECT_ID:-bominal}/bominal/api:latest}
+    image: ${API_IMAGE:-us-central1-docker.pkg.dev/${GCP_PROJECT_ID}/bominal/api:latest}
     container_name: bominal-worker
     working_dir: /app
     command: >
@@ -91,7 +91,7 @@ services:
 
   web:
     # Pull pre-built image from Artifact Registry instead of building
-    image: ${WEB_IMAGE:-us-central1-docker.pkg.dev/${GCP_PROJECT_ID:-bominal}/bominal/web:latest}
+    image: ${WEB_IMAGE:-us-central1-docker.pkg.dev/${GCP_PROJECT_ID}/bominal/web:latest}
     container_name: bominal-web
     env_file:
       - ./env/prod/web.env
