@@ -1,10 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { LandingIntroOverlay } from "@/components/landing/landing-intro-overlay";
 import { useTheme } from "@/components/theme-provider";
-import { ROUTES } from "@/lib/routes";
 
 type Direction = "forward" | "reverse";
 
@@ -81,15 +80,7 @@ export function LandingHeroVideo() {
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/15 via-black/10 to-black/25" />
       </div>
 
-      <div className="relative flex min-h-screen w-full items-start justify-end p-4 sm:p-6">
-        <Link
-          href={ROUTES.login}
-          className="inline-flex items-center justify-center rounded-full border border-white/30 bg-white/30 px-4 py-2 text-sm font-medium text-white shadow-[0_10px_30px_-20px_rgba(0,0,0,0.7)] backdrop-blur transition hover:bg-white/40 focus:outline-none focus:ring-2 focus:ring-white/40"
-        >
-          Sign in
-        </Link>
-      </div>
+      <LandingIntroOverlay />
     </section>
   );
 }
-
