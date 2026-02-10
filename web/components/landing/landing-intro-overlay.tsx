@@ -10,9 +10,12 @@ const INTRO_SHOWN_KEY = "bominal:intro_shown:v1";
 const WORDMARK = "bominal";
 
 const LOGO_DELAY_MS = 800;
-const LETTER_STAGGER_MS = 55;
-const LETTER_DURATION_MS = 260;
-const LOGO_HOLD_MS = 320;
+// Cinematic pacing (roughly 3.5s from the first letter to the CTA fully appearing).
+const LETTER_STAGGER_MS = 130;
+const LETTER_DURATION_MS = 620;
+const LOGO_HOLD_MS = 700;
+const LOGO_EXIT_DURATION_MS = 800;
+const BUTTON_ENTER_DURATION_MS = 600;
 
 type IntroStage = "boot" | "logo" | "button";
 
@@ -98,7 +101,7 @@ export function LandingIntroOverlay() {
             <motion.div
               key="intro-logo"
               exit={{ opacity: 0, filter: "blur(8px)" }}
-              transition={{ duration: 0.42, ease: "easeInOut" }}
+              transition={{ duration: LOGO_EXIT_DURATION_MS / 1000, ease: "easeInOut" }}
               className="select-none"
               style={{ willChange: "opacity, filter" }}
               aria-hidden="true"
@@ -114,7 +117,7 @@ export function LandingIntroOverlay() {
                     },
                   },
                 }}
-                className="font-brand text-5xl font-semibold lowercase leading-none tracking-tight text-white sm:text-6xl"
+                className={`font-brand text-7xl font-semibold lowercase leading-none tracking-tight sm:text-8xl ${UI_LIQUID_GLASS_TEXT_WHITE}`}
               >
                 {letters.map((letter, index) => (
                   <motion.span
@@ -123,7 +126,7 @@ export function LandingIntroOverlay() {
                     variants={{
                       hidden: {
                         opacity: 0,
-                        y: 10,
+                        y: 14,
                         filter: "blur(10px)",
                       },
                       show: {
@@ -150,7 +153,9 @@ export function LandingIntroOverlay() {
               onClick={onBegin}
               initial={reduceMotion ? false : { opacity: 0, y: 10, filter: "blur(8px)" }}
               animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-              transition={reduceMotion ? { duration: 0 } : { duration: 0.36, ease: "easeOut" }}
+              transition={
+                reduceMotion ? { duration: 0 } : { duration: BUTTON_ENTER_DURATION_MS / 1000, ease: "easeOut" }
+              }
               className={`pointer-events-auto inline-flex items-center justify-center px-7 py-4 text-base font-semibold tracking-tight transition hover:border-white/30 hover:from-white/25 hover:to-white/10 focus:outline-none focus:ring-2 focus:ring-white/40 sm:text-lg ${UI_LIQUID_GLASS_WHITE} ${UI_LIQUID_GLASS_TEXT_WHITE}`}
               style={{ willChange: "transform, opacity, filter" }}
             >
