@@ -7,21 +7,13 @@ on:
     branches: [main]
 
   workflow_dispatch:
-    inputs:
-      commit:
-        description: "Specific commit SHA to deploy (optional, defaults to latest)"
-        required: false
-        type: string
 
 permissions:
   contents: read
   id-token: write
 
 env:
-  DEPLOY_INSTANCE: bominal-deploy
-  DEPLOY_ZONE: us-central1-a
-  REPO_DIR: /opt/bominal/repo
-  DEPLOY_SCRIPT: /opt/bominal/repo/infra/scripts/deploy-zero-downtime.sh
+  DEPLOY_PUBSUB_TOPIC: bominal-deploy-requests
 
   GCP_PROJECT_ID: bominal
   GCP_REGION: us-central1
@@ -49,44 +41,47 @@ jobs:
         with:
           project_id: ${{ env.GCP_PROJECT_ID }}
 
-      - name: Generate ephemeral SSH key (RSA PEM)
-        id: key
+      - name: Publish deploy request (Pub/Sub)
         shell: bash
         run: |
-          ssh-keygen -t rsa -b 4096 -m PEM -N "" -f /tmp/gha_vm_key
-          # Prevent private key leakage in later step logs.
-          while IFS= read -r line; do
-            echo "::add-mask::$line"
-          done < /tmp/gha_vm_key
-          echo "private_key<<EOF" >> "$GITHUB_OUTPUT"
-          cat /tmp/gha_vm_key >> "$GITHUB_OUTPUT"
-          echo "EOF" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
 
-      - name: SSH and deploy
-        uses: google-github-actions/ssh-compute@v1
-        with:
-          instance_name: ${{ env.DEPLOY_INSTANCE }}
-          zone: ${{ env.DEPLOY_ZONE }}
-          ssh_private_key: ${{ steps.key.outputs.private_key }}
-          command: |
-            set -euo pipefail
+          workflow_commit="${{ github.event.workflow_run.head_sha }}"
+          default_commit="${{ github.sha }}"
 
-            # OS Login is enabled; SSH login user is derived from IAM identity.
-            # Run the deploy script as the app user (bominal) to match prod docs.
-            echo "=== ssh identity (oslogin) ==="
-            whoami
-            id
+          mode="latest"
+          commit="${workflow_commit:-$default_commit}"
 
-            echo "=== sudo preflight ==="
-            sudo -n true
-            sudo -n -u bominal id
+          echo "Deploy request:"
+          echo "  mode:   $mode"
+          echo "  commit: $commit"
 
-            cd "${{ env.REPO_DIR }}"
+          export DEPLOY_COMMIT="$commit"
 
-            if [[ -n "${{ github.event.inputs.commit }}" ]]; then
-              sudo -n -H -u bominal env GCP_PROJECT_ID=${{ env.GCP_PROJECT_ID }} GCP_REGION=${{ env.GCP_REGION }} \
-                bash "${{ env.DEPLOY_SCRIPT }}" "${{ github.event.inputs.commit }}"
-            else
-              sudo -n -H -u bominal env GCP_PROJECT_ID=${{ env.GCP_PROJECT_ID }} GCP_REGION=${{ env.GCP_REGION }} \
-                bash "${{ env.DEPLOY_SCRIPT }}"
-            fi
+          # Publish without a preflight `topics describe` to keep least privilege
+          # (roles/pubsub.publisher doesn't include pubsub.topics.get).
+          message="$(python3 - <<'PY'
+          import json
+          import os
+          payload = {
+              "app": "bominal",
+              "action": "deploy",
+              "mode": "latest",
+              "commit": os.environ.get("DEPLOY_COMMIT", ""),
+              "actor": os.environ.get("GITHUB_ACTOR", ""),
+              "event": os.environ.get("GITHUB_EVENT_NAME", ""),
+              "run_id": os.environ.get("GITHUB_RUN_ID", ""),
+              "run_attempt": os.environ.get("GITHUB_RUN_ATTEMPT", ""),
+          }
+          print(json.dumps(payload, separators=(",", ":")))
+          PY
+          )"
+
+          gcloud pubsub topics publish "${{ env.DEPLOY_PUBSUB_TOPIC }}" \
+            --project="${{ env.GCP_PROJECT_ID }}" \
+            --message="$message" \
+            --attribute="app=bominal" \
+            --attribute="mode=latest" \
+            --attribute="commit=$commit" \
+            --attribute="run_id=${{ github.run_id }}" \
+            --attribute="run_attempt=${{ github.run_attempt }}"

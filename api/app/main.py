@@ -115,8 +115,8 @@ async def healthcheck() -> dict[str, str | bool]:
     
     # Check Redis connectivity
     try:
-        from app.modules.train.queue import get_redis_pool
-        redis = get_redis_pool()
+        from app.core.redis import get_redis_client
+        redis = await get_redis_client()
         await redis.ping()
         health["redis"] = True
     except Exception:

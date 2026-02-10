@@ -52,6 +52,18 @@ Services started by compose:
 - mailpit (dev inbox): `http://localhost:8025` (SMTP on `localhost:1025`)
 - worker: consumes queued Train Tasks
 
+One-command local verification (starts stack, waits for health, runs backend tests + web typecheck):
+
+```bash
+./infra/scripts/local-check.sh
+```
+
+Optional cleanup after checks:
+
+```bash
+./infra/scripts/local-check.sh --down
+```
+
 If you pull new backend migrations while containers are already running, restart API/worker once:
 
 ```bash

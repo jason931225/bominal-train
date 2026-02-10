@@ -45,6 +45,7 @@ from app.modules.train.service import (
     list_tasks,
     pause_task,
     pay_task,
+    retry_task_now,
     resume_task,
     search_schedules,
     set_ktx_credentials,
@@ -175,6 +176,15 @@ async def resume_train_task(
     db: AsyncSession = Depends(get_db),
 ) -> TaskActionResponse:
     return await resume_task(db, task_id=task_id, user=user)
+
+
+@router.post("/tasks/{task_id}/retry", response_model=TaskActionResponse)
+async def retry_train_task(
+    task_id: UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> TaskActionResponse:
+    return await retry_task_now(db, task_id=task_id, user=user)
 
 
 @router.post("/tasks/{task_id}/cancel", response_model=TaskActionResponse)

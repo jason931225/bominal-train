@@ -27,11 +27,7 @@ bominal-deploy --rollback
 # Or: sudo -u bominal /opt/bominal/repo/infra/scripts/deploy-zero-downtime.sh --rollback
 ```
 
-Deploy without rebuilding images (faster, uses existing images):
-
-```bash
-sudo -u bominal /opt/bominal/repo/infra/scripts/deploy-zero-downtime.sh --skip-build
-```
+Note: `deploy-zero-downtime.sh` pulls pre-built images (there is no `--skip-build` flag).
 
 Quick restart after VM reset (no rebuild, existing images):
 
@@ -258,6 +254,36 @@ If stack already running after pulling migrations:
 
 ```bash
 docker-compose -f infra/docker-compose.yml restart api worker
+```
+
+## 6) API crash loop on startup (ImportError)
+
+Symptom: site is up but `/health` fails or the API is constantly restarting.
+
+Checklist:
+
+1. Inspect API logs:
+
+```bash
+docker compose -f infra/docker-compose.prod.yml logs --tail=200 api
+# Or: sudo -u bominal docker logs --tail=200 bominal-api
+```
+
+2. If you see an import error like:
+   - `ImportError: cannot import name 'SPEC_KEY_NEXT_RUN_AT' from 'app.modules.train.constants'`
+
+Recovery:
+
+1. Roll back to the previous deployment:
+
+```bash
+bominal-deploy --rollback
+```
+
+2. Or redeploy after a hotfix image is published:
+
+```bash
+bominal-deploy
 ```
 
 ## 6) Notification email not arriving in dev

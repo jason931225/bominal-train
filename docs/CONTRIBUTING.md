@@ -18,6 +18,7 @@ From repo root:
 git submodule update --init --recursive
 ./infra/scripts/local-setup.sh
 ./infra/scripts/local-run.sh
+./infra/scripts/local-check.sh
 ```
 If you prefer containerized local simulation, use:
 
@@ -60,6 +61,18 @@ If touching auth, wallet, or provider credentials:
 - document behavior changes in `docs/SECURITY.md`
 
 ## Test and verification
+
+Recommended one-command local verification (starts stack, waits for health, runs tests + typecheck):
+
+```bash
+./infra/scripts/local-check.sh
+```
+
+Optional cleanup after checks:
+
+```bash
+./infra/scripts/local-check.sh --down
+```
 
 Backend tests:
 

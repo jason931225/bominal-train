@@ -154,6 +154,15 @@ class TaskSummaryOut(BaseModel):
     failed_at: datetime | None
     hidden_at: datetime | None
     last_attempt_at: datetime | None
+    last_attempt_action: str | None
+    last_attempt_ok: bool | None
+    last_attempt_error_code: str | None
+    last_attempt_error_message_safe: str | None
+    last_attempt_finished_at: datetime | None
+    next_run_at: datetime | None
+    retry_now_allowed: bool
+    retry_now_reason: str | None
+    retry_now_available_at: datetime | None
     spec_json: dict
     ticket_status: str | None = None
     ticket_paid: bool | None = None
