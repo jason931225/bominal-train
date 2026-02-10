@@ -14,10 +14,9 @@ const LOGO_DELAY_MS = 800;
 const LETTER_STAGGER_MS = 130;
 const LETTER_DURATION_MS = 620;
 const LOGO_HOLD_MS = 700;
-const LOGO_EXIT_DURATION_MS = 800;
 const BUTTON_ENTER_DURATION_MS = 600;
 
-type IntroStage = "boot" | "logo" | "button";
+type IntroMode = "boot" | "play" | "skip";
 
 function safeGetSessionStorageItem(key: string) {
   try {
@@ -40,30 +39,35 @@ export function LandingIntroOverlay() {
   const reduceMotion = useReducedMotion();
 
   const letters = useMemo(() => Array.from(WORDMARK), []);
-  const [stage, setStage] = useState<IntroStage>("boot");
+  const [mode, setMode] = useState<IntroMode>("boot");
   const [logoStarted, setLogoStarted] = useState(false);
+  const [ctaVisible, setCtaVisible] = useState(false);
 
   useEffect(() => {
     // Avoid drawing an overlay on the first paint until we know if we're skipping.
     if (reduceMotion) {
       safeSetSessionStorageItem(INTRO_SHOWN_KEY, "1");
-      setLogoStarted(false);
-      setStage("button");
+      setMode("skip");
+      setLogoStarted(true);
+      setCtaVisible(true);
       return;
     }
 
     const alreadyShown = safeGetSessionStorageItem(INTRO_SHOWN_KEY) != null;
     if (alreadyShown) {
-      setLogoStarted(false);
-      setStage("button");
+      setMode("skip");
+      setLogoStarted(true);
+      setCtaVisible(true);
       return;
     }
 
-    setStage("logo");
+    setMode("play");
+    setLogoStarted(false);
+    setCtaVisible(false);
   }, [reduceMotion]);
 
   useEffect(() => {
-    if (stage !== "logo") {
+    if (mode !== "play") {
       return;
     }
 
@@ -75,93 +79,87 @@ export function LandingIntroOverlay() {
     }, LOGO_DELAY_MS);
 
     const lettersMs = LETTER_DURATION_MS + Math.max(0, letters.length - 1) * LETTER_STAGGER_MS;
-    const exitTriggerTimer = window.setTimeout(() => {
-      setStage("button");
+    const ctaTriggerTimer = window.setTimeout(() => {
+      setCtaVisible(true);
     }, LOGO_DELAY_MS + lettersMs + LOGO_HOLD_MS);
 
     return () => {
       window.clearTimeout(startTimer);
-      window.clearTimeout(exitTriggerTimer);
+      window.clearTimeout(ctaTriggerTimer);
     };
-  }, [letters.length, stage]);
+  }, [letters.length, mode]);
 
   const onBegin = useCallback(() => {
     router.push("/login");
   }, [router]);
 
-  if (stage === "boot") {
+  if (mode === "boot") {
     return null;
   }
 
+  const playIntro = mode === "play" && !reduceMotion;
+
   return (
     <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
-      <div className="relative flex items-center justify-center">
-        <AnimatePresence mode="wait" initial={false}>
-          {stage === "logo" ? (
-            <motion.div
-              key="intro-logo"
-              exit={{ opacity: 0, filter: "blur(8px)" }}
-              transition={{ duration: LOGO_EXIT_DURATION_MS / 1000, ease: "easeInOut" }}
-              className="select-none"
-              style={{ willChange: "opacity, filter" }}
-              aria-hidden="true"
-            >
-              <motion.div
-                initial="hidden"
-                animate={logoStarted ? "show" : "hidden"}
-                variants={{
-                  hidden: {},
-                  show: {
-                    transition: {
-                      staggerChildren: LETTER_STAGGER_MS / 1000,
-                    },
+      <div className="flex flex-col items-center justify-center gap-8">
+        <motion.div
+          initial={playIntro ? "hidden" : false}
+          animate={logoStarted ? "show" : "hidden"}
+          variants={{
+            hidden: {},
+            show: {
+              transition: {
+                staggerChildren: LETTER_STAGGER_MS / 1000,
+              },
+            },
+          }}
+          className={`select-none font-brand whitespace-nowrap text-[clamp(3.5rem,12vw,7rem)] font-semibold lowercase leading-none tracking-tight ${UI_LIQUID_GLASS_TEXT_WHITE}`}
+          style={{ willChange: "transform, opacity, filter" }}
+        >
+          {letters.map((letter, index) => (
+            <motion.span
+              key={`${letter}-${index}`}
+              className="inline-block"
+              variants={{
+                hidden: {
+                  opacity: 0,
+                  y: 14,
+                  filter: "blur(10px)",
+                },
+                show: {
+                  opacity: 1,
+                  y: 0,
+                  filter: "blur(0px)",
+                  transition: {
+                    duration: LETTER_DURATION_MS / 1000,
+                    ease: "easeOut",
                   },
-                }}
-                className={`font-brand whitespace-nowrap text-[clamp(3.5rem,12vw,7rem)] font-semibold lowercase leading-none tracking-tight ${UI_LIQUID_GLASS_TEXT_WHITE}`}
-              >
-                {letters.map((letter, index) => (
-                  <motion.span
-                    key={`${letter}-${index}`}
-                    className="inline-block"
-                    variants={{
-                      hidden: {
-                        opacity: 0,
-                        y: 14,
-                        filter: "blur(10px)",
-                      },
-                      show: {
-                        opacity: 1,
-                        y: 0,
-                        filter: "blur(0px)",
-                        transition: {
-                          duration: LETTER_DURATION_MS / 1000,
-                          ease: "easeOut",
-                        },
-                      },
-                    }}
-                    style={{ willChange: "transform, opacity, filter" }}
-                  >
-                    {letter}
-                  </motion.span>
-                ))}
-              </motion.div>
-            </motion.div>
-          ) : (
+                },
+              }}
+              style={{ willChange: "transform, opacity, filter" }}
+            >
+              {letter}
+            </motion.span>
+          ))}
+        </motion.div>
+
+        <AnimatePresence initial={false}>
+          {ctaVisible ? (
             <motion.button
               key="intro-begin"
               type="button"
               onClick={onBegin}
-              initial={reduceMotion ? false : { opacity: 0, y: 10, filter: "blur(8px)" }}
+              initial={playIntro ? { opacity: 0, y: 10, filter: "blur(8px)" } : false}
               animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
               transition={
-                reduceMotion ? { duration: 0 } : { duration: BUTTON_ENTER_DURATION_MS / 1000, ease: "easeOut" }
+                playIntro ? { duration: BUTTON_ENTER_DURATION_MS / 1000, ease: "easeOut" } : { duration: 0 }
               }
               className={`pointer-events-auto inline-flex items-center justify-center px-7 py-4 text-base font-semibold tracking-tight transition hover:border-white/30 hover:from-white/25 hover:to-white/10 focus:outline-none focus:ring-2 focus:ring-white/40 sm:text-lg ${UI_LIQUID_GLASS_WHITE} ${UI_LIQUID_GLASS_TEXT_WHITE}`}
               style={{ willChange: "transform, opacity, filter" }}
             >
               Let&apos;s begin!
             </motion.button>
-          )}
+          ) : null}
         </AnimatePresence>
       </div>
     </div>
