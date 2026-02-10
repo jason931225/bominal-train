@@ -14,6 +14,8 @@ const LETTER_STAGGER_MS = 55;
 const LETTER_DURATION_MS = 260;
 const LOGO_HOLD_MS = 320;
 
+type IntroStage = "boot" | "logo" | "button";
+
 function safeGetSessionStorageItem(key: string) {
   try {
     return sessionStorage.getItem(key);
@@ -35,10 +37,11 @@ export function LandingIntroOverlay() {
   const reduceMotion = useReducedMotion();
 
   const letters = useMemo(() => Array.from(WORDMARK), []);
-  const [stage, setStage] = useState<"logo" | "button">("logo");
+  const [stage, setStage] = useState<IntroStage>("boot");
   const [logoStarted, setLogoStarted] = useState(false);
 
   useEffect(() => {
+    // Avoid drawing an overlay on the first paint until we know if we're skipping.
     if (reduceMotion) {
       safeSetSessionStorageItem(INTRO_SHOWN_KEY, "1");
       setLogoStarted(false);
@@ -53,9 +56,18 @@ export function LandingIntroOverlay() {
       return;
     }
 
-    safeSetSessionStorageItem(INTRO_SHOWN_KEY, "1");
+    setStage("logo");
+  }, [reduceMotion]);
+
+  useEffect(() => {
+    if (stage !== "logo") {
+      return;
+    }
 
     const startTimer = window.setTimeout(() => {
+      // Mark the intro as shown when it actually begins so React Strict Mode's
+      // dev double-mount doesn't cause the second mount to skip the animation.
+      safeSetSessionStorageItem(INTRO_SHOWN_KEY, "1");
       setLogoStarted(true);
     }, LOGO_DELAY_MS);
 
@@ -68,17 +80,19 @@ export function LandingIntroOverlay() {
       window.clearTimeout(startTimer);
       window.clearTimeout(exitTriggerTimer);
     };
-  }, [letters.length, reduceMotion]);
+  }, [letters.length, stage]);
 
   const onBegin = useCallback(() => {
     router.push("/login");
   }, [router]);
 
-  return (
-    <div className="absolute inset-0 flex items-center justify-center">
-      <div className="absolute inset-0" aria-hidden="true" />
+  if (stage === "boot") {
+    return null;
+  }
 
-      <div className="pointer-events-none relative z-10 flex items-center justify-center">
+  return (
+    <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
+      <div className="relative flex items-center justify-center">
         <AnimatePresence mode="wait" initial={false}>
           {stage === "logo" ? (
             <motion.div
@@ -148,4 +162,3 @@ export function LandingIntroOverlay() {
     </div>
   );
 }
-
