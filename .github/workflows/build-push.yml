@@ -8,12 +8,6 @@ on:
       - 'web/**'
       - '.github/workflows/build-push.yml'
   workflow_dispatch:
-    inputs:
-      force_rebuild:
-        description: 'Force rebuild all images'
-        required: false
-        default: false
-        type: boolean
 
 env:
   GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
@@ -23,28 +17,8 @@ env:
   WEB_IMAGE: us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/bominal/web
 
 jobs:
-  detect-changes:
-    name: Detect Changes
-    runs-on: ubuntu-latest
-    outputs:
-      api_changed: ${{ steps.changes.outputs.api }}
-      web_changed: ${{ steps.changes.outputs.web }}
-    steps:
-      - uses: actions/checkout@v4
-      - name: Detect file changes
-        id: changes
-        uses: dorny/paths-filter@v3
-        with:
-          filters: |
-            api:
-              - 'api/**'
-            web:
-              - 'web/**'
-              
   build-api:
     name: Build API Image
-    needs: detect-changes
-    if: needs.detect-changes.outputs.api_changed == 'true' || github.event.inputs.force_rebuild == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -82,8 +56,6 @@ jobs:
 
   build-web:
     name: Build Web Image
-    needs: detect-changes
-    if: needs.detect-changes.outputs.web_changed == 'true' || github.event.inputs.force_rebuild == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
