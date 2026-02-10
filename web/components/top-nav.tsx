@@ -1,5 +1,7 @@
-import { headers } from "next/headers";
+"use client";
+
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 import { NavBurgerMenu } from "@/components/nav-burger-menu";
 import { TopNavBrand } from "@/components/top-nav-brand";
@@ -36,9 +38,8 @@ function getBrandSectionLabel(locale: Locale, pathname: string): string | null {
   return key ? t(locale, key) : null;
 }
 
-export async function TopNav({ user, locale }: { user: BominalUser | null; locale: Locale }) {
-  const headersList = headers();
-  const pathname = headersList.get("x-pathname") || ROUTES.dashboard;
+export function TopNav({ user, locale }: { user: BominalUser | null; locale: Locale }) {
+  const pathname = usePathname() ?? ROUTES.dashboard;
   const brandSectionLabel = getBrandSectionLabel(locale, pathname);
 
   return (
