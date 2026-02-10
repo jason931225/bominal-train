@@ -5,6 +5,7 @@ import { headers } from "next/headers";
 import "./globals.css";
 
 import { LocaleProvider } from "@/components/locale-provider";
+import { PageTransition } from "@/components/page-transition";
 import { ThemeInitScript } from "@/components/theme-init-script";
 import { ThemeProvider } from "@/components/theme-provider";
 import { TopNav } from "@/components/top-nav";
@@ -72,7 +73,9 @@ export default async function RootLayout({
         <ThemeProvider>
           <LocaleProvider initialLocale={locale}>
             {isLanding ? null : <TopNav user={user} locale={locale} />}
-            <main className={mainClassName}>{children}</main>
+            <main className={mainClassName}>
+              {isLanding ? children : <PageTransition>{children}</PageTransition>}
+            </main>
           </LocaleProvider>
         </ThemeProvider>
       </body>
