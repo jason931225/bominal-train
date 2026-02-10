@@ -23,6 +23,7 @@ def user_to_out(user: User) -> UserOut:
         email=user.email,
         display_name=user.display_name,
         phone_number=user.phone_number,
+        ui_locale=user.ui_locale,
         billing_address=user.billing_address,
         billing_address_line1=user.billing_address_line1,
         billing_address_line2=user.billing_address_line2,
@@ -121,6 +122,7 @@ async def delete_account_data(db: AsyncSession, *, user: User) -> None:
     user.password_hash = hash_password(new_session_token())
     user.display_name = None
     user.phone_number = None
+    user.ui_locale = "en"
     user.billing_address = None
     user.billing_address_line1 = None
     user.billing_address_line2 = None

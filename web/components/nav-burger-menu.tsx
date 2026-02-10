@@ -1,11 +1,13 @@
 "use client";
 
-import { type CSSProperties, useMemo, useState } from "react";
+import { type CSSProperties, useState } from "react";
 import Link from "next/link";
 
+import { useLocale } from "@/components/locale-provider";
 import { LogoutButton } from "@/components/logout-button";
 import { useTheme } from "@/components/theme-provider";
-import { THEME_BUILD_LABEL, THEME_MODE_OPTIONS, type ThemeMode } from "@/lib/theme";
+import { ROUTES } from "@/lib/routes";
+import { THEME_MODE_OPTIONS, type ThemeMode } from "@/lib/theme";
 import { UI_MENU_ITEM } from "@/lib/ui";
 
 const THEME_DOT_COLORS = {
@@ -29,16 +31,15 @@ function themeDotStyle(mode: ThemeMode): CSSProperties {
 
 export function NavBurgerMenu({ isAdmin = false }: { isAdmin?: boolean }) {
   const { mode, theme, setMode } = useTheme();
+  const { t } = useLocale();
   const [themeMenuOpen, setThemeMenuOpen] = useState(false);
-  const selectedThemeLabel = useMemo(
-    () => THEME_MODE_OPTIONS.find((option) => option.mode === mode)?.label ?? "Auto",
-    [mode],
-  );
+  const themeLabel = (value: ThemeMode) => t(`theme.${value}`);
+  const selectedThemeLabel = themeLabel(mode);
 
   return (
     <details className="group relative [&_summary::-webkit-details-marker]:hidden">
       <summary
-        aria-label="Open navigation menu"
+        aria-label={t("nav.openMenu")}
         className="inline-flex h-9 w-9 cursor-pointer list-none items-center justify-center rounded-full border border-blossom-200 bg-white text-slate-700 transition hover:bg-blossom-50 focus:outline-none focus:ring-2 focus:ring-blossom-100"
       >
         <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
@@ -47,17 +48,17 @@ export function NavBurgerMenu({ isAdmin = false }: { isAdmin?: boolean }) {
       </summary>
 
       <div className="absolute right-0 z-30 mt-2 w-56 rounded-2xl border border-blossom-100 bg-white p-1.5 shadow-lg">
-        <Link href="/dashboard" className={UI_MENU_ITEM}>
-          Dashboard
+        <Link href={ROUTES.dashboard} className={UI_MENU_ITEM}>
+          {t("nav.dashboard")}
         </Link>
-        <Link href="/modules/train" className={UI_MENU_ITEM}>
-          Train
+        <Link href={ROUTES.modules.train} className={UI_MENU_ITEM}>
+          {t("nav.train")}
         </Link>
-        <Link href="/modules/restaurant" className={UI_MENU_ITEM}>
-          Restaurant
+        <Link href={ROUTES.modules.restaurant} className={UI_MENU_ITEM}>
+          {t("nav.restaurant")}
         </Link>
-        <Link href="/modules/calendar" className={UI_MENU_ITEM}>
-          Calendar
+        <Link href={ROUTES.modules.calendar} className={UI_MENU_ITEM}>
+          {t("nav.calendar")}
         </Link>
 
         <div className="my-1 border-t border-blossom-100" />
@@ -69,7 +70,9 @@ export function NavBurgerMenu({ isAdmin = false }: { isAdmin?: boolean }) {
             className="flex w-full items-center justify-between rounded-xl px-2.5 py-1.5 text-left transition hover:bg-blossom-50"
           >
             <span>
-              <span className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-blossom-500">Theme</span>
+              <span className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-blossom-500">
+                {t("theme.label")}
+              </span>
               <span className="block text-sm text-slate-700">{selectedThemeLabel}</span>
             </span>
             <svg
@@ -85,21 +88,21 @@ export function NavBurgerMenu({ isAdmin = false }: { isAdmin?: boolean }) {
 
           {themeMenuOpen ? (
             <div className="mt-1 grid gap-1">
-              {THEME_MODE_OPTIONS.filter((option) => option.mode !== mode).map((option) => (
+              {THEME_MODE_OPTIONS.filter((optionMode) => optionMode !== mode).map((optionMode) => (
                 <button
-                  key={option.mode}
+                  key={optionMode}
                   type="button"
                   onClick={() => {
-                    setMode(option.mode);
+                    setMode(optionMode);
                     setThemeMenuOpen(false);
                   }}
                   className="flex w-full items-center justify-between rounded-xl px-2.5 py-1.5 text-left text-sm text-slate-700 transition hover:bg-blossom-50"
                 >
-                  <span>{option.label}</span>
-                  {option.mode !== "auto" ? (
+                  <span>{themeLabel(optionMode)}</span>
+                  {optionMode !== "auto" ? (
                     <span
                       className="inline-flex h-2.5 w-2.5 rounded-full border border-white/80 shadow-[0_0_0_1px_rgba(15,23,42,0.08)]"
-                      style={themeDotStyle(option.mode)}
+                      style={themeDotStyle(optionMode)}
                     />
                   ) : null}
                 </button>
@@ -107,25 +110,27 @@ export function NavBurgerMenu({ isAdmin = false }: { isAdmin?: boolean }) {
             </div>
           ) : null}
 
-          <p className="px-1 pt-1 text-[11px] text-slate-500">Current: {THEME_BUILD_LABEL[theme]}</p>
+          <p className="px-1 pt-1 text-[11px] text-slate-500">
+            {t("theme.currentPrefix")} {themeLabel(theme)}
+          </p>
         </div>
 
         <div className="my-1 border-t border-blossom-100" />
 
         {isAdmin && (
           <>
-            <Link href="/admin/maintenance" className={UI_MENU_ITEM}>
-              Maintenance
+            <Link href={ROUTES.admin.maintenance} className={UI_MENU_ITEM}>
+              {t("nav.maintenance")}
             </Link>
             <div className="my-1 border-t border-blossom-100" />
           </>
         )}
 
-        <Link href="/settings/account" className={UI_MENU_ITEM}>
-          Account settings
+        <Link href={ROUTES.settings.account} className={UI_MENU_ITEM}>
+          {t("nav.accountSettings")}
         </Link>
-        <Link href="/settings/payment" className={UI_MENU_ITEM}>
-          Payment settings
+        <Link href={ROUTES.settings.payment} className={UI_MENU_ITEM}>
+          {t("nav.paymentSettings")}
         </Link>
         <div className="mt-1 border-t border-blossom-100 pt-1">
           <LogoutButton variant="menu" />

@@ -1,5 +1,4 @@
-import { cookies } from "next/headers";
-import Link from "next/link";
+import { headers } from "next/headers";
 import { Suspense } from "react";
 
 import { serverApiBaseUrl } from "@/lib/api-base";
@@ -7,6 +6,7 @@ import { requireAdminUser } from "@/lib/server-auth";
 import { UI_CARD_MD, UI_KICKER, UI_TITLE_LG, UI_BUTTON_OUTLINE_SM } from "@/lib/ui";
 import { SystemStatsCard } from "@/components/admin/system-stats-card";
 import { UserManagement } from "@/components/admin/user-management";
+import { localeFromAcceptLanguage, localeFromUser, t } from "@/lib/i18n";
 import { OpsStatusCard } from "@/components/admin/ops-status-card";
 import { StaleTasksTable } from "@/components/admin/stale-tasks-table";
 import { RecentFailuresTable } from "@/components/admin/recent-failures-table";
@@ -15,6 +15,7 @@ export const dynamic = "force-dynamic";
 
 export default async function MaintenancePage() {
   const user = await requireAdminUser();
+  const locale = localeFromUser(user) ?? localeFromAcceptLanguage(headers().get("accept-language"));
 
   return (
     <div className="mx-auto max-w-6xl space-y-8">
@@ -22,10 +23,10 @@ export default async function MaintenancePage() {
       <section className={UI_CARD_MD}>
         <div className="flex items-start justify-between">
           <div>
-            <p className={UI_KICKER}>Admin</p>
-            <h1 className={`mt-2 ${UI_TITLE_LG}`}>Maintenance Dashboard</h1>
+            <p className={UI_KICKER}>{t(locale, "admin.kicker")}</p>
+            <h1 className={`mt-2 ${UI_TITLE_LG}`}>{t(locale, "admin.maintenanceTitle")}</h1>
             <p className="mt-2 text-sm text-slate-500">
-              Manage users, view system stats, and perform administrative tasks.
+              {t(locale, "admin.maintenanceBody")}
             </p>
           </div>
           <a
@@ -34,7 +35,7 @@ export default async function MaintenancePage() {
             rel="noopener noreferrer"
             className={UI_BUTTON_OUTLINE_SM}
           >
-            API Docs ↗
+            {t(locale, "admin.apiDocs")} ↗
           </a>
         </div>
       </section>

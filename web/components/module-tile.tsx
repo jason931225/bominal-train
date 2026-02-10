@@ -1,6 +1,8 @@
 import Link from "next/link";
 
 import type { BominalModule } from "@/lib/types";
+import type { Locale } from "@/lib/i18n";
+import { t } from "@/lib/i18n";
 import { UI_CHIP_BRAND, UI_CHIP_MUTED } from "@/lib/ui";
 
 type ProviderBadge = {
@@ -21,7 +23,14 @@ function providerBadgesForModule(module: BominalModule): ProviderBadge[] {
   return [];
 }
 
-export function ModuleTile({ module }: { module: BominalModule }) {
+function moduleLabel(locale: Locale, module: BominalModule): string {
+  if (module.slug === "train") return t(locale, "nav.train");
+  if (module.slug === "restaurant") return t(locale, "nav.restaurant");
+  if (module.slug === "calendar") return t(locale, "nav.calendar");
+  return module.name;
+}
+
+export function ModuleTile({ module, locale }: { module: BominalModule; locale: Locale }) {
   const providerBadges = providerBadgesForModule(module);
 
   return (
@@ -31,8 +40,12 @@ export function ModuleTile({ module }: { module: BominalModule }) {
     >
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h3 className="text-lg font-semibold text-slate-800 group-hover:text-blossom-700">{module.name}</h3>
-          <p className="mt-1 text-sm text-slate-500">{module.coming_soon ? "Coming soon" : "Available"}</p>
+          <h3 className="text-lg font-semibold text-slate-800 group-hover:text-blossom-700">
+            {moduleLabel(locale, module)}
+          </h3>
+          <p className="mt-1 text-sm text-slate-500">
+            {module.coming_soon ? t(locale, "modules.comingSoon") : t(locale, "modules.available")}
+          </p>
         </div>
         {providerBadges.length > 0 ? (
           <div className="flex flex-wrap justify-end gap-2">

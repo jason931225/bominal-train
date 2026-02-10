@@ -3,7 +3,9 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { useLocale } from "@/components/locale-provider";
 import { clientApiBaseUrl } from "@/lib/api-base";
+import { ROUTES } from "@/lib/routes";
 import { UI_BUTTON_DANGER_SM, UI_BUTTON_OUTLINE } from "@/lib/ui";
 
 type LogoutButtonProps = {
@@ -13,6 +15,7 @@ type LogoutButtonProps = {
 export function LogoutButton({ variant = "pill" }: LogoutButtonProps) {
   const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
+  const { t } = useLocale();
 
   const handleLogout = async () => {
     setSubmitting(true);
@@ -21,7 +24,7 @@ export function LogoutButton({ variant = "pill" }: LogoutButtonProps) {
         method: "POST",
         credentials: "include",
       });
-      router.push("/login");
+      router.push(ROUTES.login);
       router.refresh();
     } finally {
       setSubmitting(false);
@@ -39,7 +42,7 @@ export function LogoutButton({ variant = "pill" }: LogoutButtonProps) {
           : `${UI_BUTTON_OUTLINE} text-blossom-700`
       }
     >
-      {submitting ? "Signing out..." : "Sign out"}
+      {submitting ? t("auth.signingOut") : t("auth.signOut")}
     </button>
   );
 }

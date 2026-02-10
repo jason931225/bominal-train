@@ -137,7 +137,7 @@ Implemented auth endpoints:
 - `POST /api/auth/request-email-verification` (stub: returns "coming soon")
 - `POST /api/auth/request-password-reset` (stub: returns "coming soon")
 - `GET /api/auth/me`
-- `PATCH /api/auth/account` (requires `current_password` for any changes)
+- `PATCH /api/auth/account` (`current_password` required for changing `email` / `new_password`)
 - `DELETE /api/auth/account` (blocked when outstanding worker tasks exist; marks user tasks for 365-day removal window)
 
 Auth uniqueness rules:
