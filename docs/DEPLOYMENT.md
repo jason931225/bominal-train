@@ -388,6 +388,17 @@ Malformed historical records (e.g. bad files under `/opt/bominal/deployments/<ti
 should not break `--status` or deploy/rollback runs; the script will warn and skip
 records it can’t read.
 
+If you want to remove legacy/malformed historical records without touching the
+`current` / `previous` pointers, run:
+
+```bash
+# Preview what would be deleted
+sudo -u bominal /opt/bominal/repo/infra/scripts/deploy-zero-downtime.sh --purge-legacy-records --dry-run
+
+# Create a tarball backup and then delete legacy/malformed records
+sudo -u bominal /opt/bominal/repo/infra/scripts/deploy-zero-downtime.sh --purge-legacy-records --backup
+```
+
 ---
 
 ## Network Guidance
