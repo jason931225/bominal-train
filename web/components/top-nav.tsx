@@ -11,17 +11,16 @@ import type { BominalUser } from "@/lib/types";
 
 type SectionRule = {
   prefix: string;
-  chipKey?: string;
   brandKey?: string;
 };
 
 const SECTION_RULES: SectionRule[] = [
-  { prefix: ROUTES.modules.train, chipKey: "nav.train", brandKey: "nav.train" },
-  { prefix: ROUTES.modules.restaurant, chipKey: "nav.restaurant", brandKey: "nav.restaurant" },
-  { prefix: ROUTES.modules.calendar, chipKey: "nav.calendar", brandKey: "nav.calendar" },
-  { prefix: ROUTES.settings.account, chipKey: "nav.account", brandKey: "nav.accountSettings" },
-  { prefix: ROUTES.settings.payment, chipKey: "nav.payment", brandKey: "nav.paymentSettings" },
-  { prefix: ROUTES.admin.maintenance, chipKey: "nav.maintenance", brandKey: "nav.admin" },
+  { prefix: ROUTES.modules.train, brandKey: "nav.train" },
+  { prefix: ROUTES.modules.restaurant, brandKey: "nav.restaurant" },
+  { prefix: ROUTES.modules.calendar, brandKey: "nav.calendar" },
+  { prefix: ROUTES.settings.account, brandKey: "nav.accountSettings" },
+  { prefix: ROUTES.settings.payment, brandKey: "nav.paymentSettings" },
+  { prefix: ROUTES.admin.maintenance, brandKey: "nav.admin" },
   { prefix: ROUTES.admin.root, brandKey: "nav.admin" },
 ];
 
@@ -32,11 +31,6 @@ function resolveSection(pathname: string): SectionRule | null {
   return null;
 }
 
-function getModuleLabel(locale: Locale, pathname: string): string {
-  const key = resolveSection(pathname)?.chipKey ?? "nav.home";
-  return t(locale, key);
-}
-
 function getBrandSectionLabel(locale: Locale, pathname: string): string | null {
   const key = resolveSection(pathname)?.brandKey ?? null;
   return key ? t(locale, key) : null;
@@ -45,7 +39,6 @@ function getBrandSectionLabel(locale: Locale, pathname: string): string | null {
 export async function TopNav({ user, locale }: { user: BominalUser | null; locale: Locale }) {
   const headersList = headers();
   const pathname = headersList.get("x-pathname") || ROUTES.dashboard;
-  const moduleLabel = getModuleLabel(locale, pathname);
   const brandSectionLabel = getBrandSectionLabel(locale, pathname);
 
   return (
@@ -55,8 +48,11 @@ export async function TopNav({ user, locale }: { user: BominalUser | null; local
 
         {user ? (
           <div className="flex items-center gap-3">
-            <span className="inline-flex h-9 items-center rounded-full border border-blossom-200 bg-white px-3 text-sm font-medium text-slate-700 shadow-sm">
-              {moduleLabel}
+            <span
+              title={user.display_name?.trim() || user.email}
+              className="inline-flex h-9 max-w-[11rem] items-center truncate rounded-full border border-blossom-200 bg-white px-3 text-sm font-medium text-slate-700 shadow-sm"
+            >
+              {user.display_name?.trim() || user.email}
             </span>
             <NavBurgerMenu isAdmin={user.role === "admin"} />
           </div>
