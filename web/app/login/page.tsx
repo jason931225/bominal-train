@@ -20,7 +20,7 @@ export default async function LoginPage({
 
   return (
     <section className={`mx-auto w-full max-w-md ${UI_CARD_LG}`}>
-      <h1 className="font-brand text-3xl font-semibold lowercase tracking-tight text-slate-900">bominal</h1>
+      <h1 className="font-brand text-4xl font-semibold lowercase leading-none tracking-tight text-blossom-800">bominal</h1>
       <p className={`mt-2 ${UI_BODY_MUTED}`}>{t("auth.loginSubtitle")}</p>
 
       {searchParams?.registered === "1" ? (

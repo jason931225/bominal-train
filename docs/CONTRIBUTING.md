@@ -40,6 +40,9 @@ docker compose -f infra/docker-compose.yml up --build
 - Keep user-facing train times in KST.
 - Use Zod for client-side form validation.
 - Prefer typed API contracts from `web/lib/types.ts`.
+- Wordmark (`bominal`) uses `font-brand` + theme-aware color:
+  - default: `text-blossom-800`
+  - hover: `text-blossom-700`
 
 ## 3) Backend (FastAPI + SQLAlchemy)
 
