@@ -32,7 +32,7 @@ Each service has a health check in `docker-compose.prod.yml`:
 |----------|--------------|--------------|
 | postgres | `pg_isready` | 0s |
 | redis    | `redis-cli ping` | 0s |
-| api      | Python urllib (port 8000/health) | 30s |
+| api      | Python urllib (port 8000/health) | 120s |
 | worker   | Python proc check for arq | 15s |
 | web      | `wget --spider` (port 3000) | 60s |
 | caddy    | `wget` (admin API port 2019) | 30s |
