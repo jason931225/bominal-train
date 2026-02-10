@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { LoginForm } from "@/components/login-form";
 import { getServerT } from "@/lib/i18n-server";
 import { ROUTES } from "@/lib/routes";
-import { UI_BODY_MUTED, UI_CARD_LG, UI_TITLE_LG } from "@/lib/ui";
+import { UI_BODY_MUTED, UI_CARD_LG } from "@/lib/ui";
 import { getOptionalUser } from "@/lib/server-auth";
 
 export default async function LoginPage({
@@ -20,7 +20,7 @@ export default async function LoginPage({
 
   return (
     <section className={`mx-auto w-full max-w-md ${UI_CARD_LG}`}>
-      <h1 className={UI_TITLE_LG}>bominal</h1>
+      <h1 className="font-brand text-3xl font-semibold lowercase tracking-tight text-slate-900">bominal</h1>
       <p className={`mt-2 ${UI_BODY_MUTED}`}>{t("auth.loginSubtitle")}</p>
 
       {searchParams?.registered === "1" ? (

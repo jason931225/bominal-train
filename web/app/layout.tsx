@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Noto_Sans_KR, Noto_Serif_KR } from "next/font/google";
+import { DynaPuff, Noto_Sans_KR, Noto_Serif_KR } from "next/font/google";
 import { headers } from "next/headers";
 
 import "./globals.css";
@@ -27,6 +27,14 @@ const fontDisplay = Noto_Serif_KR({
   display: "swap",
 });
 
+const fontBrand = DynaPuff({
+  subsets: ["latin"],
+  // Use a dedicated variable so we can keep other headings on the display font.
+  variable: "--font-brand",
+  display: "swap",
+  weight: ["400", "600", "700"],
+});
+
 export const metadata: Metadata = {
   title: "bominal",
   description: "bominal modular dashboard and train automation.",
@@ -51,7 +59,7 @@ export default async function RootLayout({
       lang={locale}
       data-theme-mode="auto"
       data-theme={initialTheme}
-      className={`${fontSans.variable} ${fontDisplay.variable}`}
+      className={`${fontSans.variable} ${fontDisplay.variable} ${fontBrand.variable}`}
       suppressHydrationWarning
     >
       <body className="font-sans antialiased">
