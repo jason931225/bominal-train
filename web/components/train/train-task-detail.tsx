@@ -64,11 +64,11 @@ function formatDateTimeKstSeconds(value: string | Date | null, locale: string): 
   return `${formatted} KST`;
 }
 
-function retryNowDisabledTitle(task: TrainTaskSummary): string {
+function retryNowDisabledTitle(task: TrainTaskSummary, locale: string): string {
   const reason = task.retry_now_reason ?? null;
   if (!reason) return "Retry is not available.";
   if (reason === "cooldown_active" && task.retry_now_available_at) {
-    return `Retry available at ${formatDateTimeKstSeconds(task.retry_now_available_at)}.`;
+    return `Retry available at ${formatDateTimeKstSeconds(task.retry_now_available_at, locale)}.`;
   }
   if (reason === "deadline_passed") return "Task deadline has passed.";
   if (reason === "paused_use_resume") return "Task is paused. Use Resume instead.";
@@ -299,7 +299,7 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
             {task.state === "POLLING" ? (
               <p>
                 <span className="font-medium">Next check:</span>{" "}
-                {task.next_run_at ? formatDateTimeKstSeconds(task.next_run_at) : "-"}
+                {task.next_run_at ? formatDateTimeKstSeconds(task.next_run_at, locale) : "-"}
               </p>
             ) : null}
           </div>
@@ -315,7 +315,7 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
                   deletingTask ||
                   !task.retry_now_allowed
                 }
-                title={task.retry_now_allowed ? "Retry now" : retryNowDisabledTitle(task)}
+                title={task.retry_now_allowed ? "Retry now" : retryNowDisabledTitle(task, locale)}
                 className={
                   task.retry_now_allowed && !retryingNow ? SMALL_BUTTON_CLASS : SMALL_DISABLED_BUTTON_CLASS
                 }
