@@ -51,9 +51,14 @@ export default async function RootLayout({
 }>) {
   const user = await getOptionalUser();
   const headersList = headers();
+  const pathname = headersList.get("x-pathname") || "/";
   const acceptLanguage = headersList.get("accept-language");
   const locale = resolveRequestLocale(localeFromUser(user), acceptLanguage);
   const initialTheme = seasonFromMonth(new Date().getMonth() + 1);
+  const isLanding = !user && pathname === "/";
+  const mainClassName = isLanding
+    ? "min-h-screen w-full"
+    : "mx-auto w-full max-w-5xl px-4 py-8 sm:px-6 sm:py-12";
   return (
     <html
       lang={locale}
@@ -66,8 +71,8 @@ export default async function RootLayout({
         <ThemeInitScript />
         <ThemeProvider>
           <LocaleProvider initialLocale={locale}>
-            <TopNav user={user} locale={locale} />
-            <main className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-6 sm:py-12">{children}</main>
+            {isLanding ? null : <TopNav user={user} locale={locale} />}
+            <main className={mainClassName}>{children}</main>
           </LocaleProvider>
         </ThemeProvider>
       </body>
