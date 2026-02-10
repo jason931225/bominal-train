@@ -22,7 +22,7 @@ set -euo pipefail
 # Configuration
 REPO_DIR="${REPO_DIR:-/opt/bominal/repo}"
 COMPOSE_FILE="infra/docker-compose.prod.yml"
-DEPLOY_HISTORY_DIR="/opt/bominal/deployments"
+DEPLOY_HISTORY_DIR="${DEPLOY_HISTORY_DIR:-/opt/bominal/deployments}"
 MAX_HISTORY=10
 
 # Google Cloud configuration
@@ -54,23 +54,24 @@ fi
 # Create deployment history directory
 mkdir -p "$DEPLOY_HISTORY_DIR"
 
-# Load GCP_PROJECT_ID from env file if not set
-if [[ -z "${GCP_PROJECT_ID:-}" ]]; then
+require_gcp_project_id() {
+  if [[ -n "${GCP_PROJECT_ID:-}" ]]; then
+    export GCP_PROJECT_ID
+    return 0
+  fi
+
   if [[ -f "infra/env/prod/api.env" ]]; then
     # Try to extract from env file
     GCP_PROJECT_ID=$(grep -E '^GCP_PROJECT_ID=' infra/env/prod/api.env | cut -d'=' -f2- | tr -d '"' || echo "")
   fi
-  
+
   if [[ -z "${GCP_PROJECT_ID:-}" ]]; then
     log_error "GCP_PROJECT_ID not set. Please set it in your environment or infra/env/prod/api.env"
     exit 1
   fi
-fi
 
-# Set default image URLs
-export API_IMAGE="${API_IMAGE:-${REGISTRY}/${GCP_PROJECT_ID}/bominal/api:latest}"
-export WEB_IMAGE="${WEB_IMAGE:-${REGISTRY}/${GCP_PROJECT_ID}/bominal/web:latest}"
-export GCP_PROJECT_ID
+  export GCP_PROJECT_ID
+}
 
 # Get current deployed version
 get_current_version() {
@@ -145,6 +146,77 @@ get_previous_version() {
   fi
 }
 
+# Purge legacy/malformed deployment history records.
+# This intentionally does NOT touch `current` / `previous` pointers.
+purge_legacy_records() {
+  local dry_run="${1:-false}"
+  local backup="${2:-false}"
+
+  log_info "Purging legacy/malformed deployment history records in: $DEPLOY_HISTORY_DIR"
+
+  if [[ ! -d "$DEPLOY_HISTORY_DIR" ]]; then
+    log_warn "History dir does not exist: $DEPLOY_HISTORY_DIR"
+    return 0
+  fi
+
+  local -a to_delete=()
+
+  # Only consider timestamped history record files.
+  while IFS= read -r record; do
+    [[ -z "$record" ]] && continue
+    local path="$DEPLOY_HISTORY_DIR/$record"
+    [[ -f "$path" ]] || continue
+
+    # Legacy format: single-line short SHA, not sourceable and not useful for digests.
+    local compact
+    compact=$(tr -d '[:space:]' <"$path" 2>/dev/null || true)
+    if [[ -n "$compact" && "$compact" =~ ^[0-9a-f]{7,40}$ ]] && ! grep -q '=' "$path" 2>/dev/null; then
+      to_delete+=("$path")
+      continue
+    fi
+
+    # Malformed: would fail the script's `source` usage (syntax errors / unbound vars / etc).
+    if ! bash -c 'set -euo pipefail; commit=""; timestamp=""; api_digest=""; web_digest=""; deployed_by=""; previous=""; api_image=""; web_image=""; source "$1"' bash "$path" >/dev/null 2>&1; then
+      to_delete+=("$path")
+      continue
+    fi
+  done < <(ls -1 "$DEPLOY_HISTORY_DIR" 2>/dev/null | grep -E '^[0-9]{8}_[0-9]{6}$' || true)
+
+  if [[ ${#to_delete[@]} -eq 0 ]]; then
+    log_ok "No legacy/malformed records found."
+    return 0
+  fi
+
+  log_info "Found ${#to_delete[@]} legacy/malformed record(s):"
+  for p in "${to_delete[@]}"; do
+    echo "  - $p"
+  done
+
+  if [[ "$dry_run" == "true" ]]; then
+    log_ok "Dry run complete (no files deleted)."
+    return 0
+  fi
+
+  if [[ "$backup" == "true" ]]; then
+    local ts backup_path
+    ts=$(date -u +"%Y%m%d_%H%M%S")
+    backup_path="$DEPLOY_HISTORY_DIR/legacy-backup-$ts.tgz"
+    log_info "Creating backup tarball: $backup_path"
+    local -a rel_files=()
+    for p in "${to_delete[@]}"; do
+      rel_files+=("$(basename "$p")")
+    done
+    tar -czf "$backup_path" -C "$DEPLOY_HISTORY_DIR" "${rel_files[@]}"
+    log_ok "Backup created."
+  fi
+
+  log_warn "Deleting legacy/malformed records..."
+  for p in "${to_delete[@]}"; do
+    rm -f "$p"
+  done
+  log_ok "Purge complete."
+}
+
 # Rollback to previous deployment
 do_rollback() {
   local prev_commit
@@ -176,16 +248,19 @@ do_rollback() {
         log_info "  Web: $WEB_IMAGE"
       else
         log_warn "Deployment record missing digests; falling back to commit tag"
+        require_gcp_project_id
         export API_IMAGE="${REGISTRY}/${GCP_PROJECT_ID}/bominal/api:${prev_commit}"
         export WEB_IMAGE="${REGISTRY}/${GCP_PROJECT_ID}/bominal/web:${prev_commit}"
       fi
     else
       log_warn "Failed to load deployment record; falling back to commit tag"
+      require_gcp_project_id
       export API_IMAGE="${REGISTRY}/${GCP_PROJECT_ID}/bominal/api:${prev_commit}"
       export WEB_IMAGE="${REGISTRY}/${GCP_PROJECT_ID}/bominal/web:${prev_commit}"
     fi
   else
     log_warn "No detailed record found, using commit tag"
+    require_gcp_project_id
     export API_IMAGE="${REGISTRY}/${GCP_PROJECT_ID}/bominal/api:${prev_commit}"
     export WEB_IMAGE="${REGISTRY}/${GCP_PROJECT_ID}/bominal/web:${prev_commit}"
   fi
@@ -367,6 +442,34 @@ cleanup_docker() {
 # Main
 main() {
   local target_commit="${1:-}"
+
+  # Purge legacy/malformed history records (safe maintenance command).
+  if [[ "${target_commit:-}" == "--purge-legacy-records" ]]; then
+    shift || true
+    local dry_run="false"
+    local backup="false"
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --dry-run)
+          dry_run="true"
+          ;;
+        --backup)
+          backup="true"
+          ;;
+        --help|-h|help)
+          echo "Usage: $0 --purge-legacy-records [--dry-run] [--backup]"
+          exit 0
+          ;;
+        *)
+          log_error "Unknown flag for --purge-legacy-records: $1"
+          exit 1
+          ;;
+      esac
+      shift
+    done
+    purge_legacy_records "$dry_run" "$backup"
+    exit 0
+  fi
   
   # Handle special commands
   case "${target_commit}" in
@@ -389,22 +492,28 @@ main() {
       echo "  <commit>       Deploy specific commit SHA"
       echo "  --rollback     Rollback to previous deployment"
       echo "  --status       Show current deployment status"
+      echo "  --purge-legacy-records [--dry-run] [--backup]"
+      echo "               Delete legacy/malformed historical record files (safe; does not touch current/previous)"
       echo ""
       echo "Environment variables:"
       echo "  GCP_PROJECT_ID   Google Cloud project ID (required)"
       echo "  API_IMAGE        Override API image URL"
       echo "  WEB_IMAGE        Override web image URL"
+      echo "  DEPLOY_HISTORY_DIR Override deployment history dir (default: /opt/bominal/deployments)"
       echo ""
       echo "Examples:"
       echo "  $0                           # Deploy latest"
       echo "  $0 abc123                    # Deploy commit abc123"
       echo "  $0 --rollback                # Rollback to previous"
+      echo "  $0 --purge-legacy-records --dry-run"
       exit 0
       ;;
   esac
   
   # Configure Docker authentication
   configure_docker_auth
+
+  require_gcp_project_id
   
   # Get current version for record
   local prev_version
@@ -417,8 +526,8 @@ main() {
     export WEB_IMAGE="${REGISTRY}/${GCP_PROJECT_ID}/bominal/web:${target_commit}"
   else
     log_info "Deploying latest images"
-    export API_IMAGE="${REGISTRY}/${GCP_PROJECT_ID}/bominal/api:latest"
-    export WEB_IMAGE="${REGISTRY}/${GCP_PROJECT_ID}/bominal/web:latest"
+    export API_IMAGE="${API_IMAGE:-${REGISTRY}/${GCP_PROJECT_ID}/bominal/api:latest}"
+    export WEB_IMAGE="${WEB_IMAGE:-${REGISTRY}/${GCP_PROJECT_ID}/bominal/web:latest}"
   fi
   
   # Get the commit SHA from the image we're deploying
