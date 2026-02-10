@@ -17,6 +17,14 @@ const config: Config = {
           "Segoe UI",
           "sans-serif",
         ],
+        brand: [
+          "var(--font-brand)",
+          "ui-rounded",
+          "system-ui",
+          "-apple-system",
+          "Segoe UI",
+          "sans-serif",
+        ],
         display: [
           "var(--font-display)",
           "ui-serif",
