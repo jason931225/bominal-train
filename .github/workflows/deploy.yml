@@ -7,7 +7,6 @@ on:
     branches: [main]
 
   workflow_dispatch:
-  
 
 permissions:
   contents: read
@@ -57,9 +56,8 @@ jobs:
 
           export DEPLOY_COMMIT="$commit"
 
-          # Fail fast with a clear error if the topic isn't provisioned.
-          gcloud pubsub topics describe "${{ env.DEPLOY_PUBSUB_TOPIC }}" --project="${{ env.GCP_PROJECT_ID }}" >/dev/null
-
+          # Publish without a preflight `topics describe` to keep least privilege
+          # (roles/pubsub.publisher doesn't include pubsub.topics.get).
           message="$(python3 - <<'PY'
           import json
           import os
