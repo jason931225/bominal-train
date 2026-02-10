@@ -1,0 +1,20 @@
+[Unit]
+Description=bominal deploy agent (Pub/Sub)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=bominal
+EnvironmentFile=/etc/bominal/deploy-agent.env
+WorkingDirectory=/opt/bominal/repo
+ExecStart=/usr/bin/env bash /opt/bominal/repo/infra/scripts/vm-deploy-agent-pubsub.sh
+Restart=always
+RestartSec=5
+
+# Minimal hardening: keep this compatible with gcloud + docker access.
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

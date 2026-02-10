@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 
 import fakeredis.aioredis
 import pytest
+from fastapi import HTTPException
 from sqlalchemy import select
 
 from app.db.models import Artifact, Task, TaskAttempt, User
@@ -13,7 +14,7 @@ from app.modules.train.providers.base import ProviderOutcome, ProviderSchedule
 from app.modules.train.providers.ktx_client import parse_ktx_search_response
 from app.modules.train.providers.srt_client import parse_srt_search_response
 from app.modules.train.rate_limiter import RedisTokenBucketLimiter
-from app.modules.train.service import get_task_detail
+from app.modules.train.service import get_task_detail, list_tasks, retry_task_now
 from app.modules.train.schemas import ProviderCredentialStatus
 from app.modules.train.worker import run_train_task
 from tests.conftest import make_fake_get_redis_client
@@ -1595,6 +1596,506 @@ async def test_seat_preference_fallback_reserves_available_class(
     assert len(artifacts) == 1
     assert artifacts[0].data_json_safe.get("seat_class_requested") == seat_class
     assert artifacts[0].data_json_safe.get("seat_class_reserved") == expected_reserved
+
+
+@pytest.mark.asyncio
+async def test_retry_task_now_allows_queued(db_session, monkeypatch):
+    calls: list[str] = []
+
+    async def _record_enqueue(task_id: str, defer_seconds: float = 0.0) -> None:
+        calls.append(task_id)
+
+    monkeypatch.setattr("app.modules.train.service.enqueue_train_task", _record_enqueue)
+
+    user = User(
+        email="retry-queued@example.com",
+        password_hash="x",
+        display_name="Retry User",
+        role_id=2,
+    )
+    db_session.add(user)
+    await db_session.flush()
+
+    task = Task(
+        user_id=user.id,
+        module="train",
+        state="QUEUED",
+        deadline_at=_utc_now() + timedelta(minutes=10),
+        spec_json={"provider": "SRT"},
+        idempotency_key="retry-queued",
+    )
+    db_session.add(task)
+    await db_session.commit()
+
+    response = await retry_task_now(db_session, task_id=task.id, user=user)
+
+    assert response.task.id == task.id
+    assert response.task.state == "QUEUED"
+    assert calls == [str(task.id)]
+
+    await db_session.refresh(task)
+    assert task.spec_json.get("manual_retry_last_at")
+
+
+@pytest.mark.asyncio
+async def test_retry_task_now_allows_polling_and_clears_next_run_at(db_session, monkeypatch):
+    async def _noop_enqueue(task_id: str, defer_seconds: float = 0.0) -> None:
+        return None
+
+    monkeypatch.setattr("app.modules.train.service.enqueue_train_task", _noop_enqueue)
+
+    user = User(
+        email="retry-polling@example.com",
+        password_hash="x",
+        display_name="Retry Polling User",
+        role_id=2,
+    )
+    db_session.add(user)
+    await db_session.flush()
+
+    task = Task(
+        user_id=user.id,
+        module="train",
+        state="POLLING",
+        deadline_at=_utc_now() + timedelta(minutes=10),
+        spec_json={"provider": "SRT", "next_run_at": (_utc_now() + timedelta(minutes=5)).isoformat()},
+        idempotency_key="retry-polling",
+    )
+    db_session.add(task)
+    await db_session.commit()
+
+    response = await retry_task_now(db_session, task_id=task.id, user=user)
+
+    assert response.task.state == "QUEUED"
+
+    await db_session.refresh(task)
+    assert task.state == "QUEUED"
+    assert "next_run_at" not in task.spec_json
+
+
+@pytest.mark.asyncio
+async def test_retry_task_now_rejects_paused(db_session, monkeypatch):
+    async def _noop_enqueue(task_id: str, defer_seconds: float = 0.0) -> None:
+        return None
+
+    monkeypatch.setattr("app.modules.train.service.enqueue_train_task", _noop_enqueue)
+
+    user = User(
+        email="retry-paused@example.com",
+        password_hash="x",
+        display_name="Retry Paused User",
+        role_id=2,
+    )
+    db_session.add(user)
+    await db_session.flush()
+
+    task = Task(
+        user_id=user.id,
+        module="train",
+        state="PAUSED",
+        paused_at=_utc_now(),
+        deadline_at=_utc_now() + timedelta(minutes=10),
+        spec_json={"provider": "SRT"},
+        idempotency_key="retry-paused",
+    )
+    db_session.add(task)
+    await db_session.commit()
+
+    with pytest.raises(HTTPException) as excinfo:
+        await retry_task_now(db_session, task_id=task.id, user=user)
+
+    assert excinfo.value.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_retry_task_now_rejects_processing_states(db_session, monkeypatch):
+    async def _noop_enqueue(task_id: str, defer_seconds: float = 0.0) -> None:
+        return None
+
+    monkeypatch.setattr("app.modules.train.service.enqueue_train_task", _noop_enqueue)
+
+    user = User(
+        email="retry-processing@example.com",
+        password_hash="x",
+        display_name="Retry Processing User",
+        role_id=2,
+    )
+    db_session.add(user)
+    await db_session.flush()
+
+    for state in ("RUNNING", "RESERVING", "PAYING"):
+        task = Task(
+            user_id=user.id,
+            module="train",
+            state=state,
+            deadline_at=_utc_now() + timedelta(minutes=10),
+            spec_json={"provider": "SRT"},
+            idempotency_key=f"retry-processing-{state}",
+        )
+        db_session.add(task)
+
+    await db_session.commit()
+
+    tasks = (await db_session.execute(select(Task).where(Task.user_id == user.id))).scalars().all()
+    processing = [task for task in tasks if task.idempotency_key.startswith("retry-processing-")]
+    assert len(processing) == 3
+
+    for task in processing:
+        with pytest.raises(HTTPException) as excinfo:
+            await retry_task_now(db_session, task_id=task.id, user=user)
+        assert excinfo.value.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_retry_task_now_marks_expired_when_deadline_passed(db_session, monkeypatch):
+    async def _noop_enqueue(task_id: str, defer_seconds: float = 0.0) -> None:
+        return None
+
+    monkeypatch.setattr("app.modules.train.service.enqueue_train_task", _noop_enqueue)
+
+    user = User(
+        email="retry-expired@example.com",
+        password_hash="x",
+        display_name="Retry Expired User",
+        role_id=2,
+    )
+    db_session.add(user)
+    await db_session.flush()
+
+    task = Task(
+        user_id=user.id,
+        module="train",
+        state="QUEUED",
+        deadline_at=_utc_now() - timedelta(seconds=1),
+        spec_json={"provider": "SRT"},
+        idempotency_key="retry-expired",
+    )
+    db_session.add(task)
+    await db_session.commit()
+
+    with pytest.raises(HTTPException) as excinfo:
+        await retry_task_now(db_session, task_id=task.id, user=user)
+
+    assert excinfo.value.status_code == 410
+
+    await db_session.refresh(task)
+    assert task.state == "EXPIRED"
+
+
+@pytest.mark.asyncio
+async def test_retry_task_now_enforces_cooldown(db_session, monkeypatch):
+    calls: list[str] = []
+
+    async def _record_enqueue(task_id: str, defer_seconds: float = 0.0) -> None:
+        calls.append(task_id)
+
+    monkeypatch.setattr("app.modules.train.service.enqueue_train_task", _record_enqueue)
+
+    user = User(
+        email="retry-cooldown@example.com",
+        password_hash="x",
+        display_name="Retry Cooldown User",
+        role_id=2,
+    )
+    db_session.add(user)
+    await db_session.flush()
+
+    task = Task(
+        user_id=user.id,
+        module="train",
+        state="POLLING",
+        deadline_at=_utc_now() + timedelta(minutes=10),
+        spec_json={"provider": "SRT"},
+        idempotency_key="retry-cooldown",
+    )
+    db_session.add(task)
+    await db_session.commit()
+
+    first = await retry_task_now(db_session, task_id=task.id, user=user)
+    assert first.task.state == "QUEUED"
+    assert calls == [str(task.id)]
+
+    with pytest.raises(HTTPException) as excinfo:
+        await retry_task_now(db_session, task_id=task.id, user=user)
+
+    assert excinfo.value.status_code == 429
+    assert calls == [str(task.id)]
+
+
+@pytest.mark.asyncio
+async def test_task_summary_includes_next_run_at_for_polling(db_session, monkeypatch):
+    fake_redis = fakeredis.aioredis.FakeRedis()
+    monkeypatch.setattr("app.modules.train.service.get_redis_client", make_fake_get_redis_client(fake_redis))
+
+    user = User(
+        email="next-run@example.com",
+        password_hash="x",
+        display_name="Next Run User",
+        role_id=2,
+    )
+    db_session.add(user)
+    await db_session.flush()
+
+    task = Task(
+        user_id=user.id,
+        module="train",
+        state="POLLING",
+        deadline_at=_utc_now() + timedelta(minutes=10),
+        spec_json={"provider": "SRT", "next_run_at": (_utc_now() + timedelta(seconds=45)).isoformat()},
+        idempotency_key="next-run",
+    )
+    db_session.add(task)
+    await db_session.commit()
+
+    detail = await get_task_detail(db_session, task_id=task.id, user=user)
+    assert detail.task.next_run_at is not None
+
+
+@pytest.mark.asyncio
+async def test_task_list_includes_last_attempt_summary(db_session):
+    user = User(
+        email="attempt-summary@example.com",
+        password_hash="x",
+        display_name="Attempt Summary User",
+        role_id=2,
+    )
+    db_session.add(user)
+    await db_session.flush()
+
+    task = Task(
+        user_id=user.id,
+        module="train",
+        state="QUEUED",
+        deadline_at=_utc_now() + timedelta(minutes=10),
+        spec_json={"provider": "SRT"},
+        idempotency_key="attempt-summary",
+    )
+    db_session.add(task)
+    await db_session.flush()
+
+    started_1 = _utc_now() - timedelta(seconds=20)
+    finished_1 = _utc_now() - timedelta(seconds=18)
+    started_2 = _utc_now() - timedelta(seconds=10)
+    finished_2 = _utc_now() - timedelta(seconds=8)
+
+    db_session.add_all(
+        [
+            TaskAttempt(
+                task_id=task.id,
+                action="SEARCH",
+                provider="SRT",
+                ok=False,
+                retryable=True,
+                error_code="search_failed",
+                error_message_safe="search failed",
+                duration_ms=123,
+                meta_json_safe={},
+                started_at=started_1,
+                finished_at=finished_1,
+            ),
+            TaskAttempt(
+                task_id=task.id,
+                action="RESERVE",
+                provider="SRT",
+                ok=False,
+                retryable=True,
+                error_code="reserve_failed",
+                error_message_safe="reserve failed",
+                duration_ms=456,
+                meta_json_safe={},
+                started_at=started_2,
+                finished_at=finished_2,
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    response = await list_tasks(db_session, user=user, status_filter="active")
+    assert response.tasks
+    summary = next(item for item in response.tasks if item.id == task.id)
+
+    assert summary.last_attempt_action == "RESERVE"
+    assert summary.last_attempt_ok is False
+    assert summary.last_attempt_error_code == "reserve_failed"
+    assert summary.last_attempt_error_message_safe == "reserve failed"
+    assert summary.last_attempt_finished_at is not None
+    assert summary.last_attempt_at == summary.last_attempt_finished_at
+
+
+@pytest.mark.asyncio
+async def test_task_list_includes_retry_now_status_fields(db_session):
+    now = _utc_now()
+    deadline = now + timedelta(minutes=10)
+
+    user = User(
+        email="retry-status@example.com",
+        password_hash="x",
+        display_name="Retry Status User",
+        role_id=2,
+    )
+    db_session.add(user)
+    await db_session.flush()
+
+    allowed_task = Task(
+        user_id=user.id,
+        module="train",
+        state="QUEUED",
+        deadline_at=deadline,
+        spec_json={"provider": "SRT"},
+        idempotency_key="retry-status-allowed",
+    )
+    paused_task = Task(
+        user_id=user.id,
+        module="train",
+        state="PAUSED",
+        paused_at=now,
+        deadline_at=deadline,
+        spec_json={"provider": "SRT"},
+        idempotency_key="retry-status-paused",
+    )
+    running_task = Task(
+        user_id=user.id,
+        module="train",
+        state="RUNNING",
+        deadline_at=deadline,
+        spec_json={"provider": "SRT"},
+        idempotency_key="retry-status-running",
+    )
+    deadline_passed_task = Task(
+        user_id=user.id,
+        module="train",
+        state="QUEUED",
+        deadline_at=now - timedelta(seconds=1),
+        spec_json={"provider": "SRT"},
+        idempotency_key="retry-status-deadline",
+    )
+    cooldown_task = Task(
+        user_id=user.id,
+        module="train",
+        state="POLLING",
+        deadline_at=deadline,
+        spec_json={"provider": "SRT", "manual_retry_last_at": now.isoformat()},
+        idempotency_key="retry-status-cooldown",
+    )
+
+    db_session.add_all([allowed_task, paused_task, running_task, deadline_passed_task, cooldown_task])
+    await db_session.commit()
+
+    response = await list_tasks(db_session, user=user, status_filter="active")
+
+    allowed_summary = next(item for item in response.tasks if item.id == allowed_task.id)
+    assert allowed_summary.retry_now_allowed is True
+    assert allowed_summary.retry_now_reason is None
+    assert allowed_summary.retry_now_available_at is None
+
+    paused_summary = next(item for item in response.tasks if item.id == paused_task.id)
+    assert paused_summary.retry_now_allowed is False
+    assert paused_summary.retry_now_reason == "paused_use_resume"
+
+    running_summary = next(item for item in response.tasks if item.id == running_task.id)
+    assert running_summary.retry_now_allowed is False
+    assert running_summary.retry_now_reason == "task_running"
+
+    deadline_summary = next(item for item in response.tasks if item.id == deadline_passed_task.id)
+    assert deadline_summary.retry_now_allowed is False
+    assert deadline_summary.retry_now_reason == "deadline_passed"
+
+    cooldown_summary = next(item for item in response.tasks if item.id == cooldown_task.id)
+    assert cooldown_summary.retry_now_allowed is False
+    assert cooldown_summary.retry_now_reason == "cooldown_active"
+    assert cooldown_summary.retry_now_available_at is not None
+
+
+@pytest.mark.asyncio
+async def test_worker_schedule_retry_sets_next_run_at(db_session_factory, db_session, monkeypatch):
+    fake_redis = fakeredis.aioredis.FakeRedis()
+
+    class _NoLimitResult:
+        waited_ms = 0
+        rounds = 1
+
+    async def _no_limit(self, **kwargs):
+        return _NoLimitResult()
+
+    async def _noop_enqueue(task_id: str, defer_seconds: float = 0.0) -> None:
+        return None
+
+    async def _fake_credentials(db, *, user_id, provider):
+        return {"username": "mock-user", "password": "mock-password"}
+
+    class SeatUnavailableProvider:
+        provider_name = "SRT"
+
+        async def login(self, **kwargs):
+            return ProviderOutcome(ok=True)
+
+        async def search(self, **kwargs):
+            departure = _utc_now() + timedelta(minutes=30)
+            schedule = ProviderSchedule(
+                schedule_id="srt-unavailable",
+                provider="SRT",
+                dep=kwargs["dep"],
+                arr=kwargs["arr"],
+                departure_at=departure,
+                arrival_at=departure + timedelta(minutes=120),
+                train_no="S500",
+                availability={"general": False, "special": False},
+            )
+            return ProviderOutcome(ok=True, data={"schedules": [schedule]})
+
+        async def reserve(self, **kwargs):
+            return ProviderOutcome(ok=False)
+
+        async def pay(self, **kwargs):
+            return ProviderOutcome(ok=False)
+
+        async def cancel(self, **kwargs):
+            return ProviderOutcome(ok=False)
+
+    monkeypatch.setattr("app.modules.train.worker.enqueue_train_task", _noop_enqueue)
+    monkeypatch.setattr("app.modules.train.worker.RedisTokenBucketLimiter.acquire_provider_call", _no_limit)
+    monkeypatch.setattr("app.modules.train.worker._load_provider_credentials", _fake_credentials)
+    monkeypatch.setattr("app.modules.train.worker.get_provider_client", lambda provider: SeatUnavailableProvider())
+
+    user = User(
+        email="poll-next-run@example.com",
+        password_hash="x",
+        display_name="Polling User",
+        role_id=2,
+    )
+    db_session.add(user)
+    await db_session.flush()
+
+    deadline = _utc_now() + timedelta(minutes=60)
+    task = Task(
+        user_id=user.id,
+        module="train",
+        state="QUEUED",
+        deadline_at=deadline,
+        spec_json={
+            "provider": "SRT",
+            "dep": "수서",
+            "arr": "부산",
+            "date": _utc_now().date().isoformat(),
+            "selected_trains_ranked": [
+                {"schedule_id": "srt-unavailable", "departure_at": (_utc_now() + timedelta(minutes=30)).isoformat(), "rank": 1}
+            ],
+            "passengers": {"adults": 1, "children": 0},
+            "seat_class": "general",
+            "auto_pay": False,
+        },
+        idempotency_key="poll-next-run",
+    )
+    db_session.add(task)
+    await db_session.commit()
+
+    await run_train_task({"db_factory": db_session_factory, "redis": fake_redis}, str(task.id))
+
+    async with db_session_factory() as verify_session:
+        refreshed = await verify_session.get(Task, task.id)
+        assert refreshed is not None
+        assert refreshed.state == "POLLING"
+        assert refreshed.spec_json.get("next_run_at")
 
 
 def test_parse_srt_search_response_from_srtgo_shape():

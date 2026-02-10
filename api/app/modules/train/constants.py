@@ -1,6 +1,9 @@
 TERMINAL_TASK_STATES = {"COMPLETED", "EXPIRED", "CANCELLED", "FAILED"}
 ACTIVE_TASK_STATES = {"QUEUED", "RUNNING", "POLLING", "RESERVING", "PAYING", "PAUSED"}
 
+# Keys used inside Task.spec_json
+SPEC_KEY_NEXT_RUN_AT = "next_run_at"
+
 TASK_MODULE = "train"
 SECRET_KIND_SRT_CREDENTIALS = "srt_credentials"
 SECRET_KIND_KTX_CREDENTIALS = "ktx_credentials"

@@ -1,5 +1,3 @@
-import { cookies } from "next/headers";
-import Link from "next/link";
 import { headers } from "next/headers";
 import { Suspense } from "react";
 
@@ -9,6 +7,9 @@ import { UI_CARD_MD, UI_KICKER, UI_TITLE_LG, UI_BUTTON_OUTLINE_SM } from "@/lib/
 import { SystemStatsCard } from "@/components/admin/system-stats-card";
 import { UserManagement } from "@/components/admin/user-management";
 import { localeFromAcceptLanguage, localeFromUser, t } from "@/lib/i18n";
+import { OpsStatusCard } from "@/components/admin/ops-status-card";
+import { StaleTasksTable } from "@/components/admin/stale-tasks-table";
+import { RecentFailuresTable } from "@/components/admin/recent-failures-table";
 
 export const dynamic = "force-dynamic";
 
@@ -48,6 +49,37 @@ export default async function MaintenancePage() {
         }
       >
         <SystemStatsCard />
+      </Suspense>
+
+      {/* Ops */}
+      <Suspense
+        fallback={
+          <div className={UI_CARD_MD}>
+            <div className="h-32 animate-pulse rounded-xl bg-slate-100" />
+          </div>
+        }
+      >
+        <OpsStatusCard />
+      </Suspense>
+
+      <Suspense
+        fallback={
+          <div className={UI_CARD_MD}>
+            <div className="h-64 animate-pulse rounded-xl bg-slate-100" />
+          </div>
+        }
+      >
+        <StaleTasksTable />
+      </Suspense>
+
+      <Suspense
+        fallback={
+          <div className={UI_CARD_MD}>
+            <div className="h-64 animate-pulse rounded-xl bg-slate-100" />
+          </div>
+        }
+      >
+        <RecentFailuresTable />
       </Suspense>
 
       {/* User Management */}

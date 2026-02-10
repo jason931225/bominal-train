@@ -32,7 +32,7 @@ Each service has a health check in `docker-compose.prod.yml`:
 |----------|--------------|--------------|
 | postgres | `pg_isready` | 0s |
 | redis    | `redis-cli ping` | 0s |
-| api      | Python urllib (port 8000/health) | 30s |
+| api      | Python urllib (port 8000/health) | 120s |
 | worker   | Python proc check for arq | 15s |
 | web      | `wget --spider` (port 3000) | 60s |
 | caddy    | `wget` (admin API port 2019) | 30s |
@@ -55,6 +55,63 @@ sudo -u bominal /opt/bominal/repo/infra/scripts/deploy-zero-downtime.sh abc123f
 
 # Check deployment status
 sudo -u bominal /opt/bominal/repo/infra/scripts/deploy-zero-downtime.sh --status
+```
+
+**CI Deploy (Recommended: Pub/Sub, no SSH)**
+
+GitHub Actions publishes a deploy request to Pub/Sub (authenticated via WIF).
+The VM runs a pull-based deploy agent (systemd) that consumes the request and
+runs `infra/scripts/deploy-zero-downtime.sh` locally.
+
+CI-triggered deploys are **latest-only** (the message includes the triggering commit SHA for audit, but the VM deploys `:latest` images).
+
+One-time GCP setup:
+
+```bash
+# Topic (publisher: GitHub Actions)
+gcloud pubsub topics create bominal-deploy-requests --project bominal
+
+# Subscription (consumer: VM)
+gcloud pubsub subscriptions create bominal-deploy-requests-vm \
+  --project bominal \
+  --topic bominal-deploy-requests \
+  --ack-deadline 600
+
+# Allow GitHub Actions SA to publish
+gcloud pubsub topics add-iam-policy-binding bominal-deploy-requests \
+  --project bominal \
+  --member="serviceAccount:github-actions@bominal.iam.gserviceaccount.com" \
+  --role="roles/pubsub.publisher"
+
+# Allow the VM service account to pull/ack (replace with the instance SA email)
+gcloud compute instances describe bominal-deploy --zone us-central1-a \
+  --format='value(serviceAccounts.email)'
+
+gcloud pubsub subscriptions add-iam-policy-binding bominal-deploy-requests-vm \
+  --project bominal \
+  --member="serviceAccount:<VM_SERVICE_ACCOUNT_EMAIL>" \
+  --role="roles/pubsub.subscriber"
+```
+
+VM install (one-time):
+
+```bash
+# Copy systemd unit
+sudo cp /opt/bominal/repo/infra/systemd/bominal-deploy-agent.service /etc/systemd/system/
+
+# Configure agent env
+sudo mkdir -p /etc/bominal
+sudo tee /etc/bominal/deploy-agent.env >/dev/null <<'EOF'
+GCP_PROJECT_ID=bominal
+GCP_REGION=us-central1
+DEPLOY_SUBSCRIPTION=bominal-deploy-requests-vm
+REPO_DIR=/opt/bominal/repo
+DEPLOY_SCRIPT=/opt/bominal/repo/infra/scripts/deploy-zero-downtime.sh
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now bominal-deploy-agent
+sudo journalctl -u bominal-deploy-agent -f
 ```
 
 **Remote Deploy** (from local machine):
@@ -120,6 +177,11 @@ The deployment system maintains:
 | `/opt/bominal/deployments/current` | Currently deployed commit hash |
 | `/opt/bominal/deployments/previous` | Previous deployment (for rollback) |
 | `/opt/bominal/deployments/<timestamp>` | Historical deployment records |
+
+Each `<timestamp>` record includes the deployed commit and image references. Newer
+records also include `api_digest` / `web_digest` (immutable `name@sha256:...`)
+which the rollback path prefers for deterministic rollbacks (even if `:latest`
+has moved).
 
 Only the last 10 deployment records are kept.
 
@@ -321,6 +383,10 @@ echo "def456a" > /opt/bominal/deployments/previous
 # Then retry rollback
 sudo -u bominal infra/scripts/deploy-zero-downtime.sh --rollback
 ```
+
+Malformed historical records (e.g. bad files under `/opt/bominal/deployments/<timestamp>`)
+should not break `--status` or deploy/rollback runs; the script will warn and skip
+records it can’t read.
 
 ---
 
