@@ -1,31 +1,16 @@
-"use client";
-
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 
-export function TopNavBrand({ href }: { href: string }) {
-  const pathname = usePathname();
-  const sectionLabel = pathname.startsWith("/modules/train")
-    ? "train"
-    : pathname.startsWith("/modules/restaurant")
-      ? "restaurant"
-    : pathname.startsWith("/modules/calendar")
-        ? "calendar"
-        : pathname.startsWith("/settings/payment") ||
-            pathname.startsWith("/payment") ||
-            pathname.startsWith("/payment-settings")
-          ? "payment settings"
-          : pathname.startsWith("/settings/account") ||
-              pathname.startsWith("/account") ||
-              pathname.startsWith("/account-settings")
-            ? "account settings"
-            : pathname.startsWith("/admin")
-              ? "admin"
-              : null;
-
+export function TopNavBrand({ href, sectionLabel }: { href: string; sectionLabel?: string | null }) {
   return (
     <Link href={href} className="group inline-flex items-center gap-3">
-      <span className="font-display text-2xl lowercase tracking-tight text-slate-900 transition group-hover:text-blossom-700">
+      {/*
+        Wordmark spec:
+        - Size: 20% larger than Tailwind `text-2xl` (1.5rem -> 1.8rem).
+        - Color: theme-aware via `blossom-*` CSS vars (see `web/app/globals.css` theme palettes).
+          - Default: `text-blossom-800`
+          - Hover: `text-blossom-700` (slightly brighter within the same theme)
+      */}
+      <span className="font-brand text-[1.8rem] font-semibold lowercase leading-none tracking-tight text-blossom-800 transition group-hover:text-blossom-700">
         bominal
       </span>
       {sectionLabel ? (

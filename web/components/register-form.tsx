@@ -4,18 +4,9 @@ import { FormEvent, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { z } from "zod";
 
+import { useLocale } from "@/components/locale-provider";
 import { clientApiBaseUrl } from "@/lib/api-base";
 import { UI_BUTTON_PRIMARY, UI_FIELD } from "@/lib/ui";
-
-const registerSchema = z.object({
-  email: z.string().email("Please enter a valid email."),
-  password: z.string().min(8, "Password must be at least 8 characters."),
-  display_name: z
-    .string()
-    .trim()
-    .min(1, "Display name is required.")
-    .max(255, "Display name must be at most 255 characters."),
-});
 
 type RegisterFormData = {
   email: string;
@@ -25,6 +16,7 @@ type RegisterFormData = {
 
 export function RegisterForm() {
   const router = useRouter();
+  const { t } = useLocale();
   const [form, setForm] = useState<RegisterFormData>({ email: "", password: "", display_name: "" });
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<keyof RegisterFormData, string>>>({});
   const [formError, setFormError] = useState<string | null>(null);
@@ -36,6 +28,16 @@ export function RegisterForm() {
     event.preventDefault();
     setFieldErrors({});
     setFormError(null);
+
+    const registerSchema = z.object({
+      email: z.string().email(t("auth.invalidEmail")),
+      password: z.string().min(8, t("auth.passwordMin")),
+      display_name: z
+        .string()
+        .trim()
+        .min(1, t("auth.displayNameRequired"))
+        .max(255, t("auth.displayNameMax")),
+    });
 
     const payload = {
       email: form.email.trim(),
@@ -67,13 +69,13 @@ export function RegisterForm() {
 
       if (!response.ok) {
         const body = (await response.json().catch(() => null)) as { detail?: string } | null;
-        setFormError(body?.detail ?? "Could not create account.");
+        setFormError(body?.detail ?? t("auth.createAccountFailed"));
         return;
       }
 
       router.push("/login?registered=1");
     } catch {
-      setFormError("Could not reach bominal API.");
+      setFormError(t("auth.apiUnreachable"));
     } finally {
       setSubmitting(false);
     }
@@ -83,7 +85,7 @@ export function RegisterForm() {
     <form onSubmit={onSubmit} className="space-y-4">
       <div>
         <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor="email">
-          Email
+          {t("auth.email")}
         </label>
         <input
           id="email"
@@ -99,7 +101,7 @@ export function RegisterForm() {
 
       <div>
         <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor="display_name">
-          Display name
+          {t("auth.displayName")}
         </label>
         <input
           id="display_name"
@@ -115,7 +117,7 @@ export function RegisterForm() {
 
       <div>
         <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor="password">
-          Password
+          {t("auth.password")}
         </label>
         <input
           id="password"
@@ -136,7 +138,7 @@ export function RegisterForm() {
         disabled={!canSubmit}
         className={`w-full ${UI_BUTTON_PRIMARY}`}
       >
-        {submitting ? "Creating account..." : "Create account"}
+        {submitting ? t("auth.creatingAccount") : t("auth.register")}
       </button>
     </form>
   );

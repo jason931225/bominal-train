@@ -19,12 +19,14 @@ async def test_register_login_me_logout_flow(client):
     register_res = await client.post("/api/auth/register", json=register_payload)
     assert register_res.status_code == 201
     assert register_res.json()["user"]["email"] == "user@example.com"
+    assert register_res.json()["user"]["ui_locale"] == "en"
 
     login_res = await client.post(
         "/api/auth/login",
         json={"email": "user@example.com", "password": "SuperSecret123", "remember_me": True},
     )
     assert login_res.status_code == 200
+    assert login_res.json()["user"]["ui_locale"] == "en"
     set_cookie = login_res.headers.get("set-cookie", "")
     assert "Max-Age=7776000" in set_cookie
 
@@ -36,6 +38,7 @@ async def test_register_login_me_logout_flow(client):
     me_json = me_res.json()
     assert me_json["user"]["email"] == "user@example.com"
     assert me_json["user"]["role"] == "user"
+    assert me_json["user"]["ui_locale"] == "en"
 
     logout_res = await client.post("/api/auth/logout", cookies={"bominal_session": session_cookie})
     assert logout_res.status_code == 200
@@ -94,7 +97,7 @@ async def test_register_rejects_duplicate_email_and_display_name(client):
 
 
 @pytest.mark.asyncio
-async def test_account_update_requires_current_password_for_changes(client):
+async def test_account_update_allows_passwordless_update_for_non_sensitive_fields(client):
     await client.post(
         "/api/auth/register",
         json={"email": "account-user@example.com", "password": "SuperSecret123", "display_name": "User"},
@@ -109,10 +112,77 @@ async def test_account_update_requires_current_password_for_changes(client):
     update_res = await client.patch(
         "/api/auth/account",
         cookies={"bominal_session": session_cookie},
-        json={"display_name": "Updated User"},
+        json={"display_name": "Updated User", "ui_locale": "ko"},
+    )
+    assert update_res.status_code == 200
+    updated_user = update_res.json()["user"]
+    assert updated_user["display_name"] == "Updated User"
+    assert updated_user["ui_locale"] == "ko"
+
+
+@pytest.mark.asyncio
+async def test_account_update_requires_current_password_for_email_change(client):
+    await client.post(
+        "/api/auth/register",
+        json={"email": "account-email-update@example.com", "password": "SuperSecret123", "display_name": "Email User"},
+    )
+    login_res = await client.post(
+        "/api/auth/login",
+        json={"email": "account-email-update@example.com", "password": "SuperSecret123", "remember_me": False},
+    )
+    session_cookie = login_res.cookies.get("bominal_session")
+    assert session_cookie
+
+    update_res = await client.patch(
+        "/api/auth/account",
+        cookies={"bominal_session": session_cookie},
+        json={"email": "account-email-update-new@example.com"},
     )
     assert update_res.status_code == 401
     assert "Current password is required" in update_res.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_account_update_requires_current_password_for_password_change(client):
+    await client.post(
+        "/api/auth/register",
+        json={"email": "account-password-update@example.com", "password": "SuperSecret123", "display_name": "Pass User"},
+    )
+    login_res = await client.post(
+        "/api/auth/login",
+        json={"email": "account-password-update@example.com", "password": "SuperSecret123", "remember_me": False},
+    )
+    session_cookie = login_res.cookies.get("bominal_session")
+    assert session_cookie
+
+    update_res = await client.patch(
+        "/api/auth/account",
+        cookies={"bominal_session": session_cookie},
+        json={"new_password": "EvenMoreSecret123"},
+    )
+    assert update_res.status_code == 401
+    assert "Current password is required" in update_res.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_account_update_rejects_invalid_ui_locale(client):
+    await client.post(
+        "/api/auth/register",
+        json={"email": "account-locale@example.com", "password": "SuperSecret123", "display_name": "Locale User"},
+    )
+    login_res = await client.post(
+        "/api/auth/login",
+        json={"email": "account-locale@example.com", "password": "SuperSecret123", "remember_me": False},
+    )
+    session_cookie = login_res.cookies.get("bominal_session")
+    assert session_cookie
+
+    update_res = await client.patch(
+        "/api/auth/account",
+        cookies={"bominal_session": session_cookie},
+        json={"ui_locale": "jp"},
+    )
+    assert update_res.status_code == 422
 
 
 @pytest.mark.asyncio
@@ -142,6 +212,7 @@ async def test_account_update_updates_optional_fields_and_password(client):
             "billing_country": "KR",
             "billing_postal_code": "04524",
             "birthday": "1990-01-01",
+            "ui_locale": "en",
             "new_password": "EvenMoreSecret123",
             "current_password": "SuperSecret123",
         },
@@ -158,6 +229,7 @@ async def test_account_update_updates_optional_fields_and_password(client):
     assert updated_user["billing_country"] == "KR"
     assert updated_user["billing_postal_code"] == "04524"
     assert updated_user["birthday"] == "1990-01-01"
+    assert updated_user["ui_locale"] == "en"
 
     old_password_login = await client.post(
         "/api/auth/login",
@@ -313,6 +385,7 @@ async def test_delete_account_scrubs_user_and_marks_tasks_for_removal(client, db
     assert deleted_user.billing_postal_code is None
     assert deleted_user.birthday is None
     assert deleted_user.email_verified_at is None
+    assert deleted_user.ui_locale == "en"
 
     sessions = (await db_session.execute(select(Session).where(Session.user_id == user_id))).scalars().all()
     assert sessions == []

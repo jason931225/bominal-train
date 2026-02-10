@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 
+import { useLocale } from "@/components/locale-provider";
 import { clientApiBaseUrl } from "@/lib/api-base";
 import { UI_BUTTON_OUTLINE, UI_BUTTON_PRIMARY, UI_CARD_MD, UI_FIELD, UI_KICKER, UI_TITLE_MD } from "@/lib/ui";
 import type { WalletPaymentCardStatus } from "@/lib/types";
@@ -39,6 +40,7 @@ async function parseApiErrorMessage(response: Response, fallback: string): Promi
 }
 
 export function PaymentSettingsPanel() {
+  const { t } = useLocale();
   const [status, setStatus] = useState<WalletPaymentCardStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -60,7 +62,7 @@ export function PaymentSettingsPanel() {
       const payload = (await response.json()) as WalletPaymentCardStatus;
       setStatus(payload);
     } catch {
-      setError("Could not load wallet settings.");
+      setError(t("wallet.loadError"));
     } finally {
       setLoading(false);
     }
@@ -75,11 +77,11 @@ export function PaymentSettingsPanel() {
     const expiryMonth = Number(form.expiryMonth);
     const expiryYear = Number(form.expiryYear);
     if (!Number.isInteger(expiryMonth) || expiryMonth < 1 || expiryMonth > 12) {
-      setError("Expiry month must be between 01 and 12.");
+      setError(t("wallet.expiryMonthError"));
       return;
     }
     if (!Number.isInteger(expiryYear) || expiryYear < 2000 || expiryYear > 2100) {
-      setError("Expiry year must be a 4-digit year.");
+      setError(t("wallet.expiryYearError"));
       return;
     }
 
@@ -101,23 +103,23 @@ export function PaymentSettingsPanel() {
         }),
       });
       if (!response.ok) {
-        setError(await parseApiErrorMessage(response, "Could not save wallet settings."));
+        setError(await parseApiErrorMessage(response, t("wallet.saveError")));
         return;
       }
 
       const payload = (await response.json()) as WalletPaymentCardStatus;
       setStatus(payload);
       setForm(EMPTY_FORM);
-      setNotice("Wallet settings saved securely.");
+      setNotice(t("wallet.saveNotice"));
     } catch {
-      setError("Could not save wallet settings.");
+      setError(t("wallet.saveError"));
     } finally {
       setSubmitting(false);
     }
   };
 
   const onRemove = async () => {
-    const confirmed = window.confirm("Are you sure you want to remove saved payment settings?");
+    const confirmed = window.confirm(t("wallet.confirmRemove"));
     if (!confirmed) return;
 
     setRemoving(true);
@@ -129,16 +131,16 @@ export function PaymentSettingsPanel() {
         credentials: "include",
       });
       if (!response.ok) {
-        setError(await parseApiErrorMessage(response, "Could not remove payment settings."));
+        setError(await parseApiErrorMessage(response, t("wallet.removeError")));
         return;
       }
 
       const payload = (await response.json()) as WalletPaymentCardStatus;
       setStatus(payload);
       setForm(EMPTY_FORM);
-      setNotice("Payment settings removed.");
+      setNotice(t("wallet.removedNotice"));
     } catch {
-      setError("Could not remove payment settings.");
+      setError(t("wallet.removeError"));
     } finally {
       setRemoving(false);
     }
@@ -148,27 +150,27 @@ export function PaymentSettingsPanel() {
     <div className={UI_CARD_MD}>
       <div className="flex items-center justify-between gap-3">
         <div>
-          <p className={UI_KICKER}>Settings</p>
-          <h2 className={`mt-1 ${UI_TITLE_MD}`}>Payment settings</h2>
+          <p className={UI_KICKER}>{t("settings.kicker")}</p>
+          <h2 className={`mt-1 ${UI_TITLE_MD}`}>{t("wallet.title")}</h2>
         </div>
         {loading ? (
-          <span className="text-xs text-slate-500">Loading...</span>
+          <span className="text-xs text-slate-500">{t("common.loading")}</span>
         ) : status?.configured ? (
           <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700">
-            Saved
+            {t("common.saved")}
           </span>
         ) : (
           <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs text-amber-700">
-            Not set
+            {t("common.notSet")}
           </span>
         )}
       </div>
 
-      <p className="mt-2 text-sm text-slate-600">Wallet is shared across bominal services.</p>
+      <p className="mt-2 text-sm text-slate-600">{t("wallet.body")}</p>
 
       {status?.configured ? (
         <div className="mt-3 space-y-1 text-sm text-slate-600">
-          <p>Card ending in {status.card_masked?.match(/(\d{4})$/)?.[1] ?? "****"}</p>
+          <p>{t("wallet.cardEndingIn", { last4: status.card_masked?.match(/(\\d{4})$/)?.[1] ?? "****" })}</p>
         </div>
       ) : null}
 
@@ -177,7 +179,7 @@ export function PaymentSettingsPanel() {
 
       <form onSubmit={onSave} className="mt-4 grid gap-3 md:grid-cols-2">
         <label className="text-sm text-slate-700">
-          Card number
+          {t("wallet.cardNumber")}
           <input
             type="text"
             inputMode="numeric"
@@ -192,7 +194,7 @@ export function PaymentSettingsPanel() {
 
         <div className="grid grid-cols-2 gap-2">
           <label className="text-sm text-slate-700">
-            Expiry month
+            {t("wallet.expiryMonth")}
             <input
               type="text"
               inputMode="numeric"
@@ -206,7 +208,7 @@ export function PaymentSettingsPanel() {
             />
           </label>
           <label className="text-sm text-slate-700">
-            Expiry year
+            {t("wallet.expiryYear")}
             <input
               type="text"
               inputMode="numeric"
@@ -222,7 +224,7 @@ export function PaymentSettingsPanel() {
         </div>
 
         <label className="text-sm text-slate-700">
-          CVV
+          {t("wallet.cvv")}
           <input
             type="password"
             inputMode="numeric"
@@ -230,14 +232,14 @@ export function PaymentSettingsPanel() {
             value={form.cvv}
             onChange={(event) => setForm((current) => ({ ...current, cvv: event.target.value }))}
             className={`mt-1 ${UI_FIELD}`}
-            placeholder="3-4 digits"
+            placeholder={t("wallet.cvvPlaceholder")}
             maxLength={4}
             required
           />
         </label>
 
         <label className="text-sm text-slate-700">
-          Date of birth
+          {t("wallet.dob")}
           <input
             type="date"
             value={form.birthDate}
@@ -248,7 +250,7 @@ export function PaymentSettingsPanel() {
         </label>
 
         <label className="text-sm text-slate-700 md:col-span-2">
-          Card PIN (first 2 digits)
+          {t("wallet.pin2")}
           <input
             type="password"
             inputMode="numeric"
@@ -264,7 +266,7 @@ export function PaymentSettingsPanel() {
         <div className="md:col-span-2">
           <div className="flex flex-wrap items-center gap-2">
             <button type="submit" disabled={submitting || removing} className={UI_BUTTON_PRIMARY}>
-              {submitting ? "Saving..." : "Save payment settings"}
+              {submitting ? t("wallet.saving") : t("wallet.saveButton")}
             </button>
             {status?.configured ? (
               <button
@@ -273,7 +275,7 @@ export function PaymentSettingsPanel() {
                 disabled={submitting || removing}
                 className={`${UI_BUTTON_OUTLINE} border-rose-200 text-rose-700 hover:bg-rose-50 focus:ring-rose-100`}
               >
-                {removing ? "Removing..." : "Remove payment settings"}
+                {removing ? t("wallet.removing") : t("wallet.removeButton")}
               </button>
             ) : null}
           </div>

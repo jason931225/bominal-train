@@ -5,20 +5,7 @@ export const SEASON_THEMES = ["spring", "summer", "autumn", "winter"] as const;
 export type ThemeName = (typeof SEASON_THEMES)[number];
 export type ThemeMode = ThemeName | "auto";
 
-export const THEME_MODE_OPTIONS: Array<{ mode: ThemeMode; label: string }> = [
-  { mode: "auto", label: "Auto" },
-  { mode: "spring", label: "Spring" },
-  { mode: "summer", label: "Summer" },
-  { mode: "autumn", label: "Autumn" },
-  { mode: "winter", label: "Winter" },
-];
-
-export const THEME_BUILD_LABEL: Record<ThemeName, string> = {
-  spring: "Spring Theme",
-  summer: "Summer Theme",
-  autumn: "Autumn Theme",
-  winter: "Winter Theme",
-};
+export const THEME_MODE_OPTIONS: ThemeMode[] = ["auto", "spring", "summer", "autumn", "winter"];
 
 export function seasonFromMonth(month: number): ThemeName {
   if (month >= 3 && month <= 5) return "spring";

@@ -4,7 +4,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
+import { useLocale } from "@/components/locale-provider";
 import { clientApiBaseUrl } from "@/lib/api-base";
+import { ROUTES } from "@/lib/routes";
 import { UI_BUTTON_DANGER_SM, UI_BUTTON_OUTLINE_SM } from "@/lib/ui";
 import type { TrainArtifact, TrainTaskAttempt, TrainTaskSummary } from "@/lib/types";
 
@@ -44,12 +46,12 @@ function readTicketSeats(value: unknown): string[] {
   return seats;
 }
 
-function formatDateTimeKstSeconds(value: string | Date | null): string {
+function formatDateTimeKstSeconds(value: string | Date | null, locale: string): string {
   if (!value) return "-";
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return "-";
 
-  const formatted = new Intl.DateTimeFormat("ko-KR", {
+  const formatted = new Intl.DateTimeFormat(locale === "ko" ? "ko-KR" : "en-US", {
     timeZone: "Asia/Seoul",
     year: "numeric",
     month: "2-digit",
@@ -62,11 +64,11 @@ function formatDateTimeKstSeconds(value: string | Date | null): string {
   return `${formatted} KST`;
 }
 
-function retryNowDisabledTitle(task: TrainTaskSummary): string {
+function retryNowDisabledTitle(task: TrainTaskSummary, locale: string): string {
   const reason = task.retry_now_reason ?? null;
   if (!reason) return "Retry is not available.";
   if (reason === "cooldown_active" && task.retry_now_available_at) {
-    return `Retry available at ${formatDateTimeKstSeconds(task.retry_now_available_at)}.`;
+    return `Retry available at ${formatDateTimeKstSeconds(task.retry_now_available_at, locale)}.`;
   }
   if (reason === "deadline_passed") return "Task deadline has passed.";
   if (reason === "paused_use_resume") return "Task is paused. Use Resume instead.";
@@ -78,6 +80,7 @@ function retryNowDisabledTitle(task: TrainTaskSummary): string {
 
 export function TrainTaskDetail({ taskId }: { taskId: string }) {
   const router = useRouter();
+  const { locale, t } = useLocale();
   const [task, setTask] = useState<TrainTaskSummary | null>(null);
   const [attempts, setAttempts] = useState<TrainTaskAttempt[]>([]);
   const [artifacts, setArtifacts] = useState<TrainArtifact[]>([]);
@@ -120,7 +123,7 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
       });
       if (!response.ok) {
         const payload = (await response.json().catch(() => null)) as { detail?: string } | null;
-        setError(payload?.detail ?? "Could not load task detail.");
+        setError(payload?.detail ?? t("train.error.taskDetailLoad"));
         return;
       }
 
@@ -134,7 +137,7 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
       setArtifacts(payload.artifacts);
       setError(null);
     } catch {
-      setError("Could not load task detail.");
+      setError(t("train.error.taskDetailLoad"));
     }
   };
 
@@ -148,10 +151,10 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
 
   const cancelTicket = async () => {
     if (!ticketArtifact) {
-      setError("No ticket artifact found for this task.");
+      setError(t("train.ticket.missingArtifact"));
       return;
     }
-    const confirmed = window.confirm("Cancel this reservation ticket?");
+    const confirmed = window.confirm(t("train.confirm.cancelTicket"));
     if (!confirmed) return;
 
     setCancellingTicket(true);
@@ -164,21 +167,21 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
       });
       const payload = (await response.json().catch(() => null)) as { status?: string; detail?: string } | null;
       if (!response.ok) {
-        setError(payload?.detail ?? "Could not cancel ticket.");
+        setError(payload?.detail ?? t("train.error.ticketCancel"));
         return;
       }
 
-      setNotice(payload?.detail ?? "Ticket cancel request completed.");
+      setNotice(payload?.detail ?? t("train.notice.ticketCancelDone"));
       await loadDetail();
     } catch {
-      setError("Could not cancel ticket.");
+      setError(t("train.error.ticketCancel"));
     } finally {
       setCancellingTicket(false);
     }
   };
 
   const deleteTask = async () => {
-    const confirmed = window.confirm("Hide this task from your list?");
+    const confirmed = window.confirm(t("train.confirm.hideTask"));
     if (!confirmed) return;
 
     setDeletingTask(true);
@@ -191,20 +194,20 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
       });
       const payload = (await response.json().catch(() => null)) as { detail?: string } | null;
       if (!response.ok) {
-        setError(payload?.detail ?? "Could not delete task.");
+        setError(payload?.detail ?? t("train.task.actionFailed"));
         return;
       }
 
-      router.push("/modules/train");
+      router.push(ROUTES.modules.train);
     } catch {
-      setError("Could not delete task.");
+      setError(t("train.task.actionFailed"));
     } finally {
       setDeletingTask(false);
     }
   };
 
   const payTicket = async () => {
-    const confirmed = window.confirm("Process payment for this awaiting reservation now?");
+    const confirmed = window.confirm(t("train.confirm.payNow"));
     if (!confirmed) return;
 
     setPayingTicket(true);
@@ -217,14 +220,14 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
       });
       const payload = (await response.json().catch(() => null)) as { detail?: string } | null;
       if (!response.ok) {
-        setError(payload?.detail ?? "Could not process payment.");
+        setError(payload?.detail ?? t("train.error.paymentProcess"));
         return;
       }
 
-      setNotice("Payment processed.");
+      setNotice(t("train.notice.paymentProcessed"));
       await loadDetail();
     } catch {
-      setError("Could not process payment.");
+      setError(t("train.error.paymentProcess"));
     } finally {
       setPayingTicket(false);
     }
@@ -261,12 +264,14 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
       <div className="rounded-3xl border border-blossom-100 bg-white p-6 shadow-petal">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-xs uppercase tracking-[0.16em] text-blossom-500">Task detail</p>
-            <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-800">Train Task</h1>
-            <p className="mt-1 text-sm text-slate-500">Task ID: {taskId}</p>
+            <p className="text-xs uppercase tracking-[0.16em] text-blossom-500">{t("train.taskDetailKicker")}</p>
+            <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-800">{t("train.trainTask")}</h1>
+            <p className="mt-1 text-sm text-slate-500">
+              {t("train.label.taskId")} {taskId}
+            </p>
           </div>
-          <Link href="/modules/train" className="text-sm font-medium text-blossom-600 hover:text-blossom-700">
-            Back to Train
+          <Link href={ROUTES.modules.train} className="text-sm font-medium text-blossom-600 hover:text-blossom-700">
+            {t("train.backToTrain")}
           </Link>
         </div>
       </div>
@@ -276,24 +281,25 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
 
       {task ? (
         <div className="rounded-2xl border border-blossom-100 bg-white p-6 shadow-petal">
-          <h2 className="text-lg font-semibold text-slate-800">Task status</h2>
+          <h2 className="text-lg font-semibold text-slate-800">{t("train.taskStatus")}</h2>
           <div className="mt-3 grid gap-2 text-sm text-slate-700 md:grid-cols-2">
             <p>
-              <span className="font-medium">State:</span> {task.state}
+              <span className="font-medium">{t("train.state")}</span> {task.state}
             </p>
             <p>
-              <span className="font-medium">Deadline:</span> {formatDateTimeKstSeconds(task.deadline_at)}
+              <span className="font-medium">{t("train.deadline")}</span> {formatDateTimeKstSeconds(task.deadline_at, locale)}
             </p>
             <p>
-              <span className="font-medium">Created:</span> {formatDateTimeKstSeconds(task.created_at)}
+              <span className="font-medium">{t("train.created")}</span> {formatDateTimeKstSeconds(task.created_at, locale)}
             </p>
             <p>
-              <span className="font-medium">Last attempt:</span> {formatDateTimeKstSeconds(task.last_attempt_at)}
+              <span className="font-medium">{t("train.lastAttempt")}</span>{" "}
+              {formatDateTimeKstSeconds(task.last_attempt_at, locale)}
             </p>
             {task.state === "POLLING" ? (
               <p>
                 <span className="font-medium">Next check:</span>{" "}
-                {task.next_run_at ? formatDateTimeKstSeconds(task.next_run_at) : "-"}
+                {task.next_run_at ? formatDateTimeKstSeconds(task.next_run_at, locale) : "-"}
               </p>
             ) : null}
           </div>
@@ -309,7 +315,7 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
                   deletingTask ||
                   !task.retry_now_allowed
                 }
-                title={task.retry_now_allowed ? "Retry now" : retryNowDisabledTitle(task)}
+                title={task.retry_now_allowed ? "Retry now" : retryNowDisabledTitle(task, locale)}
                 className={
                   task.retry_now_allowed && !retryingNow ? SMALL_BUTTON_CLASS : SMALL_DISABLED_BUTTON_CLASS
                 }
@@ -327,7 +333,7 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
                   disabled={payingTicket || cancellingTicket || deletingTask}
                   className={SMALL_SUCCESS_BUTTON_CLASS}
                 >
-                  {payingTicket ? "Paying..." : "Pay"}
+                  {payingTicket ? t("train.action.paying") : t("train.action.pay")}
                 </button>
               ) : null}
               {canCancelReservation ? (
@@ -337,7 +343,7 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
                   disabled={!ticketArtifact || cancellingTicket || deletingTask || payingTicket}
                   className={SMALL_DANGER_BUTTON_CLASS}
                 >
-                  {cancellingTicket ? "Cancelling..." : "Cancel"}
+                  {cancellingTicket ? t("train.action.cancelling") : t("train.action.cancel")}
                 </button>
               ) : null}
               {isTerminal ? (
@@ -347,28 +353,28 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
                   disabled={deletingTask || cancellingTicket || payingTicket}
                   className={SMALL_DANGER_BUTTON_CLASS}
                 >
-                  {deletingTask ? "Deleting..." : "Delete"}
+                  {deletingTask ? t("common.deleting") : t("common.delete")}
                 </button>
               ) : null}
             </div>
           ) : null}
-          {!isTerminal ? <p className="mt-3 text-xs text-slate-500">Polling every 4s while active.</p> : null}
+          {!isTerminal ? <p className="mt-3 text-xs text-slate-500">{t("train.pollingHint")}</p> : null}
         </div>
       ) : null}
 
       <div className="rounded-2xl border border-blossom-100 bg-white p-6 shadow-petal">
-        <h2 className="text-lg font-semibold text-slate-800">Attempts timeline</h2>
+        <h2 className="text-lg font-semibold text-slate-800">{t("train.attemptsTimeline")}</h2>
         <div className="mt-4 overflow-x-auto">
           <table className="min-w-full text-left text-sm">
             <thead>
               <tr className="text-slate-500">
-                <th className="pb-2 pr-3">Action</th>
-                <th className="pb-2 pr-3">Provider</th>
-                <th className="pb-2 pr-3">OK</th>
-                <th className="pb-2 pr-3">Retryable</th>
-                <th className="pb-2 pr-3">Duration</th>
-                <th className="pb-2 pr-3">Started</th>
-                <th className="pb-2">Error</th>
+                <th className="pb-2 pr-3">{t("train.attemptTable.action")}</th>
+                <th className="pb-2 pr-3">{t("train.attemptTable.provider")}</th>
+                <th className="pb-2 pr-3">{t("train.attemptTable.ok")}</th>
+                <th className="pb-2 pr-3">{t("train.attemptTable.retryable")}</th>
+                <th className="pb-2 pr-3">{t("train.attemptTable.duration")}</th>
+                <th className="pb-2 pr-3">{t("train.attemptTable.started")}</th>
+                <th className="pb-2">{t("train.attemptTable.error")}</th>
               </tr>
             </thead>
             <tbody>
@@ -379,14 +385,14 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
                   <td className="py-2 pr-3">{attempt.ok ? "yes" : "no"}</td>
                   <td className="py-2 pr-3">{attempt.retryable ? "yes" : "no"}</td>
                   <td className="py-2 pr-3">{attempt.duration_ms}ms</td>
-                  <td className="py-2 pr-3">{formatDateTimeKstSeconds(attempt.started_at)}</td>
+                  <td className="py-2 pr-3">{formatDateTimeKstSeconds(attempt.started_at, locale)}</td>
                   <td className="py-2">{attempt.error_message_safe || "-"}</td>
                 </tr>
               ))}
               {attempts.length === 0 ? (
                 <tr>
                   <td className="py-2 text-slate-500" colSpan={7}>
-                    No attempts yet.
+                    {t("train.empty.attempts")}
                   </td>
                 </tr>
               ) : null}
@@ -396,13 +402,15 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
       </div>
 
       <div className="rounded-2xl border border-blossom-100 bg-white p-6 shadow-petal">
-        <h2 className="text-lg font-semibold text-slate-800">Ticket / receipt artifacts</h2>
+        <h2 className="text-lg font-semibold text-slate-800">{t("train.ticketArtifacts")}</h2>
         <ul className="mt-4 space-y-3 text-sm">
-          {artifacts.length === 0 ? <li className="text-slate-500">No artifacts yet.</li> : null}
+          {artifacts.length === 0 ? <li className="text-slate-500">{t("train.empty.artifacts")}</li> : null}
           {artifacts.map((artifact) => (
             <li key={artifact.id} className="rounded-xl border border-blossom-100 p-3">
               <p className="font-medium text-slate-700">{artifact.kind}</p>
-              <p className="text-xs text-slate-500">Created: {formatDateTimeKstSeconds(artifact.created_at)}</p>
+              <p className="text-xs text-slate-500">
+                {t("common.created")}: {formatDateTimeKstSeconds(artifact.created_at, locale)}
+              </p>
               {(() => {
                 const data = artifact.data_json_safe;
                 const provider = readString(data.provider);
@@ -421,37 +429,37 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
                   <div className="mt-3 grid gap-1.5 rounded-lg border border-blossom-100 bg-blossom-50/40 px-3 py-2 text-xs text-slate-700">
                     {provider ? (
                       <p>
-                        <span className="font-medium">Provider:</span> {provider}
+                        <span className="font-medium">{t("train.artifact.provider")}</span> {provider}
                       </p>
                     ) : null}
                     {reservationId ? (
                       <p>
-                        <span className="font-medium">Reservation:</span> {reservationId}
+                        <span className="font-medium">{t("train.artifact.reservation")}</span> {reservationId}
                       </p>
                     ) : null}
                     {status ? (
                       <p>
-                        <span className="font-medium">Status:</span> {status}
+                        <span className="font-medium">{t("train.artifact.status")}</span> {status}
                       </p>
                     ) : null}
                     {paid !== null ? (
                       <p>
-                        <span className="font-medium">Paid:</span> {paid ? "yes" : "no"}
+                        <span className="font-medium">{t("train.artifact.paid")}</span> {paid ? t("train.artifact.yes") : t("train.artifact.no")}
                       </p>
                     ) : null}
                     {paymentDeadline ? (
                       <p>
-                        <span className="font-medium">Pay by:</span> {formatDateTimeKstSeconds(paymentDeadline)}
+                        <span className="font-medium">{t("train.payBy")}</span> {formatDateTimeKstSeconds(paymentDeadline, locale)}
                       </p>
                     ) : null}
                     {seatCount != null ? (
                       <p>
-                        <span className="font-medium">Seat count:</span> {seatCount}
+                        <span className="font-medium">{t("train.artifact.seatCount")}</span> {seatCount}
                       </p>
                     ) : null}
                     {seats.length > 0 ? (
                       <p>
-                        <span className="font-medium">Seats:</span> {seats.join(", ")}
+                        <span className="font-medium">{t("train.artifact.seats")}</span> {seats.join(", ")}
                       </p>
                     ) : null}
                   </div>

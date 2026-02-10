@@ -1,4 +1,11 @@
 const KST_TIME_ZONE = "Asia/Seoul";
+const DEFAULT_LOCALE = "ko-KR";
+
+function intlLocale(locale?: string): string {
+  if (locale === "en") return "en-US";
+  if (locale === "ko") return "ko-KR";
+  return DEFAULT_LOCALE;
+}
 
 function datePartsInKst(date: Date): { year: string; month: string; day: string } {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -24,13 +31,13 @@ export function kstDateInputValue(date: Date = new Date()): string {
   return `${year}-${month}-${day}`;
 }
 
-export function formatDateTimeKst(value: string | Date | null): string {
+export function formatDateTimeKst(value: string | Date | null, locale?: string): string {
   if (!value) return "-";
 
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return "-";
 
-  const formatted = new Intl.DateTimeFormat("ko-KR", {
+  const formatted = new Intl.DateTimeFormat(intlLocale(locale), {
     timeZone: KST_TIME_ZONE,
     year: "numeric",
     month: "2-digit",

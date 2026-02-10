@@ -15,6 +15,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { serverApiBaseUrl } from "@/lib/api-base";
+import { ROUTES } from "@/lib/routes";
 import type { AuthMeResponse, BominalUser } from "@/lib/types";
 
 /**
@@ -58,7 +59,7 @@ export async function getOptionalUser(): Promise<BominalUser | null> {
 export async function requireUser(): Promise<BominalUser> {
   const user = await fetchMe();
   if (!user) {
-    redirect("/login");
+    redirect(ROUTES.login);
   }
   return user;
 }
@@ -70,7 +71,7 @@ export async function requireUser(): Promise<BominalUser> {
 export async function requireAdminUser(): Promise<BominalUser> {
   const user = await requireUser();
   if (user.role !== "admin") {
-    redirect("/dashboard?denied=1");
+    redirect(`${ROUTES.dashboard}?denied=1`);
   }
   return user;
 }
