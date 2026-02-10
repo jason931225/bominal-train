@@ -117,7 +117,7 @@ export function LandingIntroOverlay() {
                     },
                   },
                 }}
-                className={`font-brand text-7xl font-semibold lowercase leading-none tracking-tight sm:text-8xl ${UI_LIQUID_GLASS_TEXT_WHITE}`}
+                className={`font-brand whitespace-nowrap text-[clamp(3.5rem,12vw,7rem)] font-semibold lowercase leading-none tracking-tight ${UI_LIQUID_GLASS_TEXT_WHITE}`}
               >
                 {letters.map((letter, index) => (
                   <motion.span
