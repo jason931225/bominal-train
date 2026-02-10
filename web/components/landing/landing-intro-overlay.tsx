@@ -198,10 +198,10 @@ export function LandingIntroOverlay() {
                 transition={
                   playIntro ? { duration: BUTTON_ENTER_DURATION_MS / 1000, ease: "easeOut" } : { duration: 0 }
                 }
-                className={`pointer-events-auto inline-flex items-center justify-center px-7 py-4 text-base font-semibold tracking-tight transition hover:border-white/30 hover:from-white/25 hover:to-white/10 focus:outline-none focus:ring-2 focus:ring-white/40 sm:text-lg ${UI_LIQUID_GLASS_WHITE} ${UI_LIQUID_GLASS_TEXT_WHITE}`}
+                className={`pointer-events-auto inline-flex items-center justify-center px-7 py-4 text-base font-semibold tracking-tight transition-colors hover:border-white/30 hover:shadow-[0_16px_36px_-20px_rgba(15,23,42,0.65)] focus:outline-none focus:ring-2 focus:ring-white/40 sm:text-lg ${UI_LIQUID_GLASS_WHITE}`}
                 style={{ willChange: "transform, opacity, filter" }}
               >
-                Let&apos;s begin!
+                <span className={UI_LIQUID_GLASS_TEXT_WHITE}>Let&apos;s begin!</span>
               </motion.button>
             </div>
           ) : null}
