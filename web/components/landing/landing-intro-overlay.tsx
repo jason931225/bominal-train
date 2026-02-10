@@ -15,6 +15,7 @@ const LETTER_STAGGER_MS = 130;
 const LETTER_DURATION_MS = 620;
 const LOGO_HOLD_MS = 700;
 const BUTTON_ENTER_DURATION_MS = 600;
+const SKIP_ENTER_DURATION_MS = 180;
 
 type IntroMode = "boot" | "play" | "skip";
 
@@ -98,10 +99,17 @@ export function LandingIntroOverlay() {
   }
 
   const playIntro = mode === "play" && !reduceMotion;
+  const skipFadeIn = mode === "skip" && !reduceMotion;
 
   return (
     <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
-      <div className="flex flex-col items-center justify-center gap-8">
+      <motion.div
+        initial={skipFadeIn ? { opacity: 0, filter: "blur(6px)" } : false}
+        animate={{ opacity: 1, filter: "blur(0px)" }}
+        transition={skipFadeIn ? { duration: SKIP_ENTER_DURATION_MS / 1000, ease: "easeOut" } : { duration: 0 }}
+        className="flex flex-col items-center justify-center gap-8"
+        style={{ willChange: skipFadeIn ? "opacity, filter" : undefined }}
+      >
         <motion.div
           initial={playIntro ? "hidden" : false}
           animate={logoStarted ? "show" : "hidden"}
@@ -161,7 +169,7 @@ export function LandingIntroOverlay() {
             </motion.button>
           ) : null}
         </AnimatePresence>
-      </div>
+      </motion.div>
     </div>
   );
 }
