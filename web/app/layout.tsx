@@ -4,11 +4,10 @@ import { headers } from "next/headers";
 
 import "./globals.css";
 
+import { AppShell } from "@/components/app-shell";
 import { LocaleProvider } from "@/components/locale-provider";
-import { PageTransition } from "@/components/page-transition";
 import { ThemeInitScript } from "@/components/theme-init-script";
 import { ThemeProvider } from "@/components/theme-provider";
-import { TopNav } from "@/components/top-nav";
 import { localeFromAcceptLanguage, localeFromUser, type Locale } from "@/lib/i18n";
 import { getOptionalUser } from "@/lib/server-auth";
 import { seasonFromMonth } from "@/lib/theme";
@@ -51,15 +50,10 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const user = await getOptionalUser();
-  const headersList = headers();
-  const pathname = headersList.get("x-pathname") || "/";
-  const acceptLanguage = headersList.get("accept-language");
+  const acceptLanguage = headers().get("accept-language");
   const locale = resolveRequestLocale(localeFromUser(user), acceptLanguage);
   const initialTheme = seasonFromMonth(new Date().getMonth() + 1);
-  const isLanding = !user && pathname === "/";
-  const mainClassName = isLanding
-    ? "min-h-screen w-full"
-    : "mx-auto w-full max-w-5xl px-4 py-8 sm:px-6 sm:py-12";
+
   return (
     <html
       lang={locale}
@@ -72,10 +66,9 @@ export default async function RootLayout({
         <ThemeInitScript />
         <ThemeProvider>
           <LocaleProvider initialLocale={locale}>
-            {isLanding ? null : <TopNav user={user} locale={locale} />}
-            <main className={mainClassName}>
-              {isLanding ? children : <PageTransition>{children}</PageTransition>}
-            </main>
+            <AppShell user={user} locale={locale}>
+              {children}
+            </AppShell>
           </LocaleProvider>
         </ThemeProvider>
       </body>
