@@ -11,7 +11,7 @@ from email.utils import formataddr
 import httpx
 
 from app.core.config import get_settings
-from app.schemas.notification import EmailJobPayload, EmailSendResult
+from app.schemas.notification import EmailJobPayload, EmailSendResult, EmailTag
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
@@ -30,8 +30,14 @@ def _build_message(payload: EmailJobPayload) -> EmailMessage:
     message["Subject"] = payload.subject
     message["From"] = _from_header()
     message["To"] = str(payload.to_email)
+    if payload.message_id:
+        message["X-Bominal-Message-Id"] = payload.message_id
     if settings.email_reply_to:
         message["Reply-To"] = settings.email_reply_to
+    for key, value in payload.headers.items():
+        if key.lower() == "x-bominal-message-id":
+            continue
+        message[key] = value
 
     message.set_content(payload.text_body)
     if payload.html_body:
@@ -39,21 +45,51 @@ def _build_message(payload: EmailJobPayload) -> EmailMessage:
     return message
 
 
+def _tags_for_log(tags: list[str | EmailTag]) -> str:
+    values: list[str] = []
+    for tag in tags or []:
+        if isinstance(tag, str):
+            values.append(tag)
+        else:
+            values.append(f"{tag.name}:{tag.value}")
+    return ",".join(values)
+
+
+def _resend_tag_payload(tags: list[str | EmailTag]) -> list[dict[str, str]]:
+    payload: list[dict[str, str]] = []
+    for tag in tags or []:
+        if isinstance(tag, str):
+            payload.append({"name": tag, "value": "true"})
+        elif isinstance(tag, EmailTag):
+            payload.append({"name": tag.name, "value": tag.value})
+        elif isinstance(tag, dict):  # defensive for non-validated callers
+            name = tag.get("name")
+            value = tag.get("value")
+            if name and value:
+                payload.append({"name": str(name), "value": str(value)})
+    return payload
+
+
 def _resend_payload(payload: EmailJobPayload) -> dict:
+    message_id = payload.message_id or str(uuid.uuid4())
+
     body: dict = {
         "from": _from_header(),
         "to": [str(payload.to_email)],
         "subject": payload.subject,
         "text": payload.text_body,
         "headers": {
-            "X-Bominal-Message-Id": str(uuid.uuid4()),
+            "X-Bominal-Message-Id": message_id,
         },
     }
+    if payload.headers:
+        body["headers"].update(payload.headers)
     if payload.html_body:
         body["html"] = payload.html_body
     if payload.tags:
-        # Resend supports tags with {name,value}; keep value stable for filters.
-        body["tags"] = [{"name": tag, "value": "true"} for tag in payload.tags]
+        tags = _resend_tag_payload(payload.tags)
+        if tags:
+            body["tags"] = tags
     return body
 
 
@@ -62,11 +98,17 @@ async def _send_resend(payload: EmailJobPayload) -> EmailSendResult:
         raise EmailDeliveryError("Resend API key is not configured")
 
     endpoint = f"{settings.resend_api_base_url.rstrip('/')}/emails"
-    timeout_seconds = max(1.0, float(settings.smtp_timeout_seconds))
+    timeout_seconds = max(
+        1.0,
+        float(getattr(settings, "resend_timeout_seconds", settings.smtp_timeout_seconds)),
+    )
     headers = {
         "Authorization": f"Bearer {settings.resend_api_key}",
         "Content-Type": "application/json",
     }
+    idempotency_key = payload.idempotency_key or payload.message_id
+    if idempotency_key:
+        headers["Idempotency-Key"] = str(idempotency_key)
 
     try:
         async with httpx.AsyncClient(timeout=timeout_seconds) as client:
@@ -85,7 +127,7 @@ async def _send_resend(payload: EmailJobPayload) -> EmailSendResult:
         "Email sent via Resend: to=%s subject=%s tags=%s",
         payload.to_email,
         payload.subject,
-        ",".join(payload.tags),
+        _tags_for_log(payload.tags),
     )
     return EmailSendResult(
         status="sent",
@@ -143,7 +185,7 @@ async def send_email(payload: EmailJobPayload) -> EmailSendResult:
             "Email(log provider): to=%s subject=%s tags=%s",
             payload.to_email,
             payload.subject,
-            ",".join(payload.tags),
+            _tags_for_log(payload.tags),
         )
         return EmailSendResult(
             status="sent",
@@ -169,7 +211,7 @@ async def send_email(payload: EmailJobPayload) -> EmailSendResult:
         "Email sent: to=%s subject=%s tags=%s",
         payload.to_email,
         payload.subject,
-        ",".join(payload.tags),
+        _tags_for_log(payload.tags),
     )
     return EmailSendResult(
         status="sent",

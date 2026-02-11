@@ -1,4 +1,6 @@
-from datetime import datetime, timezone
+import logging
+import secrets
+from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
@@ -10,9 +12,21 @@ from sqlalchemy.orm import joinedload
 from app.http.deps import auth_rate_limit, get_current_user
 from app.core.config import get_settings
 from app.core.security import hash_password, hash_token, new_session_token, session_expiry, verify_password
-from app.db.models import Role, Session, User
+from app.db.models import PasswordResetToken, Role, Session, User, VerificationToken
 from app.db.session import get_db
-from app.schemas.auth import AccountUpdateRequest, AuthResponse, LoginRequest, MessageResponse, RegisterRequest
+from app.schemas.auth import (
+    AccountUpdateRequest,
+    AuthResponse,
+    EmailVerificationConfirmRequest,
+    EmailVerificationRequest,
+    LoginRequest,
+    MessageResponse,
+    PasswordResetConfirmRequest,
+    PasswordResetRequest,
+    RegisterRequest,
+)
+from app.schemas.notification import EmailTemplateBlock, EmailTemplateJobPayload
+from app.services.email_queue import enqueue_template_email
 from app.services.auth import (
     clear_session_cookie,
     delete_account_data,
@@ -25,8 +39,151 @@ from app.services.auth import (
 public_router = APIRouter()
 user_router = APIRouter(dependencies=[Depends(get_current_user)])
 settings = get_settings()
+logger = logging.getLogger(__name__)
 
 INVALID_LOGIN_DETAIL = "Invalid email or password"
+EMAIL_OTP_TTL_MINUTES = 10
+PASSWORD_RESET_OTP_TTL_MINUTES = 10
+
+
+def _new_otp_code() -> str:
+    return f"{secrets.randbelow(1_000_000):06d}"
+
+
+def _public_base_url() -> str:
+    return settings.app_public_base_url.rstrip("/")
+
+
+async def _issue_verification_token(db: AsyncSession, *, user_id) -> tuple[str, datetime]:
+    now = utc_now()
+    active_tokens = (
+        await db.execute(
+            select(VerificationToken)
+            .where(VerificationToken.user_id == user_id)
+            .where(VerificationToken.used_at.is_(None))
+            .where(VerificationToken.expires_at > now)
+        )
+    ).scalars().all()
+    for token in active_tokens:
+        token.used_at = now
+
+    code = _new_otp_code()
+    expires_at = now + timedelta(minutes=EMAIL_OTP_TTL_MINUTES)
+    db.add(
+        VerificationToken(
+            user_id=user_id,
+            token_hash=hash_token(code),
+            expires_at=expires_at,
+        )
+    )
+    await db.commit()
+    return code, expires_at
+
+
+async def _issue_password_reset_token(db: AsyncSession, *, user_id) -> tuple[str, datetime]:
+    now = utc_now()
+    active_tokens = (
+        await db.execute(
+            select(PasswordResetToken)
+            .where(PasswordResetToken.user_id == user_id)
+            .where(PasswordResetToken.used_at.is_(None))
+            .where(PasswordResetToken.expires_at > now)
+        )
+    ).scalars().all()
+    for token in active_tokens:
+        token.used_at = now
+
+    code = _new_otp_code()
+    expires_at = now + timedelta(minutes=PASSWORD_RESET_OTP_TTL_MINUTES)
+    db.add(
+        PasswordResetToken(
+            user_id=user_id,
+            token_hash=hash_token(code),
+            expires_at=expires_at,
+        )
+    )
+    await db.commit()
+    return code, expires_at
+
+
+def _verification_template_payload(*, email: str, display_name: str | None, code: str) -> EmailTemplateJobPayload:
+    verify_url = f"{_public_base_url()}/api/auth/verify-email?email={email}&code={code}"
+    return EmailTemplateJobPayload(
+        to_email=email,
+        subject="Verify your email for bominal",
+        preheader="Verify with the button or enter the code.",
+        theme="spring",
+        blocks=[
+            EmailTemplateBlock(type="hero", data={"title": "Welcome to bominal", "subtitle": "Verify your email to finish setup."}),
+            EmailTemplateBlock(
+                type="cta",
+                data={
+                    "label": "Verify email",
+                    "url": {"$ref": "verify.url"},
+                    "helper_text": "Link expires in {{ verify.ttl_minutes }} minutes.",
+                },
+            ),
+            EmailTemplateBlock(
+                type="otp",
+                data={
+                    "code": {"$ref": "verify.code"},
+                    "ttl_minutes": {"$ref": "verify.ttl_minutes"},
+                },
+            ),
+            EmailTemplateBlock(type="divider", data={}),
+            EmailTemplateBlock(
+                type="bullets",
+                data={
+                    "items": [
+                        "Use either the button or the code - both work.",
+                        "If this wasn't you, ignore this email.",
+                    ]
+                },
+            ),
+        ],
+        context={
+            "user": {"display_name": display_name or email},
+            "verify": {"url": verify_url, "code": code, "ttl_minutes": EMAIL_OTP_TTL_MINUTES},
+        },
+        tags=["onboarding", "verify"],
+        metadata={"kind": "onboarding_verify"},
+    )
+
+
+def _password_reset_template_payload(*, email: str, code: str) -> EmailTemplateJobPayload:
+    reset_url = f"{_public_base_url()}/api/auth/reset-password?email={email}&code={code}"
+    return EmailTemplateJobPayload(
+        to_email=email,
+        subject="Reset your bominal password",
+        preheader="Use the button or OTP to reset your password.",
+        theme="winter",
+        blocks=[
+            EmailTemplateBlock(type="hero", data={"title": "Password reset request", "subtitle": "Confirm this request to set a new password."}),
+            EmailTemplateBlock(
+                type="cta",
+                data={
+                    "label": "Reset password",
+                    "url": {"$ref": "reset.url"},
+                    "helper_text": "Link expires in {{ reset.ttl_minutes }} minutes.",
+                },
+            ),
+            EmailTemplateBlock(
+                type="otp",
+                data={
+                    "code": {"$ref": "reset.code"},
+                    "ttl_minutes": {"$ref": "reset.ttl_minutes"},
+                    "label": "Password reset code",
+                },
+            ),
+            EmailTemplateBlock(
+                type="paragraph",
+                data={"text": "If you didn't request this, you can ignore this email."},
+            ),
+        ],
+        context={"reset": {"url": reset_url, "code": code, "ttl_minutes": PASSWORD_RESET_OTP_TTL_MINUTES}},
+        tags=["auth", "password-reset"],
+        metadata={"kind": "password_reset"},
+    )
 
 
 @public_router.post(
@@ -69,6 +226,18 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
         select(User).options(joinedload(User.role)).where(User.id == user.id)
     )
     created_user = user_result.scalar_one()
+
+    try:
+        code, _ = await _issue_verification_token(db, user_id=created_user.id)
+        await enqueue_template_email(
+            _verification_template_payload(
+                email=created_user.email,
+                display_name=created_user.display_name,
+                code=code,
+            )
+        )
+    except Exception as exc:
+        logger.warning("Failed to queue onboarding verification email for user %s: %s", created_user.id, type(exc).__name__)
 
     return AuthResponse(user=user_to_out(created_user))
 
@@ -266,12 +435,110 @@ async def delete_account(
 
 
 @public_router.post("/request-email-verification", response_model=MessageResponse)
-async def request_email_verification() -> MessageResponse:
-    """Request email verification link. Coming soon."""
-    return MessageResponse(message="Email verification is coming soon")
+async def request_email_verification(
+    payload: EmailVerificationRequest | None = None,
+    db: AsyncSession = Depends(get_db),
+) -> MessageResponse:
+    if payload is None:
+        return MessageResponse(message="If eligible, a verification email has been sent")
+
+    email = payload.email.lower()
+    user = (await db.execute(select(User).where(User.email == email))).scalar_one_or_none()
+    if user is None:
+        return MessageResponse(message="If eligible, a verification email has been sent")
+
+    try:
+        code, _ = await _issue_verification_token(db, user_id=user.id)
+        await enqueue_template_email(
+            _verification_template_payload(
+                email=user.email,
+                display_name=user.display_name,
+                code=code,
+            )
+        )
+    except Exception as exc:
+        logger.warning("Failed to queue verification email for user %s: %s", user.id, type(exc).__name__)
+
+    return MessageResponse(message="If eligible, a verification email has been sent")
+
+
+@public_router.post("/verify-email", response_model=MessageResponse)
+async def verify_email(
+    payload: EmailVerificationConfirmRequest,
+    db: AsyncSession = Depends(get_db),
+) -> MessageResponse:
+    email = payload.email.lower()
+    user = (await db.execute(select(User).where(User.email == email))).scalar_one_or_none()
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired verification code")
+
+    token_hash = hash_token(payload.code)
+    now = utc_now()
+    token = (
+        await db.execute(
+            select(VerificationToken)
+            .where(VerificationToken.user_id == user.id)
+            .where(VerificationToken.token_hash == token_hash)
+            .where(VerificationToken.used_at.is_(None))
+            .where(VerificationToken.expires_at > now)
+        )
+    ).scalar_one_or_none()
+    if token is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired verification code")
+
+    token.used_at = now
+    user.email_verified_at = now
+    await db.commit()
+    return MessageResponse(message="Email verified successfully")
 
 
 @public_router.post("/request-password-reset", response_model=MessageResponse)
-async def request_password_reset() -> MessageResponse:
-    """Request password reset link. Coming soon."""
-    return MessageResponse(message="Password reset is coming soon")
+async def request_password_reset(
+    payload: PasswordResetRequest | None = None,
+    db: AsyncSession = Depends(get_db),
+) -> MessageResponse:
+    if payload is None:
+        return MessageResponse(message="If eligible, a password reset email has been sent")
+
+    email = payload.email.lower()
+    user = (await db.execute(select(User).where(User.email == email))).scalar_one_or_none()
+    if user is None:
+        return MessageResponse(message="If eligible, a password reset email has been sent")
+
+    try:
+        code, _ = await _issue_password_reset_token(db, user_id=user.id)
+        await enqueue_template_email(_password_reset_template_payload(email=user.email, code=code))
+    except Exception as exc:
+        logger.warning("Failed to queue password reset email for user %s: %s", user.id, type(exc).__name__)
+
+    return MessageResponse(message="If eligible, a password reset email has been sent")
+
+
+@public_router.post("/reset-password", response_model=MessageResponse)
+async def reset_password(
+    payload: PasswordResetConfirmRequest,
+    db: AsyncSession = Depends(get_db),
+) -> MessageResponse:
+    email = payload.email.lower()
+    user = (await db.execute(select(User).where(User.email == email))).scalar_one_or_none()
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired reset code")
+
+    token_hash = hash_token(payload.code)
+    now = utc_now()
+    token = (
+        await db.execute(
+            select(PasswordResetToken)
+            .where(PasswordResetToken.user_id == user.id)
+            .where(PasswordResetToken.token_hash == token_hash)
+            .where(PasswordResetToken.used_at.is_(None))
+            .where(PasswordResetToken.expires_at > now)
+        )
+    ).scalar_one_or_none()
+    if token is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired reset code")
+
+    token.used_at = now
+    user.password_hash = hash_password(payload.new_password)
+    await db.commit()
+    return MessageResponse(message="Password reset complete")

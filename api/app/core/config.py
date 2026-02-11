@@ -36,6 +36,7 @@ class Settings(BaseSettings):
 
     app_name: str = "bominal"
     app_env: str = "development"
+    app_public_base_url: str = Field(default="https://www.bominal.com", alias="APP_PUBLIC_BASE_URL")
 
     database_url: str = Field(
         default="postgresql+asyncpg://bominal:bominal@postgres:5432/bominal",
@@ -92,6 +93,7 @@ class Settings(BaseSettings):
     email_reply_to: str | None = Field(default=None, alias="EMAIL_REPLY_TO")
     resend_api_key: str | None = Field(default=None, alias="RESEND_API_KEY")
     resend_api_base_url: str = Field(default="https://api.resend.com", alias="RESEND_API_BASE_URL")
+    resend_timeout_seconds: float = Field(default=12.0, alias="RESEND_TIMEOUT_SECONDS")
     smtp_host: str = Field(default="mailpit", alias="SMTP_HOST")
     smtp_port: int = Field(default=1025, alias="SMTP_PORT")
     smtp_username: str | None = Field(default=None, alias="SMTP_USERNAME")

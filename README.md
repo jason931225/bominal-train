@@ -134,8 +134,10 @@ Implemented auth endpoints:
 - `POST /api/auth/register`
 - `POST /api/auth/login`
 - `POST /api/auth/logout`
-- `POST /api/auth/request-email-verification` (stub: returns "coming soon")
-- `POST /api/auth/request-password-reset` (stub: returns "coming soon")
+- `POST /api/auth/request-email-verification`
+- `POST /api/auth/verify-email` (OTP or link-code verification)
+- `POST /api/auth/request-password-reset`
+- `POST /api/auth/reset-password` (OTP or link-code reset)
 - `GET /api/auth/me`
 - `PATCH /api/auth/account` (`current_password` required for changing `email` / `new_password`)
 - `DELETE /api/auth/account` (blocked when outstanding worker tasks exist; marks user tasks for 365-day removal window)
@@ -147,7 +149,7 @@ Auth uniqueness rules:
 
 API access tiers:
 
-- **Public (no login required):** `/api/auth/register`, `/api/auth/login`, `/api/auth/logout`, `/api/auth/request-email-verification`, `/api/auth/request-password-reset`
+- **Public (no login required):** `/api/auth/register`, `/api/auth/login`, `/api/auth/logout`, `/api/auth/request-email-verification`, `/api/auth/verify-email`, `/api/auth/request-password-reset`, `/api/auth/reset-password`
 - **Authenticated session required:** `/api/auth/me`, `/api/auth/account`, `/api/modules`, `/api/train/*`, `/api/wallet/*`, `/api/notifications/*`
 - **Internal-only:** `/api/internal/*` with `X-Internal-Api-Key` matching `INTERNAL_API_KEY`
 - **Admin role required:** `/api/admin`
@@ -202,6 +204,16 @@ Email + notification API:
 - `POST /api/notifications/email/test`
 
 `/api/notifications/email/test` enqueues delivery through the background worker, so modules can reuse the same queue-based email pipeline.
+
+Template-based email pipeline:
+
+- Producers can enqueue:
+  - rendered payloads (`EmailJobPayload`)
+  - template payloads (`EmailTemplateJobPayload`) with `theme`, `blocks`, and `context` pointers
+- Worker (`deliver_email_job`) renders template payloads into final HTML/text bodies before provider send.
+- `context` pointers in block data support:
+  - inline placeholders: `{{ user.display_name }}`
+  - explicit refs: `{"$ref":"verify.code"}` with optional `default`
 
 Internal API:
 
@@ -326,8 +338,10 @@ docker compose -f infra/docker-compose.prod.yml run --rm api python scripts/chec
 5. **Email configuration**
    - If email is not in use yet, keep `EMAIL_PROVIDER=disabled` (default in prod template).
    - Optional: for transactional email later, set `EMAIL_PROVIDER=resend` and configure `RESEND_API_KEY`.
+   - Optional: tune Resend HTTP timeout with `RESEND_TIMEOUT_SECONDS` (default `12`).
    - Optional SMTP relay: set `EMAIL_PROVIDER=smtp` and configure `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`.
    - When enabled, set `EMAIL_FROM_ADDRESS` / `EMAIL_FROM_NAME` to your sender identity.
+   - Set `APP_PUBLIC_BASE_URL` so verification/reset links in emails point to the correct environment URL.
 
 Or run the bundled checker:
 
