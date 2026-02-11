@@ -58,8 +58,12 @@ export function LandingHeroVideo() {
   };
 
   return (
-    <section className="relative h-[100dvh] w-full overflow-hidden bg-[rgb(var(--bg-base-start))]">
-      <div className="absolute inset-0">
+    <section
+      onContextMenu={(event) => event.preventDefault()}
+      onDragStart={(event) => event.preventDefault()}
+      className="relative h-[100dvh] w-full select-none overflow-hidden bg-[rgb(var(--bg-base-start))] [user-select:none] [-webkit-touch-callout:none]"
+    >
+      <div className="absolute inset-0 pointer-events-none">
         <video
           ref={forwardRef}
           src={forwardSrc}
@@ -67,6 +71,9 @@ export function LandingHeroVideo() {
           playsInline
           preload="auto"
           disablePictureInPicture
+          disableRemotePlayback
+          controlsList="nodownload noplaybackrate noremoteplayback nofullscreen"
+          draggable={false}
           onEnded={active === "forward" ? onEnded : undefined}
           className={`absolute inset-0 h-full w-full object-cover object-center transition-opacity duration-200 ease-out ${active === "forward" ? "opacity-100" : "opacity-0"}`}
         />
@@ -77,6 +84,9 @@ export function LandingHeroVideo() {
           playsInline
           preload="auto"
           disablePictureInPicture
+          disableRemotePlayback
+          controlsList="nodownload noplaybackrate noremoteplayback nofullscreen"
+          draggable={false}
           onEnded={active === "reverse" ? onEnded : undefined}
           className={`absolute inset-0 h-full w-full object-cover object-center transition-opacity duration-200 ease-out ${active === "reverse" ? "opacity-100" : "opacity-0"}`}
         />
