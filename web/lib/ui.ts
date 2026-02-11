@@ -6,7 +6,9 @@ export const UI_CARD_SM = `${UI_CARD_BASE} p-4`;
 export const UI_LIQUID_GLASS_WHITE =
   "rounded-3xl border border-white/20 bg-gradient-to-b from-white/20 to-white/5 backdrop-blur-xl shadow-[0_12px_30px_-18px_rgba(15,23,42,0.55)]";
 export const UI_LIQUID_GLASS_TEXT_WHITE =
-  "text-transparent bg-clip-text bg-gradient-to-b from-white/95 via-white/75 to-white/45 drop-shadow-[0_18px_50px_rgba(0,0,0,0.45)]";
+  // Mobile Safari can be finicky with `bg-clip-text` + transparent text. Keep a
+  // readable solid fallback on small screens and upgrade to gradient text on sm+.
+  "text-white drop-shadow-[0_18px_50px_rgba(0,0,0,0.45)] sm:text-transparent sm:bg-clip-text sm:bg-gradient-to-b sm:from-white/95 sm:via-white/75 sm:to-white/45";
 
 export const UI_KICKER = "text-xs uppercase tracking-[0.16em] text-blossom-500";
 export const UI_TITLE_LG = "text-3xl font-display font-semibold tracking-tight text-slate-900";
