@@ -31,6 +31,8 @@ export function AppShell({
 
     const scrollY = window.scrollY;
 
+    const hadLandingClass = html.classList.contains("landing");
+
     const prevHtmlOverflow = html.style.overflow;
     const prevHtmlHeight = html.style.height;
     const prevHtmlOverscroll = html.style.getPropertyValue("overscroll-behavior");
@@ -42,6 +44,8 @@ export function AppShell({
     const prevBodyTop = body.style.top;
     const prevBodyWidth = body.style.width;
     const prevBodyOverscroll = body.style.getPropertyValue("overscroll-behavior");
+
+    html.classList.add("landing");
 
     // Lock landing to a true fullscreen canvas. iOS Safari can still rubber-band
     // even with overflow hidden unless the body is fixed.
@@ -58,6 +62,10 @@ export function AppShell({
     body.style.setProperty("overscroll-behavior", "none");
 
     return () => {
+      if (!hadLandingClass) {
+        html.classList.remove("landing");
+      }
+
       html.style.overflow = prevHtmlOverflow;
       html.style.height = prevHtmlHeight;
       html.style.setProperty("overscroll-behavior", prevHtmlOverscroll);
