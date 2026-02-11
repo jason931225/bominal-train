@@ -132,12 +132,10 @@ body {
 
 html.landing,
 html.landing body {
-  background-color: rgb(var(--blossom-900));
-  background-image:
-    radial-gradient(circle at 12% -10%, rgb(var(--blossom-500) / 0.28), transparent 45%),
-    radial-gradient(circle at 88% 0%, rgb(var(--blossom-400) / 0.22), transparent 42%),
-    radial-gradient(circle at 50% 120%, rgb(var(--blossom-600) / 0.18), transparent 55%),
-    linear-gradient(180deg, rgb(var(--blossom-900)) 0%, rgb(2 6 23) 100%);
+  /* Keep the landing backdrop aligned with the theme (no dark frame around the video). */
+  overscroll-behavior: none;
+  background-color: rgb(var(--bg-base-start));
+  background-image: var(--app-bg);
 }
 
 h1,
