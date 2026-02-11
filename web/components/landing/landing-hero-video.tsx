@@ -58,7 +58,7 @@ export function LandingHeroVideo() {
   };
 
   return (
-    <section className="relative h-[100dvh] w-full overflow-hidden bg-[rgb(var(--blossom-900))]">
+    <section className="relative h-[100dvh] w-full overflow-hidden bg-[rgb(var(--bg-base-start))]">
       <div className="absolute inset-0">
         <video
           ref={forwardRef}
