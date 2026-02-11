@@ -24,61 +24,74 @@ export function AppShell({
   const isLanding = !user && pathname === "/";
 
   useEffect(() => {
-    if (!isLanding) return;
-
     const html = document.documentElement;
     const body = document.body;
 
-    const scrollY = window.scrollY;
+    html.classList.toggle("landing", isLanding);
+    body.classList.toggle("landing", isLanding);
 
-    const hadLandingClass = html.classList.contains("landing");
+    if (!isLanding) return;
 
     const prevHtmlOverflow = html.style.overflow;
-    const prevHtmlHeight = html.style.height;
-    const prevHtmlOverscroll = html.style.getPropertyValue("overscroll-behavior");
-
+    const prevHtmlOverscroll = (html.style as any).overscrollBehavior;
     const prevBodyOverflow = body.style.overflow;
     const prevBodyHeight = body.style.height;
-    const prevBodyMinHeight = body.style.minHeight;
+    const prevBodyOverscroll = (body.style as any).overscrollBehavior;
     const prevBodyPosition = body.style.position;
     const prevBodyTop = body.style.top;
     const prevBodyWidth = body.style.width;
-    const prevBodyOverscroll = body.style.getPropertyValue("overscroll-behavior");
 
-    html.classList.add("landing");
+    const prevScrollY = window.scrollY;
+    const existingViewport = document.querySelector('meta[name="viewport"]');
+    const viewportMeta = existingViewport ?? document.createElement("meta");
+    const createdViewportMeta = !existingViewport;
+    const prevViewportContent = existingViewport?.getAttribute("content");
 
-    // Lock landing to a true fullscreen canvas. iOS Safari can still rubber-band
-    // even with overflow hidden unless the body is fixed.
+    if (createdViewportMeta) {
+      viewportMeta.setAttribute("name", "viewport");
+      document.head.appendChild(viewportMeta);
+    }
+
     html.style.overflow = "hidden";
-    html.style.height = "100dvh";
-    html.style.setProperty("overscroll-behavior", "none");
+    // Prevent scroll-chain/rubber-band in browsers that support it.
+    (html.style as any).overscrollBehavior = "none";
+    viewportMeta.setAttribute(
+      "content",
+      "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover",
+    );
 
+    // iOS Safari can still "rubber-band" even with overflow hidden. A fixed-body
+    // lock is more reliable and avoids the default white backdrop bleeding in.
+    body.style.position = "fixed";
+    body.style.top = `-${prevScrollY}px`;
+    body.style.width = "100%";
     body.style.overflow = "hidden";
     body.style.height = "100dvh";
-    body.style.minHeight = "100dvh";
-    body.style.position = "fixed";
-    body.style.top = `-${scrollY}px`;
-    body.style.width = "100%";
-    body.style.setProperty("overscroll-behavior", "none");
+    (body.style as any).overscrollBehavior = "none";
 
     return () => {
-      if (!hadLandingClass) {
-        html.classList.remove("landing");
-      }
-
       html.style.overflow = prevHtmlOverflow;
-      html.style.height = prevHtmlHeight;
-      html.style.setProperty("overscroll-behavior", prevHtmlOverscroll);
-
+      (html.style as any).overscrollBehavior = prevHtmlOverscroll;
       body.style.overflow = prevBodyOverflow;
       body.style.height = prevBodyHeight;
-      body.style.minHeight = prevBodyMinHeight;
       body.style.position = prevBodyPosition;
       body.style.top = prevBodyTop;
       body.style.width = prevBodyWidth;
-      body.style.setProperty("overscroll-behavior", prevBodyOverscroll);
+      (body.style as any).overscrollBehavior = prevBodyOverscroll;
 
-      window.scrollTo(0, scrollY);
+      // Restore scroll position after unlocking.
+      window.scrollTo(0, prevScrollY);
+
+      html.classList.remove("landing");
+      body.classList.remove("landing");
+
+      if (createdViewportMeta) {
+        viewportMeta.remove();
+      } else if (prevViewportContent != null) {
+        viewportMeta.setAttribute("content", prevViewportContent);
+      } else {
+        viewportMeta.removeAttribute("content");
+      }
     };
   }, [isLanding]);
 
