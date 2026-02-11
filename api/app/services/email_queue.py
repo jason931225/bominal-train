@@ -4,7 +4,7 @@ from arq import create_pool
 from arq.connections import ArqRedis, RedisSettings
 
 from app.core.config import get_settings
-from app.schemas.notification import EmailJobPayload
+from app.schemas.notification import EmailJobPayload, EmailTemplateJobPayload
 
 settings = get_settings()
 
@@ -23,6 +23,22 @@ async def get_email_queue_pool() -> ArqRedis:
 
 
 async def enqueue_email(payload: EmailJobPayload, *, defer_seconds: float = 0.0) -> str | None:
+    pool = await get_email_queue_pool()
+    if defer_seconds > 0:
+        job = await pool.enqueue_job(
+            "deliver_email_job",
+            payload.model_dump(mode="json"),
+            _defer_by=defer_seconds,
+        )
+    else:
+        job = await pool.enqueue_job("deliver_email_job", payload.model_dump(mode="json"))
+
+    if job is None:
+        return None
+    return job.job_id
+
+
+async def enqueue_template_email(payload: EmailTemplateJobPayload, *, defer_seconds: float = 0.0) -> str | None:
     pool = await get_email_queue_pool()
     if defer_seconds > 0:
         job = await pool.enqueue_job(

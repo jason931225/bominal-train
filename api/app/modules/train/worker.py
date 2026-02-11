@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.crypto import redact_sensitive
 from app.core.crypto.secrets_store import decrypt_secret
-from app.core.time import utc_now
+from app.core.time import to_kst, utc_now
 from app.db.models import Artifact, Secret, Task, TaskAttempt, User
 from app.modules.train.constants import (
     ACTIVE_TASK_STATES,
@@ -34,8 +34,9 @@ from app.modules.train.providers.base import ProviderOutcome, ProviderSchedule
 from app.modules.train.queue import enqueue_train_task
 from app.modules.train.rate_limiter import RedisTokenBucketLimiter
 from app.modules.train.ticket_sync import fetch_ticket_sync_snapshot
-from app.schemas.notification import EmailJobPayload
-from app.services.email_queue import enqueue_email
+from app.schemas.notification import EmailTemplateBlock, EmailTemplateJobPayload
+from app.services.email_queue import enqueue_template_email
+from app.services.email_template import format_completion_summary
 from app.services.wallet import get_payment_card_for_execution
 
 settings = get_settings()
@@ -235,36 +236,70 @@ async def _enqueue_terminal_notification(
 
     dep = str(spec.get("dep") or "-")
     arr = str(spec.get("arr") or "-")
-    created_at = _as_aware_utc(task.created_at).isoformat()
-    completed_at = utc_now().isoformat()
+    people = int(spec.get("people_count") or 1)
+    item_code = str(spec.get("item_code") or "N/A")
+    target_date = str(spec.get("item_date") or "-")
+    completed_at_kst = to_kst(_utc_now_aware())
+    completion_date = completed_at_kst.strftime("%Y-%m-%d")
+    completion_time = completed_at_kst.strftime("%H:%M")
+
+    status_text = "Successfully completed" if final_state == "COMPLETED" else f"Task ended ({final_state})"
+    summary = format_completion_summary(
+        status=status_text,
+        task="reservation",
+        module="train",
+        completion_date=completion_date,
+        completion_time=completion_time,
+        item=item_code,
+        target_date=target_date,
+        people=people,
+    )
 
     subject = f"bominal Train Task {final_state}: {dep} -> {arr}"
-    body = (
-        "Your Train Task has reached a terminal state.\n\n"
-        f"Task ID: {task.id}\n"
-        f"State: {final_state}\n"
-        f"Route: {dep} -> {arr}\n"
-        f"Created at (UTC): {created_at}\n"
-        f"Updated at (UTC): {completed_at}\n\n"
-        "Open bominal to review attempt timeline and ticket details."
+    template_payload = EmailTemplateJobPayload(
+        to_email=user.email,
+        subject=subject,
+        preheader=f"Train task update: {final_state}",
+        theme="spring",
+        blocks=[
+            EmailTemplateBlock(
+                type="hero",
+                data={"title": f"Train task {final_state}", "subtitle": "Your task reached a terminal state."},
+            ),
+            EmailTemplateBlock(
+                type="kv",
+                data={
+                    "rows": [
+                        {"k": "Task ID", "v": {"$ref": "task.id"}},
+                        {"k": "State", "v": {"$ref": "task.state"}},
+                        {"k": "Route", "v": {"$ref": "task.route"}},
+                        {"k": "Completed (KST)", "v": {"$ref": "task.completed_kst"}},
+                    ]
+                },
+            ),
+            EmailTemplateBlock(type="mono", data={"text": {"$ref": "task.summary"}}),
+        ],
+        context={
+            "task": {
+                "id": str(task.id),
+                "state": final_state,
+                "route": f"{dep} -> {arr}",
+                "completed_kst": f"{completion_date} {completion_time}",
+                "summary": summary,
+            }
+        },
+        tags=["train", "task", final_state.lower()],
+        metadata={
+            "module": "train",
+            "task_id": str(task.id),
+            "state": final_state,
+            "user_id": str(task.user_id),
+        },
     )
     job_id: str | None = None
 
     try:
-        job_id = await enqueue_email(
-            EmailJobPayload(
-                to_email=user.email,
-                subject=subject,
-                text_body=body,
-                tags=["train", "task", final_state.lower()],
-                metadata={
-                    "module": "train",
-                    "task_id": str(task.id),
-                    "state": final_state,
-                    "user_id": str(task.user_id),
-                },
-            )
-        )
+        job_id = await enqueue_template_email(template_payload)
     except Exception as exc:
         logger.warning(
             "Failed to enqueue terminal notification email for task %s: %s",

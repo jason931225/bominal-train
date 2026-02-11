@@ -51,6 +51,25 @@ class MessageResponse(BaseModel):
     message: str
 
 
+class EmailVerificationRequest(BaseModel):
+    email: EmailStr
+
+
+class EmailVerificationConfirmRequest(BaseModel):
+    email: EmailStr
+    code: str = Field(min_length=4, max_length=32)
+
+
+class PasswordResetRequest(BaseModel):
+    email: EmailStr
+
+
+class PasswordResetConfirmRequest(BaseModel):
+    email: EmailStr
+    code: str = Field(min_length=4, max_length=32)
+    new_password: str = Field(min_length=8, max_length=128)
+
+
 class AccountUpdateRequest(BaseModel):
     email: EmailStr | None = None
     display_name: str | None = Field(default=None, max_length=255)
