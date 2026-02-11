@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+from uuid import uuid4
 
 import fakeredis.aioredis
 import pytest
@@ -7,6 +8,20 @@ from sqlalchemy import select
 from app.db.models import Secret, Session, Task, User
 from app.services.wallet import LEGACY_PAYMENT_CVV_REDIS_KEY_PREFIX, PAYMENT_CVV_REDIS_KEY_PREFIX
 from tests.conftest import MockRedisContextManager
+
+
+def _extract_otp_code(template_payload) -> str:
+    for block in template_payload.blocks:
+        if block.type == "otp":
+            code_value = block.data.get("code")
+            if isinstance(code_value, dict) and "$ref" in code_value:
+                pointer = str(code_value["$ref"])
+                current = template_payload.context
+                for segment in pointer.split("."):
+                    current = current[segment]
+                return str(current)
+            return str(code_value)
+    raise AssertionError("OTP block not found")
 
 
 @pytest.mark.asyncio
@@ -45,6 +60,100 @@ async def test_register_login_me_logout_flow(client):
 
     me_after_logout = await client.get("/api/auth/me", cookies={"bominal_session": session_cookie})
     assert me_after_logout.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_register_enqueues_onboarding_verification_email(client, monkeypatch):
+    captured: dict[str, object] = {}
+
+    async def _fake_enqueue(payload, defer_seconds: float = 0.0):
+        captured["payload"] = payload
+        captured["defer_seconds"] = defer_seconds
+        return "job-onboarding-1"
+
+    monkeypatch.setattr("app.http.routes.auth.enqueue_template_email", _fake_enqueue)
+    monkeypatch.setattr("app.http.routes.auth._public_base_url", lambda: "https://mail.example.com")
+
+    email = f"onboarding-{uuid4().hex[:8]}@example.com"
+    register_res = await client.post(
+        "/api/auth/register",
+        json={"email": email, "password": "SuperSecret123", "display_name": "Onboarding User"},
+    )
+    assert register_res.status_code == 201
+    payload = captured["payload"]
+    assert payload.to_email == email
+    assert "Verify your email" in payload.subject
+    assert any(block.type == "cta" for block in payload.blocks)
+    assert any(block.type == "otp" for block in payload.blocks)
+    assert payload.context["verify"]["url"].startswith("https://mail.example.com/api/auth/verify-email")
+
+
+@pytest.mark.asyncio
+async def test_request_email_verification_and_verify_email_with_otp(client, monkeypatch, db_session):
+    captured: dict[str, object] = {}
+
+    async def _fake_enqueue(payload, defer_seconds: float = 0.0):
+        captured["payload"] = payload
+        captured["defer_seconds"] = defer_seconds
+        return "job-verify-1"
+
+    monkeypatch.setattr("app.http.routes.auth.enqueue_template_email", _fake_enqueue)
+
+    email = f"verify-{uuid4().hex[:8]}@example.com"
+    await client.post(
+        "/api/auth/register",
+        json={"email": email, "password": "SuperSecret123", "display_name": "Verify User"},
+    )
+
+    request_res = await client.post("/api/auth/request-email-verification", json={"email": email})
+    assert request_res.status_code == 200
+    otp = _extract_otp_code(captured["payload"])
+
+    verify_res = await client.post("/api/auth/verify-email", json={"email": email, "code": otp})
+    assert verify_res.status_code == 200
+    assert "verified" in verify_res.json()["message"].lower()
+
+    user = (await db_session.execute(select(User).where(User.email == email))).scalar_one()
+    assert user.email_verified_at is not None
+
+
+@pytest.mark.asyncio
+async def test_request_password_reset_and_reset_password_with_otp(client, monkeypatch):
+    captured: dict[str, object] = {}
+
+    async def _fake_enqueue(payload, defer_seconds: float = 0.0):
+        captured["payload"] = payload
+        return "job-reset-1"
+
+    monkeypatch.setattr("app.http.routes.auth.enqueue_template_email", _fake_enqueue)
+
+    email = f"reset-{uuid4().hex[:8]}@example.com"
+    await client.post(
+        "/api/auth/register",
+        json={"email": email, "password": "SuperSecret123", "display_name": "Reset User"},
+    )
+
+    request_res = await client.post("/api/auth/request-password-reset", json={"email": email})
+    assert request_res.status_code == 200
+    otp = _extract_otp_code(captured["payload"])
+
+    reset_res = await client.post(
+        "/api/auth/reset-password",
+        json={"email": email, "code": otp, "new_password": "NewPass12345"},
+    )
+    assert reset_res.status_code == 200
+
+    old_login = await client.post(
+        "/api/auth/login",
+        json={"email": email, "password": "SuperSecret123", "remember_me": False},
+    )
+    assert old_login.status_code == 401
+
+    new_login = await client.post(
+        "/api/auth/login",
+        json={"email": email, "password": "NewPass12345", "remember_me": False},
+    )
+    assert new_login.status_code == 200
 
 
 @pytest.mark.asyncio
