@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 
 import { PageTransition } from "@/components/page-transition";
@@ -22,8 +23,29 @@ export function AppShell({
   // so landing-vs-app chrome stays correct even on back/forward restores.
   const isLanding = !user && pathname === "/";
 
+  useEffect(() => {
+    if (!isLanding) return;
+
+    const html = document.documentElement;
+    const body = document.body;
+
+    const prevHtmlOverflow = html.style.overflow;
+    const prevBodyOverflow = body.style.overflow;
+    const prevBodyHeight = body.style.height;
+
+    html.style.overflow = "hidden";
+    body.style.overflow = "hidden";
+    body.style.height = "100dvh";
+
+    return () => {
+      html.style.overflow = prevHtmlOverflow;
+      body.style.overflow = prevBodyOverflow;
+      body.style.height = prevBodyHeight;
+    };
+  }, [isLanding]);
+
   const mainClassName = isLanding
-    ? "min-h-screen w-full"
+    ? "h-[100dvh] w-full overflow-hidden"
     : "mx-auto w-full max-w-5xl px-4 py-8 sm:px-6 sm:py-12";
 
   return (
