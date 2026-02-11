@@ -40,7 +40,9 @@ async def test_send_email_resend_provider(monkeypatch):
         email_provider="resend",
         resend_api_key="re_test_key",
         resend_api_base_url="https://api.resend.com",
+        smtp_timeout_seconds=2.0,
     )
+    monkeypatch.setattr(email_service.settings, "resend_timeout_seconds", 12.5, raising=False)
 
     captured: dict[str, object] = {}
 
@@ -66,7 +68,10 @@ async def test_send_email_resend_provider(monkeypatch):
         to_email="user@example.com",
         subject="Test Resend",
         text_body="hello resend",
-        tags=["unit", "resend"],
+        tags=["unit", {"name": "module", "value": "auth"}],
+        headers={"X-Custom": "true"},
+        message_id="msg-123",
+        idempotency_key="idem-123",
     )
 
     result = await email_service.send_email(payload)
@@ -74,6 +79,14 @@ async def test_send_email_resend_provider(monkeypatch):
     assert result.provider == "resend"
     assert result.metadata["provider_message_id"] == "email_123"
     assert captured["url"] == "https://api.resend.com/emails"
+    assert captured["timeout"] == 12.5
+    assert captured["headers"]["Idempotency-Key"] == "idem-123"
+    assert captured["json"]["headers"]["X-Bominal-Message-Id"] == "msg-123"
+    assert captured["json"]["headers"]["X-Custom"] == "true"
+    assert captured["json"]["tags"] == [
+        {"name": "unit", "value": "true"},
+        {"name": "module", "value": "auth"},
+    ]
 
 
 @pytest.mark.asyncio
