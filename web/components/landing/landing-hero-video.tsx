@@ -7,10 +7,14 @@ import { useTheme } from "@/components/theme-provider";
 
 type Direction = "forward" | "reverse";
 
+const LANDING_VIDEO_BASE_URL =
+  process.env.NEXT_PUBLIC_LANDING_VIDEO_BASE_URL ??
+  "https://github.com/jason931225/bominal.github.io/raw/refs/heads/main/public/video";
+
 export function LandingHeroVideo() {
   const { theme } = useTheme();
-  const forwardSrc = useMemo(() => `/video/${theme}.mp4`, [theme]);
-  const reverseSrc = useMemo(() => `/video/${theme}-rev.mp4`, [theme]);
+  const forwardSrc = useMemo(() => `${LANDING_VIDEO_BASE_URL}/${theme}.mp4`, [theme]);
+  const reverseSrc = useMemo(() => `${LANDING_VIDEO_BASE_URL}/${theme}-rev.mp4`, [theme]);
 
   const forwardRef = useRef<HTMLVideoElement | null>(null);
   const reverseRef = useRef<HTMLVideoElement | null>(null);
@@ -54,7 +58,7 @@ export function LandingHeroVideo() {
   };
 
   return (
-    <section className="relative min-h-screen w-full overflow-hidden bg-slate-950">
+    <section className="relative h-[100dvh] w-full overflow-hidden bg-slate-950">
       <div className="absolute inset-0">
         <video
           ref={forwardRef}
