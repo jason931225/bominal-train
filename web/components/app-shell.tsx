@@ -30,17 +30,31 @@ export function AppShell({
     const body = document.body;
 
     const prevHtmlOverflow = html.style.overflow;
+    const prevHtmlOverscroll = (html.style as any).overscrollBehavior;
+    const prevHtmlBackground = html.style.background;
     const prevBodyOverflow = body.style.overflow;
     const prevBodyHeight = body.style.height;
+    const prevBodyOverscroll = (body.style as any).overscrollBehavior;
+    const prevBodyBackground = body.style.background;
 
     html.style.overflow = "hidden";
+    // Prevent scroll-chain/rubber-band in browsers that support it.
+    (html.style as any).overscrollBehavior = "none";
+    // Ensure any overscroll backdrop isn't the default white.
+    html.style.background = "rgb(2 6 23)"; // slate-950
     body.style.overflow = "hidden";
     body.style.height = "100dvh";
+    (body.style as any).overscrollBehavior = "none";
+    body.style.background = "rgb(2 6 23)"; // slate-950
 
     return () => {
       html.style.overflow = prevHtmlOverflow;
+      (html.style as any).overscrollBehavior = prevHtmlOverscroll;
+      html.style.background = prevHtmlBackground;
       body.style.overflow = prevBodyOverflow;
       body.style.height = prevBodyHeight;
+      (body.style as any).overscrollBehavior = prevBodyOverscroll;
+      body.style.background = prevBodyBackground;
     };
   }, [isLanding]);
 
