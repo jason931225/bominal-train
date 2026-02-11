@@ -6,7 +6,6 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 
 import { UI_LIQUID_GLASS_TEXT_WHITE, UI_LIQUID_GLASS_WHITE } from "@/lib/ui";
 
-const INTRO_SHOWN_KEY = "bominal:intro_shown:v1";
 const WORDMARK = "bominal";
 
 const LOGO_DELAY_MS = 800;
@@ -20,21 +19,8 @@ const CTA_GAP_PX = 28;
 
 type IntroMode = "boot" | "play" | "skip";
 
-function safeGetSessionStorageItem(key: string) {
-  try {
-    return sessionStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-
-function safeSetSessionStorageItem(key: string, value: string) {
-  try {
-    sessionStorage.setItem(key, value);
-  } catch {
-    // Ignore if storage is unavailable (privacy mode, blocked cookies, etc).
-  }
-}
+const LANDING_WORDMARK_TEXT_CLASS =
+  "text-white/80 drop-shadow-[0_18px_50px_rgba(0,0,0,0.45)] sm:text-transparent sm:bg-clip-text sm:bg-gradient-to-b sm:from-white/95 sm:via-white/75 sm:to-white/45";
 
 export function LandingIntroOverlay() {
   const router = useRouter();
@@ -50,21 +36,14 @@ export function LandingIntroOverlay() {
   useEffect(() => {
     // Avoid drawing an overlay on the first paint until we know if we're skipping.
     if (reduceMotion) {
-      safeSetSessionStorageItem(INTRO_SHOWN_KEY, "1");
       setMode("skip");
       setLogoStarted(true);
       setCtaVisible(true);
       return;
     }
 
-    const alreadyShown = safeGetSessionStorageItem(INTRO_SHOWN_KEY) != null;
-    if (alreadyShown) {
-      setMode("skip");
-      setLogoStarted(true);
-      setCtaVisible(true);
-      return;
-    }
-
+    // Replay the intro every time landing is visited (desktop + mobile),
+    // unless the user explicitly prefers reduced motion.
     setMode("play");
     setLogoStarted(false);
     setCtaVisible(false);
@@ -76,9 +55,6 @@ export function LandingIntroOverlay() {
     }
 
     const startTimer = window.setTimeout(() => {
-      // Mark the intro as shown when it actually begins so React Strict Mode's
-      // dev double-mount doesn't cause the second mount to skip the animation.
-      safeSetSessionStorageItem(INTRO_SHOWN_KEY, "1");
       setLogoStarted(true);
     }, LOGO_DELAY_MS);
 
@@ -151,7 +127,7 @@ export function LandingIntroOverlay() {
                 },
               },
             }}
-            className={`select-none font-brand whitespace-nowrap text-[clamp(3.5rem,12vw,7rem)] font-semibold lowercase leading-none tracking-tight ${UI_LIQUID_GLASS_TEXT_WHITE}`}
+            className={`select-none font-brand whitespace-nowrap text-[clamp(3.5rem,12vw,7rem)] font-semibold lowercase leading-none tracking-tight ${LANDING_WORDMARK_TEXT_CLASS}`}
             style={{ willChange: "transform, opacity, filter" }}
           >
             {letters.map((letter, index) => (
