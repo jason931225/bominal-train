@@ -22,6 +22,15 @@
   --bg-base-end: 255 249 251;
   --text-main: 30 41 59;
   --border-soft: 255 238 245;
+  --app-bg:
+    radial-gradient(circle at 10% -10%, rgb(var(--bg-accent-1) / 0.45), transparent 38%),
+    radial-gradient(circle at 90% 0%, rgb(var(--bg-accent-2) / 0.5), transparent 35%),
+    linear-gradient(
+      180deg,
+      rgb(var(--bg-base-start)) 0%,
+      rgb(var(--bg-base-mid)) 40%,
+      rgb(var(--bg-base-end)) 100%
+    );
 }
 
 html[data-theme="spring"] {
@@ -108,18 +117,14 @@ html[data-theme="winter"] {
   --border-soft: 230 238 252;
 }
 
+html {
+  background: var(--app-bg);
+}
+
 body {
   min-height: 100vh;
   font-family: var(--font-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  background:
-    radial-gradient(circle at 10% -10%, rgb(var(--bg-accent-1) / 0.45), transparent 38%),
-    radial-gradient(circle at 90% 0%, rgb(var(--bg-accent-2) / 0.5), transparent 35%),
-    linear-gradient(
-      180deg,
-      rgb(var(--bg-base-start)) 0%,
-      rgb(var(--bg-base-mid)) 40%,
-      rgb(var(--bg-base-end)) 100%
-    );
+  background: var(--app-bg);
   color: rgb(var(--text-main));
 }
 

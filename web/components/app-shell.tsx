@@ -29,32 +29,48 @@ export function AppShell({
     const html = document.documentElement;
     const body = document.body;
 
+    const scrollY = window.scrollY;
+
     const prevHtmlOverflow = html.style.overflow;
-    const prevHtmlOverscroll = (html.style as any).overscrollBehavior;
-    const prevHtmlBackground = html.style.background;
+    const prevHtmlHeight = html.style.height;
+    const prevHtmlOverscroll = html.style.getPropertyValue("overscroll-behavior");
+
     const prevBodyOverflow = body.style.overflow;
     const prevBodyHeight = body.style.height;
-    const prevBodyOverscroll = (body.style as any).overscrollBehavior;
-    const prevBodyBackground = body.style.background;
+    const prevBodyMinHeight = body.style.minHeight;
+    const prevBodyPosition = body.style.position;
+    const prevBodyTop = body.style.top;
+    const prevBodyWidth = body.style.width;
+    const prevBodyOverscroll = body.style.getPropertyValue("overscroll-behavior");
 
+    // Lock landing to a true fullscreen canvas. iOS Safari can still rubber-band
+    // even with overflow hidden unless the body is fixed.
     html.style.overflow = "hidden";
-    // Prevent scroll-chain/rubber-band in browsers that support it.
-    (html.style as any).overscrollBehavior = "none";
-    // Ensure any overscroll backdrop isn't the default white.
-    html.style.background = "rgb(2 6 23)"; // slate-950
+    html.style.height = "100dvh";
+    html.style.setProperty("overscroll-behavior", "none");
+
     body.style.overflow = "hidden";
     body.style.height = "100dvh";
-    (body.style as any).overscrollBehavior = "none";
-    body.style.background = "rgb(2 6 23)"; // slate-950
+    body.style.minHeight = "100dvh";
+    body.style.position = "fixed";
+    body.style.top = `-${scrollY}px`;
+    body.style.width = "100%";
+    body.style.setProperty("overscroll-behavior", "none");
 
     return () => {
       html.style.overflow = prevHtmlOverflow;
-      (html.style as any).overscrollBehavior = prevHtmlOverscroll;
-      html.style.background = prevHtmlBackground;
+      html.style.height = prevHtmlHeight;
+      html.style.setProperty("overscroll-behavior", prevHtmlOverscroll);
+
       body.style.overflow = prevBodyOverflow;
       body.style.height = prevBodyHeight;
-      (body.style as any).overscrollBehavior = prevBodyOverscroll;
-      body.style.background = prevBodyBackground;
+      body.style.minHeight = prevBodyMinHeight;
+      body.style.position = prevBodyPosition;
+      body.style.top = prevBodyTop;
+      body.style.width = prevBodyWidth;
+      body.style.setProperty("overscroll-behavior", prevBodyOverscroll);
+
+      window.scrollTo(0, scrollY);
     };
   }, [isLanding]);
 
