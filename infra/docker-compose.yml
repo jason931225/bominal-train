@@ -60,7 +60,26 @@ services:
     container_name: bominal-worker
     working_dir: /app
     command: >
-      sh -c "arq app.worker.WorkerSettings"
+      sh -c "arq app.worker_train.WorkerTrainSettings"
+    env_file:
+      - ./env/dev/api.env
+    volumes:
+      - ../api:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+
+  worker-restaurant:
+    build:
+      context: ../api
+    container_name: bominal-worker-restaurant
+    working_dir: /app
+    command: >
+      sh -c "arq app.worker_restaurant.WorkerRestaurantSettings"
     env_file:
       - ./env/dev/api.env
     volumes:

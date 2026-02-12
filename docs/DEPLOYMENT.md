@@ -34,6 +34,7 @@ Each service has a health check in `docker compose.prod.yml`:
 | redis    | `redis-cli ping` | 0s |
 | api      | Python urllib (port 8000/health) | 120s |
 | worker   | Python proc check for arq | 15s |
+| worker-restaurant | Python proc check for arq | 15s |
 | web      | `wget --spider` (port 3000) | 60s |
 | caddy    | `wget` (admin API port 2019) | 30s |
 
@@ -165,7 +166,7 @@ sudo docker compose -f infra/docker compose.prod.yml exec api alembic downgrade 
 # 3. Checkout old code and redeploy
 sudo -u bominal git checkout <commit>
 sudo docker compose -f infra/docker compose.prod.yml build api
-sudo docker compose -f infra/docker compose.prod.yml up -d --wait api worker
+sudo docker compose -f infra/docker compose.prod.yml up -d --wait api worker worker-restaurant
 ```
 
 ### Version Tracking

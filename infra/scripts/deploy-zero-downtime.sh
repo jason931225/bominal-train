@@ -340,9 +340,9 @@ deploy_services() {
   log_info "Deploying API service..."
   "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait --no-deps api
   
-  # Deploy worker (can run alongside API)
-  log_info "Deploying Worker service..."
-  "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait --no-deps worker
+  # Deploy workers (can run alongside API)
+  log_info "Deploying Worker services..."
+  "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait --no-deps worker worker-restaurant
   
   # Deploy web (depends on API being healthy)
   log_info "Deploying Web service..."
