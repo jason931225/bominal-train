@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 from sqlalchemy import select
+from starlette.requests import Request
 
 from app.db.models import Role, User
 
@@ -93,3 +94,88 @@ async def test_internal_route_returns_503_when_not_configured(client, monkeypatc
 
     response = await client.get("/api/internal/health", headers={"X-Internal-Api-Key": "ignored"})
     assert response.status_code == 503
+
+
+def _build_request_for_rate_limit(
+    *,
+    path: str = "/api/auth/login",
+    headers: dict[str, str] | None = None,
+    client: tuple[str, int] | None = ("198.51.100.10", 54321),
+) -> Request:
+    raw_headers = []
+    for key, value in (headers or {}).items():
+        raw_headers.append((key.lower().encode("utf-8"), value.encode("utf-8")))
+    scope = {
+        "type": "http",
+        "http_version": "1.1",
+        "method": "POST",
+        "scheme": "http",
+        "path": path,
+        "raw_path": path.encode("utf-8"),
+        "query_string": b"",
+        "headers": raw_headers,
+        "client": client,
+        "server": ("testserver", 80),
+        "root_path": "",
+    }
+    return Request(scope)
+
+
+@pytest.mark.asyncio
+async def test_auth_rate_limit_prefers_cf_connecting_ip(monkeypatch):
+    from app.http.deps import auth_rate_limit
+
+    captured: dict[str, str] = {}
+
+    async def _fake_check(*, key: str, limit: int, window_seconds: int) -> None:
+        captured["key"] = key
+
+    monkeypatch.setattr("app.http.deps.rate_limiter.check", _fake_check)
+    request = _build_request_for_rate_limit(headers={"cf-connecting-ip": "203.0.113.2"})
+    await auth_rate_limit(request)
+    assert captured["key"] == "auth:203.0.113.2:/api/auth/login"
+
+
+@pytest.mark.asyncio
+async def test_auth_rate_limit_uses_first_forwarded_for_ip(monkeypatch):
+    from app.http.deps import auth_rate_limit
+
+    captured: dict[str, str] = {}
+
+    async def _fake_check(*, key: str, limit: int, window_seconds: int) -> None:
+        captured["key"] = key
+
+    monkeypatch.setattr("app.http.deps.rate_limiter.check", _fake_check)
+    request = _build_request_for_rate_limit(headers={"x-forwarded-for": "203.0.113.9, 10.0.0.1"})
+    await auth_rate_limit(request)
+    assert captured["key"] == "auth:203.0.113.9:/api/auth/login"
+
+
+@pytest.mark.asyncio
+async def test_auth_rate_limit_falls_back_to_client_host(monkeypatch):
+    from app.http.deps import auth_rate_limit
+
+    captured: dict[str, str] = {}
+
+    async def _fake_check(*, key: str, limit: int, window_seconds: int) -> None:
+        captured["key"] = key
+
+    monkeypatch.setattr("app.http.deps.rate_limiter.check", _fake_check)
+    request = _build_request_for_rate_limit(client=("198.51.100.44", 54321))
+    await auth_rate_limit(request)
+    assert captured["key"] == "auth:198.51.100.44:/api/auth/login"
+
+
+@pytest.mark.asyncio
+async def test_auth_rate_limit_uses_unknown_when_no_ip(monkeypatch):
+    from app.http.deps import auth_rate_limit
+
+    captured: dict[str, str] = {}
+
+    async def _fake_check(*, key: str, limit: int, window_seconds: int) -> None:
+        captured["key"] = key
+
+    monkeypatch.setattr("app.http.deps.rate_limiter.check", _fake_check)
+    request = _build_request_for_rate_limit(client=None)
+    await auth_rate_limit(request)
+    assert captured["key"] == "auth:unknown:/api/auth/login"

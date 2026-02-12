@@ -11,6 +11,7 @@ from app.core.rate_limit import rate_limiter
 from app.core.security import hash_token
 from app.db.models import Session, User
 from app.db.session import get_db
+from app.services.auth import request_ip
 
 settings = get_settings()
 
@@ -24,7 +25,11 @@ def _forbidden(detail: str = "Insufficient permissions") -> HTTPException:
 
 
 async def auth_rate_limit(request: Request) -> None:
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = request_ip(
+        request.client.host if request.client else None,
+        request.headers.get("x-forwarded-for"),
+        request.headers.get("cf-connecting-ip"),
+    ) or "unknown"
     key = f"auth:{client_ip}:{request.url.path}"
     await rate_limiter.check(
         key=key,
