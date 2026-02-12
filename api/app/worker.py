@@ -138,7 +138,9 @@ async def on_shutdown(ctx: dict) -> None:
     heartbeat_task = ctx.get("heartbeat_task")
     if heartbeat_task is not None:
         heartbeat_task.cancel()
-        with suppress(Exception):
+        # asyncio.CancelledError is not guaranteed to be caught by Exception.
+        # Keep shutdown recovery moving even if heartbeat cancellation propagates.
+        with suppress(asyncio.CancelledError, Exception):
             await heartbeat_task
     
     # Give in-flight tasks a brief moment to complete naturally
