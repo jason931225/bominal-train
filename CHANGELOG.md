@@ -29,6 +29,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - [0d84ae8] Extended daily chores playbook with token-saving search/navigation operations (`rg --files`, scoped `rg -n`, pointer-first reads).
 - [0d84ae8] Aligned governance docs to current canonical deploy script (`infra/scripts/deploy-zero-downtime.sh`) and removed active references to `fetch_ci.sh`/`deploy.prod.sh`.
 - [0d84ae8] Standardized compose command examples to `docker compose` in high-traffic docs and added `infra/tests/test_docs_consistency.sh`.
+- [83e6d6c] Split worker entrypoints into train and restaurant runtime settings, and wired `worker-restaurant` service in dev/prod compose plus deploy/restart helpers.
 
 ### Removed
 
