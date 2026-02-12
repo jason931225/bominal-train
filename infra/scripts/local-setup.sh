@@ -6,21 +6,13 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+source "$SCRIPT_DIR/lib/env_utils.sh"
 
 echo "=== bominal local setup ==="
 
 # Check prerequisites
-command -v docker >/dev/null 2>&1 || { echo "Error: docker is required"; exit 1; }
-
-# Detect docker compose command (v2 plugin preferred)
-if docker compose version >/dev/null 2>&1; then
-    COMPOSE_CMD=(docker compose)
-elif command -v docker-compose >/dev/null 2>&1; then
-    COMPOSE_CMD=(docker-compose)
-else
-    echo "Error: docker compose (v2) or docker-compose (v1) is required"
-    exit 1
-fi
+command -v docker >/dev/null 2>&1 || { log_error "docker is required"; exit 1; }
+detect_compose_cmd
 
 cd "$REPO_ROOT"
 
@@ -32,16 +24,18 @@ git submodule update --init --recursive
 echo "→ Setting up environment files..."
 ENV_DEV_DIR="$REPO_ROOT/infra/env/dev"
 
-for example_file in "$ENV_DEV_DIR"/*.env.example; do
-    if [[ -f "$example_file" ]]; then
-        target_file="${example_file%.example}"
-        if [[ ! -f "$target_file" ]]; then
-            cp "$example_file" "$target_file"
-            echo "  Created: $(basename "$target_file")"
-        else
-            echo "  Exists: $(basename "$target_file")"
-        fi
-    fi
+if ! copy_env_from_examples "$ENV_DEV_DIR"; then
+    echo "  No new env files created from examples."
+fi
+
+required_dev_files=(
+  "$ENV_DEV_DIR/api.env"
+  "$ENV_DEV_DIR/web.env"
+  "$ENV_DEV_DIR/postgres.env"
+)
+
+for file in "${required_dev_files[@]}"; do
+    require_nonempty_file "$file"
 done
 
 # Build Docker images
