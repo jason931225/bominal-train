@@ -6,6 +6,7 @@ from typing import Annotated
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
@@ -48,6 +49,15 @@ PASSWORD_RESET_OTP_TTL_MINUTES = 10
 
 def _new_otp_code() -> str:
     return f"{secrets.randbelow(1_000_000):06d}"
+
+
+def _integrity_conflict_detail(exc: IntegrityError) -> str:
+    message = str(exc).lower()
+    if "display_name" in message:
+        return "Display name already registered"
+    if "email" in message:
+        return "Email already registered"
+    return "Account already exists"
 
 
 def _public_base_url() -> str:
@@ -220,7 +230,11 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
         role_id=user_role.id,
     )
     db.add(user)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_integrity_conflict_detail(exc)) from exc
 
     user_result = await db.execute(
         select(User).options(joinedload(User.role)).where(User.id == user.id)
@@ -418,7 +432,11 @@ async def update_account(
     for key, value in updates.items():
         setattr(current_user, key, value)
 
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_integrity_conflict_detail(exc)) from exc
     await db.refresh(current_user)
     return AuthResponse(user=user_to_out(current_user))
 

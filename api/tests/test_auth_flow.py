@@ -3,6 +3,7 @@ from uuid import uuid4
 
 import fakeredis.aioredis
 import pytest
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy import select
 
 from app.db.models import Secret, Session, Task, User
@@ -203,6 +204,66 @@ async def test_register_rejects_duplicate_email_and_display_name(client):
     )
     assert duplicate_display_name.status_code == 400
     assert duplicate_display_name.json()["detail"] == "Display name already registered"
+
+@pytest.mark.asyncio
+async def test_register_maps_integrity_error_to_conflict(client, monkeypatch):
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    real_commit = AsyncSession.commit
+
+    async def _boom(self: AsyncSession):  # type: ignore[no-untyped-def]
+        raise IntegrityError("insert", params={}, orig=Exception("unique constraint failed: users.email"))
+
+    monkeypatch.setattr(AsyncSession, "commit", _boom)
+    try:
+        res = await client.post(
+            "/api/auth/register",
+            json={"email": "race@example.com", "password": "SuperSecret123", "display_name": "Race User"},
+        )
+    finally:
+        monkeypatch.setattr(AsyncSession, "commit", real_commit)
+
+    assert res.status_code == 409
+    assert res.json()["detail"] == "Email already registered"
+
+
+@pytest.mark.asyncio
+async def test_account_update_maps_integrity_error_to_conflict(client, monkeypatch):
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    await client.post(
+        "/api/auth/register",
+        json={"email": "race-update@example.com", "password": "SuperSecret123", "display_name": "Race Update"},
+    )
+    login_res = await client.post(
+        "/api/auth/login",
+        json={"email": "race-update@example.com", "password": "SuperSecret123", "remember_me": False},
+    )
+    cookie = login_res.cookies.get("bominal_session")
+    assert cookie
+
+    real_commit = AsyncSession.commit
+
+    call_count = {"n": 0}
+
+    async def _boom(self: AsyncSession):  # type: ignore[no-untyped-def]
+        call_count["n"] += 1
+        if call_count["n"] >= 2:
+            raise IntegrityError("update", params={}, orig=Exception("unique constraint failed: users.display_name"))
+        return await real_commit(self)
+
+    monkeypatch.setattr(AsyncSession, "commit", _boom)
+    try:
+        res = await client.patch(
+            "/api/auth/account",
+            cookies={"bominal_session": cookie},
+            json={"display_name": "New Name", "current_password": "SuperSecret123"},
+        )
+    finally:
+        monkeypatch.setattr(AsyncSession, "commit", real_commit)
+
+    assert res.status_code == 409
+    assert res.json()["detail"] == "Display name already registered"
 
 
 @pytest.mark.asyncio
