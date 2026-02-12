@@ -4,8 +4,8 @@ This project supports separated dev/prod compose stacks with zero-downtime deplo
 
 ## Environments
 
-- Dev compose: `infra/docker-compose.yml`
-- Prod compose: `infra/docker-compose.prod.yml`
+- Dev compose: `infra/docker compose.yml`
+- Prod compose: `infra/docker compose.prod.yml`
 - Dev env files: `infra/env/dev/*`
 - Prod env files: `infra/env/prod/*.example` -> copy to real `.env` files
 
@@ -26,7 +26,7 @@ The deployment uses Docker Compose health checks and the `--wait` flag:
 
 ### Health Check Configuration
 
-Each service has a health check in `docker-compose.prod.yml`:
+Each service has a health check in `docker compose.prod.yml`:
 
 | Service  | Health Check | Start Period |
 |----------|--------------|--------------|
@@ -147,8 +147,8 @@ cat /opt/bominal/deployments/previous
 
 # Checkout and redeploy
 sudo -u bominal git checkout <commit>
-sudo docker compose -f infra/docker-compose.prod.yml build api web
-sudo docker compose -f infra/docker-compose.prod.yml up -d --wait
+sudo docker compose -f infra/docker compose.prod.yml build api web
+sudo docker compose -f infra/docker compose.prod.yml up -d --wait
 ```
 
 ### Database Migration Rollback
@@ -157,15 +157,15 @@ If a migration was applied and needs reverting:
 
 ```bash
 # 1. Check current migration state
-sudo docker compose -f infra/docker-compose.prod.yml exec api alembic current
+sudo docker compose -f infra/docker compose.prod.yml exec api alembic current
 
 # 2. Downgrade to specific revision
-sudo docker compose -f infra/docker-compose.prod.yml exec api alembic downgrade <revision>
+sudo docker compose -f infra/docker compose.prod.yml exec api alembic downgrade <revision>
 
 # 3. Checkout old code and redeploy
 sudo -u bominal git checkout <commit>
-sudo docker compose -f infra/docker-compose.prod.yml build api
-sudo docker compose -f infra/docker-compose.prod.yml up -d --wait api worker
+sudo docker compose -f infra/docker compose.prod.yml build api
+sudo docker compose -f infra/docker compose.prod.yml up -d --wait api worker
 ```
 
 ### Version Tracking
@@ -217,7 +217,7 @@ bash infra/scripts/predeploy-check.sh
 Optional manual pre-migration duplicate check:
 
 ```bash
-docker compose -f infra/docker-compose.prod.yml run --rm api python scripts/check_duplicate_display_names.py
+docker compose -f infra/docker compose.prod.yml run --rm api python scripts/check_duplicate_display_names.py
 ```
 
 ### 4) Initial Deploy
@@ -294,7 +294,7 @@ This will:
 
 ```bash
 curl -sS https://www.bominal.com/health
-docker compose -f infra/docker-compose.prod.yml logs --tail=50
+docker compose -f infra/docker compose.prod.yml logs --tail=50
 ```
 
 ---
@@ -328,7 +328,7 @@ curl -sI https://www.bominal.com/
 
 ```bash
 # Follow logs during deployment
-sudo docker compose -f infra/docker-compose.prod.yml logs -f --tail=50 api web
+sudo docker compose -f infra/docker compose.prod.yml logs -f --tail=50 api web
 ```
 
 ---
@@ -351,7 +351,7 @@ If deployment hangs waiting for a container to become healthy:
 
 3. Force restart if needed:
    ```bash
-   docker compose -f infra/docker-compose.prod.yml restart api
+   docker compose -f infra/docker compose.prod.yml restart api
    ```
 
 ### Container Starts but Unhealthy
@@ -443,7 +443,7 @@ Configure domain + ACME contact in `infra/env/prod/caddy.env`:
 
 2. **Never modify these files** without explicit user approval:
    - `infra/scripts/deploy-zero-downtime.sh`
-   - `infra/docker-compose.prod.yml` (health checks section)
+   - `infra/docker compose.prod.yml` (health checks section)
    - `/opt/bominal/deployments/*` (version tracking)
 
 3. **Preserve version history** - the deployment system tracks:
@@ -452,7 +452,7 @@ Configure domain + ACME contact in `infra/env/prod/caddy.env`:
 
 4. **Test changes locally first** when possible:
    ```bash
-   docker compose -f infra/docker-compose.yml up --build
+   docker compose -f infra/docker compose.yml up --build
    ```
 
 5. **Always verify after deploy**:
@@ -473,8 +473,8 @@ sudo -u bominal /opt/bominal/repo/infra/scripts/deploy-zero-downtime.sh --rollba
 cd /opt/bominal/repo
 cat /opt/bominal/deployments/previous  # Get previous commit
 sudo -u bominal git checkout <commit>
-sudo docker compose -f infra/docker-compose.prod.yml build api web
-sudo docker compose -f infra/docker-compose.prod.yml up -d --wait
+sudo docker compose -f infra/docker compose.prod.yml build api web
+sudo docker compose -f infra/docker compose.prod.yml up -d --wait
 ```
 
 ### What Triggers Downtime

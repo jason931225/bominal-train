@@ -6,26 +6,26 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+source "$SCRIPT_DIR/lib/env_utils.sh"
 
 cd "$REPO_ROOT"
 
 echo "=== Starting bominal development environment ==="
 
-# Detect docker compose command (v2 plugin preferred)
-if docker compose version >/dev/null 2>&1; then
-    COMPOSE_CMD=(docker compose)
-elif command -v docker-compose >/dev/null 2>&1; then
-    COMPOSE_CMD=(docker-compose)
-else
-    echo "Error: docker compose (v2) or docker-compose (v1) is required"
-    exit 1
-fi
+detect_compose_cmd
 
 # Check if setup has been run
-if [[ ! -f "infra/env/dev/api.env" ]]; then
-    echo "Error: Environment files not found. Run ./infra/scripts/local-setup.sh first."
+required_dev_files=(
+  "infra/env/dev/api.env"
+  "infra/env/dev/web.env"
+  "infra/env/dev/postgres.env"
+)
+for file in "${required_dev_files[@]}"; do
+  if ! require_nonempty_file "$file"; then
+    echo "Error: environment setup incomplete. Run ./infra/scripts/local-setup.sh first."
     exit 1
-fi
+  fi
+done
 
 # Start services
 echo "→ Starting Docker Compose services..."

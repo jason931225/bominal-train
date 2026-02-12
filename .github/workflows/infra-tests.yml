@@ -5,10 +5,14 @@ on:
     branches: [main]
     paths:
       - "infra/**"
+      - "docs/**"
+      - "AGENTS.md"
       - ".github/workflows/infra-tests.yml"
   pull_request:
     paths:
       - "infra/**"
+      - "docs/**"
+      - "AGENTS.md"
       - ".github/workflows/infra-tests.yml"
 
 permissions:
@@ -28,3 +32,26 @@ jobs:
         run: |
           python3 -m unittest discover -s infra/tests -p 'test_*.py'
 
+      - name: Validate docs pointer library
+        run: |
+          bash infra/tests/test_docs_pointers.sh
+
+      - name: Validate changelog structure
+        run: |
+          bash infra/tests/test_changelog.sh
+
+      - name: Validate env utility helpers
+        run: |
+          bash infra/tests/test_env_utils.sh
+
+      - name: Validate predeploy env checks
+        run: |
+          bash infra/tests/test_predeploy_check.sh
+
+      - name: Validate intent routing
+        run: |
+          bash infra/tests/test_intent_routing.sh
+
+      - name: Validate docs consistency
+        run: |
+          bash infra/tests/test_docs_consistency.sh

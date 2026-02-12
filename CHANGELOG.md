@@ -13,17 +13,22 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
-- `CHANGELOG.md` (Keep a Changelog format) to track notable changes.
+- [0d84ae8] Added commit-based changelog governance and CI validation (`infra/tests/test_changelog.sh`).
+- [0d84ae8] Added standardized documentation workflow and playbook system (`docs/DOCUMENTATION_WORKFLOW.md`, `docs/playbooks/*`).
+- [0d84ae8] Added daily operations/chores playbook for routine low-latency execution (`docs/playbooks/daily-operations-chores.md`).
+- [0d84ae8] Added `docs/PERMISSIONS.md` and integrated permission protocol into docs/governance pointers.
+- [0d84ae8] Added new module/feature workflow playbook (`docs/playbooks/new-module-feature-workflow.md`).
+- [0d84ae8] Added `docs/GUARDRAILS.md` as hard constraints separate from permission policy.
+- [0d84ae8] Added `docs/INTENT_ROUTING.md` and CI validator `infra/tests/test_intent_routing.sh` for keyword-to-pointer routing.
+- [0d84ae8] Consolidated backend markdown TODO into `docs/todo/backend-production-readiness.md`.
 
 ### Changed
 
-- `README.md` was tightened:
-  - Add `CHANGELOG.md` to the documentation pack.
-  - Clarify local vs production compose commands and deployment pointers.
-  - Document admin-only OpenAPI routes (`/api/docs`, `/api/openapi.json`).
-  - Expand the auth endpoint list to include the public stub routes.
-  - Correct account update docs: `current_password` is required for changing
-    `email` / `new_password`, but not for all profile fields.
+- [0d84ae8] Enforced changelog requirements in governance docs (`AGENTS.md`, `docs/EXECUTION_PROTOCOL.md`).
+- [0d84ae8] Added `CHANGELOG.md` to canonical pointers in `docs/README.md` and required-pointer validation.
+- [0d84ae8] Extended daily chores playbook with token-saving search/navigation operations (`rg --files`, scoped `rg -n`, pointer-first reads).
+- [0d84ae8] Aligned governance docs to current canonical deploy script (`infra/scripts/deploy-zero-downtime.sh`) and removed active references to `fetch_ci.sh`/`deploy.prod.sh`.
+- [0d84ae8] Standardized compose command examples to `docker compose` in high-traffic docs and added `infra/tests/test_docs_consistency.sh`.
 
 ## 0.1.0 - 2026-02-08
 
