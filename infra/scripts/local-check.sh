@@ -32,12 +32,12 @@ fi
 
 print_logs() {
   echo ""
-  echo "=== Recent docker compose logs (api/worker/web) ==="
-  "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" logs --tail=200 api worker web 2>/dev/null || true
+  echo "=== Recent docker compose logs (api/worker/worker-restaurant/web) ==="
+  "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" logs --tail=200 api worker worker-restaurant web 2>/dev/null || true
   echo ""
   echo "Hint: run:"
   echo "  ${COMPOSE_CMD[*]} -f $COMPOSE_FILE ps"
-  echo "  ${COMPOSE_CMD[*]} -f $COMPOSE_FILE logs -f api worker web"
+  echo "  ${COMPOSE_CMD[*]} -f $COMPOSE_FILE logs -f api worker worker-restaurant web"
 }
 
 cleanup() {
@@ -111,4 +111,3 @@ fi
 
 echo ""
 echo "=== Local check PASSED ==="
-

@@ -6,7 +6,9 @@ Bominal is a modular monorepo with three runtime tiers:
 
 1. **Web** (`web/`): Next.js App Router UI, server-rendered pages + client components
 2. **API** (`api/`): FastAPI REST backend with session auth
-3. **Worker** (`api/app/worker.py`): async background processing for train tasks and email jobs
+3. **Workers**:
+   - `api/app/worker_train.py` -> train-task + queued email execution
+   - `api/app/worker_restaurant.py` -> restaurant queue-domain execution scaffold
 
 Shared infrastructure:
 

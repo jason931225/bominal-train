@@ -90,9 +90,9 @@ restart_all() {
   log_info "Starting API service..."
   "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait --no-deps api
   
-  # Start worker
-  log_info "Starting Worker service..."
-  "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait --no-deps worker
+  # Start workers
+  log_info "Starting Worker services..."
+  "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait --no-deps worker worker-restaurant
   
   # Start web
   log_info "Starting Web service..."
@@ -154,13 +154,14 @@ main() {
       echo ""
       echo "Commands:"
       echo "  (no args)    Restart all containers in order"
-      echo "  <service>    Restart specific service (api, web, worker, etc.)"
+      echo "  <service>    Restart specific service (api, web, worker, worker-restaurant, etc.)"
       echo "  --status     Show current container status"
       echo ""
       echo "Examples:"
       echo "  $0           # Restart everything after VM reboot"
       echo "  $0 api       # Restart just the API container"
-      echo "  $0 worker    # Restart just the worker container"
+      echo "  $0 worker    # Restart train worker container"
+      echo "  $0 worker-restaurant  # Restart restaurant worker container"
       exit 0
       ;;
     "")

@@ -39,7 +39,7 @@ Check VM stack:
 
 ```bash
 docker compose -f infra/docker compose.prod.yml ps
-docker compose -f infra/docker compose.prod.yml logs -f caddy api worker web
+docker compose -f infra/docker compose.prod.yml logs -f caddy api worker worker-restaurant web
 ```
 
 ### Docker (local simulation)
@@ -88,14 +88,14 @@ Container status/logs:
 
 ```bash
 docker compose -f infra/docker compose.yml ps
-docker compose -f infra/docker compose.yml logs -f api worker web
+docker compose -f infra/docker compose.yml logs -f api worker worker-restaurant web
 ```
 
 Production status/logs:
 
 ```bash
 docker compose -f infra/docker compose.prod.yml ps
-docker compose -f infra/docker compose.prod.yml logs -f caddy api worker web
+docker compose -f infra/docker compose.prod.yml logs -f caddy api worker worker-restaurant web
 ```
 
 Live system monitor (production):
@@ -147,7 +147,7 @@ docker compose -f infra/docker compose.yml exec postgres \
 Checklist:
 
 1. `docker compose -f infra/docker compose.prod.yml ps`
-2. `docker compose -f infra/docker compose.prod.yml logs --tail=200 caddy api worker web`
+2. `docker compose -f infra/docker compose.prod.yml logs --tail=200 caddy api worker worker-restaurant web`
 3. Verify env files exist:
    - `infra/env/prod/postgres.env`
    - `infra/env/prod/api.env`
@@ -253,7 +253,7 @@ docker compose -f infra/docker compose.yml exec api alembic upgrade head
 If stack already running after pulling migrations:
 
 ```bash
-docker compose -f infra/docker compose.yml restart api worker
+docker compose -f infra/docker compose.yml restart api worker worker-restaurant
 ```
 
 ## 6) API crash loop on startup (ImportError)

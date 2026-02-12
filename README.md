@@ -4,7 +4,8 @@ bominal is a modular product foundation with:
 
 - `web/`: Next.js App Router + TypeScript + Tailwind + Zod
 - `api/`: FastAPI + Postgres + Alembic + session auth
-- `worker`: arq background worker for async Train Tasks
+- `worker`: arq train worker for async Train Tasks + queued email jobs
+- `worker-restaurant`: arq restaurant worker (isolated queue domain scaffold)
 - `redis`: queue + provider rate limiting
 - `third_party/srtgo`: read-only provider behavior reference (submodule)
 
@@ -50,7 +51,8 @@ Services started by compose:
 - postgres: `localhost:5432`
 - redis: `localhost:6379`
 - mailpit (dev inbox): `http://localhost:8025` (SMTP on `localhost:1025`)
-- worker: consumes queued Train Tasks
+- worker: consumes queued Train Tasks + queued email jobs
+- worker-restaurant: reserved for restaurant queue-domain execution
 
 One-command local verification (starts stack, waits for health, runs backend tests + web typecheck):
 
@@ -64,12 +66,12 @@ Optional cleanup after checks:
 ./infra/scripts/local-check.sh --down
 ```
 
-If you pull new backend migrations while containers are already running, restart API/worker once:
+If you pull new backend migrations while containers are already running, restart API/workers once:
 
 ```bash
-docker compose -f infra/docker compose.yml restart api worker
+docker compose -f infra/docker compose.yml restart api worker worker-restaurant
 # or (Compose v1):
-docker compose -f infra/docker compose.yml restart api worker
+docker compose -f infra/docker compose.yml restart api worker worker-restaurant
 ```
 
 ## Production (manual bootstrap)
@@ -326,7 +328,7 @@ docker compose -f infra/docker compose.yml exec web npx tsc --noEmit
 curl -sS http://localhost:8000/health
 curl -sS -I http://localhost:3000
 curl -sS -I http://localhost
-docker compose -f infra/docker compose.prod.yml logs --tail=100 caddy api worker web
+docker compose -f infra/docker compose.prod.yml logs --tail=100 caddy api worker worker-restaurant web
 ```
 
 Duplicate display name pre-migration check (optional manual run):
