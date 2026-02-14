@@ -85,6 +85,9 @@ class Settings(BaseSettings):
         default=3600,
         alias="TRAIN_CREDENTIAL_CACHE_SECONDS",
     )
+    restaurant_auth_refresh_retries: int = Field(default=2, alias="RESTAURANT_AUTH_REFRESH_RETRIES")
+    restaurant_payment_lease_ttl_seconds: int = Field(default=120, alias="RESTAURANT_PAYMENT_LEASE_TTL_SECONDS")
+    restaurant_bootstrap_timeout_seconds: float = Field(default=20.0, alias="RESTAURANT_BOOTSTRAP_TIMEOUT_SECONDS")
     payment_cvv_ttl_seconds: int = Field(default=3600, alias="PAYMENT_CVV_TTL_SECONDS")
 
     email_provider: str = Field(default="smtp", alias="EMAIL_PROVIDER")
