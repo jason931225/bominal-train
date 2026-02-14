@@ -13,7 +13,7 @@ Rules:
 ## Current Entries
 
 ### LOCK-2026-02-14-STAGE8
-- status: ACTIVE
+- status: RELEASED
 - owner_session: Codex Session
 - scope:
   - `docs/**`
@@ -22,7 +22,7 @@ Rules:
   - `CHANGELOG.md`
 - reason: Stage 8 program closure and archival hygiene implementation
 - created_at_utc: 2026-02-14T20:09:47Z
-- released_at_utc:
+- released_at_utc: 2026-02-14T20:17:48Z
 
 ## Template (Non-live Example)
 
