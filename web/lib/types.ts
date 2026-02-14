@@ -24,6 +24,8 @@ export type BominalModule = {
   slug: string;
   name: string;
   coming_soon: boolean;
+  enabled: boolean;
+  capabilities: string[];
 };
 
 export type ModulesResponse = {

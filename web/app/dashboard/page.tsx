@@ -10,9 +10,22 @@ import { requireUser } from "@/lib/server-auth";
 import type { BominalModule, ModulesResponse } from "@/lib/types";
 
 const FALLBACK_MODULES: BominalModule[] = [
-  { slug: "train", name: "Train", coming_soon: false },
-  { slug: "restaurant", name: "Restaurant", coming_soon: true },
-  { slug: "calendar", name: "Calendar", coming_soon: true },
+  {
+    slug: "train",
+    name: "Train",
+    coming_soon: false,
+    enabled: true,
+    capabilities: [
+      "train.search",
+      "train.tasks.create",
+      "train.tasks.control",
+      "train.credentials.manage",
+      "train.tickets.manage",
+      "wallet.payment_card",
+    ],
+  },
+  { slug: "restaurant", name: "Restaurant", coming_soon: true, enabled: false, capabilities: [] },
+  { slug: "calendar", name: "Calendar", coming_soon: true, enabled: false, capabilities: [] },
 ];
 
 async function getModules() {

@@ -10,7 +10,34 @@ type ProviderBadge = {
   muted?: boolean;
 };
 
+const CAPABILITY_LABELS: Record<string, string> = {
+  "train.search": "Search",
+  "train.tasks.create": "Create Tasks",
+  "train.tasks.control": "Control Tasks",
+  "train.credentials.manage": "Credentials",
+  "train.tickets.manage": "Tickets",
+  "wallet.payment_card": "Payment Card",
+};
+
+function capabilityLabel(capability: string): string {
+  const known = CAPABILITY_LABELS[capability];
+  if (known) {
+    return known;
+  }
+
+  const tail = capability.split(".").pop() ?? capability;
+  return tail
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
 function providerBadgesForModule(module: BominalModule): ProviderBadge[] {
+  if (module.capabilities.length > 0) {
+    return module.capabilities.map((capability) => ({
+      label: capabilityLabel(capability),
+      muted: module.coming_soon || !module.enabled,
+    }));
+  }
   if (module.slug === "train") {
     return [{ label: "KTX" }, { label: "SRT" }];
   }
