@@ -39,6 +39,8 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - [bbc1f8f] Renamed canonical deploy entrypoint to `infra/scripts/deploy.sh` and aligned governance/docs/script references.
 - [c71f46b] Updated architecture docs for queue-domain contracts, module capabilities, and restaurant policy scaffold.
 - [d2dabfa] Centralized compose detection/file-resolution helpers in `infra/scripts/lib/env_utils.sh` and aligned wrapper scripts.
+- [a04acce] Applied additional idiomatic shell improvements to wrapper scripts and shared env helper usage.
+- [10ce9af] Renamed deploy regression shell tests to match `deploy.sh` naming and updated Stage 5 plan/status references.
 
 ### Removed
 
