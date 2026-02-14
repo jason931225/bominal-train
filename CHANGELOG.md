@@ -25,6 +25,8 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - [1d61909] Added explicit queue-domain constants and restaurant queue producer contract (`api/app/core/queue_domains.py`, `api/app/modules/restaurant/queue.py`).
 - [1842ca3] Added module capability metadata contract for staged module exposure (`api/app/http/routes/modules.py`, `api/tests/test_modules_api.py`).
 - [5dc90c6] Added restaurant policy scaffold helpers for auth fallback and payment lease behavior (`api/app/modules/restaurant/policy.py`, `api/app/modules/restaurant/lease.py`, `api/app/modules/restaurant/types.py`).
+- [8199f85] Added canonical deprecation workflow policy and machine registry (`docs/DEPRECATION_WORKFLOW.md`, `docs/deprecations/registry.json`).
+- [da12731] Added registry-driven deprecation guard and policy validation tests (`infra/scripts/deprecation_guard.py`, `infra/tests/test_deprecation_policy.sh`).
 
 ### Changed
 
@@ -41,6 +43,8 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - [d2dabfa] Centralized compose detection/file-resolution helpers in `infra/scripts/lib/env_utils.sh` and aligned wrapper scripts.
 - [a04acce] Applied additional idiomatic shell improvements to wrapper scripts and shared env helper usage.
 - [10ce9af] Renamed deploy regression shell tests to match `deploy.sh` naming and updated Stage 5 plan/status references.
+- [da12731] Enforced blocking deprecation checks in CI and deploy-preflight flow (`.github/workflows/infra-tests.yml`, `.github/workflows/deploy.yml`, `infra/scripts/predeploy-check.sh`).
+- [8199f85] Standardized docs/governance routing and pointer coverage for deprecation lifecycle handling (`docs/README.md`, `docs/INTENT_ROUTING.md`, `infra/tests/test_docs_pointers.sh`).
 
 ### Removed
 
