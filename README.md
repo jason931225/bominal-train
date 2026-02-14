@@ -194,7 +194,7 @@ All endpoints require authenticated session cookie.
 - `POST /api/train/credentials/srt/signout`
 - `POST /api/train/search`
 - `POST /api/train/tasks`
-- `GET /api/train/tasks?status=active|completed|all`
+- `GET /api/train/tasks?status=active|completed|all&limit=1..500&refresh_completed=true|false`
 - `GET /api/train/tasks/{id}`
 - `POST /api/train/tasks/{id}/pause`
 - `POST /api/train/tasks/{id}/resume`
