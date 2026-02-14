@@ -5,6 +5,8 @@ class ModuleOut(BaseModel):
     slug: str
     name: str
     coming_soon: bool
+    enabled: bool
+    capabilities: list[str]
 
 
 class ModuleListResponse(BaseModel):
