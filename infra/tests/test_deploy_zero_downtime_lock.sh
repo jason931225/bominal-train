@@ -47,7 +47,13 @@ PATH="$TMP_DIR/bin:$PATH" \
   bash "$SCRIPT" --status >"$FIRST_OUT" 2>&1 &
 first_pid=$!
 
-sleep 0.3
+# Wait until first invocation has created its lock marker.
+for _ in $(seq 1 40); do
+  if [[ -d "${LOCK_FILE}.d" || -f "$LOCK_FILE" ]]; then
+    break
+  fi
+  sleep 0.05
+done
 
 set +e
 PATH="$TMP_DIR/bin:$PATH" \
