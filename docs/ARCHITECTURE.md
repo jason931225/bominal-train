@@ -95,6 +95,11 @@ Train request path:
    - `artifacts` (ticket/receipt safe metadata)
    - task state transitions
 
+Task list performance controls:
+
+- `/api/train/tasks` supports bounded list reads via `limit` query (`1..500`, default `200`).
+- Latest attempt/ticket summary rows are selected using per-task latest-row ranking queries (window-function strategy) instead of loading full per-task histories in list view.
+
 Provider integration:
 
 - Interface in `api/app/modules/train/providers/base.py`

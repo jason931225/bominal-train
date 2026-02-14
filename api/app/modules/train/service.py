@@ -853,36 +853,60 @@ async def _latest_attempt_map(db: AsyncSession, task_ids: list[UUID]) -> dict[UU
     if not task_ids:
         return {}
 
+    ranked_attempts = (
+        select(
+            TaskAttempt.id.label("attempt_id"),
+            TaskAttempt.task_id.label("task_id"),
+            func.row_number()
+            .over(
+                partition_by=TaskAttempt.task_id,
+                order_by=(TaskAttempt.finished_at.desc(), TaskAttempt.id.desc()),
+            )
+            .label("attempt_rank"),
+        )
+        .where(TaskAttempt.task_id.in_(task_ids))
+        .subquery()
+    )
+
     stmt = (
         select(TaskAttempt)
-        .where(TaskAttempt.task_id.in_(task_ids))
-        .order_by(TaskAttempt.task_id.asc(), TaskAttempt.finished_at.desc())
+        .join(ranked_attempts, TaskAttempt.id == ranked_attempts.c.attempt_id)
+        .where(ranked_attempts.c.attempt_rank == 1)
     )
     attempts = (await db.execute(stmt)).scalars().all()
-    latest: dict[UUID, TaskAttempt] = {}
-    for attempt in attempts:
-        latest.setdefault(attempt.task_id, attempt)
-    return latest
+    return {attempt.task_id: attempt for attempt in attempts}
 
 
 async def _latest_ticket_artifact_map(db: AsyncSession, task_ids: list[UUID]) -> dict[UUID, Artifact]:
     if not task_ids:
         return {}
 
-    stmt = (
-        select(Artifact)
+    ranked_artifacts = (
+        select(
+            Artifact.id.label("artifact_id"),
+            Artifact.task_id.label("task_id"),
+            func.row_number()
+            .over(
+                partition_by=Artifact.task_id,
+                order_by=(Artifact.created_at.desc(), Artifact.id.desc()),
+            )
+            .label("artifact_rank"),
+        )
         .where(Artifact.task_id.in_(task_ids))
         .where(Artifact.kind == "ticket")
-        .order_by(Artifact.task_id.asc(), Artifact.created_at.desc())
+        .subquery()
+    )
+
+    stmt = (
+        select(Artifact)
+        .join(ranked_artifacts, Artifact.id == ranked_artifacts.c.artifact_id)
+        .where(ranked_artifacts.c.artifact_rank == 1)
     )
     artifacts = (await db.execute(stmt)).scalars().all()
-    latest: dict[UUID, Artifact] = {}
-    for artifact in artifacts:
-        latest.setdefault(artifact.task_id, artifact)
-    return latest
+    return {artifact.task_id: artifact for artifact in artifacts}
 
 
-def _task_list_stmt(user: User, status_filter: str) -> Select[tuple[Task]]:
+def _task_list_stmt(user: User, status_filter: str, *, limit: int) -> Select[tuple[Task]]:
     stmt = (
         select(Task)
         .where(Task.user_id == user.id)
@@ -909,7 +933,8 @@ def _task_list_stmt(user: User, status_filter: str) -> Select[tuple[Task]]:
             )
         )
 
-    return stmt.order_by(Task.created_at.desc())
+    bounded_limit = max(1, limit)
+    return stmt.order_by(Task.created_at.desc(), Task.id.desc()).limit(bounded_limit)
 
 
 def _is_terminal_task_expired_for_visibility(task: Task) -> bool:
@@ -929,9 +954,10 @@ async def list_tasks(
     *,
     user: User,
     status_filter: str,
+    limit: int = 200,
     refresh_completed: bool = False,
 ) -> TaskListResponse:
-    stmt = _task_list_stmt(user, status_filter)
+    stmt = _task_list_stmt(user, status_filter, limit=limit)
     tasks = (await db.execute(stmt)).scalars().all()
     now = utc_now()
 

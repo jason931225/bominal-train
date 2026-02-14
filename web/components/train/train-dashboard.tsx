@@ -42,6 +42,7 @@ type CredentialFormState = {
 };
 
 type CredentialProvider = "KTX" | "SRT";
+type TaskListStatus = "active" | "completed";
 
 const POLL_MS = 12000;
 const CREDENTIAL_STATUS_TIMEOUT_MS = 10000;
@@ -49,6 +50,8 @@ const DEFAULT_DEP_STATION = "수서";
 const DEFAULT_ARR_STATION = "마산";
 const TASK_LIST_ERROR_MESSAGE = "task_list_error";
 const SESSION_EXPIRED_MESSAGE = "session_expired";
+const ACTIVE_TASK_FETCH_LIMIT = 60;
+const COMPLETED_TASK_FETCH_LIMIT = 80;
 
 /**
  * Normalize Korean phone numbers to 11-digit format (e.g., 01012345678).
@@ -79,14 +82,6 @@ function normalizePhoneNumber(input: string): string {
   return trimmed;
 }
 
-const ACTIVE_TASK_STATES = new Set([
-  "QUEUED",
-  "RUNNING",
-  "POLLING",
-  "RESERVING",
-  "PAYING",
-  "PAUSED",
-]);
 const FIELD_BASE_CLASS = `mt-1 ${UI_FIELD}`;
 const PRIMARY_BUTTON_CLASS = UI_BUTTON_PRIMARY;
 const SMALL_BUTTON_CLASS = UI_BUTTON_OUTLINE_SM;
@@ -100,11 +95,15 @@ const EMPTY_CREDENTIAL_STATUS: TrainCredentialStatusResponse = {
   srt: { configured: false, verified: false, username: null, verified_at: null, detail: null },
 };
 
-async function fetchAllTasks(options?: { refreshCompleted?: boolean }) {
-  const query = new URLSearchParams({ status: "all" });
-  if (options?.refreshCompleted) {
+async function fetchTasksByStatus(
+  status: TaskListStatus,
+  options?: { refreshCompleted?: boolean; limit?: number },
+) {
+  const query = new URLSearchParams({ status });
+  if (status === "completed" && options?.refreshCompleted) {
     query.set("refresh_completed", "true");
   }
+  query.set("limit", String(options?.limit ?? (status === "active" ? ACTIVE_TASK_FETCH_LIMIT : COMPLETED_TASK_FETCH_LIMIT)));
 
   const response = await fetch(`${clientApiBaseUrl}/api/train/tasks?${query.toString()}`, {
     credentials: "include",
@@ -387,9 +386,13 @@ export function TrainDashboard() {
     if (tasksLoadInFlight.current) return;
     tasksLoadInFlight.current = true;
     try {
-      const allTasks = await fetchAllTasks(options);
-      const active = allTasks.filter((task) => ACTIVE_TASK_STATES.has(task.state));
-      const completed = allTasks.filter((task) => !ACTIVE_TASK_STATES.has(task.state));
+      const [active, completed] = await Promise.all([
+        fetchTasksByStatus("active", { limit: ACTIVE_TASK_FETCH_LIMIT }),
+        fetchTasksByStatus("completed", {
+          refreshCompleted: options?.refreshCompleted,
+          limit: COMPLETED_TASK_FETCH_LIMIT,
+        }),
+      ]);
       setActiveTasks(active);
       setCompletedTasks(completed);
       setErrorMessage((current) => {

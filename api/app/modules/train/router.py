@@ -140,6 +140,7 @@ async def create_train_task(
 async def list_train_tasks(
     status: str = Query(default="active", pattern=r"^(active|completed|all)$"),
     refresh_completed: bool = Query(default=False),
+    limit: int = Query(default=200, ge=1, le=500),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> TaskListResponse:
@@ -147,6 +148,7 @@ async def list_train_tasks(
         db,
         user=user,
         status_filter=status,
+        limit=limit,
         refresh_completed=refresh_completed,
     )
 
