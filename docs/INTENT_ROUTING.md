@@ -25,7 +25,7 @@ Use this before broad file reads. Resolve intent, then open only mapped canonica
 | `lock` / `request` / `conflict` | `docs/EXECUTION_PROTOCOL.md` | `docs/LOCK.md`, `docs/REQUEST.md` |
 | `resy` / `widget` / `form data` | `docs/playbooks/resy-widget-form-data-capture.md` | `docs/playbooks/new-module-feature-workflow.md` |
 | `new module` / `new feature` | `docs/playbooks/new-module-feature-workflow.md` | `docs/playbooks/daily-operations-chores.md` |
-| `plan` | `docs/plans/` relevant file | `docs/playbooks/new-module-feature-workflow.md` |
+| `plan` | `docs/plans/active/` relevant file | `docs/plans/active/2026-02-14-backlog-status-report.md`, `docs/playbooks/new-module-feature-workflow.md` |
 
 ## Search Chores (Token-Efficient)
 
