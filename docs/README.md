@@ -48,11 +48,20 @@ Pointer format convention (mandatory):
 - [PTR-DOCS-007] `docs/PERMISSIONS.md` - permission and approval protocol for code/docs/ops changes.
 - [PTR-DOCS-008] `docs/GUARDRAILS.md` - non-negotiable hard safety constraints.
 - [PTR-DOCS-009] `docs/INTENT_ROUTING.md` - keyword routing map for low-token document discovery.
+- [PTR-DOCS-010] `docs/plans/README.md` - active/archive planning lifecycle policy.
+- [PTR-DOCS-011] `docs/deprecations/2026-02-14-inventory.md` - deprecation inventory with owner/replacement/removal-gate tracking.
 
 ### Active implementation plans
 
-- [PTR-PLAN-001] `docs/plans/2026-02-11-bominal-grand-restructure-plan.md` - current top-level restructure plan.
+- [PTR-PLAN-001] `docs/plans/active/2026-02-11-bominal-grand-restructure-plan.md` - top-level restructure umbrella with stage plan links.
 - [PTR-PLAN-002] `docs/todo/backend-production-readiness.md` - backend production-readiness hardening backlog.
+- [PTR-PLAN-003] `docs/plans/active/2026-02-14-backlog-status-report.md` - current restructure/backlog implementation status report.
+- [PTR-PLAN-004] `docs/plans/active/2026-02-14-stage2-worker-split-queue-contracts.md` - executable Stage 2 queue-domain isolation plan.
+- [PTR-PLAN-005] `docs/plans/active/2026-02-14-stage3-restaurant-partial-exposure.md` - executable Stage 3 module capability exposure plan.
+- [PTR-PLAN-006] `docs/plans/active/2026-02-14-stage4-restaurant-policy-enforcement.md` - executable Stage 4 restaurant policy/lease enforcement plan.
+- [PTR-PLAN-007] `docs/plans/active/2026-02-14-stage5-infra-deploy-hardening.md` - executable Stage 5 deploy hardening plan.
+- [PTR-PLAN-008] `docs/plans/active/2026-02-14-stage6-safe-deprecation-cleanup.md` - executable Stage 6 deprecation cleanup plan.
+- [PTR-PLAN-009] `docs/plans/active/2026-02-14-stage7-docs-canonization.md` - executable Stage 7 docs canonization plan.
 
 ### Playbooks
 
