@@ -24,6 +24,16 @@ Rules:
 - created_at_utc: 2026-02-14T20:09:47Z
 - released_at_utc: 2026-02-14T20:17:48Z
 
+### LOCK-2026-02-14-STAGE9
+- status: ACTIVE
+- owner_session: Codex Session
+- scope:
+  - `docs/**`
+  - `CHANGELOG.md`
+- reason: Stage 9 performance improvement exploration and planning
+- created_at_utc: 2026-02-14T20:23:23Z
+- released_at_utc:
+
 ## Template (Non-live Example)
 
 ### LOCK-EXAMPLE-001
