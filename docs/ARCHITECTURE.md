@@ -16,6 +16,11 @@ Shared infrastructure:
 - **Redis** for queueing + token-bucket rate limiting
 - **Mailpit** in local dev (SMTP sink + inbox UI)
 
+Queue domain contracts:
+
+- `train:queue` is consumed by `worker` (`app.worker_train.WorkerTrainSettings`) for train tasks and queued email delivery jobs.
+- `restaurant:queue` is consumed by `worker-restaurant` (`app.worker_restaurant.WorkerRestaurantSettings`) for restaurant-domain jobs.
+
 ## Runtime topology (Docker Compose)
 
 - `infra/docker-compose.yml` (development): hot reload + bind mounts
@@ -57,6 +62,12 @@ Design system:
 - **Wallet**: shared payment card storage (module-agnostic)
 - **Notifications**: queued test email/status
 
+Module contract:
+
+- `/api/modules` returns `slug`, `name`, `coming_soon`, `enabled`, and `capabilities`.
+- Capability flags are backend-owned strings intended for progressive feature exposure.
+- Restaurant remains controlled exposure (`coming_soon=true`, `enabled=false`) until policy/runtime stages are completed.
+
 ### Auth model
 
 - Session cookies (`bominal_session`) are httpOnly, SameSite=Lax.
@@ -96,6 +107,14 @@ Provider integration:
   - `TRAIN_PROVIDER_MODE`: `mock` | `hybrid` | `real`
   - `TRAIN_PROVIDER_TRANSPORT`: `auto` | `curl_cffi` | `httpx`
 
+### Restaurant policy architecture (stage scaffold)
+
+- Restaurant worker policy enforces auth fallback sequence: refresh retries -> bootstrap -> fail.
+- Payment-step concurrency is guarded by Redis lease key:
+  - `provider + account_ref + restaurant_id`
+- Non-committing restaurant phases (for example search/availability) do not acquire payment lease.
+- Policy writes only safe attempt metadata (`meta_json_safe`) and avoids credential/token persistence.
+
 ## Data model highlights
 
 Main tables:
@@ -130,3 +149,4 @@ Data controls:
 - Provider outbound calls pass through Redis token-bucket limiter.
 - Completed task visibility is soft-delete style (`hidden_at`) for UX behavior.
 - Account deletion requires no outstanding worker tasks; it scrubs account/profile fields and marks tasks for 365-day removal.
+- Queue producers use explicit ARQ queue names to avoid cross-domain consumption regressions.
