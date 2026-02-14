@@ -21,6 +21,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - [0d84ae8] Added `docs/GUARDRAILS.md` as hard constraints separate from permission policy.
 - [0d84ae8] Added `docs/INTENT_ROUTING.md` and CI validator `infra/tests/test_intent_routing.sh` for keyword-to-pointer routing.
 - [0d84ae8] Consolidated backend markdown TODO into `docs/todo/backend-production-readiness.md`.
+- [5039127] Added deprecation inventory and guarded reference check (`docs/deprecations/2026-02-14-inventory.md`, `infra/tests/test_deprecation_references.sh`).
 
 ### Changed
 
@@ -30,10 +31,13 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - [0d84ae8] Aligned governance docs to current canonical deploy script (`infra/scripts/deploy-zero-downtime.sh`) and removed active references to `fetch_ci.sh`/`deploy.prod.sh`.
 - [0d84ae8] Standardized compose command examples to `docker compose` in high-traffic docs and added `infra/tests/test_docs_consistency.sh`.
 - [83e6d6c] Split worker entrypoints into train and restaurant runtime settings, and wired `worker-restaurant` service in dev/prod compose plus deploy/restart helpers.
+- [d9901c4] Hardened deploy runtime with script-level lock, running-stack detection, strict preflight resource gate, and smoke-failure auto-rollback controls.
+- [f5645f4] Canonized plan governance with active/archive lifecycle structure and stage-level status tracking under `docs/plans/active/`.
 
 ### Removed
 
 - [f3cbeda] Removed completed governance plan document (`docs/plans/2026-02-12-doc-governance-guardrails-grand-plan.md`).
+- [5039127] Removed deprecated deploy compose artifact (`infra/docker-compose.deploy.yml.deprecated`) after guarded dependency scan.
 
 ### Fixed
 
