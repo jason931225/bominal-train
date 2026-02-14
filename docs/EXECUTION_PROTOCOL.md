@@ -74,3 +74,5 @@ For each notable change in behavior, operations, interfaces, docs governance, or
 
 - Use `infra/scripts/deploy.sh` as the current canonical deployment script.
 - Deploy script must include running-container detection, resource/swap preflight, deploy lock, smoke checks, rollback path.
+- Deprecations must be registered in `docs/deprecations/registry.json` and follow `docs/DEPRECATION_WORKFLOW.md`.
+- Deploy preflight must enforce production deprecation deadlines before deploy mutation.

@@ -22,6 +22,7 @@ Use this before broad file reads. Resolve intent, then open only mapped canonica
 | `guardrail` / `safety` | `docs/GUARDRAILS.md` | `docs/PERMISSIONS.md` |
 | `deploy` | `docs/DEPLOYMENT.md` | `docs/RUNBOOK.md` |
 | `rollback` | `docs/DEPLOYMENT.md` | `docs/RUNBOOK.md` |
+| `deprecate` / `sunset` / `compatibility window` / `removal` | `docs/DEPRECATION_WORKFLOW.md` | `docs/deprecations/registry.json`, `docs/deprecations/2026-02-14-inventory.md` |
 | `lock` / `request` / `conflict` | `docs/EXECUTION_PROTOCOL.md` | `docs/LOCK.md`, `docs/REQUEST.md` |
 | `resy` / `widget` / `form data` | `docs/playbooks/resy-widget-form-data-capture.md` | `docs/playbooks/new-module-feature-workflow.md` |
 | `new module` / `new feature` | `docs/playbooks/new-module-feature-workflow.md` | `docs/playbooks/daily-operations-chores.md` |

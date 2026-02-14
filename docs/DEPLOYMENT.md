@@ -78,6 +78,13 @@ sudo -u bominal /opt/bominal/repo/infra/scripts/deploy.sh --status
 - Threshold knobs:
   - `DEPLOY_MIN_TOTAL_MEMORY_MB` (default `900`)
   - `DEPLOY_MIN_TOTAL_SWAP_MB` (default `900`)
+- Deprecation deploy gate is enforced during predeploy:
+  - registry: `docs/deprecations/registry.json`
+  - policy: `docs/DEPRECATION_WORKFLOW.md`
+  - guard command: `python3 infra/scripts/deprecation_guard.py enforce-deploy ...`
+  - host requirement: `python3` available on deploy VM
+- Emergency bypass (approval required):
+  - `PREDEPLOY_ALLOW_DEPRECATION_BYPASS=true`
 
 **CI Deploy (Recommended: Pub/Sub, no SSH)**
 
@@ -239,6 +246,12 @@ bash infra/scripts/predeploy-check.sh \
 ```
 
 `deploy.sh` runs this gate automatically before pull/deploy. Running it manually is still recommended for operator visibility.
+
+Deprecation gate behavior:
+- `predeploy-check.sh` validates the registry and enforces production deprecation deadlines.
+- Deploy fails if removed artifacts are still referenced or deadline-past production deprecations are unresolved.
+- Bypass is allowed only with explicit approval:
+  - `PREDEPLOY_ALLOW_DEPRECATION_BYPASS=true bash infra/scripts/predeploy-check.sh --skip-smoke-tests`
 
 Optional manual pre-migration duplicate check:
 
