@@ -25,7 +25,7 @@ Rules:
 - released_at_utc: 2026-02-14T20:17:48Z
 
 ### LOCK-2026-02-14-STAGE9
-- status: ACTIVE
+- status: RELEASED
 - owner_session: Codex Session
 - scope:
   - `api/**`
@@ -35,7 +35,7 @@ Rules:
   - `CHANGELOG.md`
 - reason: Stage 9 backend-first then frontend performance optimization implementation
 - created_at_utc: 2026-02-14T20:23:23Z
-- released_at_utc:
+- released_at_utc: 2026-02-14T20:54:52Z
 
 ## Template (Non-live Example)
 
