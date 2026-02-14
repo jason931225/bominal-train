@@ -68,9 +68,21 @@ EOF
   fi
 }
 
+test_resolve_compose_file_prefers_primary_and_falls_back() {
+  local repo_dir="$TMP_DIR/repo"
+  mkdir -p "$repo_dir/infra"
+  touch "$repo_dir/infra/docker-compose.yml"
+
+  assert_eq "$(resolve_compose_file "$repo_dir")" "$repo_dir/infra/docker-compose.yml" "fallback compose file resolution"
+
+  touch "$repo_dir/infra/docker-compose.prod.yml"
+  assert_eq "$(resolve_compose_file "$repo_dir")" "$repo_dir/infra/docker-compose.prod.yml" "primary compose file resolution"
+}
+
 test_env_key_value_parses_trimmed_values
 test_copy_env_from_examples_creates_targets
 test_placeholder_detection_fails_on_change_me
 test_env_key_required_nonempty
+test_resolve_compose_file_prefers_primary_and_falls_back
 
 echo "OK: env_utils tests passed."

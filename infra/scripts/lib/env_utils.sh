@@ -28,6 +28,32 @@ detect_compose_cmd() {
   return 1
 }
 
+resolve_compose_file() {
+  local repo_root="$1"
+  local primary_rel="${2:-infra/docker-compose.prod.yml}"
+  local fallback_rel="${3:-infra/docker-compose.yml}"
+  local primary_file="${repo_root}/${primary_rel}"
+  local fallback_file="${repo_root}/${fallback_rel}"
+
+  if [[ -f "$primary_file" ]]; then
+    echo "$primary_file"
+    return 0
+  fi
+  if [[ -f "$fallback_file" ]]; then
+    echo "$fallback_file"
+    return 0
+  fi
+
+  log_error "Cannot find compose file. Checked: $primary_file and $fallback_file"
+  return 1
+}
+
+compose_service_is_running() {
+  local compose_file="$1"
+  local service="$2"
+  "${COMPOSE_CMD[@]}" -f "$compose_file" ps --services --filter status=running 2>/dev/null | grep -Fxq "$service"
+}
+
 require_file() {
   local file="$1"
   if [[ ! -f "$file" ]]; then

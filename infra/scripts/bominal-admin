@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # bominal-admin - Wrapper script to run the bominal admin CLI
 #
 # Usage:
@@ -10,10 +10,11 @@
 # Run on production:
 #   /opt/bominal/repo/infra/scripts/bominal-admin user list
 
-set -e
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+source "$SCRIPT_DIR/lib/env_utils.sh"
 
 # Check if running inside container or on host
 if [ -f "/.dockerenv" ]; then
@@ -21,17 +22,12 @@ if [ -f "/.dockerenv" ]; then
     cd /app
     exec python -m app.admin_cli "$@"
 else
-    # On host - run via docker compose
-    COMPOSE_FILE="${REPO_ROOT}/infra/docker-compose.prod.yml"
-    
-    if [ ! -f "$COMPOSE_FILE" ]; then
-        COMPOSE_FILE="${REPO_ROOT}/infra/docker-compose.yml"
-    fi
-    
-    if [ ! -f "$COMPOSE_FILE" ]; then
-        echo "Error: Cannot find docker-compose file"
+    detect_compose_cmd
+    COMPOSE_FILE="$(resolve_compose_file "$REPO_ROOT")"
+    if ! compose_service_is_running "$COMPOSE_FILE" "api"; then
+        echo "Error: api service is not running for compose file: $COMPOSE_FILE"
+        echo "Start the stack before running bominal-admin."
         exit 1
     fi
-    
-    exec docker compose -f "$COMPOSE_FILE" exec -T api python -m app.admin_cli "$@"
+    exec "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" exec -T api python -m app.admin_cli "$@"
 fi

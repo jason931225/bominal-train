@@ -24,6 +24,8 @@ set -euo pipefail
 # Configuration
 REPO_DIR="${REPO_DIR:-/opt/bominal/repo}"
 COMPOSE_FILE="infra/docker-compose.prod.yml"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/lib/env_utils.sh"
 
 # Colors for output
 RED='\033[0;31m'
@@ -40,12 +42,7 @@ log_error() { echo -e "${RED}[ERROR]${NC} $*"; }
 # Ensure we're in the repo directory
 cd "$REPO_DIR"
 
-# Detect docker compose command
-if docker compose version >/dev/null 2>&1; then
-  COMPOSE_CMD=(docker compose)
-else
-  COMPOSE_CMD=(docker-compose)
-fi
+detect_compose_cmd
 
 # Show container status
 show_status() {
