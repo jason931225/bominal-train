@@ -27,6 +27,8 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - [5dc90c6] Added restaurant policy scaffold helpers for auth fallback and payment lease behavior (`api/app/modules/restaurant/policy.py`, `api/app/modules/restaurant/lease.py`, `api/app/modules/restaurant/types.py`).
 - [8199f85] Added canonical deprecation workflow policy and machine registry (`docs/DEPRECATION_WORKFLOW.md`, `docs/deprecations/registry.json`).
 - [da12731] Added registry-driven deprecation guard and policy validation tests (`infra/scripts/deprecation_guard.py`, `infra/tests/test_deprecation_policy.sh`).
+- [69fd34e] Added Stage 8 closure artifacts and active-plan state marker (`docs/plans/archive/2026-02-14-program-closure-report.md`, `docs/plans/archive/2026-02-14-stage8-program-closure-and-archival-hygiene.md`, `docs/plans/active/README.md`).
+- [69fd34e] Added ledger-template safety validator (`infra/tests/test_execution_ledgers.sh`).
 
 ### Changed
 
@@ -45,6 +47,8 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - [10ce9af] Renamed deploy regression shell tests to match `deploy.sh` naming and updated Stage 5 plan/status references.
 - [da12731] Enforced blocking deprecation checks in CI and deploy-preflight flow (`.github/workflows/infra-tests.yml`, `.github/workflows/deploy.yml`, `infra/scripts/predeploy-check.sh`).
 - [8199f85] Standardized docs/governance routing and pointer coverage for deprecation lifecycle handling (`docs/README.md`, `docs/INTENT_ROUTING.md`, `infra/tests/test_docs_pointers.sh`).
+- [69fd34e] Archived completed restructure stage plans from `docs/plans/active/` to `docs/plans/archive/` and synchronized plan routing/pointers for closure state.
+- [69fd34e] Normalized lock/request ledgers to separate live entries from non-live templates and enforced the rule in infra CI workflow (`docs/LOCK.md`, `docs/REQUEST.md`, `.github/workflows/infra-tests.yml`).
 
 ### Removed
 
