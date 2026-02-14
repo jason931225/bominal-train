@@ -9,6 +9,11 @@ This project supports separated dev/prod compose stacks with zero-downtime deplo
 - Dev env files: `infra/env/dev/*`
 - Prod env files: `infra/env/prod/*.example` -> copy to real `.env` files
 
+Compatibility notice:
+- `infra/docker-compose.deploy.yml.deprecated` is a deprecated legacy artifact.
+- Canonical replacement: `infra/docker-compose.prod.yml` + `infra/scripts/deploy-zero-downtime.sh`.
+- Removal condition/date: remove after caller scan and guard test pass (completed 2026-02-14).
+
 ---
 
 ## Zero-Downtime Deployment
@@ -17,12 +22,15 @@ This project supports separated dev/prod compose stacks with zero-downtime deplo
 
 The deployment uses Docker Compose health checks and the `--wait` flag:
 
-1. **Build Phase** - New images are built while old containers keep running (no downtime)
-2. **Deploy Phase** - Each service is deployed with `--wait`:
+1. **Preflight Phase** - Deploy lock + strict preflight checks run before image pull/deploy mutation.
+2. **Deploy Phase** - Script branches by runtime state:
+   - first deploy (no running stack): bootstrap-safe full `up -d --wait`
+   - running stack: rolling service updates with `--no-deps` per service
+3. **Verify Phase** - External health checks confirm the deployment:
    - Docker starts the new container
    - Health check runs repeatedly until container is healthy
    - Only after new container is healthy does Docker stop the old one
-3. **Verify Phase** - External health checks confirm the deployment
+4. **Failure Phase** - On smoke-check failure, script can auto-trigger rollback to previous deployment.
 
 ### Health Check Configuration
 
@@ -57,6 +65,19 @@ sudo -u bominal /opt/bominal/repo/infra/scripts/deploy-zero-downtime.sh abc123f
 # Check deployment status
 sudo -u bominal /opt/bominal/repo/infra/scripts/deploy-zero-downtime.sh --status
 ```
+
+### Deploy Script Safety Controls
+
+- Single-run deploy lock (default path: `/tmp/bominal-deploy.lock`) blocks concurrent invocations.
+- Strict preflight gate runs before pull/deploy:
+  - env-file + placeholder checks
+  - compose config validation
+  - resource profile threshold gate (memory/swap)
+- Smoke checks are retry-based and tunable (`SMOKE_MAX_ATTEMPTS`, `SMOKE_RETRY_DELAY_SECONDS`).
+- Auto rollback on smoke failure is enabled by default (`AUTO_ROLLBACK_ON_SMOKE_FAILURE=true`).
+- Threshold knobs:
+  - `DEPLOY_MIN_TOTAL_MEMORY_MB` (default `900`)
+  - `DEPLOY_MIN_TOTAL_SWAP_MB` (default `900`)
 
 **CI Deploy (Recommended: Pub/Sub, no SSH)**
 
@@ -212,8 +233,12 @@ openssl rand -base64 32
 ### 3) Run predeploy checks
 
 ```bash
-bash infra/scripts/predeploy-check.sh
+bash infra/scripts/predeploy-check.sh \
+  --min-total-memory-mb 900 \
+  --min-total-swap-mb 900
 ```
+
+`deploy-zero-downtime.sh` runs this gate automatically before pull/deploy. Running it manually is still recommended for operator visibility.
 
 Optional manual pre-migration duplicate check:
 
@@ -286,10 +311,10 @@ bash infra/scripts/deploy-zero-downtime.sh
 ```
 
 This will:
-1. Pull latest code
-2. Build all container images (takes ~5-10 min on e2-micro)
-3. Start services with health check verification
-4. Wait until all containers are healthy before completing
+1. Acquire deploy lock and run preflight gate
+2. Pull pre-built API/Web images from Artifact Registry
+3. Choose first-deploy bootstrap path or rolling-update path automatically
+4. Run smoke checks, then optionally auto-rollback if smoke verification fails
 
 ### 4) Verify
 
