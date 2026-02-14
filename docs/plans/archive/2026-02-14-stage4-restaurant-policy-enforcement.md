@@ -1,3 +1,6 @@
+> Archive note (2026-02-14): Completed and moved from `docs/plans/active/` during Stage 8 closure.
+> See `docs/plans/archive/2026-02-14-program-closure-report.md` for final status.
+
 # Stage 4 Restaurant Policy Enforcement Implementation Plan
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.

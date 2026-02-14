@@ -8,19 +8,11 @@ Rules:
 - Re-check this file before writing and before each commit.
 - Release lock after stage completion.
 - Commit lock release separately.
+- Template/example entries must never use live statuses.
 
-Template:
+## Current Entries
 
-## LOCK-001
-- status: ACTIVE
-- owner_session: Session A
-- scope:
-  - `api/app/modules/restaurant/**`
-- reason: <task/stage reason>
-- created_at_utc: <YYYY-MM-DDTHH:MM:SSZ>
-- released_at_utc:
-
-## LOCK-2026-02-14-STAGE8
+### LOCK-2026-02-14-STAGE8
 - status: ACTIVE
 - owner_session: Codex Session
 - scope:
@@ -30,4 +22,15 @@ Template:
   - `CHANGELOG.md`
 - reason: Stage 8 program closure and archival hygiene implementation
 - created_at_utc: 2026-02-14T20:09:47Z
+- released_at_utc:
+
+## Template (Non-live Example)
+
+### LOCK-EXAMPLE-001
+- status: EXAMPLE_ACTIVE
+- owner_session: Session X
+- scope:
+  - `path/**`
+- reason: <task/stage reason>
+- created_at_utc: <YYYY-MM-DDTHH:MM:SSZ>
 - released_at_utc:

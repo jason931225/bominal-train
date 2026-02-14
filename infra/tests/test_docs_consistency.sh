@@ -9,8 +9,10 @@ DEPLOYMENT="$ROOT_DIR/docs/DEPLOYMENT.md"
 RUNBOOK="$ROOT_DIR/docs/RUNBOOK.md"
 README="$ROOT_DIR/README.md"
 DEPRECATION_WORKFLOW="$ROOT_DIR/docs/DEPRECATION_WORKFLOW.md"
+DOCS_INDEX="$ROOT_DIR/docs/README.md"
+INTENT_ROUTING="$ROOT_DIR/docs/INTENT_ROUTING.md"
 
-for f in "$AGENTS" "$EXEC_PROTOCOL" "$DEPLOYMENT" "$RUNBOOK" "$README" "$DEPRECATION_WORKFLOW"; do
+for f in "$AGENTS" "$EXEC_PROTOCOL" "$DEPLOYMENT" "$RUNBOOK" "$README" "$DEPRECATION_WORKFLOW" "$DOCS_INDEX" "$INTENT_ROUTING"; do
   if [[ ! -f "$f" ]]; then
     echo "ERROR: expected file missing: $f" >&2
     exit 1
@@ -49,5 +51,15 @@ for f in "$README" "$DEPLOYMENT" "$RUNBOOK" "$AGENTS"; do
     exit 1
   fi
 done
+
+if ! grep -Fq "docs/plans/archive/2026-02-14-program-closure-report.md" "$DOCS_INDEX"; then
+  echo "ERROR: docs/README.md must reference the Stage 8 closure report pointer" >&2
+  exit 1
+fi
+
+if ! grep -Fq "docs/plans/active/README.md" "$INTENT_ROUTING"; then
+  echo "ERROR: docs/INTENT_ROUTING.md must route plan intent to active plan state marker" >&2
+  exit 1
+fi
 
 echo "OK: docs consistency checks passed."

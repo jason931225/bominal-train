@@ -1,10 +1,13 @@
+> Archive note (2026-02-14): Completed and moved from `docs/plans/active/` during Stage 8 closure.
+> See `docs/plans/archive/2026-02-14-program-closure-report.md` for final status.
+
 # Backlog Status Report (2026-02-14)
 
 ## Scope
 
 This report covers active work status across:
 - `docs/todo/backend-production-readiness.md`
-- `docs/plans/active/2026-02-11-bominal-grand-restructure-plan.md`
+- `docs/plans/archive/2026-02-11-bominal-grand-restructure-plan.md`
 - archived plans under `docs/plans/archive/`
 
 ## Executive Status
@@ -18,7 +21,7 @@ This report covers active work status across:
 
 ### A) Backend production-readiness backlog (`docs/todo/backend-production-readiness.md`)
 
-Status: **Completed in implementation, pending archival hygiene**.
+Status: **Completed in implementation and archived/closed (2026-02-14).**
 
 Implemented evidence:
 - Worker shutdown cancellation hardening:
@@ -148,12 +151,12 @@ Implemented:
 
 ## Active Execution Plans (Created in this workstream)
 
-- `docs/plans/active/2026-02-14-stage2-worker-split-queue-contracts.md`
-- `docs/plans/active/2026-02-14-stage3-restaurant-partial-exposure.md`
-- `docs/plans/active/2026-02-14-stage4-restaurant-policy-enforcement.md`
-- `docs/plans/active/2026-02-14-stage5-infra-deploy-hardening.md`
-- `docs/plans/active/2026-02-14-stage6-safe-deprecation-cleanup.md`
-- `docs/plans/active/2026-02-14-stage7-docs-canonization.md`
+- `docs/plans/archive/2026-02-14-stage2-worker-split-queue-contracts.md`
+- `docs/plans/archive/2026-02-14-stage3-restaurant-partial-exposure.md`
+- `docs/plans/archive/2026-02-14-stage4-restaurant-policy-enforcement.md`
+- `docs/plans/archive/2026-02-14-stage5-infra-deploy-hardening.md`
+- `docs/plans/archive/2026-02-14-stage6-safe-deprecation-cleanup.md`
+- `docs/plans/archive/2026-02-14-stage7-docs-canonization.md`
 
 ## Assumptions
 

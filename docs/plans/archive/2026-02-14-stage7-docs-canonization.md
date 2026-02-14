@@ -1,3 +1,6 @@
+> Archive note (2026-02-14): Completed and moved from `docs/plans/active/` during Stage 8 closure.
+> See `docs/plans/archive/2026-02-14-program-closure-report.md` for final status.
+
 # Stage 7 Docs Canonization Implementation Plan
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
@@ -17,7 +20,7 @@ Status: Completed in implementation (2026-02-14).
 **Files:**
 - Modify: `docs/README.md`
 - Modify: `docs/INTENT_ROUTING.md`
-- Modify: `docs/plans/active/2026-02-14-backlog-status-report.md`
+- Modify: `docs/plans/archive/2026-02-14-backlog-status-report.md`
 
 **Step 1: Write failing pointer checks**
 
@@ -38,7 +41,7 @@ Expected: PASS.
 **Step 4: Commit**
 
 ```bash
-git add docs/README.md docs/INTENT_ROUTING.md docs/plans/active/2026-02-14-backlog-status-report.md
+git add docs/README.md docs/INTENT_ROUTING.md docs/plans/archive/2026-02-14-backlog-status-report.md
 git commit -m "docs: normalize active plan pointers and intent routing"
 ```
 
@@ -136,12 +139,12 @@ Expected: PASS.
 
 **Step 3: Record closure in backlog status report**
 
-Update `docs/plans/active/2026-02-14-backlog-status-report.md` stage statuses from partial to complete for docs canonization.
+Update `docs/plans/archive/2026-02-14-backlog-status-report.md` stage statuses from partial to complete for docs canonization.
 
 **Step 4: Commit**
 
 ```bash
-git add docs/plans/active/2026-02-14-backlog-status-report.md
+git add docs/plans/archive/2026-02-14-backlog-status-report.md
 git commit -m "docs: close stage-7 canonization status"
 ```
 

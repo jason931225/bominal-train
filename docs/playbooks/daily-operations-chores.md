@@ -41,6 +41,7 @@ Provide a deterministic, low-token workflow for routine engineering/ops tasks so
    - `git status --short`
 4. Run routine validations:
    - `bash infra/tests/test_docs_pointers.sh`
+   - `bash infra/tests/test_execution_ledgers.sh`
    - `bash infra/tests/test_changelog.sh`
    - `bash infra/tests/test_env_utils.sh`
    - `bash infra/tests/test_deprecation_policy.sh`
