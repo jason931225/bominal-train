@@ -17,7 +17,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 source "$SCRIPT_DIR/lib/env_utils.sh"
 
 # Check if running inside container or on host
-if [ -f "/.dockerenv" ]; then
+if [[ -f "/.dockerenv" ]]; then
     # Inside container
     cd /app
     exec python -m app.admin_cli "$@"

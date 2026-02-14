@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # Shared environment-file helpers for infra scripts.
-
-set -euo pipefail
+# Keep this file side-effect free when sourced.
 
 log_info() {
   echo "[INFO] $*"
@@ -144,11 +143,12 @@ require_env_key_nonempty() {
 require_no_env_placeholders() {
   local file="$1"
   local pattern="${2:-CHANGE_ME|REPLACE_ME|TODO|<no value>}"
+  local matches
 
   require_file "$file" || return 1
-  if grep -E -n "$pattern" "$file" >/tmp/bominal-env-placeholders.txt 2>/dev/null; then
+  if matches="$(grep -E -n "$pattern" "$file" 2>/dev/null)"; then
     log_error "Found unresolved placeholder values in ${file}:"
-    cat /tmp/bominal-env-placeholders.txt >&2
+    printf '%s\n' "$matches" >&2
     return 1
   fi
   return 0
