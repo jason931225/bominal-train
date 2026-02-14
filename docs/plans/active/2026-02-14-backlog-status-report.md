@@ -99,7 +99,7 @@ Implemented:
 Status: **Completed in implementation**.
 
 Implemented:
-- Rollback paths and digest-aware history tracking in `infra/scripts/deploy-zero-downtime.sh`.
+- Rollback paths and digest-aware history tracking in `infra/scripts/deploy.sh`.
 - Pub/Sub deploy agent pulls and executes deploy script.
 - Script-level deploy lock contract in deploy script (`flock` with deterministic fallback lock).
 - Running-container detection with explicit first-deploy bootstrap path vs rolling-update path.

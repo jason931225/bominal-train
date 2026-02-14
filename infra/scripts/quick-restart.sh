@@ -15,7 +15,7 @@
 #   - When containers crash but code hasn't changed
 #   - To apply env file changes without rebuild
 #
-# When NOT to use (use deploy-zero-downtime.sh instead):
+# When NOT to use (use deploy.sh instead):
 #   - When code has changed (need to rebuild images)
 #   - For production deployments
 # ==============================================================================

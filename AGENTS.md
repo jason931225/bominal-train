@@ -133,19 +133,19 @@ Use the current canonical script flow for production:
 
 ```bash
 # Deploy using the current production deploy script
-sudo -u bominal /opt/bominal/repo/infra/scripts/deploy-zero-downtime.sh
+sudo -u bominal /opt/bominal/repo/infra/scripts/deploy.sh
 ```
 
 Remote example:
 
 ```bash
 gcloud compute ssh bominal-deploy --zone=us-central1-a --tunnel-through-iap \
-  --command="cd /opt/bominal/repo && sudo -u bominal infra/scripts/deploy-zero-downtime.sh"
+  --command="cd /opt/bominal/repo && sudo -u bominal infra/scripts/deploy.sh"
 ```
 
 Requirements:
-- `deploy-zero-downtime.sh` must handle running-container detection.
-- `deploy-zero-downtime.sh` must run resource/swap preflight checks.
+- `deploy.sh` must handle running-container detection.
+- `deploy.sh` must run resource/swap preflight checks.
 - Health checks and rollback path must be enforced by script.
 
 **Never**:

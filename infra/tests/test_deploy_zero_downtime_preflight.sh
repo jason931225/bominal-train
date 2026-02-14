@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-SCRIPT="$ROOT_DIR/infra/scripts/deploy-zero-downtime.sh"
+SCRIPT="$ROOT_DIR/infra/scripts/deploy.sh"
 REAL_PREFLIGHT="$ROOT_DIR/infra/scripts/predeploy-check.sh"
 
 TMP_DIR="$(mktemp -d)"

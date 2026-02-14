@@ -72,5 +72,5 @@ For each notable change in behavior, operations, interfaces, docs governance, or
 
 ## Deployment policy
 
-- Use `infra/scripts/deploy-zero-downtime.sh` as the current canonical deployment script.
+- Use `infra/scripts/deploy.sh` as the current canonical deployment script.
 - Deploy script must include running-container detection, resource/swap preflight, deploy lock, smoke checks, rollback path.

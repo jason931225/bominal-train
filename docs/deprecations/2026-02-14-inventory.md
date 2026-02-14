@@ -6,10 +6,10 @@ This inventory tracks runtime artifacts under deprecation governance.
 
 - path: `infra/docker-compose.deploy.yml.deprecated`
 - owner: Infra / Deployment
-- reason deprecated: superseded by canonical production topology in `infra/docker-compose.prod.yml` and script-driven deploy flow in `infra/scripts/deploy-zero-downtime.sh`
+- reason deprecated: superseded by canonical production topology in `infra/docker-compose.prod.yml` and script-driven deploy flow in `infra/scripts/deploy.sh`
 - active replacement:
   - `infra/docker-compose.prod.yml`
-  - `infra/scripts/deploy-zero-downtime.sh`
+  - `infra/scripts/deploy.sh`
 - known callers:
   - no active runtime/script callers in repository automation
   - historical/manual operator usage only

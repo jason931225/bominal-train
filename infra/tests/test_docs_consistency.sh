@@ -17,7 +17,7 @@ for f in "$AGENTS" "$EXEC_PROTOCOL" "$DEPLOYMENT" "$RUNBOOK" "$README"; do
 done
 
 # Current canonical deployment script (temporary policy) must be consistent.
-canonical="infra/scripts/deploy-zero-downtime.sh"
+canonical="infra/scripts/deploy.sh"
 
 for f in "$AGENTS" "$EXEC_PROTOCOL" "$DEPLOYMENT" "$RUNBOOK" "$README"; do
   if ! grep -Fq "$canonical" "$f"; then

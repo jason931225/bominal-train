@@ -17,17 +17,17 @@ Deploy with zero-downtime (recommended):
 
 ```bash
 bominal-deploy
-# Or: sudo -u bominal /opt/bominal/repo/infra/scripts/deploy-zero-downtime.sh
+# Or: sudo -u bominal /opt/bominal/repo/infra/scripts/deploy.sh
 ```
 
 Rollback to previous deployment:
 
 ```bash
 bominal-deploy --rollback
-# Or: sudo -u bominal /opt/bominal/repo/infra/scripts/deploy-zero-downtime.sh --rollback
+# Or: sudo -u bominal /opt/bominal/repo/infra/scripts/deploy.sh --rollback
 ```
 
-Note: `deploy-zero-downtime.sh` pulls pre-built images (there is no `--skip-build` flag).
+Note: `deploy.sh` pulls pre-built images (there is no `--skip-build` flag).
 
 Deploy script guardrails:
 - Enforces single-run deploy lock (`DEPLOY_LOCK_FILE`, default `/tmp/bominal-deploy.lock`).
@@ -37,7 +37,7 @@ Deploy script guardrails:
 
 Compatibility notice:
 - `infra/docker-compose.deploy.yml.deprecated` is deprecated and removed from active operator workflow.
-- Use `infra/docker-compose.prod.yml` and `infra/scripts/deploy-zero-downtime.sh` exclusively.
+- Use `infra/docker-compose.prod.yml` and `infra/scripts/deploy.sh` exclusively.
 
 Quick restart after VM reset (no rebuild, existing images):
 
@@ -165,13 +165,13 @@ Checklist:
 4. Re-run deploy script:
 
 ```bash
-sudo -u bominal /opt/bominal/repo/infra/scripts/deploy-zero-downtime.sh
+sudo -u bominal /opt/bominal/repo/infra/scripts/deploy.sh
 ```
 
 Or rollback if previous deployment was stable:
 
 ```bash
-sudo -u bominal /opt/bominal/repo/infra/scripts/deploy-zero-downtime.sh --rollback
+sudo -u bominal /opt/bominal/repo/infra/scripts/deploy.sh --rollback
 ```
 
 ## 0.1) VM restart / GCE reset recovery
@@ -207,7 +207,7 @@ Symptoms:
 
 Checks:
 
-1. Confirm no duplicate deploy command is active (`ps -ef | grep deploy-zero-downtime.sh`).
+1. Confirm no duplicate deploy command is active (`ps -ef | grep deploy.sh`).
 2. Validate swap/memory on VM:
 
 ```bash

@@ -55,7 +55,7 @@ Provide a deterministic workflow for adding a new module or feature with permiss
 
 7. **Deploy consistency check**
    - Ensure docs and commands align to current canonical deploy path.
-   - Current canonical path: `infra/scripts/deploy-zero-downtime.sh` (until migration policy changes).
+   - Current canonical path: `infra/scripts/deploy.sh` (until migration policy changes).
 
 8. **Release lock**
    - Mark lock `RELEASED` in `docs/LOCK.md` and commit lock release.
