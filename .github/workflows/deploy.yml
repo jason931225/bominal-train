@@ -30,6 +30,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Validate deprecation gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash infra/tests/test_deprecation_policy.sh
+          bash infra/tests/test_deprecation_references.sh
+
       - name: Auth to Google Cloud (WIF)
         uses: google-github-actions/auth@v2
         with:

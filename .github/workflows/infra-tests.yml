@@ -44,6 +44,14 @@ jobs:
         run: |
           bash infra/tests/test_env_utils.sh
 
+      - name: Validate deprecation registry policy
+        run: |
+          bash infra/tests/test_deprecation_policy.sh
+
+      - name: Validate deprecation references
+        run: |
+          bash infra/tests/test_deprecation_references.sh
+
       - name: Validate predeploy env checks
         run: |
           bash infra/tests/test_predeploy_check.sh
