@@ -22,6 +22,9 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - [0d84ae8] Added `docs/INTENT_ROUTING.md` and CI validator `infra/tests/test_intent_routing.sh` for keyword-to-pointer routing.
 - [0d84ae8] Consolidated backend markdown TODO into `docs/todo/backend-production-readiness.md`.
 - [5039127] Added deprecation inventory and guarded reference check (`docs/deprecations/2026-02-14-inventory.md`, `infra/tests/test_deprecation_references.sh`).
+- [1d61909] Added explicit queue-domain constants and restaurant queue producer contract (`api/app/core/queue_domains.py`, `api/app/modules/restaurant/queue.py`).
+- [1842ca3] Added module capability metadata contract for staged module exposure (`api/app/http/routes/modules.py`, `api/tests/test_modules_api.py`).
+- [5dc90c6] Added restaurant policy scaffold helpers for auth fallback and payment lease behavior (`api/app/modules/restaurant/policy.py`, `api/app/modules/restaurant/lease.py`, `api/app/modules/restaurant/types.py`).
 
 ### Changed
 
@@ -33,6 +36,9 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - [83e6d6c] Split worker entrypoints into train and restaurant runtime settings, and wired `worker-restaurant` service in dev/prod compose plus deploy/restart helpers.
 - [d9901c4] Hardened deploy runtime with script-level lock, running-stack detection, strict preflight resource gate, and smoke-failure auto-rollback controls.
 - [f5645f4] Canonized plan governance with active/archive lifecycle structure and stage-level status tracking under `docs/plans/active/`.
+- [bbc1f8f] Renamed canonical deploy entrypoint to `infra/scripts/deploy.sh` and aligned governance/docs/script references.
+- [c71f46b] Updated architecture docs for queue-domain contracts, module capabilities, and restaurant policy scaffold.
+- [d2dabfa] Centralized compose detection/file-resolution helpers in `infra/scripts/lib/env_utils.sh` and aligned wrapper scripts.
 
 ### Removed
 
@@ -44,6 +50,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - [220d2c6] Ensured worker shutdown recovers in-flight tasks even when heartbeat cancellation raises `CancelledError`, with regression coverage in `api/tests/test_worker_shutdown_recovery.py`.
 - [b05ca4b] Converted commit-time auth uniqueness races to deterministic `409` conflicts in register/account update flows (`api/app/http/routes/auth.py`).
 - [b231d4c] Made auth rate-limit client IP extraction proxy-aware (`cf-connecting-ip` / `x-forwarded-for`) in `api/app/http/deps.py`.
+- [adb5da8] Stabilized deploy lock regression test to avoid startup race under fallback lock mode.
 
 ## 0.1.0 - 2026-02-08
 
