@@ -7,10 +7,10 @@
 # of the e2-micro VM to prevent OOM issues.
 #
 # Usage:
-#   ./deploy-zero-downtime.sh              # Deploy latest images
-#   ./deploy-zero-downtime.sh <commit>     # Deploy specific commit SHA
-#   ./deploy-zero-downtime.sh --rollback   # Rollback to previous deployment
-#   ./deploy-zero-downtime.sh --status     # Show deployment status
+#   ./deploy.sh              # Deploy latest images
+#   ./deploy.sh <commit>     # Deploy specific commit SHA
+#   ./deploy.sh --rollback   # Rollback to previous deployment
+#   ./deploy.sh --status     # Show deployment status
 #
 # Environment:
 #   GCP_PROJECT_ID   - Google Cloud project ID (required)

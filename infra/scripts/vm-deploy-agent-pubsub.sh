@@ -45,7 +45,7 @@ main() {
   require_env DEPLOY_SUBSCRIPTION
 
   local repo_dir="${REPO_DIR:-/opt/bominal/repo}"
-  local deploy_script="${DEPLOY_SCRIPT:-$repo_dir/infra/scripts/deploy-zero-downtime.sh}"
+  local deploy_script="${DEPLOY_SCRIPT:-$repo_dir/infra/scripts/deploy.sh}"
   local gcp_region="${GCP_REGION:-us-central1}"
   local sleep_seconds="${SLEEP_SECONDS:-5}"
   local lock_file="${LOCK_FILE:-/tmp/bominal-deploy.lock}"

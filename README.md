@@ -84,12 +84,12 @@ docker compose -f infra/docker compose.yml restart api worker worker-restaurant
 Production compose is separated in `infra/docker compose.prod.yml` (no bind mounts, no dev reload flags).
 
 For production deployments, prefer the zero-downtime procedure in `docs/DEPLOYMENT.md`
-(script: `infra/scripts/deploy-zero-downtime.sh`). The steps below cover initial
+(script: `infra/scripts/deploy.sh`). The steps below cover initial
 env-file bootstrap.
 
 Compatibility notice:
 - `infra/docker-compose.deploy.yml.deprecated` is deprecated and no longer part of the canonical deploy workflow.
-- Use `infra/docker-compose.prod.yml` with `infra/scripts/deploy-zero-downtime.sh`.
+- Use `infra/docker-compose.prod.yml` with `infra/scripts/deploy.sh`.
 - Removal gate: remove the deprecated compose artifact after no active callers remain (completed on 2026-02-14).
 
 1) Create prod env files from templates:
@@ -106,7 +106,7 @@ cp infra/env/prod/caddy.env.example infra/env/prod/caddy.env
 3) Deploy (recommended):
 
 ```bash
-bash infra/scripts/deploy-zero-downtime.sh
+bash infra/scripts/deploy.sh
 ```
 
 If you intentionally need a manual bring-up (not recommended for routine deploys),

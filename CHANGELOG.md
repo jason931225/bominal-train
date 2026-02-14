@@ -28,7 +28,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - [0d84ae8] Enforced changelog requirements in governance docs (`AGENTS.md`, `docs/EXECUTION_PROTOCOL.md`).
 - [0d84ae8] Added `CHANGELOG.md` to canonical pointers in `docs/README.md` and required-pointer validation.
 - [0d84ae8] Extended daily chores playbook with token-saving search/navigation operations (`rg --files`, scoped `rg -n`, pointer-first reads).
-- [0d84ae8] Aligned governance docs to current canonical deploy script (`infra/scripts/deploy-zero-downtime.sh`) and removed active references to `fetch_ci.sh`/`deploy.prod.sh`.
+- [0d84ae8] Aligned governance docs to current canonical deploy script (`infra/scripts/deploy.sh`) and removed active references to `fetch_ci.sh`/`deploy.prod.sh`.
 - [0d84ae8] Standardized compose command examples to `docker compose` in high-traffic docs and added `infra/tests/test_docs_consistency.sh`.
 - [83e6d6c] Split worker entrypoints into train and restaurant runtime settings, and wired `worker-restaurant` service in dev/prod compose plus deploy/restart helpers.
 - [d9901c4] Hardened deploy runtime with script-level lock, running-stack detection, strict preflight resource gate, and smoke-failure auto-rollback controls.
@@ -66,7 +66,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   - `infra/scripts/local-check.sh`
 - CI image build + pull-based VM deploy scaffolding (GitHub Actions).
 - Zero-downtime deployment workflow with health-check gating
-  (`infra/scripts/deploy-zero-downtime.sh`, `infra/docker-compose.prod.yml`).
+  (`infra/scripts/deploy.sh`, `infra/docker-compose.prod.yml`).
 - Operator tooling and scripts: `bominal-monitor`, `bominal-admin`,
   `predeploy-check.sh`, `quick-restart.sh`, and VM bootstrap helpers under
   `infra/scripts/`.

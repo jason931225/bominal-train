@@ -5,7 +5,7 @@
 
 ## Summary
 
-The Pub/Sub deploy path replaced direct SSH deploy orchestration from GitHub Actions. CI now publishes deploy requests, and a VM-side systemd agent consumes requests and runs `infra/scripts/deploy-zero-downtime.sh` locally.
+The Pub/Sub deploy path replaced direct SSH deploy orchestration from GitHub Actions. CI now publishes deploy requests, and a VM-side systemd agent consumes requests and runs `infra/scripts/deploy.sh` locally.
 
 ## Implemented Artifacts
 
@@ -17,7 +17,7 @@ The Pub/Sub deploy path replaced direct SSH deploy orchestration from GitHub Act
 ## Runtime Notes
 
 - Current deploy mode is latest-only from CI-triggered publish flow.
-- Deterministic rollback remains handled by `infra/scripts/deploy-zero-downtime.sh` and deployment records in `/opt/bominal/deployments`.
+- Deterministic rollback remains handled by `infra/scripts/deploy.sh` and deployment records in `/opt/bominal/deployments`.
 
 ## Archive Notes
 

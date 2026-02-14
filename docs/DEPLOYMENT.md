@@ -11,7 +11,7 @@ This project supports separated dev/prod compose stacks with zero-downtime deplo
 
 Compatibility notice:
 - `infra/docker-compose.deploy.yml.deprecated` is a deprecated legacy artifact.
-- Canonical replacement: `infra/docker-compose.prod.yml` + `infra/scripts/deploy-zero-downtime.sh`.
+- Canonical replacement: `infra/docker-compose.prod.yml` + `infra/scripts/deploy.sh`.
 - Removal condition/date: remove after caller scan and guard test pass (completed 2026-02-14).
 
 ---
@@ -57,13 +57,13 @@ The `start_period` gives the container time to initialize before health checks b
 
 ```bash
 # Deploy current main branch
-sudo -u bominal /opt/bominal/repo/infra/scripts/deploy-zero-downtime.sh
+sudo -u bominal /opt/bominal/repo/infra/scripts/deploy.sh
 
 # Deploy specific commit
-sudo -u bominal /opt/bominal/repo/infra/scripts/deploy-zero-downtime.sh abc123f
+sudo -u bominal /opt/bominal/repo/infra/scripts/deploy.sh abc123f
 
 # Check deployment status
-sudo -u bominal /opt/bominal/repo/infra/scripts/deploy-zero-downtime.sh --status
+sudo -u bominal /opt/bominal/repo/infra/scripts/deploy.sh --status
 ```
 
 ### Deploy Script Safety Controls
@@ -83,7 +83,7 @@ sudo -u bominal /opt/bominal/repo/infra/scripts/deploy-zero-downtime.sh --status
 
 GitHub Actions publishes a deploy request to Pub/Sub (authenticated via WIF).
 The VM runs a pull-based deploy agent (systemd) that consumes the request and
-runs `infra/scripts/deploy-zero-downtime.sh` locally.
+runs `infra/scripts/deploy.sh` locally.
 
 CI-triggered deploys are **latest-only** (the message includes the triggering commit SHA for audit, but the VM deploys `:latest` images).
 
@@ -128,7 +128,7 @@ GCP_PROJECT_ID=bominal
 GCP_REGION=us-central1
 DEPLOY_SUBSCRIPTION=bominal-deploy-requests-vm
 REPO_DIR=/opt/bominal/repo
-DEPLOY_SCRIPT=/opt/bominal/repo/infra/scripts/deploy-zero-downtime.sh
+DEPLOY_SCRIPT=/opt/bominal/repo/infra/scripts/deploy.sh
 EOF
 
 sudo systemctl daemon-reload
@@ -140,7 +140,7 @@ sudo journalctl -u bominal-deploy-agent -f
 
 ```bash
 gcloud compute ssh bominal-deploy --zone=us-central1-a --tunnel-through-iap \
-  --command="cd /opt/bominal/repo && sudo -u bominal infra/scripts/deploy-zero-downtime.sh"
+  --command="cd /opt/bominal/repo && sudo -u bominal infra/scripts/deploy.sh"
 ```
 
 ---
@@ -153,7 +153,7 @@ The deployment script tracks versions in `/opt/bominal/deployments/`:
 
 ```bash
 # Rollback to previous deployment
-sudo -u bominal /opt/bominal/repo/infra/scripts/deploy-zero-downtime.sh --rollback
+sudo -u bominal /opt/bominal/repo/infra/scripts/deploy.sh --rollback
 ```
 
 ### Manual Rollback
@@ -238,7 +238,7 @@ bash infra/scripts/predeploy-check.sh \
   --min-total-swap-mb 900
 ```
 
-`deploy-zero-downtime.sh` runs this gate automatically before pull/deploy. Running it manually is still recommended for operator visibility.
+`deploy.sh` runs this gate automatically before pull/deploy. Running it manually is still recommended for operator visibility.
 
 Optional manual pre-migration duplicate check:
 
@@ -249,7 +249,7 @@ docker compose -f infra/docker compose.prod.yml run --rm api python scripts/chec
 ### 4) Initial Deploy
 
 ```bash
-bash infra/scripts/deploy-zero-downtime.sh
+bash infra/scripts/deploy.sh
 ```
 
 The API startup runs duplicate `display_name` check before `alembic upgrade head`.
@@ -307,7 +307,7 @@ openssl rand -hex 32
 ### 3) Deploy
 
 ```bash
-bash infra/scripts/deploy-zero-downtime.sh
+bash infra/scripts/deploy.sh
 ```
 
 This will:
@@ -407,7 +407,7 @@ echo "abc123f" > /opt/bominal/deployments/current
 echo "def456a" > /opt/bominal/deployments/previous
 
 # Then retry rollback
-sudo -u bominal infra/scripts/deploy-zero-downtime.sh --rollback
+sudo -u bominal infra/scripts/deploy.sh --rollback
 ```
 
 Malformed historical records (e.g. bad files under `/opt/bominal/deployments/<timestamp>`)
@@ -419,10 +419,10 @@ If you want to remove legacy/malformed historical records without touching the
 
 ```bash
 # Preview what would be deleted
-sudo -u bominal /opt/bominal/repo/infra/scripts/deploy-zero-downtime.sh --purge-legacy-records --dry-run
+sudo -u bominal /opt/bominal/repo/infra/scripts/deploy.sh --purge-legacy-records --dry-run
 
 # Create a tarball backup and then delete legacy/malformed records
-sudo -u bominal /opt/bominal/repo/infra/scripts/deploy-zero-downtime.sh --purge-legacy-records --backup
+sudo -u bominal /opt/bominal/repo/infra/scripts/deploy.sh --purge-legacy-records --backup
 ```
 
 ---
@@ -464,11 +464,11 @@ Configure domain + ACME contact in `infra/env/prod/caddy.env`:
 
 1. **Always use the zero-downtime script** for production deploys:
    ```bash
-   sudo -u bominal /opt/bominal/repo/infra/scripts/deploy-zero-downtime.sh
+   sudo -u bominal /opt/bominal/repo/infra/scripts/deploy.sh
    ```
 
 2. **Never modify these files** without explicit user approval:
-   - `infra/scripts/deploy-zero-downtime.sh`
+   - `infra/scripts/deploy.sh`
    - `infra/docker compose.prod.yml` (health checks section)
    - `/opt/bominal/deployments/*` (version tracking)
 
@@ -493,7 +493,7 @@ If a deployment causes issues:
 
 ```bash
 # Automatic rollback (preferred)
-sudo -u bominal /opt/bominal/repo/infra/scripts/deploy-zero-downtime.sh --rollback
+sudo -u bominal /opt/bominal/repo/infra/scripts/deploy.sh --rollback
 
 # Manual rollback if automatic fails
 cd /opt/bominal/repo
@@ -511,7 +511,7 @@ These actions **will cause downtime**:
 - Breaking migrations without rollback plan
 
 These actions are **zero-downtime**:
-- `deploy-zero-downtime.sh` (uses health checks)
+- `deploy.sh` (uses health checks)
 - `docker compose up -d --wait` (waits for healthy)
 - Code changes without schema changes
 

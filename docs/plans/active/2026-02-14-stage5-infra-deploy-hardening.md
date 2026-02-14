@@ -4,9 +4,9 @@
 
 Status: Completed in implementation (2026-02-14).
 
-**Goal:** Harden `infra/scripts/deploy-zero-downtime.sh` with explicit deploy lock, running-container detection, resource/swap preflight, and deterministic smoke+rollback behavior.
+**Goal:** Harden `infra/scripts/deploy.sh` with explicit deploy lock, running-container detection, resource/swap preflight, and deterministic smoke+rollback behavior.
 
-**Architecture:** Keep `deploy-zero-downtime.sh` as canonical deploy entrypoint. Add preflight and locking before any image pull/deploy mutation. Ensure post-deploy smoke checks have a clear failure path that triggers rollback (configurable) and preserves traceability in deployment history.
+**Architecture:** Keep `deploy.sh` as canonical deploy entrypoint. Add preflight and locking before any image pull/deploy mutation. Ensure post-deploy smoke checks have a clear failure path that triggers rollback (configurable) and preserves traceability in deployment history.
 
 **Tech Stack:** Bash, Docker Compose, system utilities (`flock`, `free`, `swapon`), shell tests in `infra/tests`.
 
@@ -15,7 +15,7 @@ Status: Completed in implementation (2026-02-14).
 ### Task 1: Add deploy lock contract to deploy script
 
 **Files:**
-- Modify: `infra/scripts/deploy-zero-downtime.sh`
+- Modify: `infra/scripts/deploy.sh`
 - Create: `infra/tests/test_deploy_zero_downtime_lock.sh`
 
 **Step 1: Write failing lock tests**
@@ -42,7 +42,7 @@ Expected: PASS.
 **Step 5: Commit**
 
 ```bash
-git add infra/scripts/deploy-zero-downtime.sh infra/tests/test_deploy_zero_downtime_lock.sh
+git add infra/scripts/deploy.sh infra/tests/test_deploy_zero_downtime_lock.sh
 git commit -m "infra(deploy): enforce single-run deploy lock"
 ```
 
@@ -51,7 +51,7 @@ git commit -m "infra(deploy): enforce single-run deploy lock"
 ### Task 2: Add running-container detection and first-deploy path
 
 **Files:**
-- Modify: `infra/scripts/deploy-zero-downtime.sh`
+- Modify: `infra/scripts/deploy.sh`
 - Create: `infra/tests/test_deploy_zero_downtime_running_container_detection.sh`
 
 **Step 1: Write failing detection tests**
@@ -78,7 +78,7 @@ Expected: PASS.
 **Step 5: Commit**
 
 ```bash
-git add infra/scripts/deploy-zero-downtime.sh infra/tests/test_deploy_zero_downtime_running_container_detection.sh
+git add infra/scripts/deploy.sh infra/tests/test_deploy_zero_downtime_running_container_detection.sh
 git commit -m "infra(deploy): add running-container detection path"
 ```
 
@@ -87,7 +87,7 @@ git commit -m "infra(deploy): add running-container detection path"
 ### Task 3: Add resource/swap preflight gate
 
 **Files:**
-- Modify: `infra/scripts/deploy-zero-downtime.sh`
+- Modify: `infra/scripts/deploy.sh`
 - Modify: `infra/scripts/predeploy-check.sh`
 - Create: `infra/tests/test_deploy_zero_downtime_preflight.sh`
 
@@ -115,7 +115,7 @@ Expected: PASS.
 **Step 5: Commit**
 
 ```bash
-git add infra/scripts/deploy-zero-downtime.sh infra/scripts/predeploy-check.sh infra/tests/test_deploy_zero_downtime_preflight.sh
+git add infra/scripts/deploy.sh infra/scripts/predeploy-check.sh infra/tests/test_deploy_zero_downtime_preflight.sh
 git commit -m "infra(deploy): gate deploy on resource and swap preflight"
 ```
 
@@ -124,7 +124,7 @@ git commit -m "infra(deploy): gate deploy on resource and swap preflight"
 ### Task 4: Add post-deploy smoke + rollback trigger path
 
 **Files:**
-- Modify: `infra/scripts/deploy-zero-downtime.sh`
+- Modify: `infra/scripts/deploy.sh`
 - Create: `infra/tests/test_deploy_zero_downtime_smoke_rollback.sh`
 - Modify: `docs/DEPLOYMENT.md`
 - Modify: `docs/RUNBOOK.md`
@@ -153,7 +153,7 @@ Expected: PASS.
 **Step 5: Commit**
 
 ```bash
-git add infra/scripts/deploy-zero-downtime.sh infra/tests/test_deploy_zero_downtime_smoke_rollback.sh docs/DEPLOYMENT.md docs/RUNBOOK.md
+git add infra/scripts/deploy.sh infra/tests/test_deploy_zero_downtime_smoke_rollback.sh docs/DEPLOYMENT.md docs/RUNBOOK.md
 git commit -m "infra/deploy: add smoke-failure rollback trigger and docs"
 ```
 
@@ -199,5 +199,5 @@ Expected: all PASS.
 
 ## Assumptions and Defaults
 
-- Canonical deploy entrypoint remains `infra/scripts/deploy-zero-downtime.sh`.
+- Canonical deploy entrypoint remains `infra/scripts/deploy.sh`.
 - Production profile uses cautious defaults (`AUTO_ROLLBACK_ON_SMOKE_FAILURE=true`).
