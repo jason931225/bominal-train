@@ -37,6 +37,19 @@ Rules:
 - created_at_utc: 2026-02-14T20:23:23Z
 - released_at_utc: 2026-02-14T20:54:52Z
 
+### LOCK-2026-02-14-STAGE9B
+- status: ACTIVE
+- owner_session: Codex Session
+- scope:
+  - `api/**`
+  - `web/**`
+  - `infra/**`
+  - `docs/**`
+  - `CHANGELOG.md`
+- reason: Stage 9 follow-up implementation (migration verify, benchmarks, reset workflow, frontend verification, push/review)
+- created_at_utc: 2026-02-14T21:03:19Z
+- released_at_utc:
+
 ## Template (Non-live Example)
 
 ### LOCK-EXAMPLE-001
