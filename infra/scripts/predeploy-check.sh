@@ -31,6 +31,65 @@ required_files=(
 
 require_running_services=0
 skip_smoke_tests=0
+min_total_memory_mb="${PREDEPLOY_MIN_TOTAL_MEMORY_MB:-0}"
+min_total_swap_mb="${PREDEPLOY_MIN_TOTAL_SWAP_MB:-0}"
+
+require_nonnegative_integer() {
+  local value="$1"
+  local flag_name="$2"
+  if [[ ! "$value" =~ ^[0-9]+$ ]]; then
+    log_error "$flag_name expects a non-negative integer, got: $value"
+    exit 1
+  fi
+}
+
+get_total_memory_mb() {
+  free -m | awk '/^Mem:/ {print $2}'
+}
+
+get_total_swap_mb() {
+  local swap_bytes
+  if command -v swapon >/dev/null 2>&1; then
+    swap_bytes=$(swapon --show=SIZE --bytes --noheadings 2>/dev/null | awk '{sum += $1} END {print sum + 0}')
+    if [[ "$swap_bytes" =~ ^[0-9]+$ ]] && [[ "$swap_bytes" -gt 0 ]]; then
+      echo $((swap_bytes / 1024 / 1024))
+      return 0
+    fi
+  fi
+  free -m | awk '/^Swap:/ {print $2}'
+}
+
+run_resource_gate() {
+  if [[ "$min_total_memory_mb" -le 0 ]] && [[ "$min_total_swap_mb" -le 0 ]]; then
+    return 0
+  fi
+
+  local total_memory_mb total_swap_mb
+  total_memory_mb="$(get_total_memory_mb)"
+  total_swap_mb="$(get_total_swap_mb)"
+
+  if [[ ! "$total_memory_mb" =~ ^[0-9]+$ ]]; then
+    log_error "Could not determine total memory in MB from 'free -m'."
+    exit 1
+  fi
+  if [[ ! "$total_swap_mb" =~ ^[0-9]+$ ]]; then
+    log_error "Could not determine total swap in MB."
+    exit 1
+  fi
+
+  echo "==> Checking resource profile (total memory=${total_memory_mb}MB, total swap=${total_swap_mb}MB)"
+
+  if [[ "$min_total_memory_mb" -gt 0 ]] && [[ "$total_memory_mb" -lt "$min_total_memory_mb" ]]; then
+    log_error "Insufficient total memory: ${total_memory_mb}MB < required ${min_total_memory_mb}MB."
+    exit 1
+  fi
+
+  if [[ "$min_total_swap_mb" -gt 0 ]] && [[ "$total_swap_mb" -lt "$min_total_swap_mb" ]]; then
+    log_error "Insufficient total swap: ${total_swap_mb}MB < required ${min_total_swap_mb}MB."
+    exit 1
+  fi
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --require-running-services)
@@ -41,6 +100,24 @@ while [[ $# -gt 0 ]]; do
       skip_smoke_tests=1
       shift
       ;;
+    --min-total-memory-mb)
+      if [[ $# -lt 2 ]]; then
+        log_error "--min-total-memory-mb requires a value"
+        exit 1
+      fi
+      min_total_memory_mb="$2"
+      require_nonnegative_integer "$min_total_memory_mb" "--min-total-memory-mb"
+      shift 2
+      ;;
+    --min-total-swap-mb)
+      if [[ $# -lt 2 ]]; then
+        log_error "--min-total-swap-mb requires a value"
+        exit 1
+      fi
+      min_total_swap_mb="$2"
+      require_nonnegative_integer "$min_total_swap_mb" "--min-total-swap-mb"
+      shift 2
+      ;;
     --help|-h)
       cat <<'USAGE'
 Usage: ./infra/scripts/predeploy-check.sh [options]
@@ -48,6 +125,8 @@ Usage: ./infra/scripts/predeploy-check.sh [options]
 Options:
   --skip-smoke-tests         Skip compose exec smoke checks.
   --require-running-services Fail if api/web containers are not currently running.
+  --min-total-memory-mb N    Require at least N MB total system memory (0 disables gate).
+  --min-total-swap-mb N      Require at least N MB total system swap (0 disables gate).
   --help                     Show this help.
 USAGE
       exit 0
@@ -82,6 +161,8 @@ done
 
 echo "==> Validating production compose configuration"
 "${COMPOSE_CMD[@]}" -f infra/docker-compose.prod.yml config >/tmp/bominal-prod-compose.txt
+
+run_resource_gate
 
 service_is_running() {
   local service="$1"

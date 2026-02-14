@@ -23,7 +23,16 @@ set -euo pipefail
 REPO_DIR="${REPO_DIR:-/opt/bominal/repo}"
 COMPOSE_FILE="infra/docker-compose.prod.yml"
 DEPLOY_HISTORY_DIR="${DEPLOY_HISTORY_DIR:-/opt/bominal/deployments}"
+DEPLOY_LOCK_FILE="${DEPLOY_LOCK_FILE:-/tmp/bominal-deploy.lock}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PREDEPLOY_CHECK_SCRIPT="${PREDEPLOY_CHECK_SCRIPT:-$SCRIPT_DIR/predeploy-check.sh}"
 MAX_HISTORY=10
+AUTO_ROLLBACK_ON_SMOKE_FAILURE="${AUTO_ROLLBACK_ON_SMOKE_FAILURE:-true}"
+SMOKE_MAX_ATTEMPTS="${SMOKE_MAX_ATTEMPTS:-30}"
+SMOKE_RETRY_DELAY_SECONDS="${SMOKE_RETRY_DELAY_SECONDS:-2}"
+DEPLOY_MIN_TOTAL_MEMORY_MB="${DEPLOY_MIN_TOTAL_MEMORY_MB:-900}"
+DEPLOY_MIN_TOTAL_SWAP_MB="${DEPLOY_MIN_TOTAL_SWAP_MB:-900}"
+DEPLOY_LOCK_FALLBACK_DIR=""
 
 # Google Cloud configuration
 GCP_REGION="${GCP_REGION:-us-central1}"
@@ -41,6 +50,29 @@ log_ok()    { echo -e "${GREEN}[OK]${NC} $*"; }
 log_warn()  { echo -e "${YELLOW}[WARN]${NC} $*"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $*"; }
 
+acquire_deploy_lock() {
+  mkdir -p "$(dirname "$DEPLOY_LOCK_FILE")"
+  if command -v flock >/dev/null 2>&1; then
+    exec 9>"$DEPLOY_LOCK_FILE"
+    if ! flock -n 9; then
+      log_error "Another deployment is already running (lock: $DEPLOY_LOCK_FILE)"
+      exit 1
+    fi
+    log_info "Deploy lock acquired via flock ($DEPLOY_LOCK_FILE)"
+    return 0
+  fi
+
+  # Fallback for minimal environments where flock is unavailable.
+  DEPLOY_LOCK_FALLBACK_DIR="${DEPLOY_LOCK_FILE}.d"
+  if ! mkdir "$DEPLOY_LOCK_FALLBACK_DIR" 2>/dev/null; then
+    log_error "Another deployment is already running (lock: $DEPLOY_LOCK_FILE)"
+    exit 1
+  fi
+  trap 'if [[ -n "${DEPLOY_LOCK_FALLBACK_DIR:-}" ]]; then rm -rf "$DEPLOY_LOCK_FALLBACK_DIR"; fi' EXIT
+  log_warn "flock not found; using mkdir-based lock fallback."
+  log_info "Deploy lock acquired via mkdir fallback ($DEPLOY_LOCK_FILE)"
+}
+
 # Ensure we're in the repo directory
 cd "$REPO_DIR"
 
@@ -53,6 +85,31 @@ fi
 
 # Create deployment history directory
 mkdir -p "$DEPLOY_HISTORY_DIR"
+
+stack_has_running_containers() {
+  local running
+  running="$("${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" ps --services --filter status=running 2>/dev/null || true)"
+  running="${running//$'\n'/}"
+  running="${running//[[:space:]]/}"
+  [[ -n "$running" ]]
+}
+
+run_preflight_checks() {
+  if [[ ! -f "$PREDEPLOY_CHECK_SCRIPT" ]]; then
+    log_error "Predeploy check script not found: $PREDEPLOY_CHECK_SCRIPT"
+    exit 1
+  fi
+
+  log_info "Running preflight checks (memory>=${DEPLOY_MIN_TOTAL_MEMORY_MB}MB, swap>=${DEPLOY_MIN_TOTAL_SWAP_MB}MB)..."
+  if ! bash "$PREDEPLOY_CHECK_SCRIPT" \
+    --skip-smoke-tests \
+    --min-total-memory-mb "$DEPLOY_MIN_TOTAL_MEMORY_MB" \
+    --min-total-swap-mb "$DEPLOY_MIN_TOTAL_SWAP_MB"; then
+    log_error "Preflight checks failed. Deployment aborted before pull/deploy."
+    exit 1
+  fi
+  log_ok "Preflight checks passed"
+}
 
 require_gcp_project_id() {
   if [[ -n "${GCP_PROJECT_ID:-}" ]]; then
@@ -331,33 +388,42 @@ deploy_services() {
   export API_IMAGE
   export WEB_IMAGE
   export GCP_PROJECT_ID
-  
-  # Deploy database layer first (usually no changes)
-  log_info "Ensuring database services are healthy..."
-  "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait postgres redis
-  
-  # Deploy API (backend must be ready before web)
-  log_info "Deploying API service..."
-  "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait --no-deps api
-  
-  # Deploy workers (can run alongside API)
-  log_info "Deploying Worker services..."
-  "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait --no-deps worker worker-restaurant
-  
-  # Deploy web (depends on API being healthy)
-  log_info "Deploying Web service..."
-  "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait --no-deps web
-  
-  # Reload Caddy (if Caddyfile changed, it auto-reloads)
-  log_info "Ensuring Caddy is healthy..."
-  "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait caddy
+
+  if stack_has_running_containers; then
+    log_info "Running stack detected. Using rolling-update path."
+
+    # Deploy database layer first (usually no changes).
+    log_info "Ensuring database services are healthy..."
+    "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait postgres redis
+
+    # Deploy API (backend must be ready before web).
+    log_info "Deploying API service..."
+    "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait --no-deps api
+
+    # Deploy workers (can run alongside API).
+    log_info "Deploying Worker services..."
+    "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait --no-deps worker worker-restaurant
+
+    # Deploy web (depends on API being healthy).
+    log_info "Deploying Web service..."
+    "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait --no-deps web
+
+    # Reload Caddy (if Caddyfile changed, it auto-reloads).
+    log_info "Ensuring Caddy is healthy..."
+    "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait caddy
+    return 0
+  fi
+
+  log_warn "No running bominal containers detected. Using first-deploy bootstrap path."
+  "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait postgres redis api worker worker-restaurant web caddy
 }
 
 # Verify deployment health
 verify_deployment() {
   log_info "Verifying deployment health..."
   
-  local max_attempts=30
+  local max_attempts="${SMOKE_MAX_ATTEMPTS}"
+  local retry_delay="${SMOKE_RETRY_DELAY_SECONDS}"
   local attempt=1
   
   # Check API health
@@ -367,7 +433,7 @@ verify_deployment() {
       break
     fi
     log_warn "Waiting for API... (attempt $attempt/$max_attempts)"
-    sleep 2
+    sleep "$retry_delay"
     ((attempt++))
   done
   
@@ -384,7 +450,7 @@ verify_deployment() {
       break
     fi
     log_warn "Waiting for Web... (attempt $attempt/$max_attempts)"
-    sleep 2
+    sleep "$retry_delay"
     ((attempt++))
   done
   
@@ -443,6 +509,8 @@ cleanup_docker() {
 main() {
   local target_commit="${1:-}"
 
+  acquire_deploy_lock
+
   # Purge legacy/malformed history records (safe maintenance command).
   if [[ "${target_commit:-}" == "--purge-legacy-records" ]]; then
     shift || true
@@ -474,6 +542,7 @@ main() {
   # Handle special commands
   case "${target_commit}" in
     --rollback|-r)
+      run_preflight_checks
       configure_docker_auth
       do_rollback
       verify_deployment
@@ -510,6 +579,8 @@ main() {
       ;;
   esac
   
+  run_preflight_checks
+
   # Configure Docker authentication
   configure_docker_auth
 
@@ -587,7 +658,21 @@ main() {
     show_status
   else
     log_error "Deployment verification failed!"
-    log_warn "Consider rolling back with: $0 --rollback"
+    if [[ "$AUTO_ROLLBACK_ON_SMOKE_FAILURE" == "true" ]]; then
+      log_warn "Auto rollback enabled; attempting rollback after smoke failure."
+      if do_rollback; then
+        if verify_deployment; then
+          log_ok "Rollback health verification passed."
+        else
+          log_error "Rollback completed but health verification failed."
+        fi
+      else
+        log_error "Auto rollback attempt failed."
+      fi
+    else
+      log_warn "Auto rollback disabled (AUTO_ROLLBACK_ON_SMOKE_FAILURE=false)."
+    fi
+    log_warn "Manual rollback command: $0 --rollback"
     exit 1
   fi
 }
