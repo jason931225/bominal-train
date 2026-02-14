@@ -4,6 +4,7 @@ from arq import create_pool
 from arq.connections import ArqRedis, RedisSettings
 
 from app.core.config import get_settings
+from app.core.queue_domains import TRAIN_QUEUE_NAME
 
 settings = get_settings()
 
@@ -17,7 +18,7 @@ def _redis_settings() -> RedisSettings:
 async def get_queue_pool() -> ArqRedis:
     global _pool
     if _pool is None:
-        _pool = await create_pool(_redis_settings())
+        _pool = await create_pool(_redis_settings(), default_queue_name=TRAIN_QUEUE_NAME)
     return _pool
 
 
