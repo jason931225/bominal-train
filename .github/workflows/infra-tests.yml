@@ -36,6 +36,10 @@ jobs:
         run: |
           bash infra/tests/test_docs_pointers.sh
 
+      - name: Validate execution ledgers
+        run: |
+          bash infra/tests/test_execution_ledgers.sh
+
       - name: Validate changelog structure
         run: |
           bash infra/tests/test_changelog.sh

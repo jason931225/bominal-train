@@ -7,17 +7,22 @@ Rules:
 - owner executes and marks `DONE` with commit SHA
 - requester verifies and marks `CLOSED`
 - each session checks this file every 10 minutes and before commit
+- template/example entries must never use live statuses
 
-Template:
+## Current Entries
 
-## REQ-001
-- status: OPEN
-- caller: Session A
-- owner: Session B
+No open cross-scope requests.
+
+## Template (Non-live Example)
+
+### REQ-EXAMPLE-001
+- status: EXAMPLE_OPEN
+- caller: Session X
+- owner: Session Y
 - created_at_utc: <YYYY-MM-DDTHH:MM:SSZ>
 - reason: <why this cross-scope edit is required>
 - files:
-  - `infra/env/prod/api.env.example`
+  - `path/file.ext`
 - exact_commands:
   - `<command 1>`
   - `<command 2>`

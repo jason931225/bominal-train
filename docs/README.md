@@ -54,17 +54,20 @@ Pointer format convention (mandatory):
 - [PTR-DOCS-012] `docs/DEPRECATION_WORKFLOW.md` - canonical deprecation lifecycle policy across local, GitHub, and production.
 - [PTR-DOCS-013] `docs/deprecations/registry.json` - machine-validated deprecation registry used by CI/deploy guards.
 
-### Active implementation plans
+### Program Plans and Closure Artifacts
 
-- [PTR-PLAN-001] `docs/plans/active/2026-02-11-bominal-grand-restructure-plan.md` - top-level restructure umbrella with stage plan links.
-- [PTR-PLAN-002] `docs/todo/backend-production-readiness.md` - backend production-readiness hardening backlog.
-- [PTR-PLAN-003] `docs/plans/active/2026-02-14-backlog-status-report.md` - current restructure/backlog implementation status report.
-- [PTR-PLAN-004] `docs/plans/active/2026-02-14-stage2-worker-split-queue-contracts.md` - executable Stage 2 queue-domain isolation plan.
-- [PTR-PLAN-005] `docs/plans/active/2026-02-14-stage3-restaurant-partial-exposure.md` - executable Stage 3 module capability exposure plan.
-- [PTR-PLAN-006] `docs/plans/active/2026-02-14-stage4-restaurant-policy-enforcement.md` - executable Stage 4 restaurant policy/lease enforcement plan.
-- [PTR-PLAN-007] `docs/plans/active/2026-02-14-stage5-infra-deploy-hardening.md` - executable Stage 5 deploy hardening plan.
-- [PTR-PLAN-008] `docs/plans/active/2026-02-14-stage6-safe-deprecation-cleanup.md` - executable Stage 6 deprecation cleanup plan.
-- [PTR-PLAN-009] `docs/plans/active/2026-02-14-stage7-docs-canonization.md` - executable Stage 7 docs canonization plan.
+- [PTR-PLAN-001] `docs/plans/archive/2026-02-11-bominal-grand-restructure-plan.md` - archived top-level restructure umbrella with stage links.
+- [PTR-PLAN-002] `docs/todo/backend-production-readiness.md` - archived backend production-readiness tracker and implementation record.
+- [PTR-PLAN-003] `docs/plans/archive/2026-02-14-backlog-status-report.md` - archived restructure/backlog execution snapshot.
+- [PTR-PLAN-004] `docs/plans/archive/2026-02-14-stage2-worker-split-queue-contracts.md` - archived Stage 2 queue-domain isolation execution plan.
+- [PTR-PLAN-005] `docs/plans/archive/2026-02-14-stage3-restaurant-partial-exposure.md` - archived Stage 3 module capability exposure execution plan.
+- [PTR-PLAN-006] `docs/plans/archive/2026-02-14-stage4-restaurant-policy-enforcement.md` - archived Stage 4 restaurant policy/lease execution plan.
+- [PTR-PLAN-007] `docs/plans/archive/2026-02-14-stage5-infra-deploy-hardening.md` - archived Stage 5 deploy hardening execution plan.
+- [PTR-PLAN-008] `docs/plans/archive/2026-02-14-stage6-safe-deprecation-cleanup.md` - archived Stage 6 deprecation cleanup execution plan.
+- [PTR-PLAN-009] `docs/plans/archive/2026-02-14-stage7-docs-canonization.md` - archived Stage 7 docs canonization execution plan.
+- [PTR-PLAN-010] `docs/plans/archive/2026-02-14-stage8-program-closure-and-archival-hygiene.md` - archived Stage 8 closure and archival hygiene execution plan.
+- [PTR-PLAN-011] `docs/plans/archive/2026-02-14-program-closure-report.md` - final closure report for the restructure program.
+- [PTR-PLAN-012] `docs/plans/active/README.md` - current active-plan state marker (no open executable plans).
 
 ### Playbooks
 
@@ -79,5 +82,6 @@ Pointer format convention (mandatory):
 - [PTR-OPS-001] `infra/tests/test_docs_pointers.sh` - validates pointer section and target paths.
 - [PTR-OPS-002] `infra/tests/test_intent_routing.sh` - validates required intent keyword mappings.
 - [PTR-OPS-003] `infra/tests/test_docs_consistency.sh` - enforces deployment-policy and docs consistency rules.
+- [PTR-OPS-004] `infra/tests/test_execution_ledgers.sh` - validates lock/request ledger structure and template safety.
 
 For agent-focused instructions, also read the root `AGENTS.md`.

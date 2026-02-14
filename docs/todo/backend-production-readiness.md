@@ -1,5 +1,10 @@
 # Backend TODO (Production Readiness)
 
+Status: Archived and closed on 2026-02-14.  
+Closure reference: `docs/plans/archive/2026-02-14-program-closure-report.md`
+
+The implementation checklist below is retained as historical execution evidence.
+
 Date: 2026-02-11  
 Scope: `api/` backend quality findings to address before restaurant provider standardization work proceeds.
 

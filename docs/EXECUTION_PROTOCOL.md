@@ -45,6 +45,7 @@ For each notable change in behavior, operations, interfaces, docs governance, or
 
 - `docs/LOCK.md` for dynamic ownership scopes.
 - `docs/REQUEST.md` for cross-scope requests.
+- Keep `Current Entries` separate from non-live template examples in both ledgers.
 
 ## Lock lifecycle
 

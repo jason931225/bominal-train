@@ -68,9 +68,11 @@ required=(
   "docs/deprecations/registry.json"
   "docs/LOCK.md"
   "docs/REQUEST.md"
+  "docs/plans/active/README.md"
   "CHANGELOG.md"
   "infra/tests/test_intent_routing.sh"
   "infra/tests/test_docs_consistency.sh"
+  "infra/tests/test_execution_ledgers.sh"
 )
 
 for req in "${required[@]}"; do

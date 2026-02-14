@@ -76,6 +76,7 @@ For each incident/update:
 - Run narrow tests for touched areas, then required baseline suite.
 - For docs/protocol changes, run docs validation scripts:
   - `infra/tests/test_docs_pointers.sh`
+  - `infra/tests/test_execution_ledgers.sh`
   - `infra/tests/test_changelog.sh`
   - `infra/tests/test_deprecation_policy.sh`
   - `infra/tests/test_deprecation_references.sh`
