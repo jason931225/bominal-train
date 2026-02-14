@@ -16,7 +16,7 @@ Status: Completed in implementation (2026-02-14).
 
 **Files:**
 - Modify: `infra/scripts/deploy.sh`
-- Create: `infra/tests/test_deploy_zero_downtime_lock.sh`
+- Create: `infra/tests/test_deploy_lock.sh`
 
 **Step 1: Write failing lock tests**
 
@@ -26,7 +26,7 @@ Test expectations:
 
 **Step 2: Run tests to verify RED**
 
-Run: `bash infra/tests/test_deploy_zero_downtime_lock.sh`
+Run: `bash infra/tests/test_deploy_lock.sh`
 Expected: FAIL because script does not enforce script-level lock.
 
 **Step 3: Implement minimal lock behavior**
@@ -36,13 +36,13 @@ Expected: FAIL because script does not enforce script-level lock.
 
 **Step 4: Run tests to verify GREEN**
 
-Run: `bash infra/tests/test_deploy_zero_downtime_lock.sh`
+Run: `bash infra/tests/test_deploy_lock.sh`
 Expected: PASS.
 
 **Step 5: Commit**
 
 ```bash
-git add infra/scripts/deploy.sh infra/tests/test_deploy_zero_downtime_lock.sh
+git add infra/scripts/deploy.sh infra/tests/test_deploy_lock.sh
 git commit -m "infra(deploy): enforce single-run deploy lock"
 ```
 
@@ -52,7 +52,7 @@ git commit -m "infra(deploy): enforce single-run deploy lock"
 
 **Files:**
 - Modify: `infra/scripts/deploy.sh`
-- Create: `infra/tests/test_deploy_zero_downtime_running_container_detection.sh`
+- Create: `infra/tests/test_deploy_running_container_detection.sh`
 
 **Step 1: Write failing detection tests**
 
@@ -62,7 +62,7 @@ Test expectations:
 
 **Step 2: Run tests to verify RED**
 
-Run: `bash infra/tests/test_deploy_zero_downtime_running_container_detection.sh`
+Run: `bash infra/tests/test_deploy_running_container_detection.sh`
 Expected: FAIL before detection branch exists.
 
 **Step 3: Implement minimal detection logic**
@@ -72,13 +72,13 @@ Expected: FAIL before detection branch exists.
 
 **Step 4: Run tests to verify GREEN**
 
-Run: `bash infra/tests/test_deploy_zero_downtime_running_container_detection.sh`
+Run: `bash infra/tests/test_deploy_running_container_detection.sh`
 Expected: PASS.
 
 **Step 5: Commit**
 
 ```bash
-git add infra/scripts/deploy.sh infra/tests/test_deploy_zero_downtime_running_container_detection.sh
+git add infra/scripts/deploy.sh infra/tests/test_deploy_running_container_detection.sh
 git commit -m "infra(deploy): add running-container detection path"
 ```
 
@@ -89,7 +89,7 @@ git commit -m "infra(deploy): add running-container detection path"
 **Files:**
 - Modify: `infra/scripts/deploy.sh`
 - Modify: `infra/scripts/predeploy-check.sh`
-- Create: `infra/tests/test_deploy_zero_downtime_preflight.sh`
+- Create: `infra/tests/test_deploy_preflight.sh`
 
 **Step 1: Write failing preflight tests**
 
@@ -99,7 +99,7 @@ Test expectations:
 
 **Step 2: Run tests to verify RED**
 
-Run: `bash infra/tests/test_deploy_zero_downtime_preflight.sh`
+Run: `bash infra/tests/test_deploy_preflight.sh`
 Expected: FAIL before preflight gate is integrated.
 
 **Step 3: Implement minimal preflight integration**
@@ -109,13 +109,13 @@ Expected: FAIL before preflight gate is integrated.
 
 **Step 4: Run tests to verify GREEN**
 
-Run: `bash infra/tests/test_deploy_zero_downtime_preflight.sh`
+Run: `bash infra/tests/test_deploy_preflight.sh`
 Expected: PASS.
 
 **Step 5: Commit**
 
 ```bash
-git add infra/scripts/deploy.sh infra/scripts/predeploy-check.sh infra/tests/test_deploy_zero_downtime_preflight.sh
+git add infra/scripts/deploy.sh infra/scripts/predeploy-check.sh infra/tests/test_deploy_preflight.sh
 git commit -m "infra(deploy): gate deploy on resource and swap preflight"
 ```
 
@@ -125,7 +125,7 @@ git commit -m "infra(deploy): gate deploy on resource and swap preflight"
 
 **Files:**
 - Modify: `infra/scripts/deploy.sh`
-- Create: `infra/tests/test_deploy_zero_downtime_smoke_rollback.sh`
+- Create: `infra/tests/test_deploy_smoke_rollback.sh`
 - Modify: `docs/DEPLOYMENT.md`
 - Modify: `docs/RUNBOOK.md`
 
@@ -137,7 +137,7 @@ Test expectations:
 
 **Step 2: Run tests to verify RED**
 
-Run: `bash infra/tests/test_deploy_zero_downtime_smoke_rollback.sh`
+Run: `bash infra/tests/test_deploy_smoke_rollback.sh`
 Expected: FAIL before rollback trigger branch is explicit.
 
 **Step 3: Implement minimal smoke rollback behavior**
@@ -147,13 +147,13 @@ Expected: FAIL before rollback trigger branch is explicit.
 
 **Step 4: Run tests to verify GREEN**
 
-Run: `bash infra/tests/test_deploy_zero_downtime_smoke_rollback.sh`
+Run: `bash infra/tests/test_deploy_smoke_rollback.sh`
 Expected: PASS.
 
 **Step 5: Commit**
 
 ```bash
-git add infra/scripts/deploy.sh infra/tests/test_deploy_zero_downtime_smoke_rollback.sh docs/DEPLOYMENT.md docs/RUNBOOK.md
+git add infra/scripts/deploy.sh infra/tests/test_deploy_smoke_rollback.sh docs/DEPLOYMENT.md docs/RUNBOOK.md
 git commit -m "infra/deploy: add smoke-failure rollback trigger and docs"
 ```
 
@@ -164,10 +164,10 @@ git commit -m "infra/deploy: add smoke-failure rollback trigger and docs"
 **Step 1: Run deploy-script test suite**
 
 Run:
-- `bash infra/tests/test_deploy_zero_downtime_lock.sh`
-- `bash infra/tests/test_deploy_zero_downtime_running_container_detection.sh`
-- `bash infra/tests/test_deploy_zero_downtime_preflight.sh`
-- `bash infra/tests/test_deploy_zero_downtime_smoke_rollback.sh`
+- `bash infra/tests/test_deploy_lock.sh`
+- `bash infra/tests/test_deploy_running_container_detection.sh`
+- `bash infra/tests/test_deploy_preflight.sh`
+- `bash infra/tests/test_deploy_smoke_rollback.sh`
 
 Expected: all PASS.
 
