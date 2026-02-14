@@ -28,9 +28,12 @@ Rules:
 - status: ACTIVE
 - owner_session: Codex Session
 - scope:
+  - `api/**`
+  - `web/**`
+  - `infra/**`
   - `docs/**`
   - `CHANGELOG.md`
-- reason: Stage 9 performance improvement exploration and planning
+- reason: Stage 9 backend-first then frontend performance optimization implementation
 - created_at_utc: 2026-02-14T20:23:23Z
 - released_at_utc:
 
