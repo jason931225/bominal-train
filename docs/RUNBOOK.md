@@ -32,12 +32,14 @@ Note: `deploy.sh` pulls pre-built images (there is no `--skip-build` flag).
 Deploy script guardrails:
 - Enforces single-run deploy lock (`DEPLOY_LOCK_FILE`, default `/tmp/bominal-deploy.lock`).
 - Runs strict preflight checks before pull/deploy (env + compose + memory/swap threshold).
+- Enforces deprecation registry gate for production-scoped removals/deadlines.
 - Chooses bootstrap-safe first deploy path when no stack is running.
 - Auto rollback on smoke failure is enabled by default (`AUTO_ROLLBACK_ON_SMOKE_FAILURE=true`).
 
 Compatibility notice:
 - `infra/docker-compose.deploy.yml.deprecated` is deprecated and removed from active operator workflow.
 - Use `infra/docker-compose.prod.yml` and `infra/scripts/deploy.sh` exclusively.
+- Deprecation lifecycle policy is tracked in `docs/DEPRECATION_WORKFLOW.md` and `docs/deprecations/registry.json`.
 
 Quick restart after VM reset (no rebuild, existing images):
 
@@ -204,6 +206,7 @@ Symptoms:
 - `Another deployment is already running`
 - `Preflight checks failed. Deployment aborted before pull/deploy.`
 - `Insufficient total memory` or `Insufficient total swap`
+- `Deprecation deploy gate failed`
 
 Checks:
 
@@ -228,6 +231,13 @@ Recovery:
 
 1. If lock contention is legitimate, wait for active deploy completion and retry.
 2. If swap is missing, run `infra/scripts/vm-docker-bootstrap.sh` or recreate swap, then retry deploy.
+3. If deprecation gate fails, fix/remove overdue references and update `docs/deprecations/registry.json`.
+4. Emergency-only bypass (approval required):
+
+```bash
+PREDEPLOY_ALLOW_DEPRECATION_BYPASS=true \
+  bash infra/scripts/predeploy-check.sh --skip-smoke-tests
+```
 
 ## 1) Web route fails to load (`Cannot find module './901.js'`)
 

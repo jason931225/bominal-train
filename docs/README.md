@@ -14,7 +14,8 @@ This folder is the operational and engineering documentation pack for Bominal.
 8. `PERMISSIONS.md` - approval, scope, and least-privilege protocol
 9. `GUARDRAILS.md` - hard safety constraints and fail-closed behavior
 10. `INTENT_ROUTING.md` - keyword-to-pointer routing for token-efficient discovery
-11. `playbooks/README.md` - complex-task playbook index
+11. `DEPRECATION_WORKFLOW.md` - deprecation lifecycle policy and enforcement model
+12. `playbooks/README.md` - complex-task playbook index
 
 ## Canonical Pointer Library
 
@@ -50,6 +51,8 @@ Pointer format convention (mandatory):
 - [PTR-DOCS-009] `docs/INTENT_ROUTING.md` - keyword routing map for low-token document discovery.
 - [PTR-DOCS-010] `docs/plans/README.md` - active/archive planning lifecycle policy.
 - [PTR-DOCS-011] `docs/deprecations/2026-02-14-inventory.md` - deprecation inventory with owner/replacement/removal-gate tracking.
+- [PTR-DOCS-012] `docs/DEPRECATION_WORKFLOW.md` - canonical deprecation lifecycle policy across local, GitHub, and production.
+- [PTR-DOCS-013] `docs/deprecations/registry.json` - machine-validated deprecation registry used by CI/deploy guards.
 
 ### Active implementation plans
 

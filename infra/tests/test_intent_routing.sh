@@ -15,6 +15,7 @@ required_keywords=(
   "hygiene"
   "deploy"
   "rollback"
+  "deprecate"
   "resy"
 )
 

@@ -36,6 +36,7 @@ Build and operate **bominal**, a modular product platform with:
 11. Follow `docs/GUARDRAILS.md` as hard constraints; guardrails override permissions.
 12. Use `docs/INTENT_ROUTING.md` before broad searches to reduce token usage.
 13. Treat `third_party/**` docs as reference only, never canonical policy.
+14. Follow `docs/DEPRECATION_WORKFLOW.md` and `docs/deprecations/registry.json` for deprecation/removal changes.
 
 ## First files to read
 
@@ -51,6 +52,7 @@ Build and operate **bominal**, a modular product platform with:
 10. `docs/PERMISSIONS.md`
 11. `docs/GUARDRAILS.md`
 12. `docs/INTENT_ROUTING.md`
+13. `docs/DEPRECATION_WORKFLOW.md`
 
 ## Docs-First Gate (Mandatory)
 

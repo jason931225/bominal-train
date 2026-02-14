@@ -91,6 +91,7 @@ Compatibility notice:
 - `infra/docker-compose.deploy.yml.deprecated` is deprecated and no longer part of the canonical deploy workflow.
 - Use `infra/docker-compose.prod.yml` with `infra/scripts/deploy.sh`.
 - Removal gate: remove the deprecated compose artifact after no active callers remain (completed on 2026-02-14).
+- Canonical deprecation lifecycle policy: `docs/DEPRECATION_WORKFLOW.md`.
 
 1) Create prod env files from templates:
 

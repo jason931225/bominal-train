@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-02-14",
+  "deprecations": [
+    {
+      "id": "DEP-2026-02-14-001",
+      "surface": "runtime",
+      "scope": "production",
+      "artifact": "infra/docker-compose.deploy.yml.deprecated",
+      "replacement": "infra/docker-compose.prod.yml + infra/scripts/deploy.sh",
+      "owner": "Infra / Deployment",
+      "status": "removed",
+      "deprecated_on": "2026-02-14",
+      "remove_after": "2026-02-14",
+      "removed_on": "2026-02-14",
+      "removal_commit": "5039127",
+      "window_policy": "prod30_github14_local2",
+      "window_exception_approved": true,
+      "window_exception_reason": "Legacy artifact was already fully superseded and removed in Stage 6 with guarded reference checks.",
+      "callers_scan_paths": [
+        "infra/scripts",
+        ".github/workflows"
+      ],
+      "notes": "Removed after inventory + guard validation; retained in docs as historical compatibility notice."
+    }
+  ]
+}

@@ -43,6 +43,8 @@ Provide a deterministic, low-token workflow for routine engineering/ops tasks so
    - `bash infra/tests/test_docs_pointers.sh`
    - `bash infra/tests/test_changelog.sh`
    - `bash infra/tests/test_env_utils.sh`
+   - `bash infra/tests/test_deprecation_policy.sh`
+   - `bash infra/tests/test_deprecation_references.sh`
    - `bash infra/tests/test_predeploy_check.sh`
 5. Run baseline Python infra tests:
    - `python3 -m unittest discover -s infra/tests -p 'test_*.py'`

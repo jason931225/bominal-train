@@ -64,6 +64,8 @@ required=(
   "docs/PERMISSIONS.md"
   "docs/GUARDRAILS.md"
   "docs/INTENT_ROUTING.md"
+  "docs/DEPRECATION_WORKFLOW.md"
+  "docs/deprecations/registry.json"
   "docs/LOCK.md"
   "docs/REQUEST.md"
   "CHANGELOG.md"

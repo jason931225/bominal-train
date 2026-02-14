@@ -8,8 +8,9 @@ EXEC_PROTOCOL="$ROOT_DIR/docs/EXECUTION_PROTOCOL.md"
 DEPLOYMENT="$ROOT_DIR/docs/DEPLOYMENT.md"
 RUNBOOK="$ROOT_DIR/docs/RUNBOOK.md"
 README="$ROOT_DIR/README.md"
+DEPRECATION_WORKFLOW="$ROOT_DIR/docs/DEPRECATION_WORKFLOW.md"
 
-for f in "$AGENTS" "$EXEC_PROTOCOL" "$DEPLOYMENT" "$RUNBOOK" "$README"; do
+for f in "$AGENTS" "$EXEC_PROTOCOL" "$DEPLOYMENT" "$RUNBOOK" "$README" "$DEPRECATION_WORKFLOW"; do
   if [[ ! -f "$f" ]]; then
     echo "ERROR: expected file missing: $f" >&2
     exit 1
@@ -38,6 +39,13 @@ done
 for f in "$AGENTS" "$README" "$DEPLOYMENT" "$RUNBOOK" "$ROOT_DIR/docs/CONTRIBUTING.md"; do
   if grep -Eq '(^|[[:space:]`])docker-compose([[:space:]`]|$)' "$f"; then
     echo "ERROR: use 'docker compose' style instead of 'docker-compose' in $f" >&2
+    exit 1
+  fi
+done
+
+for f in "$README" "$DEPLOYMENT" "$RUNBOOK" "$AGENTS"; do
+  if ! grep -Fq "docs/DEPRECATION_WORKFLOW.md" "$f"; then
+    echo "ERROR: missing canonical deprecation workflow reference in $f" >&2
     exit 1
   fi
 done

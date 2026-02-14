@@ -77,9 +77,19 @@ For each incident/update:
 - For docs/protocol changes, run docs validation scripts:
   - `infra/tests/test_docs_pointers.sh`
   - `infra/tests/test_changelog.sh`
+  - `infra/tests/test_deprecation_policy.sh`
+  - `infra/tests/test_deprecation_references.sh`
 - For env/deploy workflow changes, run:
   - `infra/tests/test_env_utils.sh`
   - `infra/tests/test_predeploy_check.sh`
+
+### Deprecation protocol
+
+- Register every deprecation in `docs/deprecations/registry.json` before removal work begins.
+- Follow lifecycle and window policy in `docs/DEPRECATION_WORKFLOW.md`.
+- Validate policy and references locally before PR and before deploy.
+- Production deploy must pass deprecation gate via `predeploy-check.sh`.
+- Any bypass requires explicit approval and rollback notes.
 
 ### Rollback protocol
 

@@ -2,6 +2,10 @@
 
 This inventory tracks runtime artifacts under deprecation governance.
 
+Canonical forward-looking registry:
+- `docs/deprecations/registry.json`
+- policy: `docs/DEPRECATION_WORKFLOW.md`
+
 ## DEP-2026-02-14-001
 
 - path: `infra/docker-compose.deploy.yml.deprecated`
