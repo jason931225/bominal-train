@@ -6,6 +6,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+source "$SCRIPT_DIR/lib/env_utils.sh"
 COMPOSE_FILE="infra/docker-compose.yml"
 
 DOWN_AFTER=false
@@ -19,16 +20,7 @@ cd "$REPO_ROOT"
 
 command -v docker >/dev/null 2>&1 || { echo "Error: docker is required"; exit 1; }
 command -v curl >/dev/null 2>&1 || { echo "Error: curl is required"; exit 1; }
-
-# Detect docker compose command (v2 plugin preferred)
-if docker compose version >/dev/null 2>&1; then
-  COMPOSE_CMD=(docker compose)
-elif command -v docker-compose >/dev/null 2>&1; then
-  COMPOSE_CMD=(docker-compose)
-else
-  echo "Error: docker compose (v2) or docker-compose (v1) is required"
-  exit 1
-fi
+detect_compose_cmd
 
 print_logs() {
   echo ""
