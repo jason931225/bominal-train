@@ -54,6 +54,11 @@ Services started by compose:
 - worker: consumes queued Train Tasks + queued email jobs
 - worker-restaurant: reserved for restaurant queue-domain execution
 
+Queue domains:
+
+- `train:queue`: train tasks + queued email delivery
+- `restaurant:queue`: restaurant worker domain
+
 One-command local verification (starts stack, waits for health, runs backend tests + web typecheck):
 
 ```bash
@@ -81,6 +86,11 @@ Production compose is separated in `infra/docker compose.prod.yml` (no bind moun
 For production deployments, prefer the zero-downtime procedure in `docs/DEPLOYMENT.md`
 (script: `infra/scripts/deploy-zero-downtime.sh`). The steps below cover initial
 env-file bootstrap.
+
+Compatibility notice:
+- `infra/docker-compose.deploy.yml.deprecated` is deprecated and no longer part of the canonical deploy workflow.
+- Use `infra/docker-compose.prod.yml` with `infra/scripts/deploy-zero-downtime.sh`.
+- Removal gate: remove the deprecated compose artifact after no active callers remain (completed on 2026-02-14).
 
 1) Create prod env files from templates:
 
@@ -167,6 +177,7 @@ Implemented modules endpoint:
   - Train = active
   - Restaurant = coming soon
   - Calendar = coming soon
+  - Each module includes `enabled` and `capabilities` for controlled client exposure.
 
 ## Train module API
 
@@ -230,6 +241,7 @@ Internal API:
 - Idempotent active-task creation by `(user_id, module, idempotency_key)`
 - Payment idempotency: worker checks existing payment artifact before pay retry
 - Redis token bucket rate limiter applied to provider outbound calls
+- ARQ queue domains are explicit: `train:queue` (worker) and `restaurant:queue` (worker-restaurant)
 
 ## Manual verification (Train)
 

@@ -29,6 +29,16 @@ bominal-deploy --rollback
 
 Note: `deploy-zero-downtime.sh` pulls pre-built images (there is no `--skip-build` flag).
 
+Deploy script guardrails:
+- Enforces single-run deploy lock (`DEPLOY_LOCK_FILE`, default `/tmp/bominal-deploy.lock`).
+- Runs strict preflight checks before pull/deploy (env + compose + memory/swap threshold).
+- Chooses bootstrap-safe first deploy path when no stack is running.
+- Auto rollback on smoke failure is enabled by default (`AUTO_ROLLBACK_ON_SMOKE_FAILURE=true`).
+
+Compatibility notice:
+- `infra/docker-compose.deploy.yml.deprecated` is deprecated and removed from active operator workflow.
+- Use `infra/docker-compose.prod.yml` and `infra/scripts/deploy-zero-downtime.sh` exclusively.
+
 Quick restart after VM reset (no rebuild, existing images):
 
 ```bash
@@ -187,6 +197,38 @@ curl -sS https://www.bominal.com/health
 /opt/bominal/repo/infra/scripts/bominal-monitor
 ```
 
+## 0.2) Deploy exits early (lock contention or preflight gate)
+
+Symptoms:
+
+- `Another deployment is already running`
+- `Preflight checks failed. Deployment aborted before pull/deploy.`
+- `Insufficient total memory` or `Insufficient total swap`
+
+Checks:
+
+1. Confirm no duplicate deploy command is active (`ps -ef | grep deploy-zero-downtime.sh`).
+2. Validate swap/memory on VM:
+
+```bash
+free -m
+swapon --show
+```
+
+3. Run preflight manually for explicit output:
+
+```bash
+bash infra/scripts/predeploy-check.sh \
+  --min-total-memory-mb 900 \
+  --min-total-swap-mb 900 \
+  --skip-smoke-tests
+```
+
+Recovery:
+
+1. If lock contention is legitimate, wait for active deploy completion and retry.
+2. If swap is missing, run `infra/scripts/vm-docker-bootstrap.sh` or recreate swap, then retry deploy.
+
 ## 1) Web route fails to load (`Cannot find module './901.js'`)
 
 Cause: stale/corrupt Next build cache.
@@ -292,6 +334,37 @@ bominal-deploy
 2. Open Mailpit UI: `http://localhost:8025`.
 3. Check API `EMAIL_PROVIDER` setting (`smtp` for local Mailpit).
 4. Trigger `/api/notifications/email/test` while logged in.
+
+## 7) Restaurant task policy behavior (stage scaffold)
+
+Symptoms:
+
+- Restaurant task repeatedly returns to `POLLING`
+- Restaurant task fails quickly after auth retries
+- Payment step remains blocked (`payment_lease_busy`)
+
+Checks:
+
+1. Inspect `task_attempts` for safe error codes:
+   - `auth_refresh_retry`
+   - `auth_bootstrap_required`
+   - `auth_failed`
+   - `payment_lease_busy`
+2. Verify policy settings in API env:
+   - `RESTAURANT_AUTH_REFRESH_RETRIES`
+   - `RESTAURANT_PAYMENT_LEASE_TTL_SECONDS`
+   - `RESTAURANT_BOOTSTRAP_TIMEOUT_SECONDS`
+3. Confirm Redis is healthy and reachable from API/worker containers.
+
+Recovery:
+
+1. If retries are too aggressive, raise `RESTAURANT_AUTH_REFRESH_RETRIES`.
+2. If lease collisions are frequent, tune `RESTAURANT_PAYMENT_LEASE_TTL_SECONDS`.
+3. Restart worker domains after config changes:
+
+```bash
+docker compose -f infra/docker compose.yml restart worker worker-restaurant
+```
 
 ## Task/ticket lifecycle support playbook
 
