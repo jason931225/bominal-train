@@ -29,6 +29,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - [da12731] Added registry-driven deprecation guard and policy validation tests (`infra/scripts/deprecation_guard.py`, `infra/tests/test_deprecation_policy.sh`).
 - [69fd34e] Added Stage 8 closure artifacts and active-plan state marker (`docs/plans/archive/2026-02-14-program-closure-report.md`, `docs/plans/archive/2026-02-14-stage8-program-closure-and-archival-hygiene.md`, `docs/plans/active/README.md`).
 - [69fd34e] Added ledger-template safety validator (`infra/tests/test_execution_ledgers.sh`).
+- [f84421d] Added Stage 9 active performance execution plan and pointer registration (`docs/plans/active/2026-02-14-stage9-performance-optimization.md`, `docs/README.md`).
 
 ### Changed
 
@@ -49,6 +50,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - [8199f85] Standardized docs/governance routing and pointer coverage for deprecation lifecycle handling (`docs/README.md`, `docs/INTENT_ROUTING.md`, `infra/tests/test_docs_pointers.sh`).
 - [69fd34e] Archived completed restructure stage plans from `docs/plans/active/` to `docs/plans/archive/` and synchronized plan routing/pointers for closure state.
 - [69fd34e] Normalized lock/request ledgers to separate live entries from non-live templates and enforced the rule in infra CI workflow (`docs/LOCK.md`, `docs/REQUEST.md`, `.github/workflows/infra-tests.yml`).
+- [f84421d] Optimized train task list performance with bounded `limit` query support, latest-row summary selection, composite list indexes, and bounded active/completed dashboard polling (`api/app/modules/train/service.py`, `api/app/modules/train/router.py`, `api/alembic/versions/20260214_0008_train_task_perf_indexes.py`, `web/components/train/train-dashboard.tsx`).
 
 ### Removed
 
