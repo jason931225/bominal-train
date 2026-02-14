@@ -106,10 +106,10 @@ Implemented:
 - Resource/swap preflight gate integrated before pull/deploy mutation.
 - Smoke failure auto-rollback trigger path controlled by `AUTO_ROLLBACK_ON_SMOKE_FAILURE`.
 - Stage 5 regression tests:
-  - `infra/tests/test_deploy_zero_downtime_lock.sh`
-  - `infra/tests/test_deploy_zero_downtime_running_container_detection.sh`
-  - `infra/tests/test_deploy_zero_downtime_preflight.sh`
-  - `infra/tests/test_deploy_zero_downtime_smoke_rollback.sh`
+  - `infra/tests/test_deploy_lock.sh`
+  - `infra/tests/test_deploy_running_container_detection.sh`
+  - `infra/tests/test_deploy_preflight.sh`
+  - `infra/tests/test_deploy_smoke_rollback.sh`
 
 ### F) Grand restructure Stage 6: safe deprecation cleanup
 
