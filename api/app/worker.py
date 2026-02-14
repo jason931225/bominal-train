@@ -11,6 +11,7 @@ from arq.connections import RedisSettings
 from sqlalchemy import select
 
 from app.core.config import get_settings
+from app.core.queue_domains import TRAIN_QUEUE_NAME
 from app.core.redis import get_redis_client
 from app.db.models import Task
 from app.db.session import SessionLocal
@@ -158,6 +159,7 @@ async def on_shutdown(ctx: dict) -> None:
 class WorkerSettings:
     functions = [run_train_task, deliver_email_job]
     redis_settings = RedisSettings.from_dsn(settings.redis_url)
+    queue_name = TRAIN_QUEUE_NAME
     on_startup = on_startup
     on_shutdown = on_shutdown
     max_jobs = 20
