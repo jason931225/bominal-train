@@ -3,11 +3,17 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SCRIPT="$ROOT_DIR/infra/scripts/predeploy-check.sh"
+GUARD_SCRIPT="$ROOT_DIR/infra/scripts/deprecation_guard.py"
 
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
-mkdir -p "$TMP_DIR/bin" "$TMP_DIR/repo/infra/env/prod"
+mkdir -p \
+  "$TMP_DIR/bin" \
+  "$TMP_DIR/repo/infra/env/prod" \
+  "$TMP_DIR/repo/infra/scripts" \
+  "$TMP_DIR/repo/.github/workflows" \
+  "$TMP_DIR/repo/docs/deprecations"
 
 cat >"$TMP_DIR/bin/docker" <<'EOF'
 #!/usr/bin/env bash
@@ -47,6 +53,36 @@ CADDY_SITE_ADDRESS=example.com
 EOF
 }
 
+make_valid_registry() {
+  cat >"$TMP_DIR/repo/docs/deprecations/registry.json" <<'EOF'
+{
+  "schema_version": 1,
+  "generated_at": "2026-02-14",
+  "deprecations": [
+    {
+      "id": "DEP-TEST-PREDEPLOY",
+      "surface": "runtime",
+      "scope": "production",
+      "artifact": "infra/docker-compose.deploy.yml.deprecated",
+      "replacement": "infra/docker-compose.prod.yml",
+      "owner": "Infra / Deployment",
+      "status": "removed",
+      "deprecated_on": "2026-01-01",
+      "remove_after": "2026-02-01",
+      "removed_on": "2026-02-10",
+      "removal_commit": "5039127",
+      "window_policy": "prod30_github14_local2",
+      "callers_scan_paths": [
+        "infra/scripts",
+        ".github/workflows"
+      ],
+      "notes": "Test fixture"
+    }
+  ]
+}
+EOF
+}
+
 assert_fails() {
   local msg="$1"
   shift
@@ -57,23 +93,61 @@ assert_fails() {
 }
 
 make_valid_envs
+make_valid_registry
 
 # Valid env files with skip smoke checks should pass.
-PATH="$TMP_DIR/bin:$PATH" BOMINAL_ROOT_DIR="$TMP_DIR/repo" "$SCRIPT" --skip-smoke-tests >/dev/null
+PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" BOMINAL_ROOT_DIR="$TMP_DIR/repo" "$SCRIPT" --skip-smoke-tests >/dev/null
 
 # Missing required env file should fail.
 rm -f "$TMP_DIR/repo/infra/env/prod/caddy.env"
-assert_fails "missing env file" env PATH="$TMP_DIR/bin:$PATH" BOMINAL_ROOT_DIR="$TMP_DIR/repo" "$SCRIPT" --skip-smoke-tests
+assert_fails "missing env file" env PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" BOMINAL_ROOT_DIR="$TMP_DIR/repo" "$SCRIPT" --skip-smoke-tests
 make_valid_envs
 
 # Placeholder should fail.
 echo "INTERNAL_API_KEY=CHANGE_ME" >"$TMP_DIR/repo/infra/env/prod/api.env"
 echo "MASTER_KEY=abc" >>"$TMP_DIR/repo/infra/env/prod/api.env"
-assert_fails "placeholder value" env PATH="$TMP_DIR/bin:$PATH" BOMINAL_ROOT_DIR="$TMP_DIR/repo" "$SCRIPT" --skip-smoke-tests
+assert_fails "placeholder value" env PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" BOMINAL_ROOT_DIR="$TMP_DIR/repo" "$SCRIPT" --skip-smoke-tests
 make_valid_envs
+make_valid_registry
 
 # Missing required security key should fail.
 echo "MASTER_KEY=abc" >"$TMP_DIR/repo/infra/env/prod/api.env"
-assert_fails "missing INTERNAL_API_KEY" env PATH="$TMP_DIR/bin:$PATH" BOMINAL_ROOT_DIR="$TMP_DIR/repo" "$SCRIPT" --skip-smoke-tests
+assert_fails "missing INTERNAL_API_KEY" env PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" BOMINAL_ROOT_DIR="$TMP_DIR/repo" "$SCRIPT" --skip-smoke-tests
+
+# Overdue production deprecation with active references should fail deploy gate.
+make_valid_envs
+cat >"$TMP_DIR/repo/docs/deprecations/registry.json" <<'EOF'
+{
+  "schema_version": 1,
+  "generated_at": "2026-02-14",
+  "deprecations": [
+    {
+      "id": "DEP-TEST-OVERDUE",
+      "surface": "runtime",
+      "scope": "production",
+      "artifact": "infra/scripts/legacy-deploy.sh",
+      "replacement": "infra/scripts/deploy.sh",
+      "owner": "Infra / Deployment",
+      "status": "deprecated",
+      "deprecated_on": "2025-01-01",
+      "remove_after": "2025-02-01",
+      "window_policy": "prod30_github14_local2",
+      "callers_scan_paths": [
+        "infra/scripts"
+      ],
+      "notes": "Past due reference should block predeploy"
+    }
+  ]
+}
+EOF
+cat >"$TMP_DIR/repo/infra/scripts/runtime-wrapper.sh" <<'EOF'
+#!/usr/bin/env bash
+echo "infra/scripts/legacy-deploy.sh"
+EOF
+assert_fails "overdue deprecation should block predeploy" \
+  env PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" BOMINAL_ROOT_DIR="$TMP_DIR/repo" "$SCRIPT" --skip-smoke-tests
+
+# Explicit bypass should allow predeploy to continue.
+PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" PREDEPLOY_ALLOW_DEPRECATION_BYPASS=true BOMINAL_ROOT_DIR="$TMP_DIR/repo" "$SCRIPT" --skip-smoke-tests >/dev/null
 
 echo "OK: predeploy-check env validation tests passed."

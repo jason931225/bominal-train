@@ -33,6 +33,9 @@ require_running_services=0
 skip_smoke_tests=0
 min_total_memory_mb="${PREDEPLOY_MIN_TOTAL_MEMORY_MB:-0}"
 min_total_swap_mb="${PREDEPLOY_MIN_TOTAL_SWAP_MB:-0}"
+allow_deprecation_bypass="${PREDEPLOY_ALLOW_DEPRECATION_BYPASS:-false}"
+deprecation_registry_path="${PREDEPLOY_DEPRECATION_REGISTRY_PATH:-$ROOT_DIR/docs/deprecations/registry.json}"
+deprecation_guard_script="${PREDEPLOY_DEPRECATION_GUARD_SCRIPT:-$ROOT_DIR/infra/scripts/deprecation_guard.py}"
 
 require_nonnegative_integer() {
   local value="$1"
@@ -90,6 +93,63 @@ run_resource_gate() {
   fi
 }
 
+require_boolean_like() {
+  local value="$1"
+  local name="$2"
+  case "$value" in
+    true|false|1|0|yes|no)
+      ;;
+    *)
+      log_error "$name expects one of: true|false|1|0|yes|no (got: $value)"
+      exit 1
+      ;;
+  esac
+}
+
+is_truthy() {
+  local value="$1"
+  case "$value" in
+    true|1|yes)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+run_deprecation_gate() {
+  require_boolean_like "$allow_deprecation_bypass" "PREDEPLOY_ALLOW_DEPRECATION_BYPASS"
+
+  if is_truthy "$allow_deprecation_bypass"; then
+    log_warn "Skipping deprecation deploy gate (PREDEPLOY_ALLOW_DEPRECATION_BYPASS=true)."
+    return 0
+  fi
+
+  require_file "$deprecation_registry_path"
+  require_file "$deprecation_guard_script"
+  if ! command -v python3 >/dev/null 2>&1; then
+    log_error "python3 is required for deprecation gate checks."
+    exit 1
+  fi
+
+  echo "==> Validating deprecation registry policy"
+  if ! python3 "$deprecation_guard_script" validate \
+    --root "$ROOT_DIR" \
+    --registry "$deprecation_registry_path"; then
+    log_error "Deprecation registry validation failed."
+    exit 1
+  fi
+
+  echo "==> Enforcing production deprecation gate"
+  if ! python3 "$deprecation_guard_script" enforce-deploy \
+    --root "$ROOT_DIR" \
+    --registry "$deprecation_registry_path"; then
+    log_error "Deprecation deploy gate failed."
+    exit 1
+  fi
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --require-running-services)
@@ -128,6 +188,14 @@ Options:
   --min-total-memory-mb N    Require at least N MB total system memory (0 disables gate).
   --min-total-swap-mb N      Require at least N MB total system swap (0 disables gate).
   --help                     Show this help.
+
+Environment:
+  PREDEPLOY_ALLOW_DEPRECATION_BYPASS=true
+      Emergency override for deprecation gate (approval required).
+  PREDEPLOY_DEPRECATION_REGISTRY_PATH=<path>
+      Override default registry path (default: docs/deprecations/registry.json).
+  PREDEPLOY_DEPRECATION_GUARD_SCRIPT=<path>
+      Override guard script (default: infra/scripts/deprecation_guard.py).
 USAGE
       exit 0
       ;;
@@ -161,6 +229,8 @@ done
 
 echo "==> Validating production compose configuration"
 "${COMPOSE_CMD[@]}" -f infra/docker-compose.prod.yml config >/tmp/bominal-prod-compose.txt
+
+run_deprecation_gate
 
 run_resource_gate
 

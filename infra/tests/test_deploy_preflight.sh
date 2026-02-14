@@ -4,11 +4,17 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SCRIPT="$ROOT_DIR/infra/scripts/deploy.sh"
 REAL_PREFLIGHT="$ROOT_DIR/infra/scripts/predeploy-check.sh"
+GUARD_SCRIPT="$ROOT_DIR/infra/scripts/deprecation_guard.py"
 
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
-mkdir -p "$TMP_DIR/bin" "$TMP_DIR/repo/infra/env/prod"
+mkdir -p \
+  "$TMP_DIR/bin" \
+  "$TMP_DIR/repo/infra/env/prod" \
+  "$TMP_DIR/repo/infra/scripts" \
+  "$TMP_DIR/repo/.github/workflows" \
+  "$TMP_DIR/repo/docs/deprecations"
 
 cat >"$TMP_DIR/repo/infra/env/prod/postgres.env" <<'EOF_ENV'
 POSTGRES_DB=bominal
@@ -29,6 +35,34 @@ EOF_ENV
 cat >"$TMP_DIR/repo/infra/env/prod/caddy.env" <<'EOF_ENV'
 CADDY_SITE_ADDRESS=example.com
 EOF_ENV
+
+cat >"$TMP_DIR/repo/docs/deprecations/registry.json" <<'EOF_REGISTRY'
+{
+  "schema_version": 1,
+  "generated_at": "2026-02-14",
+  "deprecations": [
+    {
+      "id": "DEP-TEST-DEPLOY-PREFLIGHT",
+      "surface": "runtime",
+      "scope": "production",
+      "artifact": "infra/docker-compose.deploy.yml.deprecated",
+      "replacement": "infra/docker-compose.prod.yml",
+      "owner": "Infra / Deployment",
+      "status": "removed",
+      "deprecated_on": "2026-01-01",
+      "remove_after": "2026-02-01",
+      "removed_on": "2026-02-10",
+      "removal_commit": "5039127",
+      "window_policy": "prod30_github14_local2",
+      "callers_scan_paths": [
+        "infra/scripts",
+        ".github/workflows"
+      ],
+      "notes": "Test fixture"
+    }
+  ]
+}
+EOF_REGISTRY
 
 cat >"$TMP_DIR/bin/gcloud" <<'GCLOUD'
 #!/usr/bin/env bash
@@ -147,6 +181,7 @@ run_case() {
     DEPLOY_HISTORY_DIR="$TMP_DIR/history-$profile" \
     DEPLOY_LOCK_FILE="$TMP_DIR/lock-$profile" \
     PREDEPLOY_CHECK_SCRIPT="$REAL_PREFLIGHT" \
+    PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" \
     DOCKER_CALLS_FILE="$calls_file" \
     SIM_RESOURCE_PROFILE="$profile" \
     DEPLOY_MIN_TOTAL_MEMORY_MB=900 \
