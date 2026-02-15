@@ -74,7 +74,7 @@ Rules:
 - released_at_utc: 2026-02-15T04:09:48Z
 
 ### LOCK-2026-02-15-STAGE11
-- status: ACTIVE
+- status: RELEASED
 - owner_session: Codex Session
 - scope:
   - `web/**`
@@ -82,7 +82,7 @@ Rules:
   - `CHANGELOG.md`
 - reason: Stage 11 frontend task-dashboard polling and render performance optimization
 - created_at_utc: 2026-02-15T04:10:50Z
-- released_at_utc:
+- released_at_utc: 2026-02-15T04:12:48Z
 
 ## Template (Non-live Example)
 
