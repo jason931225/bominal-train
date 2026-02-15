@@ -103,6 +103,7 @@ Task list performance controls:
 - Train list reads use partial indexes for active and terminal states (`user_id + created_at desc`) to reduce tail latency for bounded list fetches.
 - Train dashboard polling fetches active tasks every poll cycle while completed tasks refresh on periodic/forced triggers (initial load, visibility restore, action mutations) to reduce steady-state list load.
 - Frontend task list state updates are key-compared before commit to avoid unnecessary rerender churn when payloads are unchanged.
+- Performance regression safeguards include hybrid benchmark gate scripts (relative improvement + absolute ceilings) and frontend polling-behavior unit tests in CI.
 
 Provider integration:
 
