@@ -54,6 +54,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - [69fd34e] Normalized lock/request ledgers to separate live entries from non-live templates and enforced the rule in infra CI workflow (`docs/LOCK.md`, `docs/REQUEST.md`, `.github/workflows/infra-tests.yml`).
 - [f84421d] Optimized train task list performance with bounded `limit` query support, latest-row summary selection, composite list indexes, and bounded active/completed dashboard polling (`api/app/modules/train/service.py`, `api/app/modules/train/router.py`, `api/alembic/versions/20260214_0008_train_task_perf_indexes.py`, `web/components/train/train-dashboard.tsx`).
 - [758f0f5] Documented benchmark/reset shell script operations and guardrails in runbook procedures (`docs/RUNBOOK.md`).
+- [721600a] Extended infra CI workflow to execute benchmark/reset shell script validation tests (`.github/workflows/infra-tests.yml`, `infra/tests/test_benchmark_train_task_list.sh`, `infra/tests/test_reset_local_db.sh`).
 
 ### Removed
 
