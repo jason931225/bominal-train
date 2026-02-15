@@ -99,6 +99,8 @@ Task list performance controls:
 
 - `/api/train/tasks` supports bounded list reads via `limit` query (`1..500`, default `200`).
 - Latest attempt/ticket summary rows are selected using per-task latest-row ranking queries (window-function strategy) instead of loading full per-task histories in list view.
+- PostgreSQL task-summary paths use `DISTINCT ON` plus descending `(task_id, timestamp, id)` indexes for latest attempt/artifact retrieval; non-Postgres test backends fall back to ranking-query compatibility path.
+- Train list reads use partial indexes for active and terminal states (`user_id + created_at desc`) to reduce tail latency for bounded list fetches.
 
 Provider integration:
 

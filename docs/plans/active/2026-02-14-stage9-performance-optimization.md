@@ -15,6 +15,16 @@ Reduce end-user latency and server load for train task workflows with backend-fi
   - `users.password_hash`
 - Session/runtime data does not need to be preserved.
 
+## Execution Status (2026-02-15)
+
+- Phase 1 (baseline + RED tests): completed.
+- Phase 2 backend optimization: completed.
+  - Initial bounded list + latest-row summary/index improvements shipped in Stage9 commits.
+  - Stage10 backend follow-up shipped PostgreSQL `DISTINCT ON` latest-row paths with non-Postgres fallback compatibility in `api/app/modules/train/service.py`.
+  - Stage10 additive index migration applied: `api/alembic/versions/20260215_0009_task_list_tail_latency_indexes.py`.
+- Phase 3 frontend optimization: next active focus after Stage10 closure.
+- Phase 4 reset workflow: completed (`infra/scripts/reset-local-db.sh` + tests/docs).
+
 ## Scope
 
 - Backend:
