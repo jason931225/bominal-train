@@ -30,6 +30,8 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - [69fd34e] Added Stage 8 closure artifacts and active-plan state marker (`docs/plans/archive/2026-02-14-program-closure-report.md`, `docs/plans/archive/2026-02-14-stage8-program-closure-and-archival-hygiene.md`, `docs/plans/active/README.md`).
 - [69fd34e] Added ledger-template safety validator (`infra/tests/test_execution_ledgers.sh`).
 - [f84421d] Added Stage 9 active performance execution plan and pointer registration (`docs/plans/active/2026-02-14-stage9-performance-optimization.md`, `docs/README.md`).
+- [eee7868] Added repeatable train task list latency benchmark script with p50/p95 reporting and validation checks (`infra/scripts/benchmark-train-task-list.sh`, `infra/tests/test_benchmark_train_task_list.sh`).
+- [eee7868] Added high-risk local DB reset workflow with optional fresh-schema rebuild and sign-in credential preservation (`infra/scripts/reset-local-db.sh`, `infra/tests/test_reset_local_db.sh`).
 
 ### Changed
 
@@ -51,6 +53,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - [69fd34e] Archived completed restructure stage plans from `docs/plans/active/` to `docs/plans/archive/` and synchronized plan routing/pointers for closure state.
 - [69fd34e] Normalized lock/request ledgers to separate live entries from non-live templates and enforced the rule in infra CI workflow (`docs/LOCK.md`, `docs/REQUEST.md`, `.github/workflows/infra-tests.yml`).
 - [f84421d] Optimized train task list performance with bounded `limit` query support, latest-row summary selection, composite list indexes, and bounded active/completed dashboard polling (`api/app/modules/train/service.py`, `api/app/modules/train/router.py`, `api/alembic/versions/20260214_0008_train_task_perf_indexes.py`, `web/components/train/train-dashboard.tsx`).
+- [758f0f5] Documented benchmark/reset shell script operations and guardrails in runbook procedures (`docs/RUNBOOK.md`).
 
 ### Removed
 
