@@ -85,7 +85,7 @@ Rules:
 - released_at_utc: 2026-02-15T04:12:48Z
 
 ### LOCK-2026-02-15-STAGE12
-- status: ACTIVE
+- status: RELEASED
 - owner_session: Codex Session
 - scope:
   - `api/**`
@@ -96,7 +96,7 @@ Rules:
   - `CHANGELOG.md`
 - reason: Stage 12 comprehensive perf hardening (frontend tests + benchmark gates + CI/docs)
 - created_at_utc: 2026-02-15T04:24:19Z
-- released_at_utc:
+- released_at_utc: 2026-02-15T04:40:39Z
 
 ## Template (Non-live Example)
 
