@@ -123,6 +123,7 @@ Provider integration:
   - `provider + account_ref + restaurant_id`
 - Non-committing restaurant phases (for example search/availability) do not acquire payment lease.
 - Policy writes only safe attempt metadata (`meta_json_safe`) and avoids credential/token persistence.
+- CatchTable endpoint implementation references are sourced from read-only `third_party/catchtable` files (`reservation.py`, `session.py`, `configs.py`, `main.py`).
 
 ## Data model highlights
 
