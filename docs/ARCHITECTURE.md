@@ -101,6 +101,8 @@ Task list performance controls:
 - Latest attempt/ticket summary rows are selected using per-task latest-row ranking queries (window-function strategy) instead of loading full per-task histories in list view.
 - PostgreSQL task-summary paths use `DISTINCT ON` plus descending `(task_id, timestamp, id)` indexes for latest attempt/artifact retrieval; non-Postgres test backends fall back to ranking-query compatibility path.
 - Train list reads use partial indexes for active and terminal states (`user_id + created_at desc`) to reduce tail latency for bounded list fetches.
+- Train dashboard polling fetches active tasks every poll cycle while completed tasks refresh on periodic/forced triggers (initial load, visibility restore, action mutations) to reduce steady-state list load.
+- Frontend task list state updates are key-compared before commit to avoid unnecessary rerender churn when payloads are unchanged.
 
 Provider integration:
 
