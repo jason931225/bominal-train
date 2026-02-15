@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 from datetime import datetime, timedelta, timezone
+from uuid import UUID
 
 import fakeredis.aioredis
 import pytest
@@ -1920,6 +1921,134 @@ async def test_task_list_includes_last_attempt_summary(db_session):
     assert summary.last_attempt_error_message_safe == "reserve failed"
     assert summary.last_attempt_finished_at is not None
     assert summary.last_attempt_at == summary.last_attempt_finished_at
+
+
+@pytest.mark.asyncio
+async def test_task_list_latest_attempt_tie_breaks_with_descending_id(db_session):
+    user = User(
+        email="attempt-tie@example.com",
+        password_hash="x",
+        display_name="Attempt Tie User",
+        role_id=2,
+    )
+    db_session.add(user)
+    await db_session.flush()
+
+    task = Task(
+        user_id=user.id,
+        module="train",
+        state="QUEUED",
+        deadline_at=_utc_now() + timedelta(minutes=10),
+        spec_json={"provider": "SRT"},
+        idempotency_key="attempt-tie-break",
+    )
+    db_session.add(task)
+    await db_session.flush()
+
+    tied_finished_at = _utc_now() - timedelta(seconds=5)
+    db_session.add_all(
+        [
+            TaskAttempt(
+                id=UUID("00000000-0000-0000-0000-000000000001"),
+                task_id=task.id,
+                action="SEARCH",
+                provider="SRT",
+                ok=False,
+                retryable=True,
+                error_code="first_attempt",
+                error_message_safe="first",
+                duration_ms=100,
+                meta_json_safe={},
+                started_at=tied_finished_at - timedelta(seconds=1),
+                finished_at=tied_finished_at,
+            ),
+            TaskAttempt(
+                id=UUID("00000000-0000-0000-0000-000000000002"),
+                task_id=task.id,
+                action="RESERVE",
+                provider="SRT",
+                ok=True,
+                retryable=False,
+                error_code=None,
+                error_message_safe=None,
+                duration_ms=120,
+                meta_json_safe={},
+                started_at=tied_finished_at - timedelta(seconds=2),
+                finished_at=tied_finished_at,
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    response = await list_tasks(db_session, user=user, status_filter="active")
+    summary = next(item for item in response.tasks if item.id == task.id)
+
+    assert summary.last_attempt_action == "RESERVE"
+    assert summary.last_attempt_ok is True
+    assert summary.last_attempt_error_code is None
+    assert summary.last_attempt_error_message_safe is None
+
+
+@pytest.mark.asyncio
+async def test_task_list_latest_ticket_tie_breaks_with_descending_id(db_session):
+    user = User(
+        email="ticket-tie@example.com",
+        password_hash="x",
+        display_name="Ticket Tie User",
+        role_id=2,
+    )
+    db_session.add(user)
+    await db_session.flush()
+
+    task = Task(
+        user_id=user.id,
+        module="train",
+        state="COMPLETED",
+        deadline_at=_utc_now() + timedelta(minutes=10),
+        completed_at=_utc_now(),
+        spec_json={"provider": "SRT"},
+        idempotency_key="ticket-tie-break",
+    )
+    db_session.add(task)
+    await db_session.flush()
+
+    tied_created_at = _utc_now() - timedelta(minutes=1)
+    db_session.add_all(
+        [
+            Artifact(
+                id=UUID("10000000-0000-0000-0000-000000000001"),
+                task_id=task.id,
+                module="train",
+                kind="ticket",
+                data_json_safe={
+                    "status": "reserved",
+                    "paid": False,
+                    "reservation_id": "RES-1",
+                },
+                created_at=tied_created_at,
+            ),
+            Artifact(
+                id=UUID("10000000-0000-0000-0000-000000000002"),
+                task_id=task.id,
+                module="train",
+                kind="ticket",
+                data_json_safe={
+                    "status": "awaiting_payment",
+                    "paid": True,
+                    "reservation_id": "RES-2",
+                },
+                created_at=tied_created_at,
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    response = await list_tasks(db_session, user=user, status_filter="completed")
+    summary = next(item for item in response.tasks if item.id == task.id)
+
+    assert summary.ticket_status == "awaiting_payment"
+    assert summary.ticket_paid is True
+    assert summary.ticket_reservation_id == "RES-2"
 
 
 @pytest.mark.asyncio
