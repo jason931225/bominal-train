@@ -84,6 +84,20 @@ Rules:
 - created_at_utc: 2026-02-15T04:10:50Z
 - released_at_utc: 2026-02-15T04:12:48Z
 
+### LOCK-2026-02-15-STAGE12
+- status: ACTIVE
+- owner_session: Codex Session
+- scope:
+  - `api/**`
+  - `web/**`
+  - `infra/**`
+  - `.github/workflows/infra-tests.yml`
+  - `docs/**`
+  - `CHANGELOG.md`
+- reason: Stage 12 comprehensive perf hardening (frontend tests + benchmark gates + CI/docs)
+- created_at_utc: 2026-02-15T04:24:19Z
+- released_at_utc:
+
 ## Template (Non-live Example)
 
 ### LOCK-EXAMPLE-001
