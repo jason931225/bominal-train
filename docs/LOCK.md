@@ -51,7 +51,7 @@ Rules:
 - released_at_utc: 2026-02-15T03:43:25Z
 
 ### LOCK-2026-02-14-STAGE9C
-- status: ACTIVE
+- status: RELEASED
 - owner_session: Codex Session
 - scope:
   - `.github/workflows/infra-tests.yml`
@@ -59,7 +59,7 @@ Rules:
   - `CHANGELOG.md`
 - reason: Stage 9 CI follow-up to add new shell script validations to infra workflow
 - created_at_utc: 2026-02-15T03:48:05Z
-- released_at_utc:
+- released_at_utc: 2026-02-15T03:49:26Z
 
 ## Template (Non-live Example)
 
