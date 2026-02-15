@@ -73,6 +73,17 @@ Rules:
 - created_at_utc: 2026-02-15T04:01:19Z
 - released_at_utc: 2026-02-15T04:09:48Z
 
+### LOCK-2026-02-15-STAGE11
+- status: ACTIVE
+- owner_session: Codex Session
+- scope:
+  - `web/**`
+  - `docs/**`
+  - `CHANGELOG.md`
+- reason: Stage 11 frontend task-dashboard polling and render performance optimization
+- created_at_utc: 2026-02-15T04:10:50Z
+- released_at_utc:
+
 ## Template (Non-live Example)
 
 ### LOCK-EXAMPLE-001
