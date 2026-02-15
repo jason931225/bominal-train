@@ -48,6 +48,14 @@ jobs:
         run: |
           bash infra/tests/test_env_utils.sh
 
+      - name: Validate train task list benchmark script
+        run: |
+          bash infra/tests/test_benchmark_train_task_list.sh
+
+      - name: Validate local DB reset script
+        run: |
+          bash infra/tests/test_reset_local_db.sh
+
       - name: Validate deprecation registry policy
         run: |
           bash infra/tests/test_deprecation_policy.sh

@@ -1923,6 +1923,46 @@ async def test_task_list_includes_last_attempt_summary(db_session):
 
 
 @pytest.mark.asyncio
+async def test_task_list_limit_bounds_results(db_session):
+    user = User(
+        email="task-limit@example.com",
+        password_hash="x",
+        display_name="Task Limit User",
+        role_id=2,
+    )
+    db_session.add(user)
+    await db_session.flush()
+
+    for idx in range(3):
+        db_session.add(
+            Task(
+                user_id=user.id,
+                module="train",
+                state="QUEUED",
+                deadline_at=_utc_now() + timedelta(minutes=10 + idx),
+                spec_json={"provider": "SRT", "index": idx},
+                idempotency_key=f"task-limit-{idx}",
+            )
+        )
+
+    await db_session.commit()
+
+    response = await list_tasks(db_session, user=user, status_filter="active", limit=2)
+    assert len(response.tasks) == 2
+
+
+@pytest.mark.asyncio
+async def test_train_tasks_endpoint_rejects_invalid_limit_query(client):
+    cookie = await _register_and_login(client, email="task-limit-query@example.com")
+
+    response = await client.get(
+        "/api/train/tasks?status=active&limit=0",
+        cookies={"bominal_session": cookie},
+    )
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
 async def test_task_list_includes_retry_now_status_fields(db_session):
     now = _utc_now()
     deadline = now + timedelta(minutes=10)
