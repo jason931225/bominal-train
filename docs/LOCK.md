@@ -61,6 +61,18 @@ Rules:
 - created_at_utc: 2026-02-15T03:48:05Z
 - released_at_utc: 2026-02-15T03:49:26Z
 
+### LOCK-2026-02-15-STAGE10
+- status: ACTIVE
+- owner_session: Codex Session
+- scope:
+  - `api/**`
+  - `infra/**`
+  - `docs/**`
+  - `CHANGELOG.md`
+- reason: Stage 10 backend task-list tail-latency optimization and benchmark rerun
+- created_at_utc: 2026-02-15T04:01:19Z
+- released_at_utc:
+
 ## Template (Non-live Example)
 
 ### LOCK-EXAMPLE-001
