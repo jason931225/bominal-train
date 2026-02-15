@@ -110,6 +110,23 @@ docker compose -f infra/docker compose.prod.yml ps
 docker compose -f infra/docker compose.prod.yml logs -f caddy api worker worker-restaurant web
 ```
 
+Task-list latency benchmark (backend API):
+
+```bash
+# Host execution against local API
+infra/scripts/benchmark-train-task-list.sh \
+  --base-url http://localhost:8000 \
+  --iterations 30 \
+  --active-limit 60 \
+  --completed-limit 80
+```
+
+If running from a containerized shell where API is on the compose network:
+
+```bash
+infra/scripts/benchmark-train-task-list.sh --base-url http://api:8000
+```
+
 Live system monitor (production):
 
 ```bash
@@ -153,6 +170,24 @@ docker compose -f infra/docker compose.yml exec postgres \
 ```
 
 ## Common incidents
+
+## 0) Local DB reset for performance testing
+
+High-risk reset workflows (local/dev only):
+
+```bash
+# Preserve sign-in credentials when available (default):
+# users.email, users.display_name, users.password_hash
+infra/scripts/reset-local-db.sh --yes
+
+# Fresh schema rebuild + migration replay + credential restore
+infra/scripts/reset-local-db.sh --fresh-schema --yes
+```
+
+Notes:
+- `--yes` is required.
+- `--no-preserve-signin` drops all user sign-in credentials.
+- Script blocks prod compose files unless `--allow-non-dev` is explicitly provided.
 
 ## 0) VM docker deploy unhealthy after deploy
 

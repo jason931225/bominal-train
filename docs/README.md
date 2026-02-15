@@ -67,7 +67,8 @@ Pointer format convention (mandatory):
 - [PTR-PLAN-009] `docs/plans/archive/2026-02-14-stage7-docs-canonization.md` - archived Stage 7 docs canonization execution plan.
 - [PTR-PLAN-010] `docs/plans/archive/2026-02-14-stage8-program-closure-and-archival-hygiene.md` - archived Stage 8 closure and archival hygiene execution plan.
 - [PTR-PLAN-011] `docs/plans/archive/2026-02-14-program-closure-report.md` - final closure report for the restructure program.
-- [PTR-PLAN-012] `docs/plans/active/README.md` - current active-plan state marker (no open executable plans).
+- [PTR-PLAN-012] `docs/plans/active/README.md` - current active-plan state marker.
+- [PTR-PLAN-013] `docs/plans/active/2026-02-14-stage9-performance-optimization.md` - active Stage 9 backend-first performance optimization execution plan.
 
 ### Playbooks
 
