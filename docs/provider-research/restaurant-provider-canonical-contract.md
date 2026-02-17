@@ -61,6 +61,7 @@ Inputs:
 Output expectations:
 - challenge metadata (if OTP flow)
 - safe next-step hints only
+- for OTP providers: `auth.start` must expose normalized challenge metadata only and fail when challenge reference is absent on success HTTP status
 
 ### `auth.complete`
 
@@ -72,6 +73,7 @@ Inputs:
 Output expectations:
 - success/failure and safe profile/session hints
 - no raw token or cookie persistence in outcome payload
+- body-level provider errors (for example `success=false` with HTTP 200) must be treated as operation failure
 
 ### `auth.refresh`
 
