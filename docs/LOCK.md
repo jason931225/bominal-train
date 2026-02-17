@@ -122,6 +122,18 @@ Rules:
 - created_at_utc: 2026-02-17T15:28:36Z
 - released_at_utc: 2026-02-17T15:34:32Z
 
+### LOCK-2026-02-17-OPENTABLE-CONTRACT-FREEZE
+- status: ACTIVE
+- owner_session: Codex Session
+- scope:
+  - `api/**`
+  - `docs/**`
+  - `infra/env/prod/api.env.example`
+  - `CHANGELOG.md`
+- reason: OpenTable search/create contract freeze (operation names and variable schema)
+- created_at_utc: 2026-02-17T15:56:14Z
+- released_at_utc:
+
 ## Template (Non-live Example)
 
 ### LOCK-EXAMPLE-001
