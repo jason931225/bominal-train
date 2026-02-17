@@ -49,10 +49,13 @@ Completed:
    - `auth.complete` password-flow challenge-token completion path (no second provider call)
    - API key/origin config wiring in provider factory/settings/env template
    - adapter coverage tests in `api/tests/test_restaurant_provider_resy.py`
+9. Cross-checked read-only `third_party/resy` references and synchronized Resy endpoint inventory:
+   - pinned reference-derived endpoint chain (`/2/user`, `/4/find`, `/3/details`, `/3/book`, `/3/cancel`)
+   - documented request/response anchors and pending live-capture freeze gaps
 
 Open follow-up captures (next implementation stage):
 
-1. Resy full availability/hold/create/cancel endpoint capture and contract freeze.
+1. Resy live contract freeze for `/2/user`, `/4/find`, `/3/details`, `/3/book`, `/3/cancel` in adapter/tests.
 2. Session refresh/logout endpoint freeze for Resy.
 
 ## Verification commands
