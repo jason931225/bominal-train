@@ -129,7 +129,7 @@ Provider integration:
 - OpenTable stage-1 adapter implementation currently provides:
   - live refresh/profile/cancel paths
   - concrete OTP auth paths (`/dapi/authentication/sendotpfromsignin`, `/dapi/authentication/signinwithotp`) with env override support
-  - configurable search/create GraphQL contract paths
+  - frozen search/create GraphQL operation names and variable schema (`SearchRestaurantAvailability`, `CreateReservation`) with env-configured persisted hashes
 - Provider contract research and payload schemas are maintained under `docs/provider-research/`.
 - CatchTable endpoint implementation references are sourced from read-only `third_party/catchtable` files (`reservation.py`, `session.py`, `configs.py`, `main.py`).
 
