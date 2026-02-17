@@ -59,15 +59,23 @@ Implemented in `api/app/modules/restaurant/providers/resy_adapter.py`:
   - `provider_account_ref` (string when present)
   - `challenge_token` containing only `password_flow_complete` and `provider_account_ref`
 - `auth.complete` is challenge-token based for password flow and does not execute a second network call.
+- stage-2 endpoint paths are now config-driven:
+  - `profile.get`: `GET /2/user`
+  - `search.availability`: `GET /4/find`
+  - `reservation.create`: `POST /3/details` then `POST /3/book`
+  - `reservation.cancel`: `POST /3/cancel` with fallback retry using `resy_token` when first cancel attempt fails
+- stage-2 safe output normalization now includes:
+  - profile safe identity summary (`provider_account_ref`, name/email, reservation/payment-method counts)
+  - normalized slot list from `/4/find` (`config.token` -> canonical slot token/id)
+  - create step metadata (`payment_required`, `resy_token_present`, `display_date`, `display_time`)
+  - cancel fallback flag (`used_resy_token_fallback`)
 
 Required for full feature but not yet contract-frozen:
 
 - session refresh endpoint (`auth.refresh`)
-- profile endpoint (`profile.get`)
-- availability endpoint(s) (`search.availability`, expected `/4/find`)
-- lock/hold endpoint(s) (`reservation.create` pre-step, expected `/3/details`)
-- reservation-create endpoint (`reservation.create`, expected `/3/book`)
-- cancellation endpoint (`reservation.cancel`, expected `/3/cancel`)
+- profile/search/create/cancel edge-case semantics under live captures:
+  - payment-required / special-policy venues
+  - cancel fallback requirements across reservation variants
 - logout endpoint
 
 ## Observed authentication contract
@@ -174,7 +182,7 @@ Reference response anchors:
 Reference request shape (form encoded):
 
 - `book_token=<value from /3/details>`
-- `source_id=resy.com` (or provider-required equivalent)
+- `source_id=<provider source id>` (adapter default: `resy.com-venue-details`)
 - optional `struct_payment_method=<json-string>`
 - optional `Idempotency-Key` header for retry safety
 
@@ -207,11 +215,10 @@ This endpoint document extends that workflow by freezing the canonical adapter m
 
 ## Required follow-up captures for full Resy adapter
 
-1. Freeze live `/2/user` response subset for `profile.get` normalization.
-2. Freeze live `/4/find` slot schema and token extraction for `search.availability`.
-3. Freeze live `/3/details` and `/3/book` create contracts, including payment-required venue behavior.
-4. Freeze live `/3/cancel` contract and fallback semantics (`reservation_id` vs `reservation_id+resy_token`).
-5. Freeze session refresh/logout endpoints for long-running worker flows.
+1. Freeze session refresh (`/3/auth/refresh`) request/response contract for long-running auth maintenance.
+2. Freeze logout endpoint contract for explicit session teardown.
+3. Capture payment-required/policy-heavy create variants and confirm safe field mapping under non-standard venue requirements.
+4. Capture cancel fallback coverage across reservation variants to validate when `resy_token` is mandatory.
 
 ## Safe logging checklist for Resy adapters
 

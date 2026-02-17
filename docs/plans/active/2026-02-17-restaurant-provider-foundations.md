@@ -52,11 +52,17 @@ Completed:
 9. Cross-checked read-only `third_party/resy` references and synchronized Resy endpoint inventory:
    - pinned reference-derived endpoint chain (`/2/user`, `/4/find`, `/3/details`, `/3/book`, `/3/cancel`)
    - documented request/response anchors and pending live-capture freeze gaps
+10. Implemented Resy adapter stage-2 execution paths:
+   - `profile.get` using `GET /2/user` safe profile summary mapping
+   - `search.availability` using `GET /4/find` canonical slot normalization
+   - `reservation.create` two-step flow (`POST /3/details` then `POST /3/book`) with idempotency/payment-method/source-id support
+   - `reservation.cancel` fallback flow (`reservation_id` first, retry with `resy_token` when needed)
+   - config/factory/env wiring and RED->GREEN adapter tests
 
 Open follow-up captures (next implementation stage):
 
-1. Resy live contract freeze for `/2/user`, `/4/find`, `/3/details`, `/3/book`, `/3/cancel` in adapter/tests.
-2. Session refresh/logout endpoint freeze for Resy.
+1. Resy session refresh/logout endpoint freeze.
+2. Resy live edge-case contract freeze for payment/policy-heavy create/cancel variants.
 
 ## Verification commands
 
