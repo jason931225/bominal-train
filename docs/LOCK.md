@@ -134,6 +134,18 @@ Rules:
 - created_at_utc: 2026-02-17T15:56:14Z
 - released_at_utc: 2026-02-17T15:58:57Z
 
+### LOCK-2026-02-17-OPENTABLE-SEARCH-HASH
+- status: ACTIVE
+- owner_session: Codex Session
+- scope:
+  - `api/**`
+  - `docs/**`
+  - `infra/env/prod/api.env.example`
+  - `CHANGELOG.md`
+- reason: Wire observed OpenTable RestaurantsAvailability operation/hash and update contract docs
+- created_at_utc: 2026-02-17T16:47:45Z
+- released_at_utc:
+
 ## Template (Non-live Example)
 
 ### LOCK-EXAMPLE-001
