@@ -98,6 +98,19 @@ Rules:
 - created_at_utc: 2026-02-15T04:24:19Z
 - released_at_utc: 2026-02-15T04:40:39Z
 
+### LOCK-2026-02-17-RESTAURANT-FOUNDATIONS
+- status: ACTIVE
+- owner_session: Codex Session
+- scope:
+  - `api/**`
+  - `web/**`
+  - `docs/**`
+  - `infra/tests/**`
+  - `CHANGELOG.md`
+- reason: Restaurant provider contract documentation, adapter readiness, and module implementation foundations
+- created_at_utc: 2026-02-17T15:14:39Z
+- released_at_utc:
+
 ## Template (Non-live Example)
 
 ### LOCK-EXAMPLE-001
