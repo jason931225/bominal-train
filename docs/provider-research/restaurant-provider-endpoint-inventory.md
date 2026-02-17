@@ -16,8 +16,8 @@ Status values:
 | `auth.complete` | `POST /dapi/authentication/signinwithotp` | CONFIRMED | OTP verify flow with `phoneNumberOrEmail`, `phoneCountryCode`, `countryCode`, `otp`. |
 | `auth.refresh` | `GET /dapi/fe/human`, `POST /dapi/v1/session` | CONFIRMED | Observed keepalive-like calls; treat as provider-internal session touch. |
 | `profile.get` | `POST /dapi/fe/gql?optype=query&opname=HeaderUserProfile` | CONFIRMED | Returns user profile and invitation/upcoming context. |
-| `search.availability` | configurable adapter GraphQL contract (operation/hash/variables metadata) | PARTIAL | Adapter method implemented; stable OpenTable operation/hash capture still required. |
-| `reservation.create` | configurable adapter GraphQL contract (operation/hash/variables metadata) | PARTIAL | Adapter method implemented; concrete create mutation contract still required. |
+| `search.availability` | `POST /dapi/fe/gql?optype=query&opname=SearchRestaurantAvailability` | PARTIAL | Operation name + variable schema frozen in adapter; production persisted hash still needs capture (`RESTAURANT_OPENTABLE_SEARCH_OPERATION_SHA256`). |
+| `reservation.create` | `POST /dapi/fe/gql?optype=mutation&opname=CreateReservation` | PARTIAL | Operation name + variable schema frozen in adapter; production persisted hash still needs capture (`RESTAURANT_OPENTABLE_CREATE_OPERATION_SHA256`). |
 | `reservation.cancel` | `POST /dapi/fe/gql?optype=mutation&opname=CancelReservation` | CONFIRMED | Uses restaurant ID + confirmation number + security token. |
 | session hygiene | `GET /_sec/cpr/params` | CONFIRMED | Security/challenge parameter endpoint; document only, no implementation. |
 | logout | `POST /dapi/authentication/logout` | CONFIRMED | Auth teardown endpoint. |
@@ -48,7 +48,7 @@ No direct adapter implementation is in scope for this stage.
 
 ## Required next captures before live adapter execution
 
-1. OpenTable search and reservation-create concrete operation/hash capture set.
+1. OpenTable search and reservation-create concrete persisted hashes (replace temporary empty defaults).
 2. OpenTable OTP success/error response schema freeze (field-by-field capture).
 3. Resy availability + lock/hold + create + cancel endpoint set with payload deltas.
 4. Resy refresh/profile/logout endpoint set for session lifecycle completeness.

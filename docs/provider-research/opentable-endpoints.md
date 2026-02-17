@@ -29,9 +29,21 @@ Implemented in `api/app/modules/restaurant/providers/opentable_adapter.py`:
 - `reservation.cancel`: calls `CancelReservation` persisted mutation
 - `auth.start`: `POST /dapi/authentication/sendotpfromsignin`
 - `auth.complete`: `POST /dapi/authentication/signinwithotp`
-- `search.availability` / `reservation.create`: implemented via configurable GraphQL contract metadata (`operation_name`, `sha256_hash`, `variables`)
+- `search.availability`: fixed operation contract (`SearchRestaurantAvailability`) with normalized variables:
+  - `input.restaurantId`
+  - `input.partySize`
+  - `input.dateTime`
+- `reservation.create`: fixed operation contract (`CreateReservation`) with normalized variables:
+  - `input.restaurantId`
+  - `input.partySize`
+  - `input.dateTime`
+  - `input.slotHash`
+  - `input.availabilityToken`
+- `search`/`create` persisted query hashes are configured by environment:
+  - `RESTAURANT_OPENTABLE_SEARCH_OPERATION_SHA256`
+  - `RESTAURANT_OPENTABLE_CREATE_OPERATION_SHA256`
 
-This stage enables end-to-end adapter execution paths while concrete OpenTable search/create operation-hash captures remain pending.
+This stage removes request-time metadata-driven search/create contracts. Remaining gap is freezing production hashes for search/create persisted queries.
 
 ## Observed endpoint details
 

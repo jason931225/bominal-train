@@ -38,13 +38,13 @@ Completed:
 7. Implemented OpenTable stage-1 adapter paths:
    - live `auth.refresh`, `profile.get`, `reservation.cancel`
    - concrete OTP `auth.start` (`/dapi/authentication/sendotpfromsignin`) and `auth.complete` (`/dapi/authentication/signinwithotp`)
-   - configurable `search.availability` and `reservation.create` GraphQL contract metadata
+   - frozen `search.availability` and `reservation.create` operation names/variable schema (no request-time metadata contract inputs)
    - adapter coverage tests in `api/tests/test_restaurant_provider_opentable.py`
 
 Open follow-up captures (next implementation stage):
 
-1. OpenTable OTP success/error response schema freeze with field-level contract snapshots.
-2. OpenTable reservation-create mutation contract freeze.
+1. OpenTable search/create persisted query hash capture and freeze (`RESTAURANT_OPENTABLE_SEARCH_OPERATION_SHA256`, `RESTAURANT_OPENTABLE_CREATE_OPERATION_SHA256`).
+2. OpenTable OTP success/error response schema freeze with field-level contract snapshots.
 3. Resy full availability/hold/create/cancel endpoint capture and contract freeze.
 4. Session refresh/logout endpoint freeze for Resy.
 

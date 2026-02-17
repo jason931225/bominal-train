@@ -28,5 +28,10 @@ def get_restaurant_provider_client(provider: str) -> RestaurantProviderClient:
             timeout_seconds=settings.restaurant_opentable_timeout_seconds,
             auth_start_path=settings.restaurant_opentable_auth_start_path,
             auth_complete_path=settings.restaurant_opentable_auth_complete_path,
+            search_operation_name=settings.restaurant_opentable_search_operation_name,
+            search_operation_sha256=settings.restaurant_opentable_search_operation_sha256,
+            search_slot_path=settings.restaurant_opentable_search_slot_path,
+            create_operation_name=settings.restaurant_opentable_create_operation_name,
+            create_operation_sha256=settings.restaurant_opentable_create_operation_sha256,
         )
     return ResyProviderClient()

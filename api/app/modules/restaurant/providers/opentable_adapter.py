@@ -13,6 +13,9 @@ _DEFAULT_OPENTABLE_BASE_URL = "https://www.opentable.com"
 _DEFAULT_TIMEOUT_SECONDS = 20.0
 _DEFAULT_AUTH_START_PATH = "/dapi/authentication/sendotpfromsignin"
 _DEFAULT_AUTH_COMPLETE_PATH = "/dapi/authentication/signinwithotp"
+_DEFAULT_SEARCH_OPERATION_NAME = "SearchRestaurantAvailability"
+_DEFAULT_SEARCH_SLOT_PATH = "data.search.availableSlots"
+_DEFAULT_CREATE_OPERATION_NAME = "CreateReservation"
 
 _HEADER_USER_PROFILE_OPERATION = "HeaderUserProfile"
 _HEADER_USER_PROFILE_SHA256 = "31a457d7e16bd701258d3ee9f998ad9b59b5d3521927363fdde7164f15ff2924"
@@ -106,12 +109,22 @@ class OpenTableProviderClient:
         timeout_seconds: float = _DEFAULT_TIMEOUT_SECONDS,
         auth_start_path: str = _DEFAULT_AUTH_START_PATH,
         auth_complete_path: str = _DEFAULT_AUTH_COMPLETE_PATH,
+        search_operation_name: str = _DEFAULT_SEARCH_OPERATION_NAME,
+        search_operation_sha256: str = "",
+        search_slot_path: str = _DEFAULT_SEARCH_SLOT_PATH,
+        create_operation_name: str = _DEFAULT_CREATE_OPERATION_NAME,
+        create_operation_sha256: str = "",
     ) -> None:
         self._transport = transport or HttpxTransport()
         self._base_url = base_url.rstrip("/")
         self._timeout_seconds = timeout_seconds
         self._auth_start_path = auth_start_path or _DEFAULT_AUTH_START_PATH
         self._auth_complete_path = auth_complete_path or _DEFAULT_AUTH_COMPLETE_PATH
+        self._search_operation_name = search_operation_name or _DEFAULT_SEARCH_OPERATION_NAME
+        self._search_operation_sha256 = search_operation_sha256.strip()
+        self._search_slot_path = search_slot_path or _DEFAULT_SEARCH_SLOT_PATH
+        self._create_operation_name = create_operation_name or _DEFAULT_CREATE_OPERATION_NAME
+        self._create_operation_sha256 = create_operation_sha256.strip()
 
     def _headers(
         self,
@@ -427,33 +440,31 @@ class OpenTableProviderClient:
         metadata: dict[str, Any] | None = None,
     ) -> RestaurantProviderOutcome:
         _ = account_ref
-        metadata = metadata or {}
-        operation_name = str(metadata.get("operation_name") or "").strip()
-        sha256_hash = str(metadata.get("sha256_hash") or "").strip()
-        if not operation_name or not sha256_hash:
+        _ = metadata
+        if not self._search_operation_sha256:
             return RestaurantProviderOutcome(
                 ok=False,
                 retryable=False,
-                error_code="search_contract_unconfigured",
-                error_message_safe="OpenTable search contract is not configured.",
+                error_code="search_contract_sha256_unconfigured",
+                error_message_safe="OpenTable search operation sha256 is not configured.",
             )
 
-        variables = metadata.get("variables")
-        if not isinstance(variables, dict):
-            variables = {
+        variables: dict[str, Any] = {
+            "input": {
                 "restaurantId": int(restaurant_id) if restaurant_id.isdigit() else restaurant_id,
                 "partySize": party_size,
                 "dateTime": date_time_local.isoformat(),
             }
+        }
 
         response = await self._gql_request(
             operation_type="query",
-            operation_name=operation_name,
-            sha256_hash=sha256_hash,
+            operation_name=self._search_operation_name,
+            sha256_hash=self._search_operation_sha256,
             variables=variables,
-            page_type=str(metadata.get("page_type") or "home"),
-            page_group=str(metadata.get("page_group") or "seo-landing-home"),
-            query_timeout_ms=int(metadata.get("query_timeout_ms") or 5000),
+            page_type="search",
+            page_group="booking",
+            query_timeout_ms=5000,
         )
         payload = _safe_json_loads(response.text)
         if response.status_code >= 400:
@@ -474,9 +485,8 @@ class OpenTableProviderClient:
             )
 
         slots_node: Any = None
-        slot_path = metadata.get("slot_path")
-        if isinstance(slot_path, str) and slot_path:
-            slots_node = _deep_get(payload, slot_path)
+        if self._search_slot_path:
+            slots_node = _deep_get(payload, self._search_slot_path)
         if not isinstance(slots_node, list):
             slots_node = _find_first(payload, ("availableSlots", "slots", "availabilities"))
         if not isinstance(slots_node, list):
@@ -523,37 +533,33 @@ class OpenTableProviderClient:
         metadata: dict[str, Any] | None = None,
     ) -> RestaurantProviderOutcome:
         _ = account_ref
-        metadata = metadata or {}
-        operation_name = str(metadata.get("operation_name") or "").strip()
-        sha256_hash = str(metadata.get("sha256_hash") or "").strip()
-        if not operation_name or not sha256_hash:
+        _ = metadata
+        if not self._create_operation_sha256:
             return RestaurantProviderOutcome(
                 ok=False,
                 retryable=False,
-                error_code="reservation_create_contract_unconfigured",
-                error_message_safe="OpenTable reservation.create contract is not configured.",
+                error_code="reservation_create_contract_sha256_unconfigured",
+                error_message_safe="OpenTable reservation.create operation sha256 is not configured.",
             )
 
-        variables = metadata.get("variables")
-        if not isinstance(variables, dict):
-            variables = {
-                "input": {
-                    "restaurantId": int(slot.restaurant_id) if slot.restaurant_id.isdigit() else slot.restaurant_id,
-                    "partySize": slot.party_size,
-                    "dateTime": slot.date_time_local.isoformat(),
-                    "slotHash": slot.provider_slot_id,
-                    "availabilityToken": slot.availability_token,
-                }
+        variables: dict[str, Any] = {
+            "input": {
+                "restaurantId": int(slot.restaurant_id) if slot.restaurant_id.isdigit() else slot.restaurant_id,
+                "partySize": slot.party_size,
+                "dateTime": slot.date_time_local.isoformat(),
+                "slotHash": slot.provider_slot_id,
+                "availabilityToken": slot.availability_token,
             }
+        }
 
         response = await self._gql_request(
             operation_type="mutation",
-            operation_name=operation_name,
-            sha256_hash=sha256_hash,
+            operation_name=self._create_operation_name,
+            sha256_hash=self._create_operation_sha256,
             variables=variables,
-            page_type=str(metadata.get("page_type") or "booking"),
-            page_group=str(metadata.get("page_group") or "booking"),
-            query_timeout_ms=int(metadata.get("query_timeout_ms") or 5000),
+            page_type="booking",
+            page_group="booking",
+            query_timeout_ms=5000,
         )
         payload = _safe_json_loads(response.text)
         if response.status_code >= 400:

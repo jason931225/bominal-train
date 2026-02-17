@@ -104,6 +104,26 @@ class Settings(BaseSettings):
         default="/dapi/authentication/signinwithotp",
         alias="RESTAURANT_OPENTABLE_AUTH_COMPLETE_PATH",
     )
+    restaurant_opentable_search_operation_name: str = Field(
+        default="SearchRestaurantAvailability",
+        alias="RESTAURANT_OPENTABLE_SEARCH_OPERATION_NAME",
+    )
+    restaurant_opentable_search_operation_sha256: str = Field(
+        default="",
+        alias="RESTAURANT_OPENTABLE_SEARCH_OPERATION_SHA256",
+    )
+    restaurant_opentable_search_slot_path: str = Field(
+        default="data.search.availableSlots",
+        alias="RESTAURANT_OPENTABLE_SEARCH_SLOT_PATH",
+    )
+    restaurant_opentable_create_operation_name: str = Field(
+        default="CreateReservation",
+        alias="RESTAURANT_OPENTABLE_CREATE_OPERATION_NAME",
+    )
+    restaurant_opentable_create_operation_sha256: str = Field(
+        default="",
+        alias="RESTAURANT_OPENTABLE_CREATE_OPERATION_SHA256",
+    )
     payment_cvv_ttl_seconds: int = Field(default=3600, alias="PAYMENT_CVV_TTL_SECONDS")
 
     email_provider: str = Field(default="smtp", alias="EMAIL_PROVIDER")

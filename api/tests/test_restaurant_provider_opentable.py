@@ -234,7 +234,7 @@ async def test_opentable_auth_complete_requires_otp():
 
 
 @pytest.mark.asyncio
-async def test_opentable_search_and_create_require_query_contract_metadata():
+async def test_opentable_search_and_create_require_sha256_contract_configuration():
     client = OpenTableProviderClient(transport=_QueueTransport([]))
     slot_time = datetime(2026, 2, 27, 19, 30)
 
@@ -257,13 +257,13 @@ async def test_opentable_search_and_create_require_query_contract_metadata():
     )
 
     assert search_result.ok is False
-    assert search_result.error_code == "search_contract_unconfigured"
+    assert search_result.error_code == "search_contract_sha256_unconfigured"
     assert create_result.ok is False
-    assert create_result.error_code == "reservation_create_contract_unconfigured"
+    assert create_result.error_code == "reservation_create_contract_sha256_unconfigured"
 
 
 @pytest.mark.asyncio
-async def test_opentable_search_and_create_work_with_contract_metadata():
+async def test_opentable_search_and_create_use_frozen_contract_configuration():
     slot_time = datetime(2026, 2, 27, 19, 30)
     transport = _QueueTransport(
         [
@@ -303,36 +303,54 @@ async def test_opentable_search_and_create_work_with_contract_metadata():
             ),
         ]
     )
-    client = OpenTableProviderClient(transport=transport)
+    client = OpenTableProviderClient(
+        transport=transport,
+        search_operation_name="SearchRestaurantAvailability",
+        search_operation_sha256="hash-search-1",
+        search_slot_path="data.search.availableSlots",
+        create_operation_name="CreateReservation",
+        create_operation_sha256="hash-create-1",
+    )
 
     search_result = await client.search_availability(
         account_ref="acct-1",
         restaurant_id="349132",
         party_size=2,
         date_time_local=slot_time,
-        metadata={
-            "operation_name": "SearchRestaurantAvailability",
-            "sha256_hash": "hash-search-1",
-            "variables": {"rid": 349132, "partySize": 2},
-            "slot_path": "data.search.availableSlots",
-        },
     )
     assert search_result.ok is True
     assert search_result.data["slot_count"] == 2
     slots = search_result.data["slots"]
     assert slots[0].provider_slot_id == "3881139754"
     assert slots[0].availability_token == "avt-1"
+    search_request = transport.requests[0]
+    assert "optype=query&opname=SearchRestaurantAvailability" in search_request["url"]
+    assert search_request["json_body"]["extensions"]["persistedQuery"]["sha256Hash"] == "hash-search-1"
+    assert search_request["json_body"]["variables"] == {
+        "input": {
+            "restaurantId": 349132,
+            "partySize": 2,
+            "dateTime": "2026-02-27T19:30:00",
+        }
+    }
 
     create_result = await client.create_reservation(
         account_ref="acct-1",
         slot=slots[0],
-        metadata={
-            "operation_name": "CreateReservation",
-            "sha256_hash": "hash-create-1",
-            "variables": {"input": {"rid": 349132, "slotHash": "3881139754"}},
-        },
     )
     assert create_result.ok is True
     assert create_result.data["confirmation_number"] == "2110076913"
     assert create_result.data["reservation_id"] == "2018060113"
     assert create_result.data["security_token_present"] is True
+    create_request = transport.requests[1]
+    assert "optype=mutation&opname=CreateReservation" in create_request["url"]
+    assert create_request["json_body"]["extensions"]["persistedQuery"]["sha256Hash"] == "hash-create-1"
+    assert create_request["json_body"]["variables"] == {
+        "input": {
+            "restaurantId": 349132,
+            "partySize": 2,
+            "dateTime": "2026-02-27T19:30:00",
+            "slotHash": "3881139754",
+            "availabilityToken": "avt-1",
+        }
+    }
