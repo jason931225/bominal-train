@@ -144,6 +144,26 @@ class Settings(BaseSettings):
         default="6be25f0bbc8fe75483bdfe96ae78fb20075b978842e4b44964aed3591611aa99",
         alias="RESTAURANT_OPENTABLE_CONFIRMATION_OPERATION_SHA256",
     )
+    restaurant_resy_base_url: str = Field(
+        default="https://api.resy.com",
+        alias="RESTAURANT_RESY_BASE_URL",
+    )
+    restaurant_resy_timeout_seconds: float = Field(
+        default=20.0,
+        alias="RESTAURANT_RESY_TIMEOUT_SECONDS",
+    )
+    restaurant_resy_auth_password_path: str = Field(
+        default="/4/auth/password",
+        alias="RESTAURANT_RESY_AUTH_PASSWORD_PATH",
+    )
+    restaurant_resy_auth_api_key: str | None = Field(
+        default=None,
+        alias="RESTAURANT_RESY_AUTH_API_KEY",
+    )
+    restaurant_resy_x_origin: str = Field(
+        default="https://resy.com",
+        alias="RESTAURANT_RESY_X_ORIGIN",
+    )
     payment_cvv_ttl_seconds: int = Field(default=3600, alias="PAYMENT_CVV_TTL_SECONDS")
 
     email_provider: str = Field(default="smtp", alias="EMAIL_PROVIDER")

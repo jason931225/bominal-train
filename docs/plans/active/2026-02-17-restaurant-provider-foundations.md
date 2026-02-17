@@ -44,6 +44,11 @@ Completed:
    - optional post-create confirmation enrichment path (`BookingConfirmationPageInFlow`) with non-blocking behavior
    - normalized `policy_safe` reservation-create output fields for safe artifact persistence
    - adapter coverage tests in `api/tests/test_restaurant_provider_opentable.py`
+8. Implemented Resy auth stage-1 adapter paths:
+   - `auth.start` password flow via `POST /4/auth/password`
+   - `auth.complete` password-flow challenge-token completion path (no second provider call)
+   - API key/origin config wiring in provider factory/settings/env template
+   - adapter coverage tests in `api/tests/test_restaurant_provider_resy.py`
 
 Open follow-up captures (next implementation stage):
 

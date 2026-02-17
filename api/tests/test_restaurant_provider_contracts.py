@@ -51,7 +51,7 @@ async def test_restaurant_adapter_scaffold_returns_not_implemented_for_execution
     )
     assert isinstance(auth_start, RestaurantProviderOutcome)
     assert auth_start.ok is False
-    assert auth_start.error_code == "not_implemented"
+    assert auth_start.error_code == "auth_start_api_key_unconfigured"
 
     auth_complete = await client.authenticate_complete(
         account_identifier="user@example.com",
@@ -59,7 +59,7 @@ async def test_restaurant_adapter_scaffold_returns_not_implemented_for_execution
         otp_code="123456",
     )
     assert auth_complete.ok is False
-    assert auth_complete.error_code == "not_implemented"
+    assert auth_complete.error_code == "auth_complete_challenge_missing"
 
     refresh = await client.refresh_auth(account_ref="user@example.com")
     assert refresh.ok is False
