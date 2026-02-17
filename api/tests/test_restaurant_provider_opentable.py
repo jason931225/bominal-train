@@ -270,46 +270,68 @@ async def test_opentable_search_and_create_use_frozen_contract_configuration():
             _response(
                 {
                     "data": {
-                        "search": {
-                            "availableSlots": [
-                                {
-                                    "slotHash": "3881139754",
-                                    "dateTime": "2026-02-27T19:30:00",
-                                    "availabilityToken": "avt-1",
-                                },
-                                {
-                                    "slotHash": "3881139755",
-                                    "dateTime": "2026-02-27T20:00:00",
-                                    "availabilityToken": "avt-2",
-                                },
-                            ]
-                        }
+                        "availability": [
+                            {
+                                "restaurantId": 349132,
+                                "availabilityDays": [
+                                    {
+                                        "date": "2026-02-27",
+                                        "slots": [
+                                            {
+                                                "slotHash": "3881139754",
+                                                "timeOffsetMinutes": 1170,
+                                                "slotAvailabilityToken": "avt-1",
+                                                "type": "Standard",
+                                                "attributes": ["default"],
+                                                "diningAreasBySeating": [{"diningAreaId": 1}],
+                                            },
+                                            {
+                                                "slotHash": "3881139755",
+                                                "timeOffsetMinutes": 1200,
+                                                "slotAvailabilityToken": "avt-2",
+                                                "type": "Standard",
+                                                "attributes": ["default"],
+                                                "diningAreasBySeating": [{"diningAreaId": 1}],
+                                            },
+                                        ],
+                                    }
+                                ],
+                            }
+                        ]
                     }
                 }
             ),
             _response(
                 {
                     "data": {
-                        "createReservation": {
-                            "statusCode": 200,
-                            "data": {
-                                "confirmationNumber": 2110076913,
-                                "reservationId": 2018060113,
-                                "securityToken": "sec-1",
+                        "lockSlot": {
+                            "success": True,
+                            "slotLock": {
+                                "slotLockId": 1587118118,
                             },
+                            "slotLockErrors": None,
                         }
                     }
+                }
+            ),
+            _response(
+                {
+                    "success": True,
+                    "confirmationNumber": 2110076913,
+                    "reservationId": 2018060113,
+                    "securityToken": "sec-1",
                 }
             ),
         ]
     )
     client = OpenTableProviderClient(
         transport=transport,
-        search_operation_name="SearchRestaurantAvailability",
+        search_operation_name="RestaurantsAvailability",
         search_operation_sha256="hash-search-1",
-        search_slot_path="data.search.availableSlots",
-        create_operation_name="CreateReservation",
+        search_slot_path="data.availability",
+        create_operation_name="BookDetailsStandardSlotLock",
         create_operation_sha256="hash-create-1",
+        create_path="/dapi/booking/make-reservation",
     )
 
     search_result = await client.search_availability(
@@ -317,40 +339,127 @@ async def test_opentable_search_and_create_use_frozen_contract_configuration():
         restaurant_id="349132",
         party_size=2,
         date_time_local=slot_time,
+        metadata={
+            "restaurant_availability_token": "restaurant-token-1",
+            "database_region": "EU",
+            "correlation_id": "corr-1",
+            "attribution_token": "attr-1",
+        },
     )
     assert search_result.ok is True
     assert search_result.data["slot_count"] == 2
     slots = search_result.data["slots"]
     assert slots[0].provider_slot_id == "3881139754"
     assert slots[0].availability_token == "avt-1"
+    assert slots[0].metadata_safe["dining_area_id"] == 1
     search_request = transport.requests[0]
-    assert "optype=query&opname=SearchRestaurantAvailability" in search_request["url"]
+    assert "optype=query&opname=RestaurantsAvailability" in search_request["url"]
     assert search_request["json_body"]["extensions"]["persistedQuery"]["sha256Hash"] == "hash-search-1"
     assert search_request["json_body"]["variables"] == {
-        "input": {
-            "restaurantId": 349132,
-            "partySize": 2,
-            "dateTime": "2026-02-27T19:30:00",
-        }
+        "onlyPop": False,
+        "forwardDays": 0,
+        "requireTimes": False,
+        "requireTypes": ["Standard", "Experience"],
+        "privilegedAccess": [
+            "UberOneDiningProgram",
+            "VisaDiningProgram",
+            "VisaEventsProgram",
+            "ChaseDiningProgram",
+        ],
+        "restaurantIds": [349132],
+        "date": "2026-02-27",
+        "time": "19:30",
+        "partySize": 2,
+        "databaseRegion": "EU",
+        "restaurantAvailabilityTokens": ["restaurant-token-1"],
+        "loyaltyRedemptionTiers": [],
+        "attributionToken": "attr-1",
+        "correlationId": "corr-1",
     }
 
     create_result = await client.create_reservation(
         account_ref="acct-1",
         slot=slots[0],
+        metadata={
+            "email": "user@example.com",
+            "first_name": "Jason",
+            "last_name": "Lee",
+            "phone_number": "6460001111",
+            "phone_number_country_id": "US",
+            "country": "US",
+            "points": 100,
+            "points_type": "Standard",
+            "confirm_points": True,
+            "opt_in_email_restaurant": False,
+            "reservation_attribute": "default",
+            "database_region": "NA",
+            "dining_area_id": 1,
+            "seating_option": "DEFAULT",
+            "reservation_type": "STANDARD",
+            "reservation_type_display": "Standard",
+            "correlation_id": "corr-1",
+            "attribution_token": "attr-1",
+        },
     )
     assert create_result.ok is True
     assert create_result.data["confirmation_number"] == "2110076913"
     assert create_result.data["reservation_id"] == "2018060113"
     assert create_result.data["security_token_present"] is True
-    create_request = transport.requests[1]
-    assert "optype=mutation&opname=CreateReservation" in create_request["url"]
-    assert create_request["json_body"]["extensions"]["persistedQuery"]["sha256Hash"] == "hash-create-1"
-    assert create_request["json_body"]["variables"] == {
+    assert create_result.data["slot_lock_id"] == "1587118118"
+
+    lock_request = transport.requests[1]
+    assert "optype=mutation&opname=BookDetailsStandardSlotLock" in lock_request["url"]
+    assert lock_request["json_body"]["extensions"]["persistedQuery"]["sha256Hash"] == "hash-create-1"
+    assert lock_request["json_body"]["variables"] == {
         "input": {
             "restaurantId": 349132,
+            "seatingOption": "DEFAULT",
+            "reservationDateTime": "2026-02-27T19:30",
             "partySize": 2,
-            "dateTime": "2026-02-27T19:30:00",
+            "databaseRegion": "NA",
             "slotHash": "3881139754",
-            "availabilityToken": "avt-1",
+            "reservationType": "STANDARD",
+            "diningAreaId": 1,
         }
     }
+
+    make_request = transport.requests[2]
+    assert make_request["url"].endswith("/dapi/booking/make-reservation")
+    assert make_request["json_body"]["restaurantId"] == 349132
+    assert make_request["json_body"]["slotHash"] == "3881139754"
+    assert make_request["json_body"]["slotAvailabilityToken"] == "avt-1"
+    assert make_request["json_body"]["slotLockId"] == 1587118118
+    assert make_request["json_body"]["email"] == "user@example.com"
+    assert make_request["json_body"]["firstName"] == "Jason"
+    assert make_request["json_body"]["lastName"] == "Lee"
+    assert make_request["json_body"]["phoneNumber"] == "6460001111"
+    assert make_request["json_body"]["confirmPoints"] is True
+    assert make_request["json_body"]["optInEmailRestaurant"] is False
+
+
+@pytest.mark.asyncio
+async def test_opentable_create_requires_contact_fields():
+    transport = _QueueTransport([])
+    client = OpenTableProviderClient(
+        transport=transport,
+        create_operation_name="BookDetailsStandardSlotLock",
+        create_operation_sha256="hash-create-1",
+    )
+
+    create_result = await client.create_reservation(
+        account_ref="acct-1",
+        slot=RestaurantSearchSlot(
+            provider_slot_id="3881139754",
+            provider="OPENTABLE",
+            restaurant_id="349132",
+            party_size=2,
+            date_time_local=datetime(2026, 2, 27, 19, 30),
+            availability_token="avt-1",
+        ),
+        metadata={"email": "user@example.com"},
+    )
+
+    assert create_result.ok is False
+    assert create_result.error_code == "reservation_create_contact_missing"
+    assert create_result.data["missing_fields"] == ["first_name", "last_name", "phone_number"]
+    assert transport.requests == []

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 from urllib.parse import urlencode
 
@@ -13,9 +13,10 @@ _DEFAULT_OPENTABLE_BASE_URL = "https://www.opentable.com"
 _DEFAULT_TIMEOUT_SECONDS = 20.0
 _DEFAULT_AUTH_START_PATH = "/dapi/authentication/sendotpfromsignin"
 _DEFAULT_AUTH_COMPLETE_PATH = "/dapi/authentication/signinwithotp"
-_DEFAULT_SEARCH_OPERATION_NAME = "SearchRestaurantAvailability"
-_DEFAULT_SEARCH_SLOT_PATH = "data.search.availableSlots"
-_DEFAULT_CREATE_OPERATION_NAME = "CreateReservation"
+_DEFAULT_SEARCH_OPERATION_NAME = "RestaurantsAvailability"
+_DEFAULT_SEARCH_SLOT_PATH = "data.availability"
+_DEFAULT_CREATE_OPERATION_NAME = "BookDetailsStandardSlotLock"
+_DEFAULT_CREATE_PATH = "/dapi/booking/make-reservation"
 
 _HEADER_USER_PROFILE_OPERATION = "HeaderUserProfile"
 _HEADER_USER_PROFILE_SHA256 = "31a457d7e16bd701258d3ee9f998ad9b59b5d3521927363fdde7164f15ff2924"
@@ -71,6 +72,57 @@ def _parse_datetime(value: str | None, fallback: datetime) -> datetime:
         return fallback
 
 
+def _coerce_int(value: Any, default: int) -> int:
+    if isinstance(value, bool):
+        return default
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            return default
+    return default
+
+
+def _resolve_reservation_datetime(
+    *,
+    raw_slot: dict[str, Any],
+    day_date: str | None,
+    fallback: datetime,
+) -> datetime:
+    raw_dt = _find_first(raw_slot, ("dateTime", "dateTimeLocal", "time"))
+    if raw_dt:
+        return _parse_datetime(str(raw_dt), fallback)
+
+    time_offset_minutes = raw_slot.get("timeOffsetMinutes")
+    if day_date and isinstance(time_offset_minutes, int):
+        try:
+            day_start = datetime.fromisoformat(f"{day_date}T00:00:00")
+        except ValueError:
+            return fallback
+        return day_start + timedelta(minutes=time_offset_minutes)
+
+    return fallback
+
+
+def _normalize_list_of_strings(raw: Any, fallback: list[str]) -> list[str]:
+    if not isinstance(raw, list):
+        return fallback
+    normalized = [str(value) for value in raw if isinstance(value, str) and value.strip()]
+    return normalized or fallback
+
+
+def _as_int_or_original(raw: str) -> int | str:
+    if raw.isdigit():
+        return int(raw)
+    return raw
+
+
+def _format_local_datetime(value: datetime) -> str:
+    return value.strftime("%Y-%m-%dT%H:%M")
+
+
 def _normalize_status_error(prefix: str, status_code: int) -> tuple[str, bool]:
     if status_code in {401, 403}:
         return f"{prefix}_auth_required", False
@@ -114,6 +166,7 @@ class OpenTableProviderClient:
         search_slot_path: str = _DEFAULT_SEARCH_SLOT_PATH,
         create_operation_name: str = _DEFAULT_CREATE_OPERATION_NAME,
         create_operation_sha256: str = "",
+        create_path: str = _DEFAULT_CREATE_PATH,
     ) -> None:
         self._transport = transport or HttpxTransport()
         self._base_url = base_url.rstrip("/")
@@ -125,6 +178,7 @@ class OpenTableProviderClient:
         self._search_slot_path = search_slot_path or _DEFAULT_SEARCH_SLOT_PATH
         self._create_operation_name = create_operation_name or _DEFAULT_CREATE_OPERATION_NAME
         self._create_operation_sha256 = create_operation_sha256.strip()
+        self._create_path = create_path or _DEFAULT_CREATE_PATH
 
     def _headers(
         self,
@@ -440,7 +494,7 @@ class OpenTableProviderClient:
         metadata: dict[str, Any] | None = None,
     ) -> RestaurantProviderOutcome:
         _ = account_ref
-        _ = metadata
+        metadata = metadata or {}
         if not self._search_operation_sha256:
             return RestaurantProviderOutcome(
                 ok=False,
@@ -449,13 +503,47 @@ class OpenTableProviderClient:
                 error_message_safe="OpenTable search operation sha256 is not configured.",
             )
 
+        require_types = _normalize_list_of_strings(
+            metadata.get("require_types"),
+            fallback=["Standard", "Experience"],
+        )
+        privileged_access = _normalize_list_of_strings(
+            metadata.get("privileged_access"),
+            fallback=["UberOneDiningProgram", "VisaDiningProgram", "VisaEventsProgram", "ChaseDiningProgram"],
+        )
+        loyalty_redemption_tiers = _normalize_list_of_strings(
+            metadata.get("loyalty_redemption_tiers"),
+            fallback=[],
+        )
+        restaurant_availability_tokens = _normalize_list_of_strings(
+            metadata.get("restaurant_availability_tokens"),
+            fallback=[],
+        )
+        if not restaurant_availability_tokens:
+            maybe_token = metadata.get("restaurant_availability_token") or metadata.get("availability_token")
+            if isinstance(maybe_token, str) and maybe_token.strip():
+                restaurant_availability_tokens = [maybe_token]
+
         variables: dict[str, Any] = {
-            "input": {
-                "restaurantId": int(restaurant_id) if restaurant_id.isdigit() else restaurant_id,
-                "partySize": party_size,
-                "dateTime": date_time_local.isoformat(),
-            }
+            "onlyPop": bool(metadata.get("only_pop", False)),
+            "forwardDays": _coerce_int(metadata.get("forward_days"), 0),
+            "requireTimes": bool(metadata.get("require_times", False)),
+            "requireTypes": require_types,
+            "privilegedAccess": privileged_access,
+            "restaurantIds": [_as_int_or_original(restaurant_id)],
+            "date": date_time_local.strftime("%Y-%m-%d"),
+            "time": date_time_local.strftime("%H:%M"),
+            "partySize": party_size,
+            "databaseRegion": str(metadata.get("database_region") or "EU"),
+            "restaurantAvailabilityTokens": restaurant_availability_tokens,
+            "loyaltyRedemptionTiers": loyalty_redemption_tiers,
         }
+        attribution_token = metadata.get("attribution_token")
+        if isinstance(attribution_token, str) and attribution_token.strip():
+            variables["attributionToken"] = attribution_token
+        correlation_id = metadata.get("correlation_id")
+        if isinstance(correlation_id, str) and correlation_id.strip():
+            variables["correlationId"] = correlation_id
 
         response = await self._gql_request(
             operation_type="query",
@@ -484,35 +572,84 @@ class OpenTableProviderClient:
                 error_message_safe="OpenTable search returned GraphQL errors.",
             )
 
+        slot_rows: list[tuple[dict[str, Any], str | None, str]] = []
         slots_node: Any = None
         if self._search_slot_path:
             slots_node = _deep_get(payload, self._search_slot_path)
-        if not isinstance(slots_node, list):
-            slots_node = _find_first(payload, ("availableSlots", "slots", "availabilities"))
-        if not isinstance(slots_node, list):
-            slots_node = []
+        if isinstance(slots_node, list):
+            for restaurant_entry in slots_node:
+                if not isinstance(restaurant_entry, dict):
+                    continue
+                resolved_restaurant_id = _find_first(restaurant_entry, ("restaurantId", "rid"))
+                resolved_restaurant_id_str = (
+                    str(resolved_restaurant_id) if resolved_restaurant_id is not None else restaurant_id
+                )
+                availability_days = restaurant_entry.get("availabilityDays")
+                if isinstance(availability_days, list):
+                    for day_entry in availability_days:
+                        if not isinstance(day_entry, dict):
+                            continue
+                        day_date = str(day_entry.get("date")) if day_entry.get("date") else None
+                        day_slots = day_entry.get("slots")
+                        if not isinstance(day_slots, list):
+                            continue
+                        for day_slot in day_slots:
+                            if isinstance(day_slot, dict):
+                                slot_rows.append((day_slot, day_date, resolved_restaurant_id_str))
+
+        if not slot_rows:
+            fallback_slots = _find_first(payload, ("availableSlots", "slots", "availabilities"))
+            if isinstance(fallback_slots, list):
+                for fallback_slot in fallback_slots:
+                    if isinstance(fallback_slot, dict):
+                        slot_rows.append((fallback_slot, None, restaurant_id))
 
         slots: list[RestaurantSearchSlot] = []
-        for raw_slot in slots_node:
-            if not isinstance(raw_slot, dict):
-                continue
-            raw_slot_id = _find_first(raw_slot, ("slotHash", "slotId", "id", "availabilityToken"))
+        for raw_slot, day_date, resolved_restaurant_id in slot_rows:
+            raw_slot_id = _find_first(raw_slot, ("slotHash", "slotId", "id", "slotAvailabilityToken", "availabilityToken"))
             if raw_slot_id is None:
                 continue
-            raw_dt = _find_first(raw_slot, ("dateTime", "dateTimeLocal", "time"))
-            parsed_dt = _parse_datetime(str(raw_dt) if raw_dt else None, fallback=date_time_local)
-            availability_token = _find_first(raw_slot, ("availabilityToken", "token"))
+            parsed_dt = _resolve_reservation_datetime(
+                raw_slot=raw_slot,
+                day_date=day_date,
+                fallback=date_time_local,
+            )
+            availability_token = _find_first(raw_slot, ("slotAvailabilityToken", "availabilityToken", "token"))
+            reservation_type = _find_first(raw_slot, ("type", "reservationType"))
+            attributes = raw_slot.get("attributes")
+            seating_option = "DEFAULT"
+            if isinstance(attributes, list) and attributes and isinstance(attributes[0], str):
+                seating_option = attributes[0].upper()
+
+            dining_area_id: Any = _find_first(raw_slot, ("diningAreaId",))
+            if dining_area_id is None:
+                dining_areas = raw_slot.get("diningAreasBySeating")
+                if isinstance(dining_areas, list):
+                    for entry in dining_areas:
+                        if isinstance(entry, dict):
+                            dining_area_id = _find_first(entry, ("diningAreaId",))
+                            if dining_area_id is not None:
+                                break
+
+            metadata_safe: dict[str, Any] = {
+                "raw_slot_id": str(raw_slot_id),
+                "slot_availability_token_present": bool(availability_token),
+                "seating_option": seating_option,
+                "reservation_type": str(reservation_type).upper() if reservation_type else "STANDARD",
+            }
+            if day_date:
+                metadata_safe["day_date"] = day_date
+            if dining_area_id is not None:
+                metadata_safe["dining_area_id"] = dining_area_id
             slots.append(
                 RestaurantSearchSlot(
                     provider_slot_id=str(raw_slot_id),
                     provider=RESTAURANT_PROVIDER_OPENTABLE,
-                    restaurant_id=restaurant_id,
+                    restaurant_id=resolved_restaurant_id,
                     party_size=party_size,
                     date_time_local=parsed_dt,
                     availability_token=str(availability_token) if availability_token else None,
-                    metadata_safe={
-                        "raw_slot_id": str(raw_slot_id),
-                    },
+                    metadata_safe=metadata_safe,
                 )
             )
 
@@ -533,7 +670,7 @@ class OpenTableProviderClient:
         metadata: dict[str, Any] | None = None,
     ) -> RestaurantProviderOutcome:
         _ = account_ref
-        _ = metadata
+        metadata = metadata or {}
         if not self._create_operation_sha256:
             return RestaurantProviderOutcome(
                 ok=False,
@@ -541,47 +678,160 @@ class OpenTableProviderClient:
                 error_code="reservation_create_contract_sha256_unconfigured",
                 error_message_safe="OpenTable reservation.create operation sha256 is not configured.",
             )
+        if not slot.availability_token:
+            return RestaurantProviderOutcome(
+                ok=False,
+                retryable=False,
+                error_code="reservation_create_slot_token_missing",
+                error_message_safe="OpenTable reservation.create requires slot availability token.",
+            )
+        required_contact_fields = ("email", "first_name", "last_name", "phone_number")
+        missing_contact_fields = [field_name for field_name in required_contact_fields if not metadata.get(field_name)]
+        if missing_contact_fields:
+            return RestaurantProviderOutcome(
+                ok=False,
+                retryable=False,
+                error_code="reservation_create_contact_missing",
+                error_message_safe="OpenTable reservation.create requires diner contact profile fields.",
+                data={"missing_fields": missing_contact_fields},
+            )
 
-        variables: dict[str, Any] = {
+        dining_area_id = _coerce_int(metadata.get("dining_area_id") or slot.metadata_safe.get("dining_area_id"), 1)
+        seating_option = str(metadata.get("seating_option") or slot.metadata_safe.get("seating_option") or "DEFAULT")
+        reservation_type_upper = str(
+            metadata.get("reservation_type") or slot.metadata_safe.get("reservation_type") or "STANDARD"
+        ).upper()
+        reservation_type_display = str(metadata.get("reservation_type_display") or reservation_type_upper.title())
+        database_region = str(metadata.get("database_region") or "NA")
+        reservation_datetime_local = _format_local_datetime(slot.date_time_local)
+
+        lock_variables: dict[str, Any] = {
             "input": {
-                "restaurantId": int(slot.restaurant_id) if slot.restaurant_id.isdigit() else slot.restaurant_id,
+                "restaurantId": _as_int_or_original(slot.restaurant_id),
+                "seatingOption": seating_option.upper(),
+                "reservationDateTime": reservation_datetime_local,
                 "partySize": slot.party_size,
-                "dateTime": slot.date_time_local.isoformat(),
+                "databaseRegion": database_region,
                 "slotHash": slot.provider_slot_id,
-                "availabilityToken": slot.availability_token,
+                "reservationType": reservation_type_upper,
+                "diningAreaId": dining_area_id,
             }
         }
 
-        response = await self._gql_request(
+        lock_response = await self._gql_request(
             operation_type="mutation",
             operation_name=self._create_operation_name,
             sha256_hash=self._create_operation_sha256,
-            variables=variables,
+            variables=lock_variables,
             page_type="booking",
             page_group="booking",
             query_timeout_ms=5000,
         )
-        payload = _safe_json_loads(response.text)
-        if response.status_code >= 400:
-            error_code, retryable = _normalize_status_error("reservation_create", response.status_code)
+        lock_payload = _safe_json_loads(lock_response.text)
+        if lock_response.status_code >= 400:
+            error_code, retryable = _normalize_status_error("reservation_create", lock_response.status_code)
             return RestaurantProviderOutcome(
                 ok=False,
                 retryable=retryable,
                 error_code=error_code,
-                error_message_safe="OpenTable reservation create mutation failed.",
-                data={"status_code": response.status_code},
+                error_message_safe="OpenTable reservation.create slot lock failed.",
+                data={"status_code": lock_response.status_code},
             )
-        if payload.get("errors"):
+        if lock_payload.get("errors"):
             return RestaurantProviderOutcome(
                 ok=False,
                 retryable=False,
-                error_code="reservation_create_graphql_error",
-                error_message_safe="OpenTable reservation create returned GraphQL errors.",
+                error_code="reservation_create_slot_lock_graphql_error",
+                error_message_safe="OpenTable reservation.create slot lock returned GraphQL errors.",
             )
 
-        confirmation_number = _find_first(payload, ("confirmationNumber", "confirmation_number", "confNumber"))
-        reservation_id = _find_first(payload, ("reservationId", "reservation_id"))
-        security_token = _find_first(payload, ("securityToken", "security_token"))
+        lock_result = _deep_get(lock_payload, "data.lockSlot")
+        lock_success = _find_first(lock_result, ("success",))
+        if lock_success is not True:
+            return RestaurantProviderOutcome(
+                ok=False,
+                retryable=False,
+                error_code="reservation_create_slot_lock_failed",
+                error_message_safe="OpenTable reservation.create slot lock did not succeed.",
+            )
+
+        slot_lock_id = _find_first(lock_result, ("slotLockId",))
+        if slot_lock_id is None:
+            slot_lock_id = _deep_get(lock_result, "slotLock.slotLockId")
+        if slot_lock_id is None:
+            return RestaurantProviderOutcome(
+                ok=False,
+                retryable=False,
+                error_code="reservation_create_slot_lock_missing",
+                error_message_safe="OpenTable reservation.create slot lock ID missing from response.",
+            )
+
+        make_reservation_payload: dict[str, Any] = {
+            "additionalServiceFees": metadata.get("additional_service_fees")
+            if isinstance(metadata.get("additional_service_fees"), list)
+            else [],
+            "country": str(metadata.get("country") or "US"),
+            "diningAreaId": dining_area_id,
+            "email": str(metadata["email"]),
+            "firstName": str(metadata["first_name"]),
+            "isModify": bool(metadata.get("is_modify", False)),
+            "katakanaFirstName": str(metadata.get("katakana_first_name") or ""),
+            "katakanaLastName": str(metadata.get("katakana_last_name") or ""),
+            "lastName": str(metadata["last_name"]),
+            "nonBookableExperiences": metadata.get("non_bookable_experiences")
+            if isinstance(metadata.get("non_bookable_experiences"), list)
+            else [],
+            "partySize": slot.party_size,
+            "points": _coerce_int(metadata.get("points"), 0),
+            "pointsType": str(metadata.get("points_type") or "Standard"),
+            "reservationAttribute": str(metadata.get("reservation_attribute") or "default"),
+            "reservationDateTime": reservation_datetime_local,
+            "reservationType": reservation_type_display,
+            "restaurantId": _as_int_or_original(slot.restaurant_id),
+            "slotAvailabilityToken": slot.availability_token,
+            "slotHash": slot.provider_slot_id,
+            "slotLockId": slot_lock_id,
+            "tipAmount": _coerce_int(metadata.get("tip_amount"), 0),
+            "tipPercent": _coerce_int(metadata.get("tip_percent"), 0),
+            "phoneNumber": str(metadata["phone_number"]),
+            "phoneNumberCountryId": str(metadata.get("phone_number_country_id") or "US"),
+            "confirmPoints": bool(metadata.get("confirm_points", False)),
+            "optInEmailRestaurant": bool(metadata.get("opt_in_email_restaurant", False)),
+        }
+        attribution_token = metadata.get("attribution_token")
+        if isinstance(attribution_token, str) and attribution_token.strip():
+            make_reservation_payload["attributionToken"] = attribution_token
+        correlation_id = metadata.get("correlation_id")
+        if isinstance(correlation_id, str) and correlation_id.strip():
+            make_reservation_payload["correlationId"] = correlation_id
+
+        create_response = await self._request(
+            method="POST",
+            path=self._create_path,
+            headers=self._headers(extra={"content-type": "application/json"}),
+            json_body=make_reservation_payload,
+        )
+        create_payload = _safe_json_loads(create_response.text)
+        if create_response.status_code >= 400:
+            error_code, retryable = _normalize_status_error("reservation_create", create_response.status_code)
+            return RestaurantProviderOutcome(
+                ok=False,
+                retryable=retryable,
+                error_code=error_code,
+                error_message_safe="OpenTable reservation.create make-reservation request failed.",
+                data={"status_code": create_response.status_code},
+            )
+        if create_payload.get("success") is False:
+            return RestaurantProviderOutcome(
+                ok=False,
+                retryable=False,
+                error_code="reservation_create_failed",
+                error_message_safe="OpenTable reservation.create response did not return success.",
+            )
+
+        confirmation_number = _find_first(create_payload, ("confirmationNumber", "confirmation_number", "confNumber"))
+        reservation_id = _find_first(create_payload, ("reservationId", "reservation_id"))
+        security_token = _find_first(create_payload, ("securityToken", "security_token"))
 
         return RestaurantProviderOutcome(
             ok=True,
@@ -590,6 +840,7 @@ class OpenTableProviderClient:
                 "confirmation_number": str(confirmation_number) if confirmation_number is not None else None,
                 "reservation_id": str(reservation_id) if reservation_id is not None else None,
                 "security_token_present": bool(security_token),
+                "slot_lock_id": str(slot_lock_id),
             },
         )
 
