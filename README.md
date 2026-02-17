@@ -20,6 +20,7 @@ bominal is a modular product foundation with:
 - Deployment: `docs/DEPLOYMENT.md`
 - Operations runbook: `docs/RUNBOOK.md`
 - Security controls: `docs/SECURITY.md`
+- Provider endpoint research and contract maps: `docs/provider-research/README.md`
 
 ## Bootstrap
 

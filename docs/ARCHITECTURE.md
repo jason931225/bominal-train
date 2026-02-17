@@ -124,6 +124,9 @@ Provider integration:
   - `provider + account_ref + restaurant_id`
 - Non-committing restaurant phases (for example search/availability) do not acquire payment lease.
 - Policy writes only safe attempt metadata (`meta_json_safe`) and avoids credential/token persistence.
+- Provider adapter scaffolding is defined in `api/app/modules/restaurant/providers/` with canonical operations:
+  - `auth.start`, `auth.complete`, `auth.refresh`, `profile.get`, `search.availability`, `reservation.create`, `reservation.cancel`
+- Provider contract research and payload schemas are maintained under `docs/provider-research/`.
 - CatchTable endpoint implementation references are sourced from read-only `third_party/catchtable` files (`reservation.py`, `session.py`, `configs.py`, `main.py`).
 
 ## Data model highlights
