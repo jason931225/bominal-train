@@ -13,7 +13,7 @@ Rules:
 ## Current Entries
 
 ### LOCK-2026-02-17-OPENTABLE-CONFIRMATION-ENRICHMENT
-- status: ACTIVE
+- status: RELEASED
 - owner_session: Codex Session
 - scope:
   - `api/**`
@@ -22,7 +22,7 @@ Rules:
   - `CHANGELOG.md`
 - reason: OpenTable create enrichment + safe policy mapping tests/docs follow-up (excluding deferred policy-checkbox doc section)
 - created_at_utc: 2026-02-17T17:49:12Z
-- released_at_utc:
+- released_at_utc: 2026-02-17T17:54:09Z
 
 ### LOCK-2026-02-14-STAGE8
 - status: RELEASED
