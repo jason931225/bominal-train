@@ -32,17 +32,18 @@ Completed:
 1. Added canonical restaurant adapter contract and factory scaffolding in backend.
 2. Added RED->GREEN test coverage for adapter contract/factory behavior.
 3. Added provider endpoint documentation pack for OpenTable and Resy with redacted request/response shapes.
-4. Added explicit documentation for OpenTable `session`, `human`, and `cpr` endpoints as observation-only.
+4. Added explicit documentation for OpenTable `session`, `human`, and `cpr` endpoints and integrated them in refresh stage-1 flow.
 5. Added DB-safe schema mapping guide for provider payload normalization.
 6. Added reusable playbook and template for streamlined future provider onboarding.
 7. Implemented OpenTable stage-1 adapter paths:
    - live `auth.refresh`, `profile.get`, `reservation.cancel`
-   - configurable `auth.start`, `auth.complete`, `search.availability`, `reservation.create`
+   - concrete OTP `auth.start` (`/dapi/authentication/sendotpfromsignin`) and `auth.complete` (`/dapi/authentication/signinwithotp`)
+   - configurable `search.availability` and `reservation.create` GraphQL contract metadata
    - adapter coverage tests in `api/tests/test_restaurant_provider_opentable.py`
 
 Open follow-up captures (next implementation stage):
 
-1. OpenTable OTP start/verify endpoints (`auth.start`, `auth.complete`).
+1. OpenTable OTP success/error response schema freeze with field-level contract snapshots.
 2. OpenTable reservation-create mutation contract freeze.
 3. Resy full availability/hold/create/cancel endpoint capture and contract freeze.
 4. Session refresh/logout endpoint freeze for Resy.

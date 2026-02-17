@@ -11,6 +11,8 @@ from app.modules.train.providers.transport import AsyncTransport, HttpxTransport
 
 _DEFAULT_OPENTABLE_BASE_URL = "https://www.opentable.com"
 _DEFAULT_TIMEOUT_SECONDS = 20.0
+_DEFAULT_AUTH_START_PATH = "/dapi/authentication/sendotpfromsignin"
+_DEFAULT_AUTH_COMPLETE_PATH = "/dapi/authentication/signinwithotp"
 
 _HEADER_USER_PROFILE_OPERATION = "HeaderUserProfile"
 _HEADER_USER_PROFILE_SHA256 = "31a457d7e16bd701258d3ee9f998ad9b59b5d3521927363fdde7164f15ff2924"
@@ -76,6 +78,23 @@ def _normalize_status_error(prefix: str, status_code: int) -> tuple[str, bool]:
     return f"{prefix}_failed", False
 
 
+def _normalize_channel_type(delivery_channel: str) -> str:
+    normalized = delivery_channel.strip().lower()
+    if normalized == "sms":
+        return "SMS"
+    return "EMAIL"
+
+
+def _decode_challenge_token(challenge_token: str | None) -> dict[str, Any]:
+    if not challenge_token:
+        return {}
+    try:
+        decoded = json.loads(challenge_token)
+    except Exception:
+        return {}
+    return decoded if isinstance(decoded, dict) else {}
+
+
 class OpenTableProviderClient:
     provider_name = RESTAURANT_PROVIDER_OPENTABLE
 
@@ -85,14 +104,14 @@ class OpenTableProviderClient:
         transport: AsyncTransport | None = None,
         base_url: str = _DEFAULT_OPENTABLE_BASE_URL,
         timeout_seconds: float = _DEFAULT_TIMEOUT_SECONDS,
-        auth_start_path: str | None = None,
-        auth_complete_path: str | None = None,
+        auth_start_path: str = _DEFAULT_AUTH_START_PATH,
+        auth_complete_path: str = _DEFAULT_AUTH_COMPLETE_PATH,
     ) -> None:
         self._transport = transport or HttpxTransport()
         self._base_url = base_url.rstrip("/")
         self._timeout_seconds = timeout_seconds
-        self._auth_start_path = auth_start_path
-        self._auth_complete_path = auth_complete_path
+        self._auth_start_path = auth_start_path or _DEFAULT_AUTH_START_PATH
+        self._auth_complete_path = auth_complete_path or _DEFAULT_AUTH_COMPLETE_PATH
 
     def _headers(
         self,
@@ -176,20 +195,19 @@ class OpenTableProviderClient:
         password: str | None = None,
         delivery_channel: str = "email",
     ) -> RestaurantProviderOutcome:
-        if not self._auth_start_path:
+        if password:
             return RestaurantProviderOutcome(
                 ok=False,
                 retryable=False,
-                error_code="auth_start_endpoint_unconfigured",
-                error_message_safe="OpenTable auth.start endpoint is not configured.",
+                error_code="auth_start_password_not_supported",
+                error_message_safe="OpenTable OTP auth.start does not use password input.",
             )
 
         body = {
-            "accountIdentifier": account_identifier,
-            "deliveryChannel": delivery_channel,
+            "phoneNumberOrEmail": account_identifier,
+            "channelType": _normalize_channel_type(delivery_channel),
+            "isReauthentication": False,
         }
-        if password:
-            body["password"] = password
 
         response = await self._request(
             method="POST",
@@ -208,16 +226,36 @@ class OpenTableProviderClient:
                 data={"status_code": response.status_code},
             )
 
-        challenge_token = _find_first(
+        challenge_ref = _find_first(
             payload,
-            ("challengeToken", "challenge_token", "verificationId", "verification_id", "requestId", "request_id"),
+            (
+                "otpMfaToken",
+                "challengeToken",
+                "challenge_token",
+                "verificationId",
+                "verification_id",
+                "requestId",
+                "request_id",
+            ),
         )
+        challenge_token = json.dumps(
+            {
+                "challenge_ref": str(challenge_ref) if challenge_ref is not None else None,
+                "phone_country_code": _find_first(payload, ("phoneCountryCode", "phone_country_code")),
+                "country_code": _find_first(payload, ("countryCode", "country_code")),
+                "suppress_otp_mfa_token_validation_failure": bool(
+                    _find_first(payload, ("suppressOtpMfaTokenValidationFailure",))
+                ),
+            },
+            separators=(",", ":"),
+        )
+
         return RestaurantProviderOutcome(
             ok=True,
             retryable=False,
             data={
-                "challenge_token": str(challenge_token) if challenge_token else None,
-                "requires_otp": bool(challenge_token),
+                "challenge_token": challenge_token,
+                "requires_otp": True,
             },
         )
 
@@ -228,19 +266,28 @@ class OpenTableProviderClient:
         challenge_token: str | None = None,
         otp_code: str | None = None,
     ) -> RestaurantProviderOutcome:
-        if not self._auth_complete_path:
+        if not otp_code:
             return RestaurantProviderOutcome(
                 ok=False,
                 retryable=False,
-                error_code="auth_complete_endpoint_unconfigured",
-                error_message_safe="OpenTable auth.complete endpoint is not configured.",
+                error_code="auth_complete_otp_missing",
+                error_message_safe="OpenTable auth.complete requires otp_code.",
             )
 
-        body: dict[str, Any] = {"accountIdentifier": account_identifier}
-        if challenge_token is not None:
-            body["challengeToken"] = challenge_token
-        if otp_code is not None:
-            body["otpCode"] = otp_code
+        challenge_payload = _decode_challenge_token(challenge_token)
+        body: dict[str, Any] = {
+            "phoneNumberOrEmail": account_identifier,
+            "phoneCountryCode": str(challenge_payload.get("phone_country_code") or ""),
+            "countryCode": str(challenge_payload.get("country_code") or ""),
+            "otp": otp_code,
+            "isReauthentication": False,
+            "suppressOtpMfaTokenValidationFailure": bool(
+                challenge_payload.get("suppress_otp_mfa_token_validation_failure", False)
+            ),
+        }
+        challenge_ref = challenge_payload.get("challenge_ref")
+        if challenge_ref:
+            body["challengeToken"] = challenge_ref
 
         response = await self._request(
             method="POST",

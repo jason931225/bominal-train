@@ -149,22 +149,33 @@ async def test_opentable_cancel_reservation_uses_known_mutation_contract():
 
 
 @pytest.mark.asyncio
-async def test_opentable_auth_start_and_complete_require_configuration():
-    transport = _QueueTransport([_response({"ok": True})])
+async def test_opentable_auth_start_uses_default_endpoint_and_payload():
+    transport = _QueueTransport([_response({"challengeToken": "otp-challenge-1"})])
     client = OpenTableProviderClient(transport=transport)
 
     start_result = await client.authenticate_start(account_identifier="user@example.com", delivery_channel="email")
-    complete_result = await client.authenticate_complete(
+
+    assert start_result.ok is True
+    assert start_result.data["requires_otp"] is True
+    request = transport.requests[0]
+    assert request["url"].endswith("/dapi/authentication/sendotpfromsignin")
+    assert request["json_body"]["phoneNumberOrEmail"] == "user@example.com"
+    assert request["json_body"]["channelType"] == "EMAIL"
+    assert request["json_body"]["isReauthentication"] is False
+
+
+@pytest.mark.asyncio
+async def test_opentable_auth_start_password_input_is_rejected():
+    client = OpenTableProviderClient(transport=_QueueTransport([]))
+
+    start_result = await client.authenticate_start(
         account_identifier="user@example.com",
-        challenge_token="token-1",
-        otp_code="123456",
+        password="secret",
+        delivery_channel="email",
     )
 
     assert start_result.ok is False
-    assert start_result.error_code == "auth_start_endpoint_unconfigured"
-    assert complete_result.ok is False
-    assert complete_result.error_code == "auth_complete_endpoint_unconfigured"
-    assert not transport.requests
+    assert start_result.error_code == "auth_start_password_not_supported"
 
 
 @pytest.mark.asyncio
@@ -182,22 +193,44 @@ async def test_opentable_auth_start_and_complete_call_configured_paths():
     )
 
     start_result = await client.authenticate_start(account_identifier="user@example.com", delivery_channel="sms")
+    challenge_token = start_result.data["challenge_token"]
+    challenge_payload = json.loads(challenge_token)
+    challenge_payload["phone_country_code"] = "1"
+    challenge_payload["country_code"] = "US"
+    challenge_payload["suppress_otp_mfa_token_validation_failure"] = True
+
     complete_result = await client.authenticate_complete(
         account_identifier="user@example.com",
-        challenge_token="otp-challenge-1",
+        challenge_token=json.dumps(challenge_payload),
         otp_code="123456",
     )
 
     assert start_result.ok is True
-    assert start_result.data["challenge_token"] == "otp-challenge-1"
     assert start_result.data["requires_otp"] is True
     assert complete_result.ok is True
     assert complete_result.data["provider_account_ref"] == "10001"
 
     assert transport.requests[0]["url"].endswith("/dapi/auth/start-otp")
-    assert transport.requests[0]["json_body"]["deliveryChannel"] == "sms"
+    assert transport.requests[0]["json_body"]["channelType"] == "SMS"
+    assert transport.requests[0]["json_body"]["phoneNumberOrEmail"] == "user@example.com"
     assert transport.requests[1]["url"].endswith("/dapi/auth/verify-otp")
-    assert transport.requests[1]["json_body"]["otpCode"] == "123456"
+    assert transport.requests[1]["json_body"]["phoneNumberOrEmail"] == "user@example.com"
+    assert transport.requests[1]["json_body"]["phoneCountryCode"] == "1"
+    assert transport.requests[1]["json_body"]["countryCode"] == "US"
+    assert transport.requests[1]["json_body"]["otp"] == "123456"
+    assert transport.requests[1]["json_body"]["isReauthentication"] is False
+    assert transport.requests[1]["json_body"]["suppressOtpMfaTokenValidationFailure"] is True
+    assert transport.requests[1]["json_body"]["challengeToken"] == "otp-challenge-1"
+
+
+@pytest.mark.asyncio
+async def test_opentable_auth_complete_requires_otp():
+    client = OpenTableProviderClient(transport=_QueueTransport([]))
+
+    result = await client.authenticate_complete(account_identifier="user@example.com", challenge_token=None, otp_code=None)
+
+    assert result.ok is False
+    assert result.error_code == "auth_complete_otp_missing"
 
 
 @pytest.mark.asyncio

@@ -11,8 +11,8 @@ def test_restaurant_policy_config_defaults():
     assert settings.restaurant_bootstrap_timeout_seconds == 20.0
     assert settings.restaurant_opentable_base_url == "https://www.opentable.com"
     assert settings.restaurant_opentable_timeout_seconds == 20.0
-    assert settings.restaurant_opentable_auth_start_path is None
-    assert settings.restaurant_opentable_auth_complete_path is None
+    assert settings.restaurant_opentable_auth_start_path == "/dapi/authentication/sendotpfromsignin"
+    assert settings.restaurant_opentable_auth_complete_path == "/dapi/authentication/signinwithotp"
 
 
 def test_restaurant_policy_config_env_override(monkeypatch):
