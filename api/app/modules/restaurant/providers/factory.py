@@ -49,4 +49,6 @@ def get_restaurant_provider_client(provider: str) -> RestaurantProviderClient:
         create_book_path=settings.restaurant_resy_create_book_path,
         cancel_path=settings.restaurant_resy_cancel_path,
         source_id=settings.restaurant_resy_source_id,
+        refresh_path=settings.restaurant_resy_refresh_path,
+        logout_path=settings.restaurant_resy_logout_path,
     )

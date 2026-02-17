@@ -58,10 +58,14 @@ Completed:
    - `reservation.create` two-step flow (`POST /3/details` then `POST /3/book`) with idempotency/payment-method/source-id support
    - `reservation.cancel` fallback flow (`reservation_id` first, retry with `resy_token` when needed)
    - config/factory/env wiring and RED->GREEN adapter tests
+11. Implemented Resy auth/session stage-3 paths:
+   - `auth.refresh` using config-driven `POST /3/auth/refresh` with safe refresh metadata normalization
+   - provider-specific `logout` helper using config-driven `POST /3/auth/logout`
+   - policy/default config + adapter tests for success/failure/unconfigured flows
 
 Open follow-up captures (next implementation stage):
 
-1. Resy session refresh/logout endpoint freeze.
+1. Resy live response-contract freeze for refresh/logout endpoints.
 2. Resy live edge-case contract freeze for payment/policy-heavy create/cancel variants.
 
 ## Verification commands

@@ -188,6 +188,14 @@ class Settings(BaseSettings):
         default="resy.com-venue-details",
         alias="RESTAURANT_RESY_SOURCE_ID",
     )
+    restaurant_resy_refresh_path: str = Field(
+        default="/3/auth/refresh",
+        alias="RESTAURANT_RESY_REFRESH_PATH",
+    )
+    restaurant_resy_logout_path: str = Field(
+        default="/3/auth/logout",
+        alias="RESTAURANT_RESY_LOGOUT_PATH",
+    )
     payment_cvv_ttl_seconds: int = Field(default=3600, alias="PAYMENT_CVV_TTL_SECONDS")
 
     email_provider: str = Field(default="smtp", alias="EMAIL_PROVIDER")

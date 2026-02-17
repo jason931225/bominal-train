@@ -140,10 +140,12 @@ Provider integration:
   - password auth via `POST /4/auth/password` for `auth.start`
   - challenge-token based `auth.complete` for single-step password flow
   - config-driven API key/origin headers with body-level failure normalization on HTTP 200 responses
+  - `auth.refresh` via `POST /3/auth/refresh` with safe refresh metadata normalization
   - `profile.get` via `GET /2/user` with safe identity/count normalization
   - `search.availability` via `GET /4/find` with canonical slot token extraction
   - `reservation.create` via two-step `POST /3/details` -> `POST /3/book`
   - `reservation.cancel` via `POST /3/cancel` with token fallback retry path
+  - supporting provider-specific `logout` helper via `POST /3/auth/logout` (non-canonical operation)
 - Provider contract research and payload schemas are maintained under `docs/provider-research/`.
 - CatchTable endpoint implementation references are sourced from read-only `third_party/catchtable` files (`reservation.py`, `session.py`, `configs.py`, `main.py`).
 

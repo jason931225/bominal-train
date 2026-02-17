@@ -374,3 +374,89 @@ async def test_resy_cancel_reservation_returns_http_error_without_fallback():
 
     assert result.ok is False
     assert result.error_code == "reservation_cancel_auth_required"
+
+
+@pytest.mark.asyncio
+async def test_resy_refresh_auth_uses_refresh_endpoint_and_normalizes_safe_fields():
+    transport = _QueueTransport([_response({"refreshed": True, "expires_in": 3600, "token": "new-token"})])
+    client = ResyProviderClient(
+        transport=transport,
+        auth_api_key="key-1",
+        refresh_path="/3/auth/refresh",
+    )
+
+    result = await client.refresh_auth(account_ref="auth-token-1")
+
+    assert result.ok is True
+    assert result.data["refreshed"] is True
+    assert result.data["expires_in"] == 3600
+    assert result.data["token_present"] is True
+    request = transport.requests[0]
+    assert request["method"] == "POST"
+    assert request["url"].endswith("/3/auth/refresh")
+    assert request["headers"]["Authorization"] == 'ResyAPI api_key="key-1"'
+    assert request["headers"]["X-Resy-Auth-Token"] == "auth-token-1"
+
+
+@pytest.mark.asyncio
+async def test_resy_refresh_auth_returns_unconfigured_when_refresh_path_missing():
+    client = ResyProviderClient(
+        transport=_QueueTransport([]),
+        auth_api_key="key-1",
+        refresh_path="",
+    )
+
+    result = await client.refresh_auth(account_ref="auth-token-1")
+
+    assert result.ok is False
+    assert result.error_code == "auth_refresh_path_unconfigured"
+
+
+@pytest.mark.asyncio
+async def test_resy_refresh_auth_handles_http_errors():
+    transport = _QueueTransport([_response({"message": "Unauthorized"}, status_code=401)])
+    client = ResyProviderClient(
+        transport=transport,
+        auth_api_key="key-1",
+        refresh_path="/3/auth/refresh",
+    )
+
+    result = await client.refresh_auth(account_ref="auth-token-1")
+
+    assert result.ok is False
+    assert result.error_code == "auth_refresh_auth_required"
+
+
+@pytest.mark.asyncio
+async def test_resy_logout_uses_logout_endpoint():
+    transport = _QueueTransport([_response({"status": "ok"})])
+    client = ResyProviderClient(
+        transport=transport,
+        auth_api_key="key-1",
+        logout_path="/3/auth/logout",
+    )
+
+    result = await client.logout(account_ref="auth-token-1")
+
+    assert result.ok is True
+    assert result.data["logged_out"] is True
+    assert result.data["status"] == "ok"
+    request = transport.requests[0]
+    assert request["method"] == "POST"
+    assert request["url"].endswith("/3/auth/logout")
+    assert request["headers"]["Authorization"] == 'ResyAPI api_key="key-1"'
+    assert request["headers"]["X-Resy-Auth-Token"] == "auth-token-1"
+
+
+@pytest.mark.asyncio
+async def test_resy_logout_returns_unconfigured_when_logout_path_missing():
+    client = ResyProviderClient(
+        transport=_QueueTransport([]),
+        auth_api_key="key-1",
+        logout_path="",
+    )
+
+    result = await client.logout(account_ref="auth-token-1")
+
+    assert result.ok is False
+    assert result.error_code == "logout_path_unconfigured"
