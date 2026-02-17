@@ -13,7 +13,7 @@ Rules:
 ## Current Entries
 
 ### LOCK-2026-02-17-RESY-STAGE2-ADAPTER
-- status: ACTIVE
+- status: RELEASED
 - owner_session: Codex Session
 - scope:
   - `api/**`
@@ -22,7 +22,7 @@ Rules:
   - `CHANGELOG.md`
 - reason: Implement Resy stage-2 adapter operations (profile/search/create/cancel) with tests and docs sync
 - created_at_utc: 2026-02-17T19:07:21Z
-- released_at_utc:
+- released_at_utc: 2026-02-17T19:15:29Z
 
 ### LOCK-2026-02-17-RESY-THIRDPARTY-CROSSCHECK
 - status: RELEASED
