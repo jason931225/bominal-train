@@ -135,7 +135,7 @@ Rules:
 - released_at_utc: 2026-02-17T15:58:57Z
 
 ### LOCK-2026-02-17-OPENTABLE-SEARCH-HASH
-- status: ACTIVE
+- status: RELEASED
 - owner_session: Codex Session
 - scope:
   - `api/**`
@@ -144,7 +144,7 @@ Rules:
   - `CHANGELOG.md`
 - reason: Wire observed OpenTable RestaurantsAvailability + BookDetailsStandardSlotLock contracts and update adapter/docs
 - created_at_utc: 2026-02-17T16:47:45Z
-- released_at_utc:
+- released_at_utc: 2026-02-17T17:04:41Z
 
 ## Template (Non-live Example)
 
