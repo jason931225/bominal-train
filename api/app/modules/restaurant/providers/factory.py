@@ -37,4 +37,10 @@ def get_restaurant_provider_client(provider: str) -> RestaurantProviderClient:
             confirmation_operation_name=settings.restaurant_opentable_confirmation_operation_name,
             confirmation_operation_sha256=settings.restaurant_opentable_confirmation_operation_sha256,
         )
-    return ResyProviderClient()
+    return ResyProviderClient(
+        base_url=settings.restaurant_resy_base_url,
+        timeout_seconds=settings.restaurant_resy_timeout_seconds,
+        auth_password_path=settings.restaurant_resy_auth_password_path,
+        auth_api_key=settings.restaurant_resy_auth_api_key,
+        x_origin=settings.restaurant_resy_x_origin,
+    )

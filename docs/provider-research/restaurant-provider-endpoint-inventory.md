@@ -28,8 +28,8 @@ Status values:
 
 | Canonical operation | Endpoint(s) | Status | Notes |
 |---|---|---|---|
-| `auth.start` | `POST /4/auth/password` | CONFIRMED | Password login initiation endpoint with provider API key header. |
-| `auth.complete` | same endpoint for password flow | CONFIRMED | Password flow completes in single step; no separate OTP verify observed in current captures. |
+| `auth.start` | `POST /4/auth/password` | CONFIRMED | Password login initiation endpoint with provider API key header; adapter enforces body-level failure handling and normalized safe challenge payload. |
+| `auth.complete` | same endpoint for password flow | CONFIRMED | Password flow completes in single step; adapter uses password-flow challenge token and does not perform a second provider call. |
 | `auth.refresh` | refresh endpoint not yet pinned | TODO_CAPTURE | Needed for long-running session maintenance. |
 | `profile.get` | authenticated profile endpoint not yet pinned | TODO_CAPTURE | Needed for account verification and session diagnostics. |
 | `search.availability` | availability endpoint(s) not yet pinned | PARTIAL | Covered conceptually by existing Resy playbook; endpoint mapping needs contract freeze. |

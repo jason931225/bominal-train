@@ -136,6 +136,10 @@ Provider integration:
     - `POST /dapi/booking/make-reservation` commit path (configurable path)
   - optional post-create `BookingConfirmationPageInFlow` enrichment (hash-configurable, non-blocking on failure)
   - normalized safe reservation-create output fields (`confirmation_enrichment`, `policy_safe`) for artifact persistence
+- Resy stage-1 adapter implementation currently provides:
+  - password auth via `POST /4/auth/password` for `auth.start`
+  - challenge-token based `auth.complete` for single-step password flow
+  - config-driven API key/origin headers with body-level failure normalization on HTTP 200 responses
 - Provider contract research and payload schemas are maintained under `docs/provider-research/`.
 - CatchTable endpoint implementation references are sourced from read-only `third_party/catchtable` files (`reservation.py`, `session.py`, `configs.py`, `main.py`).
 

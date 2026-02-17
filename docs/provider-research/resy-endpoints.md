@@ -9,6 +9,20 @@ Redacted provider-contract notes for Resy integration. This document excludes ra
 | `/4/auth/password` | `OPTIONS` | browser preflight | observed |
 | `/4/auth/password` | `POST` | `auth.start` + `auth.complete` (password flow) | observed |
 
+## Adapter implementation status (2026-02-17)
+
+Implemented in `api/app/modules/restaurant/providers/resy_adapter.py`:
+
+- `auth.start` uses `POST /4/auth/password` password flow contract.
+- `auth.start` fails fast when password or API key config is missing.
+- `auth.start` enforces body-level failure handling on HTTP 200 (`errors` or `success=false`).
+- `auth.start` emits normalized safe output:
+  - `requires_otp=false`
+  - `password_flow_complete=true`
+  - `provider_account_ref` (string when present)
+  - `challenge_token` containing only `password_flow_complete` and `provider_account_ref`
+- `auth.complete` is challenge-token based for password flow and does not execute a second network call.
+
 Required for full feature but not yet contract-frozen:
 
 - session refresh endpoint (`auth.refresh`)
@@ -72,6 +86,7 @@ Implementation guidance:
 
 - never log or persist `email`/`password` raw values
 - store only safe auth result metadata (success/failure, retryability, provider code)
+- normalize account reference values to string for canonical provider-account identity keys
 
 ## Existing workflow alignment
 
