@@ -12,6 +12,18 @@ Rules:
 
 ## Current Entries
 
+### LOCK-2026-02-17-RESY-REFRESH-LOGOUT-STAGE3
+- status: ACTIVE
+- owner_session: Codex Session
+- scope:
+  - `api/**`
+  - `docs/**`
+  - `infra/env/prod/api.env.example`
+  - `CHANGELOG.md`
+- reason: Implement Resy auth.refresh and logout contract paths with tests/config/docs synchronization
+- created_at_utc: 2026-02-17T19:17:41Z
+- released_at_utc:
+
 ### LOCK-2026-02-17-RESY-STAGE2-ADAPTER
 - status: RELEASED
 - owner_session: Codex Session
