@@ -12,6 +12,16 @@ Rules:
 
 ## Current Entries
 
+### LOCK-2026-02-17-RESY-THIRDPARTY-CROSSCHECK
+- status: ACTIVE
+- owner_session: Codex Session
+- scope:
+  - `docs/**`
+  - `CHANGELOG.md`
+- reason: Cross-check `third_party/resy` endpoint/payload references and synchronize canonical provider docs/plan status
+- created_at_utc: 2026-02-17T18:58:22Z
+- released_at_utc:
+
 ### LOCK-2026-02-17-RESY-AUTH-STAGE1
 - status: RELEASED
 - owner_session: Codex Session
