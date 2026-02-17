@@ -111,6 +111,17 @@ Rules:
 - created_at_utc: 2026-02-17T15:14:39Z
 - released_at_utc: 2026-02-17T15:26:12Z
 
+### LOCK-2026-02-17-OPENTABLE-ADAPTER-STAGE1
+- status: ACTIVE
+- owner_session: Codex Session
+- scope:
+  - `api/**`
+  - `docs/**`
+  - `CHANGELOG.md`
+- reason: OpenTable adapter stage 1 implementation (OTP/auth/search/create/cancel contract paths)
+- created_at_utc: 2026-02-17T15:28:36Z
+- released_at_utc:
+
 ## Template (Non-live Example)
 
 ### LOCK-EXAMPLE-001
