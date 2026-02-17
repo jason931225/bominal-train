@@ -38,6 +38,7 @@ Completed:
 7. Implemented OpenTable stage-1 adapter paths:
    - live `auth.refresh`, `profile.get`, `reservation.cancel`
    - concrete OTP `auth.start` (`/dapi/authentication/sendotpfromsignin`) and `auth.complete` (`/dapi/authentication/signinwithotp`)
+   - frozen OTP success/error response normalization contract (challenge-ref required on `auth.start`, body-level failure handling on `auth.complete`)
    - frozen `search.availability` contract with captured `RestaurantsAvailability` persisted hash
    - frozen `reservation.create` two-step contract with `BookDetailsStandardSlotLock` hash and `/dapi/booking/make-reservation` commit path
    - optional post-create confirmation enrichment path (`BookingConfirmationPageInFlow`) with non-blocking behavior
@@ -46,9 +47,8 @@ Completed:
 
 Open follow-up captures (next implementation stage):
 
-1. OpenTable OTP success/error response schema freeze with field-level contract snapshots.
-2. Resy full availability/hold/create/cancel endpoint capture and contract freeze.
-3. Session refresh/logout endpoint freeze for Resy.
+1. Resy full availability/hold/create/cancel endpoint capture and contract freeze.
+2. Session refresh/logout endpoint freeze for Resy.
 
 ## Verification commands
 

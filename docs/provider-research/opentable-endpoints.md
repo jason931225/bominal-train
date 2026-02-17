@@ -29,6 +29,11 @@ Implemented in `api/app/modules/restaurant/providers/opentable_adapter.py`:
 - `reservation.cancel`: calls `CancelReservation` persisted mutation
 - `auth.start`: `POST /dapi/authentication/sendotpfromsignin`
 - `auth.complete`: `POST /dapi/authentication/signinwithotp`
+- frozen OTP response normalization contract:
+  - `auth.start` requires challenge reference (`otpMfaToken|challengeToken|verificationId|requestId`) on HTTP success
+  - `auth.start` safe output fields: `requires_otp`, `challenge_ref_present`, `phone_country_code`, `country_code`, `suppress_otp_mfa_token_validation_failure`
+  - `auth.complete` fails on body-level errors even when HTTP status is 200 (`errors` present or `success=false`)
+  - `auth.complete` normalizes `provider_account_ref` to string
 - supporting autocomplete query contract captured:
   - operation: `Autocomplete`
   - hash: `fe1d118abd4c227750693027c2414d43014c2493f64f49bcef5a65274ce9c3c3`
@@ -47,7 +52,7 @@ Implemented in `api/app/modules/restaurant/providers/opentable_adapter.py`:
   - `RESTAURANT_OPENTABLE_CONFIRMATION_OPERATION_NAME`
   - `RESTAURANT_OPENTABLE_CONFIRMATION_OPERATION_SHA256`
 
-This stage removes request-time metadata-driven search/create contracts. Remaining OpenTable gap is OTP response-contract hardening.
+This stage removes request-time metadata-driven search/create contracts and freezes OTP auth response handling.
 
 ## Observed endpoint details
 
@@ -64,6 +69,26 @@ Observed request shape:
   "isReauthentication": false
 }
 ```
+
+Observed response contract (frozen):
+
+```json
+{
+  "otpMfaToken|challengeToken|verificationId|requestId": "<challenge-ref>",
+  "phoneCountryCode": "<optional-country-phone-code>",
+  "countryCode": "<optional-country-code>",
+  "suppressOtpMfaTokenValidationFailure": false
+}
+```
+
+Adapter normalization contract:
+
+- Treat HTTP-success response without challenge reference as `auth_start_challenge_missing`.
+- Persist only normalized safe challenge payload:
+  - `challenge_ref` (challenge handle only)
+  - `phone_country_code`
+  - `country_code`
+  - `suppress_otp_mfa_token_validation_failure`
 
 Implementation notes:
 
@@ -86,6 +111,30 @@ Observed request shape:
   "suppressOtpMfaTokenValidationFailure": false
 }
 ```
+
+Observed response contract (frozen):
+
+```json
+{
+  "success": true,
+  "userId|gpid|user_id": "<provider-account-ref>"
+}
+```
+
+Failure contract on HTTP 200:
+
+```json
+{
+  "success": false,
+  "errorCode": "<provider-error-code>"
+}
+```
+
+Adapter normalization contract:
+
+- If `errors` exists or `success=false`, return `auth_complete_failed`.
+- Include `provider_error_code` in safe outcome data when available.
+- Normalize success `provider_account_ref` to string.
 
 Implementation notes:
 

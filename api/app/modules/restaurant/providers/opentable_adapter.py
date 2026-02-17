@@ -331,14 +331,25 @@ class OpenTableProviderClient:
                 "request_id",
             ),
         )
+        if challenge_ref is None or (isinstance(challenge_ref, str) and not challenge_ref.strip()):
+            return RestaurantProviderOutcome(
+                ok=False,
+                retryable=False,
+                error_code="auth_start_challenge_missing",
+                error_message_safe="OpenTable auth.start response missing challenge reference.",
+            )
+        phone_country_code = _find_first(payload, ("phoneCountryCode", "phone_country_code"))
+        country_code = _find_first(payload, ("countryCode", "country_code"))
+        suppress_validation_failure = _as_bool(
+            _find_first(payload, ("suppressOtpMfaTokenValidationFailure", "suppress_otp_mfa_token_validation_failure")),
+            default=False,
+        )
         challenge_token = json.dumps(
             {
-                "challenge_ref": str(challenge_ref) if challenge_ref is not None else None,
-                "phone_country_code": _find_first(payload, ("phoneCountryCode", "phone_country_code")),
-                "country_code": _find_first(payload, ("countryCode", "country_code")),
-                "suppress_otp_mfa_token_validation_failure": bool(
-                    _find_first(payload, ("suppressOtpMfaTokenValidationFailure",))
-                ),
+                "challenge_ref": str(challenge_ref),
+                "phone_country_code": str(phone_country_code) if phone_country_code is not None else None,
+                "country_code": str(country_code) if country_code is not None else None,
+                "suppress_otp_mfa_token_validation_failure": suppress_validation_failure,
             },
             separators=(",", ":"),
         )
@@ -349,6 +360,10 @@ class OpenTableProviderClient:
             data={
                 "challenge_token": challenge_token,
                 "requires_otp": True,
+                "challenge_ref_present": True,
+                "phone_country_code": str(phone_country_code) if phone_country_code is not None else None,
+                "country_code": str(country_code) if country_code is not None else None,
+                "suppress_otp_mfa_token_validation_failure": suppress_validation_failure,
             },
         )
 
@@ -399,12 +414,25 @@ class OpenTableProviderClient:
             )
 
         payload = _safe_json_loads(response.text)
+        if payload.get("errors") or payload.get("success") is False:
+            provider_error_code = _find_first(payload, ("errorCode", "error_code", "code"))
+            error_data: dict[str, Any] = {}
+            if provider_error_code is not None:
+                error_data["provider_error_code"] = str(provider_error_code)
+            return RestaurantProviderOutcome(
+                ok=False,
+                retryable=False,
+                error_code="auth_complete_failed",
+                error_message_safe="OpenTable auth.complete response indicates failure.",
+                data=error_data,
+            )
+        provider_account_ref = _find_first(payload, ("gpid", "userId", "user_id"))
         return RestaurantProviderOutcome(
             ok=True,
             retryable=False,
             data={
                 "authenticated": True,
-                "provider_account_ref": _find_first(payload, ("gpid", "userId", "user_id")),
+                "provider_account_ref": str(provider_account_ref) if provider_account_ref is not None else None,
             },
         )
 

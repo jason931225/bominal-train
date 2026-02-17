@@ -129,6 +129,7 @@ Provider integration:
 - OpenTable stage-1 adapter implementation currently provides:
   - live refresh/profile/cancel paths
   - concrete OTP auth paths (`/dapi/authentication/sendotpfromsignin`, `/dapi/authentication/signinwithotp`) with env override support
+  - frozen OTP response normalization (challenge-reference enforcement on `auth.start`; body-level failure enforcement on `auth.complete`)
   - frozen `search.availability` contract via `RestaurantsAvailability` persisted query (hash-configurable)
   - frozen `reservation.create` contract via two-step flow:
     - `BookDetailsStandardSlotLock` persisted mutation (hash-configurable)

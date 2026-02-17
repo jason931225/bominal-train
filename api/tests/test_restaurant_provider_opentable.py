@@ -165,6 +165,51 @@ async def test_opentable_auth_start_uses_default_endpoint_and_payload():
 
 
 @pytest.mark.asyncio
+async def test_opentable_auth_start_freezes_success_response_schema():
+    transport = _QueueTransport(
+        [
+            _response(
+                {
+                    "otpMfaToken": "otp-mfa-token-1",
+                    "phoneCountryCode": "1",
+                    "countryCode": "US",
+                    "suppressOtpMfaTokenValidationFailure": True,
+                }
+            )
+        ]
+    )
+    client = OpenTableProviderClient(transport=transport)
+
+    start_result = await client.authenticate_start(account_identifier="user@example.com", delivery_channel="sms")
+
+    assert start_result.ok is True
+    assert start_result.data["requires_otp"] is True
+    assert start_result.data["challenge_ref_present"] is True
+    assert start_result.data["phone_country_code"] == "1"
+    assert start_result.data["country_code"] == "US"
+    assert start_result.data["suppress_otp_mfa_token_validation_failure"] is True
+    challenge_payload = json.loads(start_result.data["challenge_token"])
+    assert challenge_payload == {
+        "challenge_ref": "otp-mfa-token-1",
+        "phone_country_code": "1",
+        "country_code": "US",
+        "suppress_otp_mfa_token_validation_failure": True,
+    }
+
+
+@pytest.mark.asyncio
+async def test_opentable_auth_start_requires_challenge_reference_on_success_status():
+    transport = _QueueTransport([_response({"success": True})])
+    client = OpenTableProviderClient(transport=transport)
+
+    start_result = await client.authenticate_start(account_identifier="user@example.com", delivery_channel="email")
+
+    assert start_result.ok is False
+    assert start_result.error_code == "auth_start_challenge_missing"
+    assert start_result.retryable is False
+
+
+@pytest.mark.asyncio
 async def test_opentable_auth_start_password_input_is_rejected():
     client = OpenTableProviderClient(transport=_QueueTransport([]))
 
@@ -231,6 +276,38 @@ async def test_opentable_auth_complete_requires_otp():
 
     assert result.ok is False
     assert result.error_code == "auth_complete_otp_missing"
+
+
+@pytest.mark.asyncio
+async def test_opentable_auth_complete_rejects_body_level_failure_on_http_200():
+    transport = _QueueTransport([_response({"success": False, "errorCode": "OTP_INVALID"})])
+    client = OpenTableProviderClient(transport=transport)
+
+    result = await client.authenticate_complete(
+        account_identifier="user@example.com",
+        challenge_token=json.dumps({"challenge_ref": "otp-mfa-token-1"}),
+        otp_code="123456",
+    )
+
+    assert result.ok is False
+    assert result.error_code == "auth_complete_failed"
+    assert result.data["provider_error_code"] == "OTP_INVALID"
+
+
+@pytest.mark.asyncio
+async def test_opentable_auth_complete_extracts_nested_provider_account_ref():
+    transport = _QueueTransport([_response({"data": {"userProfile": {"gpid": 100153968640}}})])
+    client = OpenTableProviderClient(transport=transport)
+
+    result = await client.authenticate_complete(
+        account_identifier="user@example.com",
+        challenge_token=json.dumps({"challenge_ref": "otp-mfa-token-1"}),
+        otp_code="123456",
+    )
+
+    assert result.ok is True
+    assert result.data["authenticated"] is True
+    assert result.data["provider_account_ref"] == "100153968640"
 
 
 @pytest.mark.asyncio

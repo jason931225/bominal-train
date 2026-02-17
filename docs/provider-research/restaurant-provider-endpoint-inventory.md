@@ -12,8 +12,8 @@ Status values:
 
 | Canonical operation | Endpoint(s) | Status | Notes |
 |---|---|---|---|
-| `auth.start` | `POST /dapi/authentication/sendotpfromsignin` | CONFIRMED | OTP start flow with `phoneNumberOrEmail`, `channelType`, `isReauthentication`. |
-| `auth.complete` | `POST /dapi/authentication/signinwithotp` | CONFIRMED | OTP verify flow with `phoneNumberOrEmail`, `phoneCountryCode`, `countryCode`, `otp`. |
+| `auth.start` | `POST /dapi/authentication/sendotpfromsignin` | CONFIRMED | OTP start flow with `phoneNumberOrEmail`, `channelType`, `isReauthentication`; success response contract frozen with required challenge-reference extraction. |
+| `auth.complete` | `POST /dapi/authentication/signinwithotp` | CONFIRMED | OTP verify flow with `phoneNumberOrEmail`, `phoneCountryCode`, `countryCode`, `otp`; body-level failure handling (`success=false`/`errors`) frozen. |
 | `auth.refresh` | `GET /dapi/fe/human`, `POST /dapi/v1/session` | CONFIRMED | Observed keepalive-like calls; treat as provider-internal session touch. |
 | `profile.get` | `POST /dapi/fe/gql?optype=query&opname=HeaderUserProfile` | CONFIRMED | Returns user profile and invitation/upcoming context. |
 | search autocomplete (supporting) | `POST /dapi/fe/gql?optype=query&opname=Autocomplete` | CONFIRMED | Search-term pre-step resolves candidate restaurant IDs (`id`) and correlation context. |
@@ -50,6 +50,5 @@ No direct adapter implementation is in scope for this stage.
 
 ## Required next captures before live adapter execution
 
-1. OpenTable OTP success/error response schema freeze (field-by-field capture).
-2. Resy availability + lock/hold + create + cancel endpoint set with payload deltas.
-3. Resy refresh/profile/logout endpoint set for session lifecycle completeness.
+1. Resy availability + lock/hold + create + cancel endpoint set with payload deltas.
+2. Resy refresh/profile/logout endpoint set for session lifecycle completeness.
