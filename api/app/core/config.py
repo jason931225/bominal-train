@@ -88,6 +88,22 @@ class Settings(BaseSettings):
     restaurant_auth_refresh_retries: int = Field(default=2, alias="RESTAURANT_AUTH_REFRESH_RETRIES")
     restaurant_payment_lease_ttl_seconds: int = Field(default=120, alias="RESTAURANT_PAYMENT_LEASE_TTL_SECONDS")
     restaurant_bootstrap_timeout_seconds: float = Field(default=20.0, alias="RESTAURANT_BOOTSTRAP_TIMEOUT_SECONDS")
+    restaurant_opentable_base_url: str = Field(
+        default="https://www.opentable.com",
+        alias="RESTAURANT_OPENTABLE_BASE_URL",
+    )
+    restaurant_opentable_timeout_seconds: float = Field(
+        default=20.0,
+        alias="RESTAURANT_OPENTABLE_TIMEOUT_SECONDS",
+    )
+    restaurant_opentable_auth_start_path: str | None = Field(
+        default=None,
+        alias="RESTAURANT_OPENTABLE_AUTH_START_PATH",
+    )
+    restaurant_opentable_auth_complete_path: str | None = Field(
+        default=None,
+        alias="RESTAURANT_OPENTABLE_AUTH_COMPLETE_PATH",
+    )
     payment_cvv_ttl_seconds: int = Field(default=3600, alias="PAYMENT_CVV_TTL_SECONDS")
 
     email_provider: str = Field(default="smtp", alias="EMAIL_PROVIDER")

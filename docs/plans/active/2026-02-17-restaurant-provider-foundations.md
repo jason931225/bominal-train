@@ -35,6 +35,10 @@ Completed:
 4. Added explicit documentation for OpenTable `session`, `human`, and `cpr` endpoints as observation-only.
 5. Added DB-safe schema mapping guide for provider payload normalization.
 6. Added reusable playbook and template for streamlined future provider onboarding.
+7. Implemented OpenTable stage-1 adapter paths:
+   - live `auth.refresh`, `profile.get`, `reservation.cancel`
+   - configurable `auth.start`, `auth.complete`, `search.availability`, `reservation.create`
+   - adapter coverage tests in `api/tests/test_restaurant_provider_opentable.py`
 
 Open follow-up captures (next implementation stage):
 

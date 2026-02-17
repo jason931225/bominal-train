@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.core.config import get_settings
 from app.modules.restaurant.providers.base import RestaurantProviderClient
 from app.modules.restaurant.providers.constants import (
     RESTAURANT_PROVIDER_OPENTABLE,
@@ -19,7 +20,13 @@ def _normalize_provider(provider: str) -> str:
 
 
 def get_restaurant_provider_client(provider: str) -> RestaurantProviderClient:
+    settings = get_settings()
     normalized = _normalize_provider(provider)
     if normalized == RESTAURANT_PROVIDER_OPENTABLE:
-        return OpenTableProviderClient()
+        return OpenTableProviderClient(
+            base_url=settings.restaurant_opentable_base_url,
+            timeout_seconds=settings.restaurant_opentable_timeout_seconds,
+            auth_start_path=settings.restaurant_opentable_auth_start_path,
+            auth_complete_path=settings.restaurant_opentable_auth_complete_path,
+        )
     return ResyProviderClient()
