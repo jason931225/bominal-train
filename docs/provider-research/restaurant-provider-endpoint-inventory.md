@@ -31,10 +31,10 @@ Status values:
 | `auth.start` | `POST /4/auth/password` | CONFIRMED | Password login initiation endpoint with provider API key header; adapter enforces body-level failure handling and normalized safe challenge payload. |
 | `auth.complete` | same endpoint for password flow | CONFIRMED | Password flow completes in single step; adapter uses password-flow challenge token and does not perform a second provider call. |
 | `auth.refresh` | `POST /3/auth/refresh` (expected) | PARTIAL | Seen in external trace notes; not yet frozen in adapter/docs contract. |
-| `profile.get` | `GET /2/user` | PARTIAL | Cross-checked via `third_party/resy` scripts/docs; live capture freeze still pending. |
-| `search.availability` | `GET /4/find` | PARTIAL | Cross-checked via `third_party/resy`; requires live schema freeze for slot normalization. |
-| `reservation.create` | `POST /3/details` + `POST /3/book` | PARTIAL | Two-step flow confirmed in `third_party/resy`; payment-required variant and idempotency semantics still need live freeze. |
-| `reservation.cancel` | `POST /3/cancel` | PARTIAL | Cross-checked via `third_party/resy`; `reservation_id` vs token-paired fallback requires freeze. |
+| `profile.get` | `GET /2/user` | PARTIAL | Implemented in adapter with safe profile normalization; live capture freeze still pending for edge-case fields. |
+| `search.availability` | `GET /4/find` | PARTIAL | Implemented in adapter with canonical slot mapping from `config.token`; live schema freeze still pending. |
+| `reservation.create` | `POST /3/details` + `POST /3/book` | PARTIAL | Implemented in adapter with details->book chain, idempotency header pass-through, and payment-method/source-id support; payment/policy-heavy variants still need live freeze. |
+| `reservation.cancel` | `POST /3/cancel` | PARTIAL | Implemented in adapter with fallback retry (`reservation_id` -> `reservation_id+resy_token`); fallback necessity matrix still needs live freeze. |
 | logout | logout endpoint not yet pinned | TODO_CAPTURE | Useful for explicit session invalidation workflows. |
 
 ## CatchTable (reference source only)
@@ -50,5 +50,5 @@ No direct adapter implementation is in scope for this stage.
 
 ## Required next captures before live adapter execution
 
-1. Resy availability + lock/hold + create + cancel endpoint set with payload deltas.
-2. Resy refresh/profile/logout endpoint set for session lifecycle completeness.
+1. Resy session refresh/logout endpoint set for session lifecycle completeness.
+2. Resy payment-required and policy-heavy create/cancel variants to harden edge-case mapping.

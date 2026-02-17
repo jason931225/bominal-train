@@ -40,7 +40,7 @@ def test_get_restaurant_provider_client_rejects_unknown_provider():
 
 
 @pytest.mark.asyncio
-async def test_restaurant_adapter_scaffold_returns_not_implemented_for_execution_paths():
+async def test_restaurant_adapter_default_resy_contract_errors_are_stable_without_api_key():
     client = get_restaurant_provider_client("RESY")
     assert isinstance(client, RestaurantProviderClient)
 
@@ -67,7 +67,7 @@ async def test_restaurant_adapter_scaffold_returns_not_implemented_for_execution
 
     profile = await client.get_user_profile(account_ref="user@example.com")
     assert profile.ok is False
-    assert profile.error_code == "not_implemented"
+    assert profile.error_code == "profile_get_api_key_unconfigured"
 
     search = await client.search_availability(
         account_ref="user@example.com",
@@ -77,7 +77,7 @@ async def test_restaurant_adapter_scaffold_returns_not_implemented_for_execution
         metadata={"market": "us-nyc"},
     )
     assert search.ok is False
-    assert search.error_code == "not_implemented"
+    assert search.error_code == "search_api_key_unconfigured"
 
     create = await client.create_reservation(
         account_ref="user@example.com",
@@ -91,7 +91,7 @@ async def test_restaurant_adapter_scaffold_returns_not_implemented_for_execution
         metadata={"source": "test"},
     )
     assert create.ok is False
-    assert create.error_code == "not_implemented"
+    assert create.error_code == "reservation_create_api_key_unconfigured"
 
     cancel = await client.cancel_reservation(
         account_ref="user@example.com",
@@ -101,4 +101,4 @@ async def test_restaurant_adapter_scaffold_returns_not_implemented_for_execution
         metadata={"source": "test"},
     )
     assert cancel.ok is False
-    assert cancel.error_code == "not_implemented"
+    assert cancel.error_code == "reservation_cancel_api_key_unconfigured"

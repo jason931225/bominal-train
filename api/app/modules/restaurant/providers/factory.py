@@ -43,4 +43,10 @@ def get_restaurant_provider_client(provider: str) -> RestaurantProviderClient:
         auth_password_path=settings.restaurant_resy_auth_password_path,
         auth_api_key=settings.restaurant_resy_auth_api_key,
         x_origin=settings.restaurant_resy_x_origin,
+        profile_path=settings.restaurant_resy_profile_path,
+        search_path=settings.restaurant_resy_search_path,
+        create_details_path=settings.restaurant_resy_create_details_path,
+        create_book_path=settings.restaurant_resy_create_book_path,
+        cancel_path=settings.restaurant_resy_cancel_path,
+        source_id=settings.restaurant_resy_source_id,
     )

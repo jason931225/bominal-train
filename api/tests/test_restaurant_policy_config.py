@@ -36,6 +36,12 @@ def test_restaurant_policy_config_defaults():
     assert settings.restaurant_resy_auth_password_path == "/4/auth/password"
     assert settings.restaurant_resy_auth_api_key is None
     assert settings.restaurant_resy_x_origin == "https://resy.com"
+    assert settings.restaurant_resy_profile_path == "/2/user"
+    assert settings.restaurant_resy_search_path == "/4/find"
+    assert settings.restaurant_resy_create_details_path == "/3/details"
+    assert settings.restaurant_resy_create_book_path == "/3/book"
+    assert settings.restaurant_resy_cancel_path == "/3/cancel"
+    assert settings.restaurant_resy_source_id == "resy.com-venue-details"
 
 
 def test_restaurant_policy_config_env_override(monkeypatch):
@@ -61,6 +67,12 @@ def test_restaurant_policy_config_env_override(monkeypatch):
     monkeypatch.setenv("RESTAURANT_RESY_AUTH_PASSWORD_PATH", "/4/auth/password-live")
     monkeypatch.setenv("RESTAURANT_RESY_AUTH_API_KEY", "resy-api-key-override")
     monkeypatch.setenv("RESTAURANT_RESY_X_ORIGIN", "https://resy.example.com")
+    monkeypatch.setenv("RESTAURANT_RESY_PROFILE_PATH", "/2/user-live")
+    monkeypatch.setenv("RESTAURANT_RESY_SEARCH_PATH", "/4/find-live")
+    monkeypatch.setenv("RESTAURANT_RESY_CREATE_DETAILS_PATH", "/3/details-live")
+    monkeypatch.setenv("RESTAURANT_RESY_CREATE_BOOK_PATH", "/3/book-live")
+    monkeypatch.setenv("RESTAURANT_RESY_CANCEL_PATH", "/3/cancel-live")
+    monkeypatch.setenv("RESTAURANT_RESY_SOURCE_ID", "resy.com-live")
 
     settings = Settings()
 
@@ -86,3 +98,9 @@ def test_restaurant_policy_config_env_override(monkeypatch):
     assert settings.restaurant_resy_auth_password_path == "/4/auth/password-live"
     assert settings.restaurant_resy_auth_api_key == "resy-api-key-override"
     assert settings.restaurant_resy_x_origin == "https://resy.example.com"
+    assert settings.restaurant_resy_profile_path == "/2/user-live"
+    assert settings.restaurant_resy_search_path == "/4/find-live"
+    assert settings.restaurant_resy_create_details_path == "/3/details-live"
+    assert settings.restaurant_resy_create_book_path == "/3/book-live"
+    assert settings.restaurant_resy_cancel_path == "/3/cancel-live"
+    assert settings.restaurant_resy_source_id == "resy.com-live"

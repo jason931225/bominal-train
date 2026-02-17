@@ -164,6 +164,30 @@ class Settings(BaseSettings):
         default="https://resy.com",
         alias="RESTAURANT_RESY_X_ORIGIN",
     )
+    restaurant_resy_profile_path: str = Field(
+        default="/2/user",
+        alias="RESTAURANT_RESY_PROFILE_PATH",
+    )
+    restaurant_resy_search_path: str = Field(
+        default="/4/find",
+        alias="RESTAURANT_RESY_SEARCH_PATH",
+    )
+    restaurant_resy_create_details_path: str = Field(
+        default="/3/details",
+        alias="RESTAURANT_RESY_CREATE_DETAILS_PATH",
+    )
+    restaurant_resy_create_book_path: str = Field(
+        default="/3/book",
+        alias="RESTAURANT_RESY_CREATE_BOOK_PATH",
+    )
+    restaurant_resy_cancel_path: str = Field(
+        default="/3/cancel",
+        alias="RESTAURANT_RESY_CANCEL_PATH",
+    )
+    restaurant_resy_source_id: str = Field(
+        default="resy.com-venue-details",
+        alias="RESTAURANT_RESY_SOURCE_ID",
+    )
     payment_cvv_ttl_seconds: int = Field(default=3600, alias="PAYMENT_CVV_TTL_SECONDS")
 
     email_provider: str = Field(default="smtp", alias="EMAIL_PROVIDER")
