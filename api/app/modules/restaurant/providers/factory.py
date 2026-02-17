@@ -33,5 +33,6 @@ def get_restaurant_provider_client(provider: str) -> RestaurantProviderClient:
             search_slot_path=settings.restaurant_opentable_search_slot_path,
             create_operation_name=settings.restaurant_opentable_create_operation_name,
             create_operation_sha256=settings.restaurant_opentable_create_operation_sha256,
+            create_path=settings.restaurant_opentable_create_path,
         )
     return ResyProviderClient()

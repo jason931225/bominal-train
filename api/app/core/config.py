@@ -104,25 +104,37 @@ class Settings(BaseSettings):
         default="/dapi/authentication/signinwithotp",
         alias="RESTAURANT_OPENTABLE_AUTH_COMPLETE_PATH",
     )
+    restaurant_opentable_autocomplete_operation_name: str = Field(
+        default="Autocomplete",
+        alias="RESTAURANT_OPENTABLE_AUTOCOMPLETE_OPERATION_NAME",
+    )
+    restaurant_opentable_autocomplete_operation_sha256: str = Field(
+        default="fe1d118abd4c227750693027c2414d43014c2493f64f49bcef5a65274ce9c3c3",
+        alias="RESTAURANT_OPENTABLE_AUTOCOMPLETE_OPERATION_SHA256",
+    )
     restaurant_opentable_search_operation_name: str = Field(
-        default="SearchRestaurantAvailability",
+        default="RestaurantsAvailability",
         alias="RESTAURANT_OPENTABLE_SEARCH_OPERATION_NAME",
     )
     restaurant_opentable_search_operation_sha256: str = Field(
-        default="",
+        default="b2d05a06151b3cb21d9dfce4f021303eeba288fac347068b29c1cb66badc46af",
         alias="RESTAURANT_OPENTABLE_SEARCH_OPERATION_SHA256",
     )
     restaurant_opentable_search_slot_path: str = Field(
-        default="data.search.availableSlots",
+        default="data.availability",
         alias="RESTAURANT_OPENTABLE_SEARCH_SLOT_PATH",
     )
     restaurant_opentable_create_operation_name: str = Field(
-        default="CreateReservation",
+        default="BookDetailsStandardSlotLock",
         alias="RESTAURANT_OPENTABLE_CREATE_OPERATION_NAME",
     )
     restaurant_opentable_create_operation_sha256: str = Field(
-        default="",
+        default="1100bf68905fd7cb1d4fd0f4504a4954aa28ec45fb22913fa977af8b06fd97fa",
         alias="RESTAURANT_OPENTABLE_CREATE_OPERATION_SHA256",
+    )
+    restaurant_opentable_create_path: str = Field(
+        default="/dapi/booking/make-reservation",
+        alias="RESTAURANT_OPENTABLE_CREATE_PATH",
     )
     payment_cvv_ttl_seconds: int = Field(default=3600, alias="PAYMENT_CVV_TTL_SECONDS")
 

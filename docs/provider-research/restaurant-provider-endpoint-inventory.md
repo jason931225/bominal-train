@@ -16,9 +16,11 @@ Status values:
 | `auth.complete` | `POST /dapi/authentication/signinwithotp` | CONFIRMED | OTP verify flow with `phoneNumberOrEmail`, `phoneCountryCode`, `countryCode`, `otp`. |
 | `auth.refresh` | `GET /dapi/fe/human`, `POST /dapi/v1/session` | CONFIRMED | Observed keepalive-like calls; treat as provider-internal session touch. |
 | `profile.get` | `POST /dapi/fe/gql?optype=query&opname=HeaderUserProfile` | CONFIRMED | Returns user profile and invitation/upcoming context. |
-| `search.availability` | `POST /dapi/fe/gql?optype=query&opname=SearchRestaurantAvailability` | PARTIAL | Operation name + variable schema frozen in adapter; production persisted hash still needs capture (`RESTAURANT_OPENTABLE_SEARCH_OPERATION_SHA256`). |
-| `reservation.create` | `POST /dapi/fe/gql?optype=mutation&opname=CreateReservation` | PARTIAL | Operation name + variable schema frozen in adapter; production persisted hash still needs capture (`RESTAURANT_OPENTABLE_CREATE_OPERATION_SHA256`). |
+| search autocomplete (supporting) | `POST /dapi/fe/gql?optype=query&opname=Autocomplete` | CONFIRMED | Search-term pre-step resolves candidate restaurant IDs (`id`) and correlation context. |
+| `search.availability` | `POST /dapi/fe/gql?optype=query&opname=RestaurantsAvailability` | CONFIRMED | Persisted hash captured (`b2d05a06151b3cb21d9dfce4f021303eeba288fac347068b29c1cb66badc46af`); response slots resolved from `data.availability[].availabilityDays[].slots[]`. |
+| `reservation.create` | `POST /dapi/fe/gql?optype=mutation&opname=BookDetailsStandardSlotLock` + `POST /dapi/booking/make-reservation` | CONFIRMED | Two-step create flow: slot lock (persisted hash `1100bf68905fd7cb1d4fd0f4504a4954aa28ec45fb22913fa977af8b06fd97fa`) then booking commit with contact payload. |
 | `reservation.cancel` | `POST /dapi/fe/gql?optype=mutation&opname=CancelReservation` | CONFIRMED | Uses restaurant ID + confirmation number + security token. |
+| reservation confirmation (supporting) | `POST /dapi/fe/gql?optype=query&opname=BookingConfirmationPageInFlow` | CONFIRMED | Post-create confirmation enrichment endpoint; includes reservation/profile context. |
 | session hygiene | `GET /_sec/cpr/params` | CONFIRMED | Security/challenge parameter endpoint; document only, no implementation. |
 | logout | `POST /dapi/authentication/logout` | CONFIRMED | Auth teardown endpoint. |
 
@@ -48,7 +50,7 @@ No direct adapter implementation is in scope for this stage.
 
 ## Required next captures before live adapter execution
 
-1. OpenTable search and reservation-create concrete persisted hashes (replace temporary empty defaults).
-2. OpenTable OTP success/error response schema freeze (field-by-field capture).
+1. OpenTable OTP success/error response schema freeze (field-by-field capture).
+2. OpenTable booking-confirmation query variable contract freeze for optional post-create enrichment.
 3. Resy availability + lock/hold + create + cancel endpoint set with payload deltas.
 4. Resy refresh/profile/logout endpoint set for session lifecycle completeness.

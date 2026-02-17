@@ -12,13 +12,13 @@ Redacted provider-contract notes for OpenTable integration. This document intent
 | `/dapi/v1/session` | `POST` | `auth.refresh` (supporting) | observed |
 | `/_sec/cpr/params` | `GET` | security/session support (non-canonical helper) | observed |
 | `/dapi/fe/gql?optype=query&opname=HeaderUserProfile` | `POST` | `profile.get` | observed |
+| `/dapi/fe/gql?optype=query&opname=Autocomplete` | `POST` | search autocomplete (supporting) | observed |
+| `/dapi/fe/gql?optype=query&opname=RestaurantsAvailability` | `POST` | `search.availability` | observed |
+| `/dapi/fe/gql?optype=mutation&opname=BookDetailsStandardSlotLock` | `POST` | `reservation.create` (slot lock step) | observed |
+| `/dapi/booking/make-reservation` | `POST` | `reservation.create` (booking commit step) | observed |
+| `/dapi/fe/gql?optype=query&opname=BookingConfirmationPageInFlow` | `POST` | reservation confirmation (supporting) | observed |
 | `/dapi/fe/gql?optype=mutation&opname=CancelReservation` | `POST` | `reservation.cancel` | observed |
 | `/dapi/authentication/logout` | `POST` | logout | observed |
-
-Required for full feature but not yet contract-frozen:
-
-- reservation-create mutation (`reservation.create`)
-- stable availability/search query operation (`search.availability`)
 
 ## Adapter implementation status (2026-02-17)
 
@@ -29,21 +29,20 @@ Implemented in `api/app/modules/restaurant/providers/opentable_adapter.py`:
 - `reservation.cancel`: calls `CancelReservation` persisted mutation
 - `auth.start`: `POST /dapi/authentication/sendotpfromsignin`
 - `auth.complete`: `POST /dapi/authentication/signinwithotp`
-- `search.availability`: fixed operation contract (`SearchRestaurantAvailability`) with normalized variables:
-  - `input.restaurantId`
-  - `input.partySize`
-  - `input.dateTime`
-- `reservation.create`: fixed operation contract (`CreateReservation`) with normalized variables:
-  - `input.restaurantId`
-  - `input.partySize`
-  - `input.dateTime`
-  - `input.slotHash`
-  - `input.availabilityToken`
-- `search`/`create` persisted query hashes are configured by environment:
+- supporting autocomplete query contract captured:
+  - operation: `Autocomplete`
+  - hash: `fe1d118abd4c227750693027c2414d43014c2493f64f49bcef5a65274ce9c3c3`
+- `search.availability`: `RestaurantsAvailability` persisted query with normalized variables:
+  - `restaurantIds`, `date`, `time`, `partySize`, `restaurantAvailabilityTokens`
+- `reservation.create`: two-step flow
+  - slot lock: `BookDetailsStandardSlotLock` persisted mutation
+  - booking commit: `POST /dapi/booking/make-reservation`
+- frozen OpenTable contract settings:
   - `RESTAURANT_OPENTABLE_SEARCH_OPERATION_SHA256`
   - `RESTAURANT_OPENTABLE_CREATE_OPERATION_SHA256`
+  - `RESTAURANT_OPENTABLE_CREATE_PATH`
 
-This stage removes request-time metadata-driven search/create contracts. Remaining gap is freezing production hashes for search/create persisted queries.
+This stage removes request-time metadata-driven search/create contracts. Remaining OpenTable gap is OTP response-contract hardening and optional booking-confirmation enrichment freeze.
 
 ## Observed endpoint details
 
@@ -198,7 +197,198 @@ Mapping guidance:
 - store masked email/phone only in safe metadata
 - use `gpid` as `provider_account_ref` candidate (safe to hash before storage if needed)
 
-### 7) `POST /dapi/fe/gql?optype=mutation&opname=CancelReservation`
+### 7) `POST /dapi/fe/gql?optype=query&opname=RestaurantsAvailability`
+
+Canonical operation: `search.availability`
+
+Supporting pre-step: `POST /dapi/fe/gql?optype=query&opname=Autocomplete`
+
+Autocomplete observed request shape:
+
+```json
+{
+  "operationName": "Autocomplete",
+  "variables": {
+    "term": "<restaurant-search-term>",
+    "latitude": 40.8058863,
+    "longitude": -73.9658847,
+    "useNewVersion": true
+  },
+  "extensions": {
+    "persistedQuery": {
+      "version": 1,
+      "sha256Hash": "fe1d118abd4c227750693027c2414d43014c2493f64f49bcef5a65274ce9c3c3"
+    }
+  }
+}
+```
+
+Autocomplete response fields used for follow-up availability:
+
+- `data.autocomplete.autocompleteResults[].id` (candidate `restaurantId`)
+- `data.autocomplete.correlationId` (optional request correlation context)
+
+Observed request shape:
+
+```json
+{
+  "operationName": "RestaurantsAvailability",
+  "variables": {
+    "restaurantIds": [349132],
+    "date": "2026-02-26",
+    "time": "19:00",
+    "partySize": 2,
+    "restaurantAvailabilityTokens": ["<availability-token>"],
+    "databaseRegion": "EU",
+    "requireTypes": ["Standard", "Experience"],
+    "privilegedAccess": ["UberOneDiningProgram", "VisaDiningProgram", "VisaEventsProgram", "ChaseDiningProgram"]
+  },
+  "extensions": {
+    "persistedQuery": {
+      "version": 1,
+      "sha256Hash": "b2d05a06151b3cb21d9dfce4f021303eeba288fac347068b29c1cb66badc46af"
+    }
+  }
+}
+```
+
+Observed response shape (slot subset):
+
+```json
+{
+  "data": {
+    "availability": [
+      {
+        "restaurantId": 349132,
+        "availabilityDays": [
+          {
+            "date": "2026-02-26",
+            "slots": [
+              {
+                "slotHash": "750944791",
+                "timeOffsetMinutes": -30,
+                "slotAvailabilityToken": "<slot-token>",
+                "type": "Standard",
+                "attributes": ["default"]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Implementation guidance:
+
+- resolve slots from `data.availability[].availabilityDays[].slots[]`
+- treat `slotHash` as `provider_slot_ref` and `slotAvailabilityToken` as sensitive transient data
+
+### 8) `POST /dapi/fe/gql?optype=mutation&opname=BookDetailsStandardSlotLock`
+
+Canonical operation: `reservation.create` (pre-commit lock step)
+
+Observed request shape:
+
+```json
+{
+  "operationName": "BookDetailsStandardSlotLock",
+  "variables": {
+    "input": {
+      "restaurantId": 349132,
+      "seatingOption": "DEFAULT",
+      "reservationDateTime": "2026-02-26T19:00",
+      "partySize": 2,
+      "databaseRegion": "NA",
+      "slotHash": "750944791",
+      "reservationType": "STANDARD",
+      "diningAreaId": 1
+    }
+  },
+  "extensions": {
+    "persistedQuery": {
+      "version": 1,
+      "sha256Hash": "1100bf68905fd7cb1d4fd0f4504a4954aa28ec45fb22913fa977af8b06fd97fa"
+    }
+  }
+}
+```
+
+Observed response shape:
+
+```json
+{
+  "data": {
+    "lockSlot": {
+      "success": true,
+      "slotLock": {
+        "slotLockId": 1587118118
+      },
+      "slotLockErrors": null
+    }
+  }
+}
+```
+
+### 9) `POST /dapi/booking/make-reservation`
+
+Canonical operation: `reservation.create` (commit step)
+
+Observed request shape (redacted):
+
+```json
+{
+  "restaurantId": 349132,
+  "partySize": 2,
+  "reservationDateTime": "2026-02-26T19:00",
+  "slotHash": "750944791",
+  "slotAvailabilityToken": "<slot-token>",
+  "slotLockId": 1587118118,
+  "email": "<email>",
+  "firstName": "<first-name>",
+  "lastName": "<last-name>",
+  "phoneNumber": "<phone-number>",
+  "phoneNumberCountryId": "US",
+  "country": "US"
+}
+```
+
+Observed response shape:
+
+```json
+{
+  "success": true,
+  "reservationId": 2018438767,
+  "confirmationNumber": 2110076985,
+  "securityToken": "<security-token>",
+  "reservationType": "Standard",
+  "reservationSource": "Online"
+}
+```
+
+Implementation guidance:
+
+- this is the durable reservation-create commit endpoint
+- treat `securityToken` as sensitive operational input for later cancellation
+
+### 10) `POST /dapi/fe/gql?optype=query&opname=BookingConfirmationPageInFlow`
+
+Purpose: supporting post-create confirmation enrichment endpoint.
+
+Observed request includes:
+
+- `rid`, `confirmationNumber`, `databaseRegion`, `securityToken`, `isLoggedIn`
+
+Observed response includes:
+
+- reservation summary, restaurant context, and user profile linkage
+
+Implementation guidance:
+
+- keep as optional enrichment path; do not block core create success on this call
+
+### 11) `POST /dapi/fe/gql?optype=mutation&opname=CancelReservation`
 
 Canonical operation: `reservation.cancel`
 
@@ -249,7 +439,7 @@ Implementation guidance:
 - keep `confirmationNumber` and `reservationId` as durable cancellation references
 - treat `securityToken` as sensitive input (do not persist raw)
 
-### 8) `POST /dapi/authentication/logout`
+### 12) `POST /dapi/authentication/logout`
 
 Purpose: explicit session termination.
 

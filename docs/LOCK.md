@@ -142,7 +142,7 @@ Rules:
   - `docs/**`
   - `infra/env/prod/api.env.example`
   - `CHANGELOG.md`
-- reason: Wire observed OpenTable RestaurantsAvailability operation/hash and update contract docs
+- reason: Wire observed OpenTable RestaurantsAvailability + BookDetailsStandardSlotLock contracts and update adapter/docs
 - created_at_utc: 2026-02-17T16:47:45Z
 - released_at_utc:
 
