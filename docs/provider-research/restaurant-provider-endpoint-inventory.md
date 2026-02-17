@@ -12,12 +12,12 @@ Status values:
 
 | Canonical operation | Endpoint(s) | Status | Notes |
 |---|---|---|---|
-| `auth.start` | provider-specific OTP start endpoint (not yet captured) | TODO_CAPTURE | User flow requires email/SMS OTP request trigger. |
-| `auth.complete` | provider-specific OTP verify endpoint (not yet captured) | TODO_CAPTURE | Needed for conventional user auth completion. |
+| `auth.start` | configurable adapter endpoint path (`RESTAURANT_OPENTABLE_AUTH_START_PATH`) | PARTIAL | Backend adapter path implemented; concrete provider endpoint capture still required. |
+| `auth.complete` | configurable adapter endpoint path (`RESTAURANT_OPENTABLE_AUTH_COMPLETE_PATH`) | PARTIAL | Backend adapter path implemented; concrete provider endpoint capture still required. |
 | `auth.refresh` | `GET /dapi/fe/human`, `POST /dapi/v1/session` | CONFIRMED | Observed keepalive-like calls; treat as provider-internal session touch. |
 | `profile.get` | `POST /dapi/fe/gql?optype=query&opname=HeaderUserProfile` | CONFIRMED | Returns user profile and invitation/upcoming context. |
-| `search.availability` | provider GraphQL/query endpoint not yet pinned | PARTIAL | Search URL patterns observed; stable API contract capture still required. |
-| `reservation.create` | provider GraphQL mutation not yet pinned | TODO_CAPTURE | Must capture confirmation/security-token response fields. |
+| `search.availability` | configurable adapter GraphQL contract (operation/hash/variables metadata) | PARTIAL | Adapter method implemented; stable OpenTable operation/hash capture still required. |
+| `reservation.create` | configurable adapter GraphQL contract (operation/hash/variables metadata) | PARTIAL | Adapter method implemented; concrete create mutation contract still required. |
 | `reservation.cancel` | `POST /dapi/fe/gql?optype=mutation&opname=CancelReservation` | CONFIRMED | Uses restaurant ID + confirmation number + security token. |
 | session hygiene | `GET /_sec/cpr/params` | CONFIRMED | Security/challenge parameter endpoint; document only, no implementation. |
 | logout | `POST /dapi/authentication/logout` | CONFIRMED | Auth teardown endpoint. |
@@ -48,7 +48,7 @@ No direct adapter implementation is in scope for this stage.
 
 ## Required next captures before live adapter execution
 
-1. OpenTable OTP start/verify request-response pair.
-2. OpenTable reservation-create mutation contract (prepayment boundary included).
+1. OpenTable OTP start/verify concrete endpoint contracts (replace config placeholders with frozen paths/payloads).
+2. OpenTable search and reservation-create concrete operation/hash capture set.
 3. Resy availability + lock/hold + create + cancel endpoint set with payload deltas.
 4. Resy refresh/profile/logout endpoint set for session lifecycle completeness.

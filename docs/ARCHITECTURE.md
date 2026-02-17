@@ -126,6 +126,10 @@ Provider integration:
 - Policy writes only safe attempt metadata (`meta_json_safe`) and avoids credential/token persistence.
 - Provider adapter scaffolding is defined in `api/app/modules/restaurant/providers/` with canonical operations:
   - `auth.start`, `auth.complete`, `auth.refresh`, `profile.get`, `search.availability`, `reservation.create`, `reservation.cancel`
+- OpenTable stage-1 adapter implementation currently provides:
+  - live refresh/profile/cancel paths
+  - configurable auth start/complete paths
+  - configurable search/create GraphQL contract paths
 - Provider contract research and payload schemas are maintained under `docs/provider-research/`.
 - CatchTable endpoint implementation references are sourced from read-only `third_party/catchtable` files (`reservation.py`, `session.py`, `configs.py`, `main.py`).
 

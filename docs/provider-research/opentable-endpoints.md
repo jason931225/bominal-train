@@ -20,6 +20,20 @@ Required for full feature but not yet contract-frozen:
 - reservation-create mutation (`reservation.create`)
 - stable availability/search query operation (`search.availability`)
 
+## Adapter implementation status (2026-02-17)
+
+Implemented in `api/app/modules/restaurant/providers/opentable_adapter.py`:
+
+- `auth.refresh`: calls `/_sec/cpr/params`, `/dapi/fe/human`, and `/dapi/v1/session`
+- `profile.get`: calls `HeaderUserProfile` persisted query
+- `reservation.cancel`: calls `CancelReservation` persisted mutation
+- `auth.start` / `auth.complete`: implemented with configurable endpoint paths:
+  - `RESTAURANT_OPENTABLE_AUTH_START_PATH`
+  - `RESTAURANT_OPENTABLE_AUTH_COMPLETE_PATH`
+- `search.availability` / `reservation.create`: implemented via configurable GraphQL contract metadata (`operation_name`, `sha256_hash`, `variables`)
+
+This stage enables end-to-end adapter execution paths while concrete OpenTable OTP/search/create endpoint captures remain pending.
+
 ## Observed endpoint details
 
 ### 1) `GET /dapi/fe/human`
