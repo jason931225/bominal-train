@@ -133,6 +133,8 @@ Provider integration:
   - frozen `reservation.create` contract via two-step flow:
     - `BookDetailsStandardSlotLock` persisted mutation (hash-configurable)
     - `POST /dapi/booking/make-reservation` commit path (configurable path)
+  - optional post-create `BookingConfirmationPageInFlow` enrichment (hash-configurable, non-blocking on failure)
+  - normalized safe reservation-create output fields (`confirmation_enrichment`, `policy_safe`) for artifact persistence
 - Provider contract research and payload schemas are maintained under `docs/provider-research/`.
 - CatchTable endpoint implementation references are sourced from read-only `third_party/catchtable` files (`reservation.py`, `session.py`, `configs.py`, `main.py`).
 

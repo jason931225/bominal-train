@@ -30,7 +30,7 @@ Use these stable identifier keys in safe metadata:
 | `auth.refresh` | `task_attempts.meta_json_safe` | `provider`, `operation`, `refresh_source`, `refresh_result` |
 | `profile.get` | `artifacts.data_json_safe` (optional) | `provider`, `profile_snapshot_safe` |
 | `search.availability` | `task_attempts.meta_json_safe` | `provider`, `restaurant_id`, `party_size`, `slot_count`, `provider_slot_refs` |
-| `reservation.create` | `artifacts.data_json_safe` | `provider`, `provider_slot_ref`, `slot_lock_ref`, `provider_reservation_ref`, `provider_confirmation_ref`, `reservation_state` |
+| `reservation.create` | `artifacts.data_json_safe` | `provider`, `provider_slot_ref`, `slot_lock_ref`, `provider_reservation_ref`, `provider_confirmation_ref`, `reservation_state`, `confirmation_enrichment_safe`, `policy_safe` |
 | `reservation.cancel` | `task_attempts.meta_json_safe` and/or `artifacts.data_json_safe` | `provider`, `provider_confirmation_ref`, `cancel_status`, `provider_request_id` |
 
 ## Existing bominal table alignment
@@ -65,6 +65,8 @@ Use these stable identifier keys in safe metadata:
   - `slot_lock_ref` (`slotLockId`)
   - `provider_reservation_ref` (`reservationId`)
   - `provider_confirmation_ref` (`confirmationNumber`)
+  - optional `confirmation_enrichment_safe` subset from booking-confirmation query
+  - `policy_safe` booleans only (for example `confirm_points`, `marketing_opt_in_restaurant`, `restaurant_policy_acknowledged`)
   - never persist raw `slotAvailabilityToken` or `securityToken` in safe artifacts
 
 ### `secrets`

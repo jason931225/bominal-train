@@ -136,6 +136,14 @@ class Settings(BaseSettings):
         default="/dapi/booking/make-reservation",
         alias="RESTAURANT_OPENTABLE_CREATE_PATH",
     )
+    restaurant_opentable_confirmation_operation_name: str = Field(
+        default="BookingConfirmationPageInFlow",
+        alias="RESTAURANT_OPENTABLE_CONFIRMATION_OPERATION_NAME",
+    )
+    restaurant_opentable_confirmation_operation_sha256: str = Field(
+        default="6be25f0bbc8fe75483bdfe96ae78fb20075b978842e4b44964aed3591611aa99",
+        alias="RESTAURANT_OPENTABLE_CONFIRMATION_OPERATION_SHA256",
+    )
     payment_cvv_ttl_seconds: int = Field(default=3600, alias="PAYMENT_CVV_TTL_SECONDS")
 
     email_provider: str = Field(default="smtp", alias="EMAIL_PROVIDER")

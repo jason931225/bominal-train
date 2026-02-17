@@ -406,6 +406,14 @@ async def test_opentable_search_and_create_use_frozen_contract_configuration():
     assert create_result.data["reservation_id"] == "2018060113"
     assert create_result.data["security_token_present"] is True
     assert create_result.data["slot_lock_id"] == "1587118118"
+    assert create_result.data["confirmation_enrichment_attempted"] is False
+    assert create_result.data["confirmation_enrichment"] is None
+    assert create_result.data["confirmation_enrichment_error_code"] is None
+    assert create_result.data["policy_safe"] == {
+        "confirm_points": True,
+        "marketing_opt_in_restaurant": False,
+        "restaurant_policy_acknowledged": False,
+    }
 
     lock_request = transport.requests[1]
     assert "optype=mutation&opname=BookDetailsStandardSlotLock" in lock_request["url"]
@@ -463,3 +471,223 @@ async def test_opentable_create_requires_contact_fields():
     assert create_result.error_code == "reservation_create_contact_missing"
     assert create_result.data["missing_fields"] == ["first_name", "last_name", "phone_number"]
     assert transport.requests == []
+
+
+@pytest.mark.asyncio
+async def test_opentable_create_uses_optional_booking_confirmation_enrichment_when_configured():
+    slot_time = datetime(2026, 2, 27, 19, 30)
+    transport = _QueueTransport(
+        [
+            _response(
+                {
+                    "data": {
+                        "lockSlot": {
+                            "success": True,
+                            "slotLock": {"slotLockId": 1587118118},
+                            "slotLockErrors": None,
+                        }
+                    }
+                }
+            ),
+            _response(
+                {
+                    "success": True,
+                    "confirmationNumber": 2110076913,
+                    "reservationId": 2018060113,
+                    "securityToken": "sec-1",
+                }
+            ),
+            _response(
+                {
+                    "data": {
+                        "bookingConfirmationPageInFlow": {
+                            "reservation": {
+                                "confirmationNumber": 2110076913,
+                                "reservationId": 2018060113,
+                                "reservationState": "Confirmed",
+                            },
+                            "restaurant": {
+                                "id": 349132,
+                                "name": "Le Monde",
+                            },
+                        }
+                    }
+                }
+            ),
+        ]
+    )
+    client = OpenTableProviderClient(
+        transport=transport,
+        create_operation_name="BookDetailsStandardSlotLock",
+        create_operation_sha256="hash-create-1",
+        confirmation_operation_name="BookingConfirmationPageInFlow",
+        confirmation_operation_sha256="hash-confirmation-1",
+    )
+    create_result = await client.create_reservation(
+        account_ref="acct-1",
+        slot=RestaurantSearchSlot(
+            provider_slot_id="3881139754",
+            provider="OPENTABLE",
+            restaurant_id="349132",
+            party_size=2,
+            date_time_local=slot_time,
+            availability_token="avt-1",
+            metadata_safe={"dining_area_id": 1},
+        ),
+        metadata={
+            "email": "user@example.com",
+            "first_name": "Jason",
+            "last_name": "Lee",
+            "phone_number": "6460001111",
+            "database_region": "NA",
+            "confirm_points": False,
+            "opt_in_email_restaurant": True,
+        },
+    )
+
+    assert create_result.ok is True
+    assert create_result.data["confirmation_enrichment_attempted"] is True
+    assert create_result.data["confirmation_enrichment_error_code"] is None
+    assert create_result.data["confirmation_enrichment"] == {
+        "restaurant_id": "349132",
+        "restaurant_name": "Le Monde",
+        "confirmation_number": "2110076913",
+        "reservation_id": "2018060113",
+        "reservation_state": "Confirmed",
+    }
+    assert create_result.data["policy_safe"] == {
+        "confirm_points": False,
+        "marketing_opt_in_restaurant": True,
+        "restaurant_policy_acknowledged": False,
+    }
+    confirmation_request = transport.requests[2]
+    assert "optype=query&opname=BookingConfirmationPageInFlow" in confirmation_request["url"]
+    assert confirmation_request["json_body"]["extensions"]["persistedQuery"]["sha256Hash"] == "hash-confirmation-1"
+    assert confirmation_request["json_body"]["variables"] == {
+        "rid": 349132,
+        "confirmationNumber": 2110076913,
+        "databaseRegion": "NA",
+        "securityToken": "sec-1",
+        "isLoggedIn": True,
+    }
+
+
+@pytest.mark.asyncio
+async def test_opentable_create_keeps_success_when_confirmation_enrichment_fails():
+    slot_time = datetime(2026, 2, 27, 19, 30)
+    transport = _QueueTransport(
+        [
+            _response(
+                {
+                    "data": {
+                        "lockSlot": {
+                            "success": True,
+                            "slotLock": {"slotLockId": 1587118118},
+                            "slotLockErrors": None,
+                        }
+                    }
+                }
+            ),
+            _response(
+                {
+                    "success": True,
+                    "confirmationNumber": 2110076913,
+                    "reservationId": 2018060113,
+                    "securityToken": "sec-1",
+                }
+            ),
+            _response({}, status_code=503),
+        ]
+    )
+    client = OpenTableProviderClient(
+        transport=transport,
+        create_operation_name="BookDetailsStandardSlotLock",
+        create_operation_sha256="hash-create-1",
+        confirmation_operation_name="BookingConfirmationPageInFlow",
+        confirmation_operation_sha256="hash-confirmation-1",
+    )
+    create_result = await client.create_reservation(
+        account_ref="acct-1",
+        slot=RestaurantSearchSlot(
+            provider_slot_id="3881139754",
+            provider="OPENTABLE",
+            restaurant_id="349132",
+            party_size=2,
+            date_time_local=slot_time,
+            availability_token="avt-1",
+            metadata_safe={"dining_area_id": 1},
+        ),
+        metadata={
+            "email": "user@example.com",
+            "first_name": "Jason",
+            "last_name": "Lee",
+            "phone_number": "6460001111",
+            "database_region": "NA",
+        },
+    )
+
+    assert create_result.ok is True
+    assert create_result.data["confirmation_enrichment_attempted"] is True
+    assert create_result.data["confirmation_enrichment"] is None
+    assert create_result.data["confirmation_enrichment_error_code"] == "reservation_create_confirmation_failed"
+
+
+@pytest.mark.asyncio
+async def test_opentable_create_normalizes_policy_flags_to_safe_booleans():
+    slot_time = datetime(2026, 2, 27, 19, 30)
+    transport = _QueueTransport(
+        [
+            _response(
+                {
+                    "data": {
+                        "lockSlot": {
+                            "success": True,
+                            "slotLock": {"slotLockId": 1587118118},
+                            "slotLockErrors": None,
+                        }
+                    }
+                }
+            ),
+            _response(
+                {
+                    "success": True,
+                    "confirmationNumber": 2110076913,
+                    "reservationId": 2018060113,
+                    "securityToken": "sec-1",
+                }
+            ),
+        ]
+    )
+    client = OpenTableProviderClient(
+        transport=transport,
+        create_operation_name="BookDetailsStandardSlotLock",
+        create_operation_sha256="hash-create-1",
+    )
+    create_result = await client.create_reservation(
+        account_ref="acct-1",
+        slot=RestaurantSearchSlot(
+            provider_slot_id="3881139754",
+            provider="OPENTABLE",
+            restaurant_id="349132",
+            party_size=2,
+            date_time_local=slot_time,
+            availability_token="avt-1",
+            metadata_safe={"dining_area_id": 1},
+        ),
+        metadata={
+            "email": "user@example.com",
+            "first_name": "Jason",
+            "last_name": "Lee",
+            "phone_number": "6460001111",
+            "confirm_points": "1",
+            "opt_in_email_restaurant": "yes",
+            "restaurant_policy_acknowledged": "true",
+        },
+    )
+
+    assert create_result.ok is True
+    assert create_result.data["policy_safe"] == {
+        "confirm_points": True,
+        "marketing_opt_in_restaurant": True,
+        "restaurant_policy_acknowledged": True,
+    }
