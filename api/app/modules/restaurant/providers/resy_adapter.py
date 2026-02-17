@@ -19,6 +19,8 @@ _DEFAULT_CREATE_DETAILS_PATH = "/3/details"
 _DEFAULT_CREATE_BOOK_PATH = "/3/book"
 _DEFAULT_CANCEL_PATH = "/3/cancel"
 _DEFAULT_SOURCE_ID = "resy.com-venue-details"
+_DEFAULT_REFRESH_PATH = "/3/auth/refresh"
+_DEFAULT_LOGOUT_PATH = "/3/auth/logout"
 
 
 def _safe_json_loads(raw: str) -> dict[str, Any]:
@@ -97,6 +99,19 @@ def _as_bool(raw: Any) -> bool:
     return bool(raw)
 
 
+def _as_int(raw: Any) -> int | None:
+    if isinstance(raw, bool):
+        return None
+    if isinstance(raw, int):
+        return raw
+    if isinstance(raw, str):
+        try:
+            return int(raw.strip())
+        except Exception:
+            return None
+    return None
+
+
 def _extract_book_token(payload: dict[str, Any]) -> str | None:
     candidate = _find_first(payload, ("book_token", "bookToken"))
     if isinstance(candidate, str) and candidate.strip():
@@ -129,6 +144,8 @@ class ResyProviderClient(ScaffoldRestaurantProviderClient):
         create_book_path: str = _DEFAULT_CREATE_BOOK_PATH,
         cancel_path: str = _DEFAULT_CANCEL_PATH,
         source_id: str = _DEFAULT_SOURCE_ID,
+        refresh_path: str = _DEFAULT_REFRESH_PATH,
+        logout_path: str = _DEFAULT_LOGOUT_PATH,
     ) -> None:
         self._transport = transport or HttpxTransport()
         self._base_url = base_url.rstrip("/")
@@ -142,6 +159,8 @@ class ResyProviderClient(ScaffoldRestaurantProviderClient):
         self._create_book_path = create_book_path or _DEFAULT_CREATE_BOOK_PATH
         self._cancel_path = cancel_path or _DEFAULT_CANCEL_PATH
         self._source_id = source_id or _DEFAULT_SOURCE_ID
+        self._refresh_path = refresh_path.strip()
+        self._logout_path = logout_path.strip()
 
     async def _request(
         self,
@@ -305,6 +324,109 @@ class ResyProviderClient(ScaffoldRestaurantProviderClient):
             data={
                 "authenticated": True,
                 "provider_account_ref": str(provider_account_ref) if provider_account_ref else None,
+            },
+        )
+
+    async def refresh_auth(self, *, account_ref: str) -> RestaurantProviderOutcome:
+        if not self._refresh_path:
+            return RestaurantProviderOutcome(
+                ok=False,
+                retryable=False,
+                error_code="auth_refresh_path_unconfigured",
+                error_message_safe="Resy auth.refresh path is not configured.",
+            )
+        headers, error_outcome = self._auth_headers(account_ref=account_ref, operation_prefix="auth_refresh")
+        if error_outcome is not None:
+            return error_outcome
+
+        response = await self._request(
+            method="POST",
+            path=self._refresh_path,
+            headers=headers,
+        )
+        payload = _safe_json_loads(response.text)
+        if response.status_code >= 400:
+            error_code, retryable = _normalize_status_error("auth_refresh", response.status_code)
+            return RestaurantProviderOutcome(
+                ok=False,
+                retryable=retryable,
+                error_code=error_code,
+                error_message_safe="Resy auth.refresh request failed.",
+                data={"status_code": response.status_code},
+            )
+        if payload.get("errors") or payload.get("success") is False:
+            provider_error_code = _find_first(payload, ("errorCode", "error_code", "code"))
+            data: dict[str, Any] = {}
+            if provider_error_code is not None:
+                data["provider_error_code"] = str(provider_error_code)
+            return RestaurantProviderOutcome(
+                ok=False,
+                retryable=False,
+                error_code="auth_refresh_failed",
+                error_message_safe="Resy auth.refresh response indicates failure.",
+                data=data,
+            )
+
+        refreshed = _as_bool(_find_first(payload, ("refreshed", "success", "ok")))
+        expires_in = _as_int(_find_first(payload, ("expires_in", "expiresIn", "eik")))
+        token_value = _find_first(payload, ("token", "auth_token", "access_token", "x_resy_auth_token"))
+        return RestaurantProviderOutcome(
+            ok=True,
+            retryable=False,
+            data={
+                "refreshed": refreshed,
+                "expires_in": expires_in,
+                "token_present": bool(token_value),
+            },
+        )
+
+    async def logout(self, *, account_ref: str) -> RestaurantProviderOutcome:
+        if not self._logout_path:
+            return RestaurantProviderOutcome(
+                ok=False,
+                retryable=False,
+                error_code="logout_path_unconfigured",
+                error_message_safe="Resy logout path is not configured.",
+            )
+        headers, error_outcome = self._auth_headers(account_ref=account_ref, operation_prefix="logout")
+        if error_outcome is not None:
+            return error_outcome
+
+        response = await self._request(
+            method="POST",
+            path=self._logout_path,
+            headers=headers,
+        )
+        payload = _safe_json_loads(response.text)
+        if response.status_code >= 400:
+            error_code, retryable = _normalize_status_error("logout", response.status_code)
+            return RestaurantProviderOutcome(
+                ok=False,
+                retryable=retryable,
+                error_code=error_code,
+                error_message_safe="Resy logout request failed.",
+                data={"status_code": response.status_code},
+            )
+        if payload.get("errors") or payload.get("success") is False:
+            provider_error_code = _find_first(payload, ("errorCode", "error_code", "code"))
+            data: dict[str, Any] = {}
+            if provider_error_code is not None:
+                data["provider_error_code"] = str(provider_error_code)
+            return RestaurantProviderOutcome(
+                ok=False,
+                retryable=False,
+                error_code="logout_failed",
+                error_message_safe="Resy logout response indicates failure.",
+                data=data,
+            )
+
+        status_value = _find_first(payload, ("status", "message", "result"))
+        return RestaurantProviderOutcome(
+            ok=True,
+            retryable=False,
+            data={
+                "logged_out": True,
+                "status": str(status_value) if status_value is not None else "ok",
             },
         )
 

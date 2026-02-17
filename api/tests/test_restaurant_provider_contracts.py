@@ -63,7 +63,7 @@ async def test_restaurant_adapter_default_resy_contract_errors_are_stable_withou
 
     refresh = await client.refresh_auth(account_ref="user@example.com")
     assert refresh.ok is False
-    assert refresh.error_code == "not_implemented"
+    assert refresh.error_code == "auth_refresh_api_key_unconfigured"
 
     profile = await client.get_user_profile(account_ref="user@example.com")
     assert profile.ok is False

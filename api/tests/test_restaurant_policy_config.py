@@ -42,6 +42,8 @@ def test_restaurant_policy_config_defaults():
     assert settings.restaurant_resy_create_book_path == "/3/book"
     assert settings.restaurant_resy_cancel_path == "/3/cancel"
     assert settings.restaurant_resy_source_id == "resy.com-venue-details"
+    assert settings.restaurant_resy_refresh_path == "/3/auth/refresh"
+    assert settings.restaurant_resy_logout_path == "/3/auth/logout"
 
 
 def test_restaurant_policy_config_env_override(monkeypatch):
@@ -73,6 +75,8 @@ def test_restaurant_policy_config_env_override(monkeypatch):
     monkeypatch.setenv("RESTAURANT_RESY_CREATE_BOOK_PATH", "/3/book-live")
     monkeypatch.setenv("RESTAURANT_RESY_CANCEL_PATH", "/3/cancel-live")
     monkeypatch.setenv("RESTAURANT_RESY_SOURCE_ID", "resy.com-live")
+    monkeypatch.setenv("RESTAURANT_RESY_REFRESH_PATH", "/3/auth/refresh-live")
+    monkeypatch.setenv("RESTAURANT_RESY_LOGOUT_PATH", "/3/auth/logout-live")
 
     settings = Settings()
 
@@ -104,3 +108,5 @@ def test_restaurant_policy_config_env_override(monkeypatch):
     assert settings.restaurant_resy_create_book_path == "/3/book-live"
     assert settings.restaurant_resy_cancel_path == "/3/cancel-live"
     assert settings.restaurant_resy_source_id == "resy.com-live"
+    assert settings.restaurant_resy_refresh_path == "/3/auth/refresh-live"
+    assert settings.restaurant_resy_logout_path == "/3/auth/logout-live"

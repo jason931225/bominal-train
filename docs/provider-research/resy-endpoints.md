@@ -14,7 +14,8 @@ Redacted provider-contract notes for Resy integration. This document excludes ra
 | `/3/book` | `POST` | `reservation.create` (commit) | reference-confirmed (third_party) |
 | `/3/cancel` | `POST` | `reservation.cancel` | reference-confirmed (third_party) |
 | `/3/venues` | `GET` | search discovery support | reference-confirmed (third_party) |
-| `/3/auth/refresh` | `POST` | `auth.refresh` | observed in external traces, not frozen |
+| `/3/auth/refresh` | `POST` | `auth.refresh` | implemented (adapter), live-freeze pending |
+| `/3/auth/logout` | `POST` | logout (supporting) | implemented (adapter), live-freeze pending |
 
 ## Third-party reference cross-check (2026-02-17)
 
@@ -64,6 +65,9 @@ Implemented in `api/app/modules/restaurant/providers/resy_adapter.py`:
   - `search.availability`: `GET /4/find`
   - `reservation.create`: `POST /3/details` then `POST /3/book`
   - `reservation.cancel`: `POST /3/cancel` with fallback retry using `resy_token` when first cancel attempt fails
+- stage-3 auth/session paths are now config-driven:
+  - `auth.refresh`: `POST /3/auth/refresh`
+  - `logout` (supporting helper): `POST /3/auth/logout`
 - stage-2 safe output normalization now includes:
   - profile safe identity summary (`provider_account_ref`, name/email, reservation/payment-method counts)
   - normalized slot list from `/4/find` (`config.token` -> canonical slot token/id)
@@ -72,11 +76,11 @@ Implemented in `api/app/modules/restaurant/providers/resy_adapter.py`:
 
 Required for full feature but not yet contract-frozen:
 
-- session refresh endpoint (`auth.refresh`)
 - profile/search/create/cancel edge-case semantics under live captures:
   - payment-required / special-policy venues
   - cancel fallback requirements across reservation variants
-- logout endpoint
+- auth refresh response edge-case semantics (token rotation / throttling envelopes)
+- logout endpoint response contract across account states
 
 ## Observed authentication contract
 
@@ -215,8 +219,8 @@ This endpoint document extends that workflow by freezing the canonical adapter m
 
 ## Required follow-up captures for full Resy adapter
 
-1. Freeze session refresh (`/3/auth/refresh`) request/response contract for long-running auth maintenance.
-2. Freeze logout endpoint contract for explicit session teardown.
+1. Freeze live `/3/auth/refresh` request/response contract for long-running auth maintenance.
+2. Freeze live `/3/auth/logout` request/response contract for explicit session teardown.
 3. Capture payment-required/policy-heavy create variants and confirm safe field mapping under non-standard venue requirements.
 4. Capture cancel fallback coverage across reservation variants to validate when `resy_token` is mandatory.
 
