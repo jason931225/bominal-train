@@ -27,6 +27,10 @@ def test_restaurant_policy_config_defaults():
         "1100bf68905fd7cb1d4fd0f4504a4954aa28ec45fb22913fa977af8b06fd97fa"
     )
     assert settings.restaurant_opentable_create_path == "/dapi/booking/make-reservation"
+    assert settings.restaurant_opentable_confirmation_operation_name == "BookingConfirmationPageInFlow"
+    assert settings.restaurant_opentable_confirmation_operation_sha256 == (
+        "6be25f0bbc8fe75483bdfe96ae78fb20075b978842e4b44964aed3591611aa99"
+    )
 
 
 def test_restaurant_policy_config_env_override(monkeypatch):
@@ -45,6 +49,8 @@ def test_restaurant_policy_config_env_override(monkeypatch):
     monkeypatch.setenv("RESTAURANT_OPENTABLE_CREATE_OPERATION_NAME", "CreateReservationLive")
     monkeypatch.setenv("RESTAURANT_OPENTABLE_CREATE_OPERATION_SHA256", "hash-create-override")
     monkeypatch.setenv("RESTAURANT_OPENTABLE_CREATE_PATH", "/dapi/booking/create")
+    monkeypatch.setenv("RESTAURANT_OPENTABLE_CONFIRMATION_OPERATION_NAME", "BookingConfirmationLive")
+    monkeypatch.setenv("RESTAURANT_OPENTABLE_CONFIRMATION_OPERATION_SHA256", "hash-confirmation-override")
 
     settings = Settings()
 
@@ -63,3 +69,5 @@ def test_restaurant_policy_config_env_override(monkeypatch):
     assert settings.restaurant_opentable_create_operation_name == "CreateReservationLive"
     assert settings.restaurant_opentable_create_operation_sha256 == "hash-create-override"
     assert settings.restaurant_opentable_create_path == "/dapi/booking/create"
+    assert settings.restaurant_opentable_confirmation_operation_name == "BookingConfirmationLive"
+    assert settings.restaurant_opentable_confirmation_operation_sha256 == "hash-confirmation-override"

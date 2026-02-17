@@ -20,7 +20,7 @@ Status values:
 | `search.availability` | `POST /dapi/fe/gql?optype=query&opname=RestaurantsAvailability` | CONFIRMED | Persisted hash captured (`b2d05a06151b3cb21d9dfce4f021303eeba288fac347068b29c1cb66badc46af`); response slots resolved from `data.availability[].availabilityDays[].slots[]`. |
 | `reservation.create` | `POST /dapi/fe/gql?optype=mutation&opname=BookDetailsStandardSlotLock` + `POST /dapi/booking/make-reservation` | CONFIRMED | Two-step create flow: slot lock (persisted hash `1100bf68905fd7cb1d4fd0f4504a4954aa28ec45fb22913fa977af8b06fd97fa`) then booking commit with contact payload. |
 | `reservation.cancel` | `POST /dapi/fe/gql?optype=mutation&opname=CancelReservation` | CONFIRMED | Uses restaurant ID + confirmation number + security token. |
-| reservation confirmation (supporting) | `POST /dapi/fe/gql?optype=query&opname=BookingConfirmationPageInFlow` | CONFIRMED | Post-create confirmation enrichment endpoint; includes reservation/profile context. |
+| reservation confirmation (supporting) | `POST /dapi/fe/gql?optype=query&opname=BookingConfirmationPageInFlow` | CONFIRMED | Post-create optional enrichment endpoint; adapter uses best-effort call gated by confirmation operation hash config. |
 | session hygiene | `GET /_sec/cpr/params` | CONFIRMED | Security/challenge parameter endpoint; document only, no implementation. |
 | logout | `POST /dapi/authentication/logout` | CONFIRMED | Auth teardown endpoint. |
 
@@ -51,6 +51,5 @@ No direct adapter implementation is in scope for this stage.
 ## Required next captures before live adapter execution
 
 1. OpenTable OTP success/error response schema freeze (field-by-field capture).
-2. OpenTable booking-confirmation query variable contract freeze for optional post-create enrichment.
-3. Resy availability + lock/hold + create + cancel endpoint set with payload deltas.
-4. Resy refresh/profile/logout endpoint set for session lifecycle completeness.
+2. Resy availability + lock/hold + create + cancel endpoint set with payload deltas.
+3. Resy refresh/profile/logout endpoint set for session lifecycle completeness.

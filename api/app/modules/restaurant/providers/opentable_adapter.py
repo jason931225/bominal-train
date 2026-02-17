@@ -17,6 +17,7 @@ _DEFAULT_SEARCH_OPERATION_NAME = "RestaurantsAvailability"
 _DEFAULT_SEARCH_SLOT_PATH = "data.availability"
 _DEFAULT_CREATE_OPERATION_NAME = "BookDetailsStandardSlotLock"
 _DEFAULT_CREATE_PATH = "/dapi/booking/make-reservation"
+_DEFAULT_CONFIRMATION_OPERATION_NAME = "BookingConfirmationPageInFlow"
 
 _HEADER_USER_PROFILE_OPERATION = "HeaderUserProfile"
 _HEADER_USER_PROFILE_SHA256 = "31a457d7e16bd701258d3ee9f998ad9b59b5d3521927363fdde7164f15ff2924"
@@ -119,6 +120,27 @@ def _as_int_or_original(raw: str) -> int | str:
     return raw
 
 
+def _as_bool(raw: Any, *, default: bool = False) -> bool:
+    if isinstance(raw, bool):
+        return raw
+    if isinstance(raw, int):
+        return raw != 0
+    if isinstance(raw, str):
+        normalized = raw.strip().lower()
+        if normalized in {"1", "true", "t", "yes", "y", "on"}:
+            return True
+        if normalized in {"0", "false", "f", "no", "n", "off", ""}:
+            return False
+    return default
+
+
+def _first_dict_value(data: dict[str, Any], keys: tuple[str, ...]) -> Any:
+    for key in keys:
+        if key in data:
+            return data[key]
+    return None
+
+
 def _format_local_datetime(value: datetime) -> str:
     return value.strftime("%Y-%m-%dT%H:%M")
 
@@ -167,6 +189,8 @@ class OpenTableProviderClient:
         create_operation_name: str = _DEFAULT_CREATE_OPERATION_NAME,
         create_operation_sha256: str = "",
         create_path: str = _DEFAULT_CREATE_PATH,
+        confirmation_operation_name: str = _DEFAULT_CONFIRMATION_OPERATION_NAME,
+        confirmation_operation_sha256: str = "",
     ) -> None:
         self._transport = transport or HttpxTransport()
         self._base_url = base_url.rstrip("/")
@@ -179,6 +203,8 @@ class OpenTableProviderClient:
         self._create_operation_name = create_operation_name or _DEFAULT_CREATE_OPERATION_NAME
         self._create_operation_sha256 = create_operation_sha256.strip()
         self._create_path = create_path or _DEFAULT_CREATE_PATH
+        self._confirmation_operation_name = confirmation_operation_name or _DEFAULT_CONFIRMATION_OPERATION_NAME
+        self._confirmation_operation_sha256 = confirmation_operation_sha256.strip()
 
     def _headers(
         self,
@@ -704,6 +730,19 @@ class OpenTableProviderClient:
         reservation_type_display = str(metadata.get("reservation_type_display") or reservation_type_upper.title())
         database_region = str(metadata.get("database_region") or "NA")
         reservation_datetime_local = _format_local_datetime(slot.date_time_local)
+        confirm_points = _as_bool(metadata.get("confirm_points"), default=False)
+        marketing_opt_in_restaurant = _as_bool(metadata.get("opt_in_email_restaurant"), default=False)
+        restaurant_policy_acknowledged = _as_bool(
+            _first_dict_value(
+                metadata,
+                (
+                    "restaurant_policy_acknowledged",
+                    "policy_acknowledged",
+                    "agreed_restaurant_policy",
+                ),
+            ),
+            default=False,
+        )
 
         lock_variables: dict[str, Any] = {
             "input": {
@@ -795,8 +834,8 @@ class OpenTableProviderClient:
             "tipPercent": _coerce_int(metadata.get("tip_percent"), 0),
             "phoneNumber": str(metadata["phone_number"]),
             "phoneNumberCountryId": str(metadata.get("phone_number_country_id") or "US"),
-            "confirmPoints": bool(metadata.get("confirm_points", False)),
-            "optInEmailRestaurant": bool(metadata.get("opt_in_email_restaurant", False)),
+            "confirmPoints": confirm_points,
+            "optInEmailRestaurant": marketing_opt_in_restaurant,
         }
         attribution_token = metadata.get("attribution_token")
         if isinstance(attribution_token, str) and attribution_token.strip():
@@ -832,6 +871,82 @@ class OpenTableProviderClient:
         confirmation_number = _find_first(create_payload, ("confirmationNumber", "confirmation_number", "confNumber"))
         reservation_id = _find_first(create_payload, ("reservationId", "reservation_id"))
         security_token = _find_first(create_payload, ("securityToken", "security_token"))
+        confirmation_enrichment_attempted = False
+        confirmation_enrichment: dict[str, Any] | None = None
+        confirmation_enrichment_error_code: str | None = None
+        if self._confirmation_operation_sha256 and confirmation_number is not None and security_token:
+            confirmation_enrichment_attempted = True
+            try:
+                confirmation_response = await self._gql_request(
+                    operation_type="query",
+                    operation_name=self._confirmation_operation_name,
+                    sha256_hash=self._confirmation_operation_sha256,
+                    variables={
+                        "rid": _as_int_or_original(slot.restaurant_id),
+                        "confirmationNumber": _as_int_or_original(str(confirmation_number)),
+                        "databaseRegion": database_region,
+                        "securityToken": str(security_token),
+                        "isLoggedIn": True,
+                    },
+                    page_type="network_confirmation",
+                    page_group="booking",
+                    query_timeout_ms=5000,
+                )
+                confirmation_payload = _safe_json_loads(confirmation_response.text)
+                if confirmation_response.status_code >= 400 or confirmation_payload.get("errors"):
+                    confirmation_enrichment_error_code = "reservation_create_confirmation_failed"
+                else:
+                    confirmation_root = _deep_get(confirmation_payload, "data.bookingConfirmationPageInFlow")
+                    if not isinstance(confirmation_root, dict):
+                        confirmation_root = _deep_get(confirmation_payload, "data.bookingConfirmation")
+                    if isinstance(confirmation_root, dict):
+                        reservation_node = confirmation_root.get("reservation")
+                        if not isinstance(reservation_node, dict):
+                            reservation_node = confirmation_root
+                        restaurant_node = confirmation_root.get("restaurant")
+                        if not isinstance(restaurant_node, dict):
+                            restaurant_node = {}
+
+                        enrichment_data = {
+                            "restaurant_id": str(
+                                _find_first(
+                                    restaurant_node,
+                                    ("id", "restaurantId", "rid"),
+                                )
+                                or slot.restaurant_id
+                            ),
+                            "restaurant_name": _find_first(restaurant_node, ("name", "restaurantName")),
+                            "confirmation_number": str(
+                                _find_first(
+                                    reservation_node,
+                                    ("confirmationNumber", "confirmation_number"),
+                                )
+                                or confirmation_number
+                            ),
+                            "reservation_id": str(
+                                _find_first(
+                                    reservation_node,
+                                    ("reservationId", "reservation_id"),
+                                )
+                                or reservation_id
+                            )
+                            if reservation_id is not None
+                            else None,
+                            "reservation_state": _find_first(
+                                reservation_node,
+                                ("reservationState", "state", "status"),
+                            ),
+                        }
+                        confirmation_enrichment = {
+                            key: value for key, value in enrichment_data.items() if value is not None
+                        } or None
+            except Exception:
+                confirmation_enrichment_error_code = "reservation_create_confirmation_failed"
+        policy_safe = {
+            "confirm_points": confirm_points,
+            "marketing_opt_in_restaurant": marketing_opt_in_restaurant,
+            "restaurant_policy_acknowledged": restaurant_policy_acknowledged,
+        }
 
         return RestaurantProviderOutcome(
             ok=True,
@@ -841,6 +956,10 @@ class OpenTableProviderClient:
                 "reservation_id": str(reservation_id) if reservation_id is not None else None,
                 "security_token_present": bool(security_token),
                 "slot_lock_id": str(slot_lock_id),
+                "confirmation_enrichment_attempted": confirmation_enrichment_attempted,
+                "confirmation_enrichment": confirmation_enrichment,
+                "confirmation_enrichment_error_code": confirmation_enrichment_error_code,
+                "policy_safe": policy_safe,
             },
         )
 

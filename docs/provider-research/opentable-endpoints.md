@@ -37,12 +37,17 @@ Implemented in `api/app/modules/restaurant/providers/opentable_adapter.py`:
 - `reservation.create`: two-step flow
   - slot lock: `BookDetailsStandardSlotLock` persisted mutation
   - booking commit: `POST /dapi/booking/make-reservation`
+- optional post-create confirmation enrichment:
+  - operation: `BookingConfirmationPageInFlow`
+  - hash: `6be25f0bbc8fe75483bdfe96ae78fb20075b978842e4b44964aed3591611aa99`
 - frozen OpenTable contract settings:
   - `RESTAURANT_OPENTABLE_SEARCH_OPERATION_SHA256`
   - `RESTAURANT_OPENTABLE_CREATE_OPERATION_SHA256`
   - `RESTAURANT_OPENTABLE_CREATE_PATH`
+  - `RESTAURANT_OPENTABLE_CONFIRMATION_OPERATION_NAME`
+  - `RESTAURANT_OPENTABLE_CONFIRMATION_OPERATION_SHA256`
 
-This stage removes request-time metadata-driven search/create contracts. Remaining OpenTable gap is OTP response-contract hardening and optional booking-confirmation enrichment freeze.
+This stage removes request-time metadata-driven search/create contracts. Remaining OpenTable gap is OTP response-contract hardening.
 
 ## Observed endpoint details
 
@@ -387,6 +392,8 @@ Observed response includes:
 Implementation guidance:
 
 - keep as optional enrichment path; do not block core create success on this call
+- adapter executes this query only when confirmation operation hash is configured
+- adapter stores safe enrichment subset only (restaurant/confirmation/reservation summary fields)
 
 ### 11) `POST /dapi/fe/gql?optype=mutation&opname=CancelReservation`
 

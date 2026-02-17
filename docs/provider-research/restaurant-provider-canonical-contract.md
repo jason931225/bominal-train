@@ -104,7 +104,7 @@ Inputs:
 - optional metadata
 
 Output expectations:
-- provider confirmation ID, provider reservation reference, and safe trace metadata
+- provider confirmation ID, provider reservation reference, safe trace metadata, and optional non-blocking confirmation enrichment payload
 
 ### `reservation.cancel`
 
