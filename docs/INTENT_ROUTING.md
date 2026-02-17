@@ -25,6 +25,9 @@ Use this before broad file reads. Resolve intent, then open only mapped canonica
 | `deprecate` / `sunset` / `compatibility window` / `removal` | `docs/DEPRECATION_WORKFLOW.md` | `docs/deprecations/registry.json`, `docs/deprecations/2026-02-14-inventory.md` |
 | `lock` / `request` / `conflict` | `docs/EXECUTION_PROTOCOL.md` | `docs/LOCK.md`, `docs/REQUEST.md` |
 | `resy` / `widget` / `form data` | `docs/playbooks/resy-widget-form-data-capture.md` | `docs/playbooks/new-module-feature-workflow.md` |
+| `opentable` / `otp` / `session` / `human` / `cpr` | `docs/provider-research/opentable-endpoints.md` | `docs/provider-research/restaurant-provider-endpoint-inventory.md` |
+| `provider` / `adapter` / `endpoint` / `schema` | `docs/provider-research/restaurant-provider-canonical-contract.md` | `docs/provider-research/restaurant-db-schema-mapping.md`, `docs/playbooks/restaurant-provider-adapter-workflow.md` |
+| `catchtable` | `docs/provider-research/restaurant-provider-endpoint-inventory.md` | `docs/provider-research/README.md` |
 | `new module` / `new feature` | `docs/playbooks/new-module-feature-workflow.md` | `docs/playbooks/daily-operations-chores.md` |
 | `plan` | `docs/plans/active/README.md` | `docs/plans/archive/2026-02-14-program-closure-report.md`, `docs/playbooks/new-module-feature-workflow.md` |
 

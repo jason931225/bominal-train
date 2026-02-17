@@ -69,6 +69,16 @@ Pointer format convention (mandatory):
 - [PTR-PLAN-011] `docs/plans/archive/2026-02-14-program-closure-report.md` - final closure report for the restructure program.
 - [PTR-PLAN-012] `docs/plans/active/README.md` - current active-plan state marker.
 - [PTR-PLAN-013] `docs/plans/active/2026-02-14-stage9-performance-optimization.md` - active Stage 9 backend-first performance optimization execution plan.
+- [PTR-PLAN-014] `docs/plans/active/2026-02-17-restaurant-provider-foundations.md` - active restaurant provider contract and adapter-readiness execution plan.
+
+### Provider Research
+
+- [PTR-PROV-001] `docs/provider-research/README.md` - provider-research index and redaction policy.
+- [PTR-PROV-002] `docs/provider-research/restaurant-provider-canonical-contract.md` - canonical restaurant adapter operation contract and naming discipline.
+- [PTR-PROV-003] `docs/provider-research/restaurant-provider-endpoint-inventory.md` - operation-to-endpoint inventory for OpenTable/Resy and capture gaps.
+- [PTR-PROV-004] `docs/provider-research/restaurant-db-schema-mapping.md` - safe provider-field to database mapping guidance.
+- [PTR-PROV-005] `docs/provider-research/opentable-endpoints.md` - OpenTable endpoint contract notes including session/human/cpr observations.
+- [PTR-PROV-006] `docs/provider-research/resy-endpoints.md` - Resy endpoint contract notes for password auth and required capture backlog.
 
 ### Playbooks
 
@@ -77,6 +87,8 @@ Pointer format convention (mandatory):
 - [PTR-PLAY-003] `docs/playbooks/resy-widget-form-data-capture.md` - Resy form-data capture/replay protocol.
 - [PTR-PLAY-004] `docs/playbooks/daily-operations-chores.md` - standardized daily engineering and operations chore workflow.
 - [PTR-PLAY-005] `docs/playbooks/new-module-feature-workflow.md` - end-to-end workflow for adding modules/features with policy and docs gates.
+- [PTR-PLAY-006] `docs/playbooks/restaurant-provider-adapter-workflow.md` - canonical workflow for implementing restaurant adapters with RED->GREEN verification.
+- [PTR-PLAY-007] `docs/playbooks/provider-adapter-contract-template.md` - reusable provider contract template for train/restaurant onboarding.
 
 ### Validation
 
