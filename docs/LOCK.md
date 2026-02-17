@@ -12,6 +12,18 @@ Rules:
 
 ## Current Entries
 
+### LOCK-2026-02-17-RESY-AUTH-STAGE1
+- status: ACTIVE
+- owner_session: Codex Session
+- scope:
+  - `api/**`
+  - `docs/**`
+  - `infra/env/prod/api.env.example`
+  - `CHANGELOG.md`
+- reason: Resy auth.start/auth.complete stage-1 implementation with config/tests/docs updates
+- created_at_utc: 2026-02-17T18:03:07Z
+- released_at_utc:
+
 ### LOCK-2026-02-17-OPENTABLE-OTP-RESPONSE-FREEZE
 - status: RELEASED
 - owner_session: Codex Session
