@@ -30,11 +30,11 @@ Status values:
 |---|---|---|---|
 | `auth.start` | `POST /4/auth/password` | CONFIRMED | Password login initiation endpoint with provider API key header; adapter enforces body-level failure handling and normalized safe challenge payload. |
 | `auth.complete` | same endpoint for password flow | CONFIRMED | Password flow completes in single step; adapter uses password-flow challenge token and does not perform a second provider call. |
-| `auth.refresh` | refresh endpoint not yet pinned | TODO_CAPTURE | Needed for long-running session maintenance. |
-| `profile.get` | authenticated profile endpoint not yet pinned | TODO_CAPTURE | Needed for account verification and session diagnostics. |
-| `search.availability` | availability endpoint(s) not yet pinned | PARTIAL | Covered conceptually by existing Resy playbook; endpoint mapping needs contract freeze. |
-| `reservation.create` | lock/hold/book endpoint(s) not yet pinned | PARTIAL | Existing playbook outlines flow; concrete endpoint matrix required. |
-| `reservation.cancel` | cancellation endpoint not yet pinned | TODO_CAPTURE | Required for canonical cancellation support. |
+| `auth.refresh` | `POST /3/auth/refresh` (expected) | PARTIAL | Seen in external trace notes; not yet frozen in adapter/docs contract. |
+| `profile.get` | `GET /2/user` | PARTIAL | Cross-checked via `third_party/resy` scripts/docs; live capture freeze still pending. |
+| `search.availability` | `GET /4/find` | PARTIAL | Cross-checked via `third_party/resy`; requires live schema freeze for slot normalization. |
+| `reservation.create` | `POST /3/details` + `POST /3/book` | PARTIAL | Two-step flow confirmed in `third_party/resy`; payment-required variant and idempotency semantics still need live freeze. |
+| `reservation.cancel` | `POST /3/cancel` | PARTIAL | Cross-checked via `third_party/resy`; `reservation_id` vs token-paired fallback requires freeze. |
 | logout | logout endpoint not yet pinned | TODO_CAPTURE | Useful for explicit session invalidation workflows. |
 
 ## CatchTable (reference source only)

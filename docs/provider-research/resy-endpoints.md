@@ -8,6 +8,43 @@ Redacted provider-contract notes for Resy integration. This document excludes ra
 |---|---|---|---|
 | `/4/auth/password` | `OPTIONS` | browser preflight | observed |
 | `/4/auth/password` | `POST` | `auth.start` + `auth.complete` (password flow) | observed |
+| `/2/user` | `GET` | `profile.get` | reference-confirmed (third_party) |
+| `/4/find` | `GET` | `search.availability` | reference-confirmed (third_party) |
+| `/3/details` | `POST` | `reservation.create` (pre-step token) | reference-confirmed (third_party) |
+| `/3/book` | `POST` | `reservation.create` (commit) | reference-confirmed (third_party) |
+| `/3/cancel` | `POST` | `reservation.cancel` | reference-confirmed (third_party) |
+| `/3/venues` | `GET` | search discovery support | reference-confirmed (third_party) |
+| `/3/auth/refresh` | `POST` | `auth.refresh` | observed in external traces, not frozen |
+
+## Third-party reference cross-check (2026-02-17)
+
+Reviewed source set:
+
+- `third_party/resy/references/api-docs.md`
+- `third_party/resy/scripts/utils.py`
+- `third_party/resy/scripts/auth.py`
+- `third_party/resy/scripts/availability.py`
+- `third_party/resy/scripts/book.py`
+- `third_party/resy/scripts/cancel.py`
+- `third_party/resy/scripts/search.py`
+
+Cross-check conclusions:
+
+1. Provider flow alignment is consistent with prior capture notes:
+   - auth (`/4/auth/password`) -> profile/session probe (`/2/user`) -> availability (`/4/find`) -> details token (`/3/details`) -> commit (`/3/book`) -> cancel (`/3/cancel`).
+2. Request encoding expectations are stable:
+   - `/4/find`: query params
+   - `/3/details`, `/3/book`, `/3/cancel`: `application/x-www-form-urlencoded`
+3. `reservation.create` is explicitly two-step:
+   - `/3/details` returns `book_token.value`
+   - `/3/book` consumes `book_token` and optional payment metadata
+4. `source_id` is expected on `/3/book` and defaults to `resy.com` in reference scripts.
+5. `Idempotency-Key` is optional but recommended for `/3/book` retry safety.
+
+Important confidence note:
+
+- `third_party/resy` is read-only reference material, not canonical policy.
+- Contract freeze remains pending until replay against current live captures in this repo workflow.
 
 ## Adapter implementation status (2026-02-17)
 
@@ -27,10 +64,10 @@ Required for full feature but not yet contract-frozen:
 
 - session refresh endpoint (`auth.refresh`)
 - profile endpoint (`profile.get`)
-- availability endpoint(s) (`search.availability`)
-- lock/hold endpoint(s) (`reservation.create` pre-step)
-- reservation-create endpoint (`reservation.create`)
-- cancellation endpoint (`reservation.cancel`)
+- availability endpoint(s) (`search.availability`, expected `/4/find`)
+- lock/hold endpoint(s) (`reservation.create` pre-step, expected `/3/details`)
+- reservation-create endpoint (`reservation.create`, expected `/3/book`)
+- cancellation endpoint (`reservation.cancel`, expected `/3/cancel`)
 - logout endpoint
 
 ## Observed authentication contract
@@ -88,6 +125,75 @@ Implementation guidance:
 - store only safe auth result metadata (success/failure, retryability, provider code)
 - normalize account reference values to string for canonical provider-account identity keys
 
+## Reference-derived operation contracts (not yet frozen)
+
+### `GET /2/user` (`profile.get`)
+
+Reference usage:
+
+- used by `third_party/resy/scripts/auth.py` and `third_party/resy/scripts/list_reservations.py`
+- acts as authenticated-session probe and user profile/reservations source
+
+Expected safe extraction targets:
+
+- `id`, `email`, `first_name`, `last_name`
+- reservations list entries for `reservation_id`, `venue`, `scheduled_date`, `scheduled_time`
+
+### `GET /4/find` (`search.availability`)
+
+Reference request shape:
+
+- query params:
+  - `venue_id`
+  - `day` (YYYY-MM-DD)
+  - `party_size`
+  - optional `lat`, `long`
+
+Reference response anchors:
+
+- `results.venues[].slots[].config.token` (config token for details step)
+- `results.venues[].slots[].date.start` (slot datetime)
+
+### `POST /3/details` (`reservation.create` pre-step)
+
+Reference request shape (form encoded):
+
+- `commit=1`
+- `config_id=<slot token>`
+- `day`
+- `party_size`
+- optional `notes`
+
+Reference response anchors:
+
+- `book_token.value`
+- optional payment/hold details (for safe metadata only)
+
+### `POST /3/book` (`reservation.create` commit)
+
+Reference request shape (form encoded):
+
+- `book_token=<value from /3/details>`
+- `source_id=resy.com` (or provider-required equivalent)
+- optional `struct_payment_method=<json-string>`
+- optional `Idempotency-Key` header for retry safety
+
+Reference response anchors:
+
+- reservation identifiers (`reservation_id` and/or `resy_token`)
+- display metadata (`display_date`, `display_time`)
+
+### `POST /3/cancel` (`reservation.cancel`)
+
+Reference request shape (form encoded):
+
+- required: `reservation_id`
+- compatibility fallback from prior notes: include `resy_token` when provider requires token-paired cancellation
+
+Reference response anchors:
+
+- `status` (for example `cancelled`)
+
 ## Existing workflow alignment
 
 `docs/playbooks/resy-widget-form-data-capture.md` already defines deterministic capture flow for:
@@ -101,11 +207,11 @@ This endpoint document extends that workflow by freezing the canonical adapter m
 
 ## Required follow-up captures for full Resy adapter
 
-1. Profile endpoint used to confirm authenticated identity.
-2. Availability endpoint request and slot response schema.
-3. Lock/hold and reservation-create endpoints with idempotency expectations.
-4. Cancellation endpoint with confirmation identifiers.
-5. Session refresh/logout endpoints for long-running worker flows.
+1. Freeze live `/2/user` response subset for `profile.get` normalization.
+2. Freeze live `/4/find` slot schema and token extraction for `search.availability`.
+3. Freeze live `/3/details` and `/3/book` create contracts, including payment-required venue behavior.
+4. Freeze live `/3/cancel` contract and fallback semantics (`reservation_id` vs `reservation_id+resy_token`).
+5. Freeze session refresh/logout endpoints for long-running worker flows.
 
 ## Safe logging checklist for Resy adapters
 
