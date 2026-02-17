@@ -34,6 +34,9 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - [eee7868] Added high-risk local DB reset workflow with optional fresh-schema rebuild and sign-in credential preservation (`infra/scripts/reset-local-db.sh`, `infra/tests/test_reset_local_db.sh`).
 - [1c118c4] Added hybrid benchmark gate tooling for train task-list latency comparisons (`infra/scripts/benchmark-train-task-list-compare.sh`, `infra/scripts/benchmark-threshold-check.sh`, `infra/benchmarks/train-task-list-baseline.json`, `infra/tests/test_benchmark_train_task_list_compare.sh`).
 - [1c118c4] Added web unit-test harness and polling behavior coverage for train dashboard task refresh logic (`web/vitest.config.ts`, `web/test/setup.ts`, `web/components/train/__tests__/train-dashboard.polling.test.tsx`, `web/package.json`).
+- [0d817df] Added restaurant provider adapter scaffold package and canonical contract tests (`api/app/modules/restaurant/providers/*`, `api/tests/test_restaurant_provider_contracts.py`).
+- [0d817df] Added provider-research documentation pack for OpenTable/Resy endpoint contracts and DB-safe schema mapping (`docs/provider-research/*`).
+- [0d817df] Added reusable restaurant/provider onboarding playbooks and active execution plan artifacts (`docs/playbooks/restaurant-provider-adapter-workflow.md`, `docs/playbooks/provider-adapter-contract-template.md`, `docs/plans/active/2026-02-17-restaurant-provider-foundations.md`).
 
 ### Changed
 
@@ -63,6 +66,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - [1c118c4] Expanded infra CI validation to run web unit tests and benchmark compare script checks for perf-sensitive path changes (`.github/workflows/infra-tests.yml`).
 - [1c118c4] Added Stage12 perf hardening execution notes and runbook gate command references (`docs/plans/active/2026-02-14-stage9-performance-optimization.md`, `docs/RUNBOOK.md`, `docs/ARCHITECTURE.md`).
 - [d1b8c61] Registered CatchTable reference files as read-only provider endpoint sources in agent and contributor guidance (`AGENTS.md`, `README.md`, `docs/CONTRIBUTING.md`, `docs/ARCHITECTURE.md`).
+- [0d817df] Expanded architecture/readme/contributing guidance and canonical pointer routing for provider-adapter implementation workflow (`docs/ARCHITECTURE.md`, `README.md`, `docs/CONTRIBUTING.md`, `docs/README.md`, `docs/INTENT_ROUTING.md`, `docs/playbooks/README.md`).
 
 ### Removed
 
