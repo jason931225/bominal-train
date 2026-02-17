@@ -12,6 +12,17 @@ Rules:
 
 ## Current Entries
 
+### LOCK-2026-02-17-OPENTABLE-OTP-RESPONSE-FREEZE
+- status: ACTIVE
+- owner_session: Codex Session
+- scope:
+  - `api/**`
+  - `docs/**`
+  - `CHANGELOG.md`
+- reason: OpenTable OTP success/error response schema freeze with adapter normalization and docs/test updates
+- created_at_utc: 2026-02-17T17:59:50Z
+- released_at_utc:
+
 ### LOCK-2026-02-17-OPENTABLE-CONFIRMATION-ENRICHMENT
 - status: RELEASED
 - owner_session: Codex Session
