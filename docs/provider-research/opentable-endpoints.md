@@ -6,6 +6,8 @@ Redacted provider-contract notes for OpenTable integration. This document intent
 
 | Endpoint | Method | Canonical operation | Current status |
 |---|---|---|---|
+| `/dapi/authentication/sendotpfromsignin` | `POST` | `auth.start` | observed |
+| `/dapi/authentication/signinwithotp` | `POST` | `auth.complete` | observed |
 | `/dapi/fe/human` | `GET` | `auth.refresh` (supporting) | observed |
 | `/dapi/v1/session` | `POST` | `auth.refresh` (supporting) | observed |
 | `/_sec/cpr/params` | `GET` | security/session support (non-canonical helper) | observed |
@@ -15,8 +17,6 @@ Redacted provider-contract notes for OpenTable integration. This document intent
 
 Required for full feature but not yet contract-frozen:
 
-- OTP start endpoint (`auth.start`)
-- OTP verify endpoint (`auth.complete`)
 - reservation-create mutation (`reservation.create`)
 - stable availability/search query operation (`search.availability`)
 
@@ -27,16 +27,56 @@ Implemented in `api/app/modules/restaurant/providers/opentable_adapter.py`:
 - `auth.refresh`: calls `/_sec/cpr/params`, `/dapi/fe/human`, and `/dapi/v1/session`
 - `profile.get`: calls `HeaderUserProfile` persisted query
 - `reservation.cancel`: calls `CancelReservation` persisted mutation
-- `auth.start` / `auth.complete`: implemented with configurable endpoint paths:
-  - `RESTAURANT_OPENTABLE_AUTH_START_PATH`
-  - `RESTAURANT_OPENTABLE_AUTH_COMPLETE_PATH`
+- `auth.start`: `POST /dapi/authentication/sendotpfromsignin`
+- `auth.complete`: `POST /dapi/authentication/signinwithotp`
 - `search.availability` / `reservation.create`: implemented via configurable GraphQL contract metadata (`operation_name`, `sha256_hash`, `variables`)
 
-This stage enables end-to-end adapter execution paths while concrete OpenTable OTP/search/create endpoint captures remain pending.
+This stage enables end-to-end adapter execution paths while concrete OpenTable search/create operation-hash captures remain pending.
 
 ## Observed endpoint details
 
-### 1) `GET /dapi/fe/human`
+### 1) `POST /dapi/authentication/sendotpfromsignin`
+
+Canonical operation: `auth.start`
+
+Observed request shape:
+
+```json
+{
+  "phoneNumberOrEmail": "<email-or-phone>",
+  "channelType": "EMAIL|SMS",
+  "isReauthentication": false
+}
+```
+
+Implementation notes:
+
+- Current adapter defaults this as auth-start path.
+- Password is not used for this OTP start flow.
+
+### 2) `POST /dapi/authentication/signinwithotp`
+
+Canonical operation: `auth.complete`
+
+Observed request shape:
+
+```json
+{
+  "phoneNumberOrEmail": "<email-or-phone>",
+  "phoneCountryCode": "<country-phone-code-or-empty>",
+  "countryCode": "<country-code-or-empty>",
+  "otp": "<otp-code>",
+  "isReauthentication": false,
+  "suppressOtpMfaTokenValidationFailure": false
+}
+```
+
+Implementation notes:
+
+- Current adapter defaults this as auth-complete path.
+- Adapter supports optional challenge-token metadata packaging to pass country-code context.
+
+### 3) `GET /dapi/fe/human`
 
 Purpose (inferred): human/telemetry/session touch endpoint likely tied to anti-automation controls.
 
@@ -56,7 +96,7 @@ Implementation guidance:
 - do not treat this endpoint as a primary auth API
 - mark as supporting heartbeat candidate for controlled experiments only
 
-### 2) `POST /dapi/v1/session`
+### 4) `POST /dapi/v1/session`
 
 Purpose (inferred): session touch/renew endpoint.
 
@@ -83,7 +123,7 @@ Implementation guidance:
 - treat as keepalive signal, not user-identity source of truth
 - never store raw response values in persistent logs
 
-### 3) `GET /_sec/cpr/params`
+### 5) `GET /_sec/cpr/params`
 
 Purpose (inferred): security/challenge parameter retrieval path.
 
@@ -97,7 +137,7 @@ Implementation guidance:
 - classify as security support endpoint
 - document-only at this stage; do not automate bypass logic
 
-### 4) `POST /dapi/fe/gql?optype=query&opname=HeaderUserProfile`
+### 6) `POST /dapi/fe/gql?optype=query&opname=HeaderUserProfile`
 
 Canonical operation: `profile.get`
 
@@ -146,7 +186,7 @@ Mapping guidance:
 - store masked email/phone only in safe metadata
 - use `gpid` as `provider_account_ref` candidate (safe to hash before storage if needed)
 
-### 5) `POST /dapi/fe/gql?optype=mutation&opname=CancelReservation`
+### 7) `POST /dapi/fe/gql?optype=mutation&opname=CancelReservation`
 
 Canonical operation: `reservation.cancel`
 
@@ -197,7 +237,7 @@ Implementation guidance:
 - keep `confirmationNumber` and `reservationId` as durable cancellation references
 - treat `securityToken` as sensitive input (do not persist raw)
 
-### 6) `POST /dapi/authentication/logout`
+### 8) `POST /dapi/authentication/logout`
 
 Purpose: explicit session termination.
 
@@ -214,7 +254,7 @@ Current evidence strongly suggests:
 2. `/dapi/fe/human` is likely a human-verification/telemetry signal tied to session hygiene.
 3. `/_sec/cpr/params` provides security/challenge parameters used by browser flows.
 
-These endpoints can improve robustness of session maintenance if integrated carefully, but they are intentionally not implemented in this stage.
+These endpoints are now used by the OpenTable stage-1 adapter for refresh/session hygiene.
 
 ## Safe logging checklist for OpenTable adapters
 

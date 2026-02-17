@@ -12,8 +12,8 @@ Status values:
 
 | Canonical operation | Endpoint(s) | Status | Notes |
 |---|---|---|---|
-| `auth.start` | configurable adapter endpoint path (`RESTAURANT_OPENTABLE_AUTH_START_PATH`) | PARTIAL | Backend adapter path implemented; concrete provider endpoint capture still required. |
-| `auth.complete` | configurable adapter endpoint path (`RESTAURANT_OPENTABLE_AUTH_COMPLETE_PATH`) | PARTIAL | Backend adapter path implemented; concrete provider endpoint capture still required. |
+| `auth.start` | `POST /dapi/authentication/sendotpfromsignin` | CONFIRMED | OTP start flow with `phoneNumberOrEmail`, `channelType`, `isReauthentication`. |
+| `auth.complete` | `POST /dapi/authentication/signinwithotp` | CONFIRMED | OTP verify flow with `phoneNumberOrEmail`, `phoneCountryCode`, `countryCode`, `otp`. |
 | `auth.refresh` | `GET /dapi/fe/human`, `POST /dapi/v1/session` | CONFIRMED | Observed keepalive-like calls; treat as provider-internal session touch. |
 | `profile.get` | `POST /dapi/fe/gql?optype=query&opname=HeaderUserProfile` | CONFIRMED | Returns user profile and invitation/upcoming context. |
 | `search.availability` | configurable adapter GraphQL contract (operation/hash/variables metadata) | PARTIAL | Adapter method implemented; stable OpenTable operation/hash capture still required. |
@@ -48,7 +48,7 @@ No direct adapter implementation is in scope for this stage.
 
 ## Required next captures before live adapter execution
 
-1. OpenTable OTP start/verify concrete endpoint contracts (replace config placeholders with frozen paths/payloads).
-2. OpenTable search and reservation-create concrete operation/hash capture set.
+1. OpenTable search and reservation-create concrete operation/hash capture set.
+2. OpenTable OTP success/error response schema freeze (field-by-field capture).
 3. Resy availability + lock/hold + create + cancel endpoint set with payload deltas.
 4. Resy refresh/profile/logout endpoint set for session lifecycle completeness.

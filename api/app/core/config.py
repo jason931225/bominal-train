@@ -97,11 +97,11 @@ class Settings(BaseSettings):
         alias="RESTAURANT_OPENTABLE_TIMEOUT_SECONDS",
     )
     restaurant_opentable_auth_start_path: str | None = Field(
-        default=None,
+        default="/dapi/authentication/sendotpfromsignin",
         alias="RESTAURANT_OPENTABLE_AUTH_START_PATH",
     )
     restaurant_opentable_auth_complete_path: str | None = Field(
-        default=None,
+        default="/dapi/authentication/signinwithotp",
         alias="RESTAURANT_OPENTABLE_AUTH_COMPLETE_PATH",
     )
     payment_cvv_ttl_seconds: int = Field(default=3600, alias="PAYMENT_CVV_TTL_SECONDS")
