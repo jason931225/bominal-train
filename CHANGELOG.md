@@ -37,6 +37,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - [0d817df] Added restaurant provider adapter scaffold package and canonical contract tests (`api/app/modules/restaurant/providers/*`, `api/tests/test_restaurant_provider_contracts.py`).
 - [0d817df] Added provider-research documentation pack for OpenTable/Resy endpoint contracts and DB-safe schema mapping (`docs/provider-research/*`).
 - [0d817df] Added reusable restaurant/provider onboarding playbooks and active execution plan artifacts (`docs/playbooks/restaurant-provider-adapter-workflow.md`, `docs/playbooks/provider-adapter-contract-template.md`, `docs/plans/active/2026-02-17-restaurant-provider-foundations.md`).
+- [13bdb1d] Added OpenTable stage-1 adapter coverage for refresh/profile/cancel and configurable auth/search/create contract paths, with dedicated adapter tests (`api/app/modules/restaurant/providers/opentable_adapter.py`, `api/tests/test_restaurant_provider_opentable.py`).
 
 ### Changed
 
@@ -67,6 +68,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - [1c118c4] Added Stage12 perf hardening execution notes and runbook gate command references (`docs/plans/active/2026-02-14-stage9-performance-optimization.md`, `docs/RUNBOOK.md`, `docs/ARCHITECTURE.md`).
 - [d1b8c61] Registered CatchTable reference files as read-only provider endpoint sources in agent and contributor guidance (`AGENTS.md`, `README.md`, `docs/CONTRIBUTING.md`, `docs/ARCHITECTURE.md`).
 - [0d817df] Expanded architecture/readme/contributing guidance and canonical pointer routing for provider-adapter implementation workflow (`docs/ARCHITECTURE.md`, `README.md`, `docs/CONTRIBUTING.md`, `docs/README.md`, `docs/INTENT_ROUTING.md`, `docs/playbooks/README.md`).
+- [13bdb1d] Extended restaurant provider configuration defaults and documentation status to support configurable OpenTable OTP endpoint paths and stage-1 endpoint inventory updates (`api/app/core/config.py`, `api/app/modules/restaurant/providers/factory.py`, `api/tests/test_restaurant_policy_config.py`, `docs/provider-research/opentable-endpoints.md`, `docs/provider-research/restaurant-provider-endpoint-inventory.md`, `docs/plans/active/2026-02-17-restaurant-provider-foundations.md`).
 
 ### Removed
 
