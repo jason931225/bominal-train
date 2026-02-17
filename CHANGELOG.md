@@ -40,6 +40,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - [13bdb1d] Added OpenTable stage-1 adapter coverage for refresh/profile/cancel and configurable auth/search/create contract paths, with dedicated adapter tests (`api/app/modules/restaurant/providers/opentable_adapter.py`, `api/tests/test_restaurant_provider_opentable.py`).
 - [32cc570] Added concrete OpenTable OTP auth contract defaults (`/dapi/authentication/sendotpfromsignin`, `/dapi/authentication/signinwithotp`) with request-shape normalization and expanded adapter tests (`api/app/modules/restaurant/providers/opentable_adapter.py`, `api/tests/test_restaurant_provider_opentable.py`).
 - [0058173] Added frozen OpenTable search/create contract wiring with normalized variable schema and settings-backed operation/hash controls (`api/app/modules/restaurant/providers/opentable_adapter.py`, `api/app/core/config.py`, `api/app/modules/restaurant/providers/factory.py`, `api/tests/test_restaurant_provider_opentable.py`).
+- [b3b8564] Added OpenTable reservation.create optional booking-confirmation enrichment (best-effort), normalized `policy_safe` output mapping, and confirmation operation config wiring with adapter/test coverage (`api/app/modules/restaurant/providers/opentable_adapter.py`, `api/app/core/config.py`, `api/app/modules/restaurant/providers/factory.py`, `api/tests/test_restaurant_provider_opentable.py`, `api/tests/test_restaurant_policy_config.py`).
 
 ### Changed
 
