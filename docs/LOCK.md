@@ -12,6 +12,17 @@ Rules:
 
 ## Current Entries
 
+### LOCK-2026-02-18-EMAIL-WORKER-LEGACY-PAYLOAD
+- status: ACTIVE
+- owner_session: Codex Session
+- scope:
+  - `api/**`
+  - `docs/**`
+  - `CHANGELOG.md`
+- reason: Diagnose and fix legacy email payload validation failures in deliver_email_job with regression coverage and docs sync
+- created_at_utc: 2026-02-18T14:10:11Z
+- released_at_utc:
+
 ### LOCK-2026-02-18-KTX-WAIT-RESERVE-FIX
 - status: RELEASED
 - owner_session: Codex Session
