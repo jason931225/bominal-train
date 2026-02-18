@@ -88,6 +88,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- [388ae4e] Restored wait-reserve-aware train candidate selection so KTX/SRT waitlist-capable schedules proceed from SEARCH to RESERVE, with regression coverage for KTX and SRT standby paths (`api/app/modules/train/worker.py`, `api/tests/test_train_tasks.py`).
 - [220d2c6] Ensured worker shutdown recovers in-flight tasks even when heartbeat cancellation raises `CancelledError`, with regression coverage in `api/tests/test_worker_shutdown_recovery.py`.
 - [b05ca4b] Converted commit-time auth uniqueness races to deterministic `409` conflicts in register/account update flows (`api/app/http/routes/auth.py`).
 - [b231d4c] Made auth rate-limit client IP extraction proxy-aware (`cf-connecting-ip` / `x-forwarded-for`) in `api/app/http/deps.py`.
