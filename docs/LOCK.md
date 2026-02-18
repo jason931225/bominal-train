@@ -13,7 +13,7 @@ Rules:
 ## Current Entries
 
 ### LOCK-2026-02-18-KTX-WAIT-RESERVE-FIX
-- status: ACTIVE
+- status: RELEASED
 - owner_session: Codex Session
 - scope:
   - `api/**`
@@ -21,7 +21,7 @@ Rules:
   - `CHANGELOG.md`
 - reason: Diagnose and implement KTX wait-reserve candidate selection hotfix with regression coverage and docs/changelog sync
 - created_at_utc: 2026-02-18T13:53:07Z
-- released_at_utc:
+- released_at_utc: 2026-02-18T14:02:21Z
 
 ### LOCK-2026-02-17-RESY-REFRESH-LOGOUT-STAGE3
 - status: RELEASED
