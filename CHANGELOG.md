@@ -44,6 +44,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Changed
 
+- [b4c0c7e] Added KTX wait-reserve hotfix closure artifact to archived plans and canonical pointer library (`docs/plans/archive/2026-02-18-ktx-wait-reserve-hotfix-closure.md`, `docs/README.md`).
 - [0d84ae8] Enforced changelog requirements in governance docs (`AGENTS.md`, `docs/EXECUTION_PROTOCOL.md`).
 - [0d84ae8] Added `CHANGELOG.md` to canonical pointers in `docs/README.md` and required-pointer validation.
 - [0d84ae8] Extended daily chores playbook with token-saving search/navigation operations (`rg --files`, scoped `rg -n`, pointer-first reads).
