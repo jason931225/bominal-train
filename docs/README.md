@@ -70,6 +70,7 @@ Pointer format convention (mandatory):
 - [PTR-PLAN-012] `docs/plans/active/README.md` - current active-plan state marker.
 - [PTR-PLAN-013] `docs/plans/active/2026-02-14-stage9-performance-optimization.md` - active Stage 9 backend-first performance optimization execution plan.
 - [PTR-PLAN-014] `docs/plans/active/2026-02-17-restaurant-provider-foundations.md` - active restaurant provider contract and adapter-readiness execution plan.
+- [PTR-PLAN-015] `docs/plans/archive/2026-02-18-ktx-wait-reserve-hotfix-closure.md` - closure artifact for KTX wait-reserve candidate-selection regression fix.
 
 ### Provider Research
 
