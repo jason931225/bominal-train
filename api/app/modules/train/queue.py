@@ -28,10 +28,13 @@ def _result_key(job_id: str) -> str:
 
 async def enqueue_train_task(task_id: str, defer_seconds: float = 0.0) -> bool:
     pool = await get_queue_pool()
+    if defer_seconds > 0:
+        # Deferred polling retries must use non-deterministic ids so the current
+        # running job can schedule the next attempt without self-dedup blocking.
+        job = await pool.enqueue_job("run_train_task", task_id, _defer_by=defer_seconds)
+        return job is not None
+
     job_id = f"train:{task_id}"
     await pool.delete(_result_key(job_id))
-    if defer_seconds > 0:
-        job = await pool.enqueue_job("run_train_task", task_id, _job_id=job_id, _defer_by=defer_seconds)
-    else:
-        job = await pool.enqueue_job("run_train_task", task_id, _job_id=job_id)
+    job = await pool.enqueue_job("run_train_task", task_id, _job_id=job_id)
     return job is not None
