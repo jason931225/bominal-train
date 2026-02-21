@@ -59,6 +59,11 @@ class Settings(BaseSettings):
     session_cookie_name: str = Field(default="bominal_session", alias="SESSION_COOKIE_NAME")
     session_days_default: int = Field(default=7, alias="SESSION_DAYS_DEFAULT")
     session_days_remember: int = Field(default=90, alias="SESSION_DAYS_REMEMBER")
+    session_last_seen_update_seconds: int = Field(default=300, alias="SESSION_LAST_SEEN_UPDATE_SECONDS")
+
+    password_hash_time_cost: int = Field(default=3, alias="PASSWORD_HASH_TIME_COST")
+    password_hash_memory_cost_kib: int = Field(default=65536, alias="PASSWORD_HASH_MEMORY_COST_KIB")
+    password_hash_parallelism: int = Field(default=4, alias="PASSWORD_HASH_PARALLELISM")
 
     rate_limit_window_seconds: int = Field(default=60, alias="RATE_LIMIT_WINDOW_SECONDS")
     rate_limit_max_requests: int = Field(default=20, alias="RATE_LIMIT_MAX_REQUESTS")
@@ -218,6 +223,34 @@ class Settings(BaseSettings):
     def parse_cors_origins(cls, value: str | list[str]) -> list[str]:
         if isinstance(value, str):
             return [origin.strip() for origin in value.split(",") if origin.strip()]
+        return value
+
+    @field_validator("session_last_seen_update_seconds")
+    @classmethod
+    def validate_session_last_seen_update_seconds(cls, value: int) -> int:
+        if value < 0:
+            raise ValueError("SESSION_LAST_SEEN_UPDATE_SECONDS must be >= 0")
+        return value
+
+    @field_validator("password_hash_time_cost")
+    @classmethod
+    def validate_password_hash_time_cost(cls, value: int) -> int:
+        if value < 3:
+            raise ValueError("PASSWORD_HASH_TIME_COST must be >= 3")
+        return value
+
+    @field_validator("password_hash_memory_cost_kib")
+    @classmethod
+    def validate_password_hash_memory_cost_kib(cls, value: int) -> int:
+        if value < 19456:
+            raise ValueError("PASSWORD_HASH_MEMORY_COST_KIB must be >= 19456")
+        return value
+
+    @field_validator("password_hash_parallelism")
+    @classmethod
+    def validate_password_hash_parallelism(cls, value: int) -> int:
+        if value < 1:
+            raise ValueError("PASSWORD_HASH_PARALLELISM must be >= 1")
         return value
 
     @field_validator("email_provider")

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import json
+import time
 from datetime import datetime
 
 import pytest
@@ -68,6 +70,51 @@ async def test_opentable_refresh_auth_calls_cpr_human_and_session_endpoints():
     assert transport.requests[1]["url"].endswith("/dapi/fe/human")
     assert transport.requests[2]["method"] == "POST"
     assert transport.requests[2]["url"].endswith("/dapi/v1/session")
+
+
+@pytest.mark.asyncio
+async def test_opentable_refresh_auth_runs_heartbeat_calls_concurrently():
+    class _DelayByUrlTransport:
+        def __init__(self) -> None:
+            self.requests: list[dict] = []
+
+        async def request(
+            self,
+            *,
+            method: str,
+            url: str,
+            headers: dict[str, str] | None = None,
+            json_body: dict | None = None,
+            data: dict | None = None,
+            params: dict | None = None,
+            timeout: float = 20.0,
+        ) -> TransportResponse:
+            self.requests.append(
+                {
+                    "method": method,
+                    "url": url,
+                    "headers": headers or {},
+                    "json_body": json_body,
+                    "data": data,
+                    "params": params,
+                    "timeout": timeout,
+                }
+            )
+            await asyncio.sleep(0.05)
+            if url.endswith("/dapi/v1/session"):
+                return _response({"facebook": "x", "sojern": "y"})
+            return _response({"ok": True})
+
+    transport = _DelayByUrlTransport()
+    client = OpenTableProviderClient(transport=transport)
+
+    started_at = time.perf_counter()
+    result = await client.refresh_auth(account_ref="acct-1")
+    elapsed = time.perf_counter() - started_at
+
+    assert result.ok is True
+    # Sequential calls are ~0.15s with this transport. Parallel should complete faster.
+    assert elapsed < 0.12
 
 
 @pytest.mark.asyncio

@@ -18,18 +18,25 @@ Shared infrastructure:
 
 Queue domain contracts:
 
-- `train:queue` is consumed by `worker` (`app.worker_train.WorkerTrainSettings`) for train tasks and queued email delivery jobs.
+- `train:queue` is consumed by `worker-train` (`app.worker_train.WorkerTrainSettings`) for train tasks and queued email delivery jobs.
 - `restaurant:queue` is consumed by `worker-restaurant` (`app.worker_restaurant.WorkerRestaurantSettings`) for restaurant-domain jobs.
 
 ## Runtime topology (Docker Compose)
 
 - `infra/docker-compose.yml` (development): hot reload + bind mounts
 - `infra/docker-compose.prod.yml` (deployment): immutable containers, no dev reload flags
+- API runtime split:
+  - `api-gateway` (public edge API, bound to host `:8000`)
+  - `api-train` (private train-domain API container)
+  - `api-restaurant` (private restaurant-domain API container)
+- Worker runtime split:
+  - `worker-train` consumes `train:queue`
+  - `worker-restaurant` consumes `restaurant:queue`
 
 Main service ports:
 
 - Web: `3000`
-- API: `8000`
+- API gateway: `8000`
 - Postgres: `5432`
 - Redis: `6379`
 - Mailpit UI (dev): `8025`

@@ -23,7 +23,7 @@ git submodule update --init --recursive
 If you prefer containerized local simulation, use:
 
 ```bash
-docker compose -f infra/docker compose.yml up --build
+docker compose -f infra/docker-compose.yml up --build
 ```
 
 ## Development conventions

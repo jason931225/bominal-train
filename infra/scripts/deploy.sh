@@ -396,13 +396,13 @@ deploy_services() {
     log_info "Ensuring database services are healthy..."
     "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait postgres redis
 
-    # Deploy API (backend must be ready before web).
-    log_info "Deploying API service..."
-    "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait --no-deps api
+    # Deploy API domain services first (gateway and private domain APIs).
+    log_info "Deploying API domain services..."
+    "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait --no-deps api-gateway api-train api-restaurant
 
     # Deploy workers (can run alongside API).
-    log_info "Deploying Worker services..."
-    "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait --no-deps worker worker-restaurant
+    log_info "Deploying worker domain services..."
+    "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait --no-deps worker-train worker-restaurant
 
     # Deploy web (depends on API being healthy).
     log_info "Deploying Web service..."
@@ -415,7 +415,7 @@ deploy_services() {
   fi
 
   log_warn "No running bominal containers detected. Using first-deploy bootstrap path."
-  "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait postgres redis api worker worker-restaurant web caddy
+  "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait postgres redis api-gateway api-train api-restaurant worker-train worker-restaurant web caddy
 }
 
 # Verify deployment health
@@ -426,21 +426,32 @@ verify_deployment() {
   local retry_delay="${SMOKE_RETRY_DELAY_SECONDS}"
   local attempt=1
   
-  # Check API health
+  # Check API gateway health
   while [[ $attempt -le $max_attempts ]]; do
     if curl -fsS --max-time 5 http://127.0.0.1:8000/health >/dev/null 2>&1; then
-      log_ok "API health check passed"
+      log_ok "API gateway health check passed"
       break
     fi
-    log_warn "Waiting for API... (attempt $attempt/$max_attempts)"
+    log_warn "Waiting for API gateway... (attempt $attempt/$max_attempts)"
     sleep "$retry_delay"
     ((attempt++))
   done
   
   if [[ $attempt -gt $max_attempts ]]; then
-    log_error "API health check failed after $max_attempts attempts"
+    log_error "API gateway health check failed after $max_attempts attempts"
     return 1
   fi
+
+  # Check private domain API health from inside containers.
+  if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" exec -T api-train python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)"; then
+    log_error "api-train health check failed"
+    return 1
+  fi
+  if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" exec -T api-restaurant python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)"; then
+    log_error "api-restaurant health check failed"
+    return 1
+  fi
+  log_ok "Private API health checks passed"
   
   # Check web via Caddy
   attempt=1

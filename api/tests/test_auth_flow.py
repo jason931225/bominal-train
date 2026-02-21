@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
@@ -6,6 +7,7 @@ import pytest
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import select
 
+from app.http import deps as auth_deps
 from app.db.models import Secret, Session, Task, User
 from app.services.wallet import LEGACY_PAYMENT_CVV_REDIS_KEY_PREFIX, PAYMENT_CVV_REDIS_KEY_PREFIX
 from tests.conftest import MockRedisContextManager
@@ -61,6 +63,37 @@ async def test_register_login_me_logout_flow(client):
 
     me_after_logout = await client.get("/api/auth/me", cookies={"bominal_session": session_cookie})
     assert me_after_logout.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_me_with_fresh_session_does_not_update_last_seen_at(client, db_session):
+    auth_deps.settings.session_last_seen_update_seconds = 300
+
+    email = f"last-seen-{uuid4().hex[:8]}@example.com"
+    register_res = await client.post(
+        "/api/auth/register",
+        json={"email": email, "password": "SuperSecret123", "display_name": "Last Seen User"},
+    )
+    assert register_res.status_code == 201
+
+    login_res = await client.post(
+        "/api/auth/login",
+        json={"email": email, "password": "SuperSecret123", "remember_me": False},
+    )
+    assert login_res.status_code == 200
+    session_cookie = login_res.cookies.get("bominal_session")
+    assert session_cookie
+
+    user = (await db_session.execute(select(User).where(User.email == email))).scalar_one()
+    session_before = (await db_session.execute(select(Session).where(Session.user_id == user.id))).scalar_one()
+    last_seen_before = session_before.last_seen_at
+
+    await asyncio.sleep(0.01)
+    me_res = await client.get("/api/auth/me", cookies={"bominal_session": session_cookie})
+    assert me_res.status_code == 200
+
+    session_after = (await db_session.execute(select(Session).where(Session.id == session_before.id))).scalar_one()
+    assert session_after.last_seen_at == last_seen_before
 
 
 @pytest.mark.asyncio

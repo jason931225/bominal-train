@@ -4,8 +4,8 @@ This project supports separated dev/prod compose stacks with zero-downtime deplo
 
 ## Environments
 
-- Dev compose: `infra/docker compose.yml`
-- Prod compose: `infra/docker compose.prod.yml`
+- Dev compose: `infra/docker-compose.yml`
+- Prod compose: `infra/docker-compose.prod.yml`
 - Dev env files: `infra/env/dev/*`
 - Prod env files: `infra/env/prod/*.example` -> copy to real `.env` files
 
@@ -34,21 +34,23 @@ The deployment uses Docker Compose health checks and the `--wait` flag:
 
 ### Health Check Configuration
 
-Each service has a health check in `docker compose.prod.yml`:
+Each service has a health check in `docker-compose.prod.yml`:
 
 | Service  | Health Check | Start Period |
 |----------|--------------|--------------|
 | postgres | `pg_isready` | 0s |
 | redis    | `redis-cli ping` | 0s |
-| api      | Python urllib (port 8000/health) | 120s |
-| worker   | Python proc check for arq | 15s |
+| api-gateway | Python urllib (port 8000/health) | 120s |
+| api-train | Python urllib (port 8000/health) | 60s |
+| api-restaurant | Python urllib (port 8000/health) | 60s |
+| worker-train | Python proc check for arq | 15s |
 | worker-restaurant | Python proc check for arq | 15s |
 | web      | `wget --spider` (port 3000) | 60s |
 | caddy    | `wget` (admin API port 2019) | 30s |
 
 The `start_period` gives the container time to initialize before health checks begin counting failures.
 
-> **Note**: Health checks use Python for api/worker (slim images lack curl/pgrep)
+> **Note**: Health checks use Python for api and worker containers (slim images lack curl/pgrep)
 > and 127.0.0.1 instead of localhost (Alpine DNS issue).
 
 ### Deploy Commands
@@ -176,8 +178,8 @@ cat /opt/bominal/deployments/previous
 
 # Checkout and redeploy
 sudo -u bominal git checkout <commit>
-sudo docker compose -f infra/docker compose.prod.yml build api web
-sudo docker compose -f infra/docker compose.prod.yml up -d --wait
+sudo docker compose -f infra/docker-compose.prod.yml build api-gateway web
+sudo docker compose -f infra/docker-compose.prod.yml up -d --wait
 ```
 
 ### Database Migration Rollback
@@ -186,15 +188,15 @@ If a migration was applied and needs reverting:
 
 ```bash
 # 1. Check current migration state
-sudo docker compose -f infra/docker compose.prod.yml exec api alembic current
+sudo docker compose -f infra/docker-compose.prod.yml exec api-gateway alembic current
 
 # 2. Downgrade to specific revision
-sudo docker compose -f infra/docker compose.prod.yml exec api alembic downgrade <revision>
+sudo docker compose -f infra/docker-compose.prod.yml exec api-gateway alembic downgrade <revision>
 
 # 3. Checkout old code and redeploy
 sudo -u bominal git checkout <commit>
-sudo docker compose -f infra/docker compose.prod.yml build api
-sudo docker compose -f infra/docker compose.prod.yml up -d --wait api worker worker-restaurant
+sudo docker compose -f infra/docker-compose.prod.yml build api-gateway
+sudo docker compose -f infra/docker-compose.prod.yml up -d --wait api-gateway api-train api-restaurant worker-train worker-restaurant
 ```
 
 ### Version Tracking
@@ -256,7 +258,7 @@ Deprecation gate behavior:
 Optional manual pre-migration duplicate check:
 
 ```bash
-docker compose -f infra/docker compose.prod.yml run --rm api python scripts/check_duplicate_display_names.py
+docker compose -f infra/docker-compose.prod.yml run --rm api-gateway python scripts/check_duplicate_display_names.py
 ```
 
 ### 4) Initial Deploy
@@ -333,7 +335,7 @@ This will:
 
 ```bash
 curl -sS https://www.bominal.com/health
-docker compose -f infra/docker compose.prod.yml logs --tail=50
+docker compose -f infra/docker-compose.prod.yml logs --tail=50
 ```
 
 ---
@@ -367,7 +369,7 @@ curl -sI https://www.bominal.com/
 
 ```bash
 # Follow logs during deployment
-sudo docker compose -f infra/docker compose.prod.yml logs -f --tail=50 api web
+sudo docker compose -f infra/docker-compose.prod.yml logs -f --tail=50 api-gateway api-train api-restaurant web
 ```
 
 ---
@@ -380,17 +382,17 @@ If deployment hangs waiting for a container to become healthy:
 
 1. Check container logs:
    ```bash
-   docker logs bominal-api --tail=100
+   docker logs bominal-api-gateway --tail=100
    ```
 
 2. Check what's failing:
    ```bash
-   docker inspect bominal-api --format='{{json .State.Health}}'
+   docker inspect bominal-api-gateway --format='{{json .State.Health}}'
    ```
 
 3. Force restart if needed:
    ```bash
-   docker compose -f infra/docker compose.prod.yml restart api
+   docker compose -f infra/docker-compose.prod.yml restart api-gateway
    ```
 
 ### Container Starts but Unhealthy
@@ -402,7 +404,7 @@ Common causes:
 
 Check logs:
 ```bash
-docker logs bominal-api 2>&1 | tail -50
+docker logs bominal-api-gateway 2>&1 | tail -50
 docker logs bominal-web 2>&1 | tail -50
 ```
 
@@ -458,8 +460,8 @@ Firewall rules:
 Current Caddy setup is single-host path routing:
 
 - `www.bominal.com` -> web (`3000`) for UI routes
-- `www.bominal.com/api/*` -> api (`8000`)
-- `www.bominal.com/health` and `/healthz` -> api health endpoints
+- `www.bominal.com/api/*` -> api-gateway (`8000`)
+- `www.bominal.com/health` and `/healthz` -> api-gateway health endpoints
 - `bominal.com` -> redirects to `www.bominal.com`
 
 Configure domain + ACME contact in `infra/env/prod/caddy.env`:
@@ -482,7 +484,7 @@ Configure domain + ACME contact in `infra/env/prod/caddy.env`:
 
 2. **Never modify these files** without explicit user approval:
    - `infra/scripts/deploy.sh`
-   - `infra/docker compose.prod.yml` (health checks section)
+   - `infra/docker-compose.prod.yml` (health checks section)
    - `/opt/bominal/deployments/*` (version tracking)
 
 3. **Preserve version history** - the deployment system tracks:
@@ -491,7 +493,7 @@ Configure domain + ACME contact in `infra/env/prod/caddy.env`:
 
 4. **Test changes locally first** when possible:
    ```bash
-   docker compose -f infra/docker compose.yml up --build
+   docker compose -f infra/docker-compose.yml up --build
    ```
 
 5. **Always verify after deploy**:
@@ -512,8 +514,8 @@ sudo -u bominal /opt/bominal/repo/infra/scripts/deploy.sh --rollback
 cd /opt/bominal/repo
 cat /opt/bominal/deployments/previous  # Get previous commit
 sudo -u bominal git checkout <commit>
-sudo docker compose -f infra/docker compose.prod.yml build api web
-sudo docker compose -f infra/docker compose.prod.yml up -d --wait
+sudo docker compose -f infra/docker-compose.prod.yml build api-gateway web
+sudo docker compose -f infra/docker-compose.prod.yml up -d --wait
 ```
 
 ### What Triggers Downtime

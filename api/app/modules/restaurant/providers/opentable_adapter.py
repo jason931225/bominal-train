@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import datetime, timedelta
 from typing import Any
@@ -438,9 +439,11 @@ class OpenTableProviderClient:
 
     async def refresh_auth(self, *, account_ref: str) -> RestaurantProviderOutcome:
         _ = account_ref
-        cpr_response = await self._request(method="GET", path="/_sec/cpr/params", headers=self._headers())
-        human_response = await self._request(method="GET", path="/dapi/fe/human", headers=self._headers())
-        session_response = await self._request(method="POST", path="/dapi/v1/session", headers=self._headers())
+        cpr_response, human_response, session_response = await asyncio.gather(
+            self._request(method="GET", path="/_sec/cpr/params", headers=self._headers()),
+            self._request(method="GET", path="/dapi/fe/human", headers=self._headers()),
+            self._request(method="POST", path="/dapi/v1/session", headers=self._headers()),
+        )
 
         if session_response.status_code >= 400:
             error_code, retryable = _normalize_status_error("auth_refresh", session_response.status_code)
