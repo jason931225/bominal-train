@@ -1,5 +1,5 @@
 import hmac
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import Cookie, Depends, Header, HTTPException, Request, status
 from sqlalchemy import select
@@ -61,8 +61,13 @@ async def get_current_session(
     if not auth_session:
         raise _unauthorized()
 
-    auth_session.last_seen_at = now
-    await db.commit()
+    if _should_update_last_seen(
+        last_seen_at=auth_session.last_seen_at,
+        now=now,
+        update_interval_seconds=settings.session_last_seen_update_seconds,
+    ):
+        auth_session.last_seen_at = now
+        await db.commit()
 
     return auth_session
 
@@ -98,3 +103,19 @@ def require_role(role_name: str):
         return user
 
     return dependency
+
+
+def _should_update_last_seen(
+    *,
+    last_seen_at: datetime | None,
+    now: datetime,
+    update_interval_seconds: int,
+) -> bool:
+    if update_interval_seconds <= 0:
+        return True
+    if last_seen_at is None:
+        return True
+
+    if last_seen_at.tzinfo is None:
+        last_seen_at = last_seen_at.replace(tzinfo=timezone.utc)
+    return (now - last_seen_at) >= timedelta(seconds=update_interval_seconds)
