@@ -13,6 +13,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+- [835b64e] Added split API entrypoints (`app.main_gateway`, `app.main_train`, `app.main_restaurant`) with shared app bootstrap and restaurant-domain health router coverage (`api/app/http/app_common.py`, `api/app/main_*.py`, `api/app/modules/restaurant/router.py`, `api/tests/test_api_runtime_split.py`).
 - [0d84ae8] Added commit-based changelog governance and CI validation (`infra/tests/test_changelog.sh`).
 - [0d84ae8] Added standardized documentation workflow and playbook system (`docs/DOCUMENTATION_WORKFLOW.md`, `docs/playbooks/*`).
 - [0d84ae8] Added daily operations/chores playbook for routine low-latency execution (`docs/playbooks/daily-operations-chores.md`).
@@ -44,6 +45,9 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Changed
 
+- [835b64e] Split compose/deploy runtime service naming to `api-gateway`/`api-train`/`api-restaurant` and `worker-train`/`worker-restaurant`, including Caddy upstream, script wrappers, and infra deploy regression tests (`infra/docker-compose*.yml`, `infra/caddy/Caddyfile`, `infra/scripts/*`, `infra/tests/test_deploy_*.sh`).
+- [835b64e] Hardened auth/session latency path with configurable Argon2 parameters and throttled `sessions.last_seen_at` writes, with regression coverage (`api/app/core/config.py`, `api/app/core/security.py`, `api/app/http/deps.py`, `api/tests/test_auth_flow.py`).
+- [835b64e] Updated core operational docs/readme for split runtime naming and corrected compose path references (`README.md`, `docs/ARCHITECTURE.md`, `docs/CONTRIBUTING.md`, `docs/DEPLOYMENT.md`, `docs/RUNBOOK.md`).
 - [b4c0c7e] Added KTX wait-reserve hotfix closure artifact to archived plans and canonical pointer library (`docs/plans/archive/2026-02-18-ktx-wait-reserve-hotfix-closure.md`, `docs/README.md`).
 - [0d84ae8] Enforced changelog requirements in governance docs (`AGENTS.md`, `docs/EXECUTION_PROTOCOL.md`).
 - [0d84ae8] Added `CHANGELOG.md` to canonical pointers in `docs/README.md` and required-pointer validation.
@@ -89,6 +93,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- [835b64e] Reduced OpenTable auth refresh tail latency by parallelizing `cpr`/`human`/`session` heartbeat calls and adding concurrency regression coverage (`api/app/modules/restaurant/providers/opentable_adapter.py`, `api/tests/test_restaurant_provider_opentable.py`).
 - [e335936] Switched deferred polling re-enqueue to non-deterministic job ids so running tasks can schedule subsequent polling cycles without ARQ self-dedup blocking (`api/app/modules/train/queue.py`, `api/tests/test_train_queue.py`).
 - [51cae4c] Cleared stale ARQ result keys before train-task enqueue so manual retry/resume can requeue after prior attempt completion, with queue regression coverage for result-key cleanup behavior (`api/app/modules/train/queue.py`, `api/tests/test_train_queue.py`).
 - [7abed90] Hardened `deliver_email_job` payload normalization so legacy queued email jobs without full template fields or `text_body` no longer fail worker validation, with regression coverage for legacy template/raw shapes (`api/app/services/email_worker.py`, `api/tests/test_email_worker.py`).
