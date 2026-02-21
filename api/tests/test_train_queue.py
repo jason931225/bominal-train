@@ -52,9 +52,9 @@ async def test_enqueue_train_task_preserves_defer_by(monkeypatch):
     assert enqueued is True
     assert len(pool.calls) == 1
     assert pool.calls[0]["args"] == ("run_train_task", "task-1")
-    assert pool.calls[0]["kwargs"]["_job_id"] == "train:task-1"
     assert pool.calls[0]["kwargs"]["_defer_by"] == 2.5
-    assert pool.deleted == ["arq:result:train:task-1"]
+    assert "_job_id" not in pool.calls[0]["kwargs"]
+    assert pool.deleted == []
 
 
 @pytest.mark.asyncio
