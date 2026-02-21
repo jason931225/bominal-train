@@ -12,6 +12,19 @@ Rules:
 
 ## Current Entries
 
+### LOCK-2026-02-21-API-SPLIT-LATENCY-HARDENING
+- status: ACTIVE
+- owner_session: Codex Session
+- scope:
+  - `api/**`
+  - `infra/**`
+  - `docs/**`
+  - `README.md`
+  - `CHANGELOG.md`
+- reason: Implement gateway/domain API split, session/auth/provider latency hardening, and naming-consistent infra/docs updates with verification
+- created_at_utc: 2026-02-21T21:45:00Z
+- released_at_utc:
+
 ### LOCK-2026-02-18-EMAIL-WORKER-LEGACY-PAYLOAD
 - status: RELEASED
 - owner_session: Codex Session
