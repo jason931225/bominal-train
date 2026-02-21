@@ -89,6 +89,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- [e335936] Switched deferred polling re-enqueue to non-deterministic job ids so running tasks can schedule subsequent polling cycles without ARQ self-dedup blocking (`api/app/modules/train/queue.py`, `api/tests/test_train_queue.py`).
 - [51cae4c] Cleared stale ARQ result keys before train-task enqueue so manual retry/resume can requeue after prior attempt completion, with queue regression coverage for result-key cleanup behavior (`api/app/modules/train/queue.py`, `api/tests/test_train_queue.py`).
 - [7abed90] Hardened `deliver_email_job` payload normalization so legacy queued email jobs without full template fields or `text_body` no longer fail worker validation, with regression coverage for legacy template/raw shapes (`api/app/services/email_worker.py`, `api/tests/test_email_worker.py`).
 - [388ae4e] Restored wait-reserve-aware train candidate selection so KTX/SRT waitlist-capable schedules proceed from SEARCH to RESERVE, with regression coverage for KTX and SRT standby paths (`api/app/modules/train/worker.py`, `api/tests/test_train_tasks.py`).
