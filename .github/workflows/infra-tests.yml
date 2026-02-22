@@ -75,3 +75,7 @@ jobs:
       - name: Validate docs consistency
         run: |
           bash infra/tests/test_docs_consistency.sh
+
+      - name: Validate sensitive log scanner
+        run: |
+          bash infra/tests/test_sensitive_log_scan.sh
