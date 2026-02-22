@@ -18,6 +18,11 @@ Shared infrastructure:
   - CDE Redis for encrypted CVV TTL cache (`REDIS_URL_CDE` or fallback `REDIS_URL`)
   - CDE Redis endpoint must be non-durable and must not be Upstash-hosted
 - **Mailpit** in local dev (SMTP sink + inbox UI)
+- **Provider egress gateways** (Caddy path-allowlist proxies):
+  - `egress-train` allows only `/srt/*`, `/korail/*`, `/netfunnel/*`
+  - `egress-restaurant` allows only `/opentable/*`, `/resy/*`
+  - unmatched routes are denied (`403`)
+  - only `GET` / `POST` / `HEAD` methods are accepted (`405` otherwise)
 
 Queue domain contracts:
 
@@ -35,6 +40,9 @@ Queue domain contracts:
 - Worker runtime split:
   - `worker-train` consumes `train:queue`
   - `worker-restaurant` consumes `restaurant:queue`
+- Internal outbound-control runtime:
+  - `egress-train` (`infra/egress/train/Caddyfile`)
+  - `egress-restaurant` (`infra/egress/restaurant/Caddyfile`)
 
 Main service ports:
 
@@ -148,6 +156,10 @@ Provider integration:
 - Factory switching by env:
   - `TRAIN_PROVIDER_MODE`: `mock` | `hybrid` | `real`
   - `TRAIN_PROVIDER_TRANSPORT`: `auto` | `curl_cffi` | `httpx`
+- Optional egress routing by domain set:
+  - `TRAIN_PROVIDER_EGRESS_PROXY_URL` routes train-provider calls through `egress-train`
+  - `RESTAURANT_PROVIDER_EGRESS_PROXY_URL` routes restaurant-provider calls through `egress-restaurant`
+  - provider host allowlist validation still executes before outbound dispatch
 - SRT contract alignment:
   - Unpaid reservation expiry is determined by `stlFlg != "Y"` and KST comparison `now > iseLmtDt+iseLmtTm`.
   - Sold-out standby fallback is allowed only when `rsvWaitPsbCd` contains `"9"`.

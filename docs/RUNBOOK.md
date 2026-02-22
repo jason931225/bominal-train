@@ -114,20 +114,25 @@ Security checks for payment/CDE runtime:
 
 ```bash
 # Confirm Redis split config (non-CDE vs CDE) in API runtime.
-docker compose -f infra/docker compose.prod.yml exec api env | rg 'REDIS_URL(_NON_CDE|_CDE)?'
+docker compose -f infra/docker-compose.prod.yml exec api-gateway env | rg 'REDIS_URL(_NON_CDE|_CDE)?'
 
 # Confirm effective CDE Redis endpoint is not Upstash-hosted.
-docker compose -f infra/docker compose.prod.yml exec api python -c "from app.core.config import get_settings,is_upstash_redis_url; s=get_settings(); print('resolved_redis_url_cde=', s.resolved_redis_url_cde); assert not is_upstash_redis_url(s.resolved_redis_url_cde)"
+docker compose -f infra/docker-compose.prod.yml exec api-gateway python -c "from app.core.config import get_settings,is_upstash_redis_url; s=get_settings(); print('resolved_redis_url_cde=', s.resolved_redis_url_cde); assert not is_upstash_redis_url(s.resolved_redis_url_cde)"
 
 # Confirm Redis persistence is disabled for CDE runtime.
-docker compose -f infra/docker compose.prod.yml exec redis redis-cli CONFIG GET save
-docker compose -f infra/docker compose.prod.yml exec redis redis-cli CONFIG GET appendonly
+docker compose -f infra/docker-compose.prod.yml exec redis redis-cli CONFIG GET save
+docker compose -f infra/docker-compose.prod.yml exec redis redis-cli CONFIG GET appendonly
 
 # Validate provider egress allowlist and timeout envs are set.
-docker compose -f infra/docker compose.prod.yml exec api env | rg 'PAYMENT_PROVIDER_ALLOWED_HOSTS|TRAIN_PROVIDER_TIMEOUT_|PAYMENT_TRANSPORT_TRUST_ENV'
+docker compose -f infra/docker-compose.prod.yml exec api-gateway env | rg 'PAYMENT_PROVIDER_ALLOWED_HOSTS|TRAIN_PROVIDER_TIMEOUT_|PAYMENT_TRANSPORT_TRUST_ENV|PROVIDER_EGRESS_PROXY_URL'
+
+# Confirm egress gateways are healthy and deny unknown routes by default.
+docker compose -f infra/docker-compose.prod.yml exec egress-train wget --spider -q http://127.0.0.1:8080/health
+docker compose -f infra/docker-compose.prod.yml exec egress-restaurant wget --spider -q http://127.0.0.1:8080/health
+docker compose -f infra/docker-compose.prod.yml exec egress-train wget -qO- --server-response http://127.0.0.1:8080/not-allowed 2>&1 | rg '403'
 
 # Confirm payment logs do not include request/response payload bodies.
-docker compose -f infra/docker compose.prod.yml logs --since=30m api worker | rg -i 'card_number|cvv|authorization|set-cookie|wrapped_dek|ciphertext'
+docker compose -f infra/docker-compose.prod.yml logs --since=30m api-gateway api-train worker-train | rg -i 'card_number|cvv|authorization|set-cookie|wrapped_dek|ciphertext'
 ```
 
 Hosted service budget checks (non-CDE Upstash + Supabase free-tier planning):

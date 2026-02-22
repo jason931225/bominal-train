@@ -20,6 +20,7 @@ from app.modules.train.providers.transport import (
     _assert_allowed_host,
     _is_host_allowed,
     _normalize_allowed_hosts,
+    _rewrite_url_for_egress_proxy,
     is_retryable_exception,
     is_retryable_status_code,
 )
@@ -35,6 +36,8 @@ def _patch_settings(
     connect_timeout_seconds: float = 3.0,
     read_timeout_seconds: float = 8.0,
     total_timeout_seconds: float = 12.0,
+    train_egress_proxy_url: str | None = None,
+    restaurant_egress_proxy_url: str | None = None,
 ) -> None:
     settings = SimpleNamespace(
         payment_provider_allowed_hosts=list(allowed_hosts),
@@ -44,6 +47,8 @@ def _patch_settings(
         train_provider_timeout_connect_seconds=connect_timeout_seconds,
         train_provider_timeout_read_seconds=read_timeout_seconds,
         train_provider_timeout_total_seconds=total_timeout_seconds,
+        train_provider_egress_proxy_url=train_egress_proxy_url,
+        restaurant_provider_egress_proxy_url=restaurant_egress_proxy_url,
     )
     monkeypatch.setattr(transport_module, "get_settings", lambda: settings)
 
@@ -200,6 +205,29 @@ def test_retryable_classification_helpers():
     assert is_retryable_exception(TimeoutError("timed out")) is True
     assert is_retryable_exception(asyncio.TimeoutError()) is True
     assert is_retryable_exception(RuntimeError("boom")) is False
+
+
+def test_proxy_url_rewrite_maps_host_to_route_prefix_and_preserves_query():
+    rewritten = _rewrite_url_for_egress_proxy(
+        "https://app.srail.or.kr:443/ara/selectListAra10007_n.do?foo=1",
+        proxy_base_url="http://egress-train:8080",
+        host_path_map={"app.srail.or.kr": "srt"},
+    )
+    assert rewritten == "http://egress-train:8080/srt/ara/selectListAra10007_n.do?foo=1"
+
+    unchanged = _rewrite_url_for_egress_proxy(
+        "https://app.srail.or.kr/path",
+        proxy_base_url=None,
+        host_path_map={"app.srail.or.kr": "srt"},
+    )
+    assert unchanged == "https://app.srail.or.kr/path"
+
+    with pytest.raises(RuntimeError, match="route is not configured"):
+        _rewrite_url_for_egress_proxy(
+            "https://unknown.example.com/path",
+            proxy_base_url="http://egress-train:8080",
+            host_path_map={"app.srail.or.kr": "srt"},
+        )
 
 
 @pytest.mark.asyncio
@@ -520,6 +548,72 @@ async def test_httpx_transport_initializes_client_with_trust_env_and_handles_ope
 
 
 @pytest.mark.asyncio
+async def test_httpx_transport_uses_train_proxy_when_configured(monkeypatch):
+    _patch_settings(
+        monkeypatch,
+        allowed_hosts=("app.srail.or.kr",),
+        trust_env=False,
+        train_egress_proxy_url="http://egress-train:8080",
+    )
+    fake_client = _FakeHttpxClient(responses=[_FakeHttpxResponse(status_code=200)])
+    monkeypatch.setattr(transport_module.httpx, "AsyncClient", lambda **_: fake_client)
+
+    transport = HttpxTransport()
+    response = await transport.request(
+        method="GET",
+        url="https://app.srail.or.kr:443/ara/selectListAra10007_n.do",
+        operation="query",
+    )
+
+    assert response.status_code == 200
+    assert len(fake_client.calls) == 1
+    assert fake_client.calls[0]["url"] == "http://egress-train:8080/srt/ara/selectListAra10007_n.do"
+
+
+@pytest.mark.asyncio
+async def test_httpx_transport_uses_restaurant_proxy_for_restaurant_domain_set(monkeypatch):
+    _patch_settings(
+        monkeypatch,
+        allowed_hosts=("www.opentable.com",),
+        trust_env=False,
+        restaurant_egress_proxy_url="http://egress-restaurant:8080",
+    )
+    fake_client = _FakeHttpxClient(responses=[_FakeHttpxResponse(status_code=200)])
+    monkeypatch.setattr(transport_module.httpx, "AsyncClient", lambda **_: fake_client)
+
+    transport = HttpxTransport(egress_domain_set="restaurant")
+    response = await transport.request(
+        method="GET",
+        url="https://www.opentable.com/dapi/authentication/sendotpfromsignin",
+        operation="query",
+    )
+
+    assert response.status_code == 200
+    assert fake_client.calls[0]["url"] == "http://egress-restaurant:8080/opentable/dapi/authentication/sendotpfromsignin"
+
+
+@pytest.mark.asyncio
+async def test_httpx_transport_proxy_fails_closed_when_allowlisted_host_has_no_proxy_route(monkeypatch):
+    _patch_settings(
+        monkeypatch,
+        allowed_hosts=("api.example.com",),
+        trust_env=False,
+        train_egress_proxy_url="http://egress-train:8080",
+    )
+    fake_client = _FakeHttpxClient(responses=[_FakeHttpxResponse(status_code=200)])
+    monkeypatch.setattr(transport_module.httpx, "AsyncClient", lambda **_: fake_client)
+
+    transport = HttpxTransport()
+    with pytest.raises(RuntimeError, match="route is not configured"):
+        await transport.request(
+            method="GET",
+            url="https://api.example.com/path",
+            operation="query",
+        )
+    assert fake_client.calls == []
+
+
+@pytest.mark.asyncio
 async def test_httpx_transport_redirect_query_allows_follow_and_post_to_get_conversion(monkeypatch):
     _patch_settings(monkeypatch, allowed_hosts=("app.srail.or.kr",), trust_env=False)
     fake_client = _FakeHttpxClient(
@@ -649,11 +743,36 @@ async def test_curl_transport_resolves_impersonate_from_available_browser_types(
         browser_type_attrs={"chrome124": "chrome124"},
     )
     fallback = _FallbackTransport(response=TransportResponse(status_code=200, text="{}", headers={}))
-    monkeypatch.setattr(transport_module, "HttpxTransport", lambda: fallback)
+    monkeypatch.setattr(transport_module, "HttpxTransport", lambda **kwargs: fallback)
 
     transport = CurlCffiTransport(impersonate="chrome131_android")
     assert transport._impersonate == "chrome124"
     assert captured["impersonate"] == "chrome124"
+
+
+@pytest.mark.asyncio
+async def test_curl_transport_uses_train_proxy_when_configured(monkeypatch):
+    _patch_settings(
+        monkeypatch,
+        allowed_hosts=("app.srail.or.kr",),
+        trust_env=False,
+        train_egress_proxy_url="http://egress-train:8080",
+    )
+    session = _FakeCurlSession(responses=[_FakeCurlResponse(status_code=200)])
+    _install_fake_curl_module(monkeypatch, session=session, browser_type_attrs={"chrome124": "chrome124"})
+    fallback = _FallbackTransport(response=TransportResponse(status_code=200, text="{}", headers={}))
+    monkeypatch.setattr(transport_module, "HttpxTransport", lambda **_: fallback)
+
+    transport = CurlCffiTransport(impersonate="chrome131_android")
+    response = await transport.request(
+        method="GET",
+        url="https://app.srail.or.kr:443/ara/selectListAra10007_n.do",
+        operation="query",
+    )
+
+    assert response.status_code == 200
+    assert len(session.calls) == 1
+    assert session.calls[0]["url"] == "http://egress-train:8080/srt/ara/selectListAra10007_n.do"
 
 
 @pytest.mark.asyncio
@@ -662,7 +781,7 @@ async def test_curl_transport_redirect_query_routes_to_httpx_fallback(monkeypatc
     session = _FakeCurlSession(responses=[_FakeCurlResponse(status_code=302, headers={"location": "/next"})])
     _install_fake_curl_module(monkeypatch, session=session, browser_type_attrs={"chrome124": "chrome124"})
     fallback = _FallbackTransport(response=TransportResponse(status_code=204, text="", headers={}))
-    monkeypatch.setattr(transport_module, "HttpxTransport", lambda: fallback)
+    monkeypatch.setattr(transport_module, "HttpxTransport", lambda **kwargs: fallback)
 
     transport = CurlCffiTransport(impersonate="chrome131_android")
     response = await transport.request(
@@ -689,7 +808,7 @@ async def test_curl_transport_blocks_redirect_for_side_effecting_operations(monk
     session = _FakeCurlSession(responses=[_FakeCurlResponse(status_code=302, headers={"location": "/next"})])
     _install_fake_curl_module(monkeypatch, session=session, browser_type_attrs={"chrome124": "chrome124"})
     fallback = _FallbackTransport(response=TransportResponse(status_code=200, text="{}", headers={}))
-    monkeypatch.setattr(transport_module, "HttpxTransport", lambda: fallback)
+    monkeypatch.setattr(transport_module, "HttpxTransport", lambda **kwargs: fallback)
 
     transport = CurlCffiTransport(impersonate="chrome131_android")
     with pytest.raises(RuntimeError, match="redirect blocked"):
@@ -707,7 +826,7 @@ async def test_curl_transport_impersonation_error_falls_back_to_httpx(monkeypatc
     session = _FakeCurlSession(error=RuntimeError("Impersonating chrome131_android is not supported"))
     _install_fake_curl_module(monkeypatch, session=session, browser_type_attrs={"chrome124": "chrome124"})
     fallback = _FallbackTransport(response=TransportResponse(status_code=202, text="{}", headers={}))
-    monkeypatch.setattr(transport_module, "HttpxTransport", lambda: fallback)
+    monkeypatch.setattr(transport_module, "HttpxTransport", lambda **kwargs: fallback)
 
     transport = CurlCffiTransport(impersonate="chrome131_android")
     response = await transport.request(
@@ -729,7 +848,7 @@ async def test_curl_transport_non_impersonation_errors_propagate(monkeypatch):
     session = _FakeCurlSession(error=RuntimeError("network explosion"))
     _install_fake_curl_module(monkeypatch, session=session, browser_type_attrs={"chrome124": "chrome124"})
     fallback = _FallbackTransport(response=TransportResponse(status_code=200, text="{}", headers={}))
-    monkeypatch.setattr(transport_module, "HttpxTransport", lambda: fallback)
+    monkeypatch.setattr(transport_module, "HttpxTransport", lambda **kwargs: fallback)
 
     transport = CurlCffiTransport(impersonate="chrome131_android")
     with pytest.raises(RuntimeError, match="network explosion"):
@@ -748,7 +867,7 @@ async def test_curl_transport_close_best_effort_closes_fallback(monkeypatch):
     session.close_error = RuntimeError("close failure")
     _install_fake_curl_module(monkeypatch, session=session, browser_type_attrs={"chrome124": "chrome124"})
     fallback = _FallbackTransport(response=TransportResponse(status_code=200, text="{}", headers={}))
-    monkeypatch.setattr(transport_module, "HttpxTransport", lambda: fallback)
+    monkeypatch.setattr(transport_module, "HttpxTransport", lambda **kwargs: fallback)
 
     transport = CurlCffiTransport(impersonate="chrome131_android")
     await transport.close()

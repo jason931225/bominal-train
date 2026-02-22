@@ -116,6 +116,10 @@ class Settings(BaseSettings):
         default=12.0,
         alias="TRAIN_PROVIDER_TIMEOUT_TOTAL_SECONDS",
     )
+    train_provider_egress_proxy_url: str | None = Field(
+        default=None,
+        alias="TRAIN_PROVIDER_EGRESS_PROXY_URL",
+    )
     train_provider_retry_attempts: int = Field(
         default=2,
         alias="TRAIN_PROVIDER_RETRY_ATTEMPTS",
@@ -208,6 +212,10 @@ class Settings(BaseSettings):
         alias="PAYMENT_PROVIDER_ALLOWED_HOSTS",
     )
     payment_transport_trust_env: bool = Field(default=False, alias="PAYMENT_TRANSPORT_TRUST_ENV")
+    restaurant_provider_egress_proxy_url: str | None = Field(
+        default=None,
+        alias="RESTAURANT_PROVIDER_EGRESS_PROXY_URL",
+    )
     payment_require_cvv_kek_version: bool = Field(default=False, alias="PAYMENT_REQUIRE_CVV_KEK_VERSION")
 
     email_provider: str = Field(default="smtp", alias="EMAIL_PROVIDER")
@@ -239,6 +247,14 @@ class Settings(BaseSettings):
             parsed = [host.strip().lower() for host in value.split(",") if host.strip()]
             return parsed
         return [str(host).strip().lower() for host in value if str(host).strip()]
+
+    @field_validator("train_provider_egress_proxy_url", "restaurant_provider_egress_proxy_url", mode="before")
+    @classmethod
+    def parse_optional_proxy_url(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = str(value).strip()
+        return normalized or None
 
     @field_validator("email_provider")
     @classmethod
