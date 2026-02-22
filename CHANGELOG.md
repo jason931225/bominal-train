@@ -13,6 +13,8 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+- [45037ad] Added KTX wait-reserve regression coverage for waitlist-only selected train flows in worker execution (`api/tests/test_train_tasks.py`).
+- [d5b6c96] Added queue re-enqueue regression coverage for stale ARQ result-key clearing, deferred enqueue dedup safety, and rejected enqueue signaling (`api/tests/test_train_queue.py`).
 - [9dc1d9e] Added Wave 1 stabilization gate tracker and canonical pointer entries for reviewer-facing release-gate evidence (`docs/plans/active/2026-02-22-wave1-stabilization-gate-tracker.md`, `docs/plans/active/README.md`, `docs/README.md`).
 - [9dc1d9e] Added provider egress resilience regression coverage for retry classification, bounded retries, and side-effect no-retry guarantees (`api/tests/test_provider_egress_transport.py`).
 - [0d84ae8] Added commit-based changelog governance and CI validation (`infra/tests/test_changelog.sh`).
@@ -76,6 +78,8 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- [8938629] Restored wait-reserve-aware seat-class fallback so waitlist-capable KTX/SRT schedules can proceed when direct seat availability is false (`api/app/modules/train/worker.py`).
+- [59ff9b6] Prevented deferred polling self-dedup lockout and stale deterministic enqueue result reuse by splitting deferred/immediate ARQ enqueue semantics (`api/app/modules/train/queue.py`).
 - [15bf7fc] Prevented rollback pointer swap on rollback-deploy failure by making rollback deploy/pull failures propagate and adding canary-stage regression coverage (`infra/scripts/deploy.sh`, `infra/tests/test_deploy_canary_stages.sh`).
 - [220d2c6] Ensured worker shutdown recovers in-flight tasks even when heartbeat cancellation raises `CancelledError`, with regression coverage in `api/tests/test_worker_shutdown_recovery.py`.
 - [b05ca4b] Converted commit-time auth uniqueness races to deterministic `409` conflicts in register/account update flows (`api/app/http/routes/auth.py`).

@@ -12,6 +12,18 @@ Rules:
 
 ## Current Entries
 
+### LOCK-2026-02-22-HOTFIX-CONSOLIDATION
+- status: RELEASED
+- owner_session: Codex Session
+- scope:
+  - `api/app/modules/train/**`
+  - `api/tests/**`
+  - `docs/LOCK.md`
+  - `CHANGELOG.md`
+- reason: Integrate temporary train hotfix behaviors into main with TDD regressions and cleanup readiness
+- created_at_utc: 2026-02-22T01:05:18Z
+- released_at_utc: 2026-02-22T01:09:50Z
+
 ### LOCK-2026-02-22-WAVE1
 - status: RELEASED
 - owner_session: Codex Session
