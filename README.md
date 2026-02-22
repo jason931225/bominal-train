@@ -3,7 +3,7 @@
 bominal is a modular product foundation with:
 
 - `web/`: Next.js App Router + TypeScript + Tailwind + Zod
-- `api/`: FastAPI + Postgres + Alembic + session auth
+- `api/`: FastAPI + Postgres + Alembic + configurable auth modes (`legacy`/`supabase`/`dual`)
 - `worker`: arq train worker for async Train Tasks + queued email jobs
 - `worker-restaurant`: arq restaurant worker (isolated queue domain scaffold)
 - `redis`: queue + provider rate limiting
@@ -24,6 +24,7 @@ bominal is a modular product foundation with:
 
 - Session cookies must remain `HttpOnly`, `SameSite=Lax`, and `Secure` only in production.
 - Passwords must be hashed with Argon2id; session tokens must be stored hashed.
+- If Supabase auth is enabled, API must verify JWT signature and claims against Supabase JWKS before mapping `sub` to local user role.
 - Payment card payloads are encrypted at rest with envelope encryption (AES-256-GCM DEK + KEK wrapping).
 - CVV may exist only in encrypted Redis cache with bounded TTL and must never be stored in Postgres.
 - Provider payment egress must use allowlisted domains with TLS verification enabled.
@@ -169,10 +170,16 @@ Auth uniqueness rules:
 - `email` is unique (case-insensitive)
 - `display_name` is unique (case-insensitive)
 
+Auth modes (`AUTH_MODE`):
+
+- `legacy`: session cookie (`bominal_session`) is required for authenticated routes.
+- `supabase`: API requires `Authorization: Bearer <jwt>`, verifies Supabase JWT (`iss`/`aud`/`exp`), then maps `sub` to local user/role.
+- `dual`: Bearer token is preferred when present; otherwise cookie auth is used.
+
 API access tiers:
 
 - **Public (no login required):** `/api/auth/register`, `/api/auth/login`, `/api/auth/logout`, `/api/auth/request-email-verification`, `/api/auth/verify-email`, `/api/auth/request-password-reset`, `/api/auth/reset-password`
-- **Authenticated session required:** `/api/auth/me`, `/api/auth/account`, `/api/modules`, `/api/train/*`, `/api/wallet/*`, `/api/notifications/*`
+- **Authenticated (`AUTH_MODE` dependent):** `/api/auth/me`, `/api/auth/account`, `/api/modules`, `/api/train/*`, `/api/wallet/*`, `/api/notifications/*`
 - **Internal-only:** `/api/internal/*` with `X-Internal-Api-Key` matching `INTERNAL_API_KEY`
 - **Admin role required:** `/api/admin`
 
@@ -191,7 +198,7 @@ Implemented modules endpoint:
 
 ## Train module API
 
-All endpoints require authenticated session cookie.
+All endpoints require authenticated user context according to `AUTH_MODE`.
 
 - `GET /api/train/stations`
 - `GET /api/train/credentials/status`

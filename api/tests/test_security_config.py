@@ -36,3 +36,35 @@ def test_parses_provider_allowlist_from_csv(monkeypatch) -> None:
     )
 
     assert settings.payment_provider_allowed_hosts == ["app.srail.or.kr", "smart.letskorail.com"]
+
+
+def test_dual_mode_allows_legacy_only_configuration(monkeypatch) -> None:
+    monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.setenv("AUTH_MODE", "dual")
+    monkeypatch.delenv("SUPABASE_URL", raising=False)
+    monkeypatch.delenv("SUPABASE_JWT_ISSUER", raising=False)
+
+    settings = Settings(_env_file=None)
+    assert settings.auth_mode == "dual"
+    assert settings.supabase_url is None
+    assert settings.supabase_jwt_issuer is None
+
+
+def test_dual_mode_requires_url_and_issuer_together(monkeypatch) -> None:
+    monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.setenv("AUTH_MODE", "dual")
+    monkeypatch.setenv("SUPABASE_URL", "https://project.supabase.co")
+    monkeypatch.delenv("SUPABASE_JWT_ISSUER", raising=False)
+
+    with pytest.raises(ValueError):
+        Settings(_env_file=None)
+
+
+def test_supabase_mode_requires_jwt_issuer(monkeypatch) -> None:
+    monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.setenv("AUTH_MODE", "supabase")
+    monkeypatch.setenv("SUPABASE_URL", "https://project.supabase.co")
+    monkeypatch.delenv("SUPABASE_JWT_ISSUER", raising=False)
+
+    with pytest.raises(ValueError):
+        Settings(_env_file=None)

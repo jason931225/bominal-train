@@ -73,6 +73,14 @@ class Settings(BaseSettings):
         alias="MASTER_KEY",
     )
     kek_version: int = Field(default=1, alias="KEK_VERSION")
+    auth_mode: str = Field(default="legacy", alias="AUTH_MODE")
+    supabase_url: str | None = Field(default=None, alias="SUPABASE_URL")
+    supabase_jwks_url: str | None = Field(default=None, alias="SUPABASE_JWKS_URL")
+    supabase_jwt_issuer: str | None = Field(default=None, alias="SUPABASE_JWT_ISSUER")
+    supabase_jwt_audience: str = Field(default="authenticated", alias="SUPABASE_JWT_AUDIENCE")
+    supabase_storage_bucket: str = Field(default="artifacts-safe", alias="SUPABASE_STORAGE_BUCKET")
+    supabase_service_role_key: str | None = Field(default=None, alias="SUPABASE_SERVICE_ROLE_KEY")
+    supabase_storage_enabled: bool = Field(default=False, alias="SUPABASE_STORAGE_ENABLED")
 
     train_provider_mode: str = Field(default="mock", alias="TRAIN_PROVIDER_MODE")
     train_provider_transport: str = Field(default="auto", alias="TRAIN_PROVIDER_TRANSPORT")
@@ -157,6 +165,14 @@ class Settings(BaseSettings):
             raise ValueError("EMAIL_PROVIDER must be one of: smtp, resend, log, disabled")
         return normalized
 
+    @field_validator("auth_mode")
+    @classmethod
+    def validate_auth_mode(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"legacy", "supabase", "dual"}:
+            raise ValueError("AUTH_MODE must be one of: legacy, supabase, dual")
+        return normalized
+
     @field_validator("train_provider_retry_attempts")
     @classmethod
     def validate_train_provider_retry_attempts(cls, value: int) -> int:
@@ -183,6 +199,20 @@ class Settings(BaseSettings):
             raise ValueError("MASTER_KEY must be overridden in production")
         if self.app_env.lower() == "production" and not self.internal_api_key:
             raise ValueError("INTERNAL_API_KEY must be set in production")
+        if self.auth_mode == "supabase":
+            if not self.supabase_url:
+                raise ValueError("SUPABASE_URL must be set when AUTH_MODE is supabase")
+            if not self.supabase_jwt_issuer:
+                raise ValueError("SUPABASE_JWT_ISSUER must be set when AUTH_MODE is supabase")
+        if self.auth_mode == "dual":
+            has_url = bool(self.supabase_url)
+            has_issuer = bool(self.supabase_jwt_issuer)
+            if has_url != has_issuer:
+                raise ValueError(
+                    "SUPABASE_URL and SUPABASE_JWT_ISSUER must be set together when AUTH_MODE=dual"
+                )
+        if self.supabase_storage_enabled and not self.supabase_service_role_key:
+            raise ValueError("SUPABASE_SERVICE_ROLE_KEY is required when SUPABASE_STORAGE_ENABLED=true")
         if self.payment_cvv_ttl_min_seconds < 1:
             raise ValueError("PAYMENT_CVV_TTL_MIN_SECONDS must be >= 1")
         if self.payment_cvv_ttl_max_seconds < self.payment_cvv_ttl_min_seconds:
@@ -202,6 +232,14 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.app_env.lower() == "production"
+
+    @property
+    def resolved_supabase_jwks_url(self) -> str | None:
+        if self.supabase_jwks_url:
+            return self.supabase_jwks_url
+        if not self.supabase_url:
+            return None
+        return f"{self.supabase_url.rstrip('/')}/auth/v1/.well-known/jwks.json"
 
 
 @lru_cache
