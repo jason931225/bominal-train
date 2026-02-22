@@ -13,6 +13,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+- [517b8a0] Added broad backend coverage suites for auth-service account scrub paths, identity auto-provision edge cases, rate-limit backends, API main/runtime guards, worker runtime lifecycle, provider factory/hybrid dispatch behavior, and email queue coverage (`api/tests/test_auth_service_units.py`, `api/tests/test_identity_service.py`, `api/tests/test_rate_limit_units.py`, `api/tests/test_main_units.py`, `api/tests/test_worker_runtime_units.py`, `api/tests/test_worker_train_module.py`, `api/tests/test_train_provider_factory.py`, `api/tests/test_train_provider_hybrid.py`, `api/tests/test_email_queue_units.py`).
 - [4692ca1] Added focused backend unit suites for `admin_cli`, app-common health/error paths, DB session generator behavior, monitor utility/runtime formatting, and core time conversion parsing (`api/tests/test_admin_cli_units.py`, `api/tests/test_app_common_units.py`, `api/tests/test_db_session.py`, `api/tests/test_monitor_units.py`, `api/tests/test_time_utils.py`).
 - [dee8ac8] Added high-coverage runtime hardening test suites for config/deps/wallet/redis/redaction/envelope/safe-metadata paths, plus split-runtime route/supabase auth regression assertions (`api/tests/test_core_hardening_units.py`, `api/tests/test_runtime_units.py`, `api/tests/test_api_runtime_split.py`, `api/tests/test_supabase_auth.py`).
 - [dee8ac8] Added deploy-history record injection regression coverage to prove deployment records are parsed as data, not executed shell (`infra/tests/test_deploy_history_record_safety.sh`).
@@ -51,6 +52,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Changed
 
+- [517b8a0] Expanded email service coverage to exercise SMTP/Resend helper branches, delivery failure mapping, and queue enqueue/defer semantics while preserving runtime behavior (`api/tests/test_email_service.py`, `api/tests/test_email_queue_units.py`).
 - [4692ca1] Fixed admin task prefix-match SQLAlchemy casting to use dialect-safe `String` casts instead of Python `str`, preventing CLI runtime failures on task cancel/unhide partial-ID lookups (`api/app/admin_cli.py`).
 - [dee8ac8] Hardened deploy runtime record handling by replacing `source`-based rollback/status parsing with strict key/value decoding and updated rolling deploy targets for split API/worker services (`infra/scripts/deploy.sh`, `infra/tests/test_deploy_preflight.sh`).
 - [dee8ac8] Updated local verification/runtime docs and tooling for current security posture, including local-check version wiring, hosted quota runbook guidance (Upstash non-CDE + Supabase), and web coverage dependency support (`infra/scripts/local-check.sh`, `docs/RUNBOOK.md`, `web/package.json`, `web/package-lock.json`).
