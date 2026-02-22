@@ -31,7 +31,7 @@ import sys
 from datetime import datetime, timezone
 from uuid import UUID
 
-from sqlalchemy import delete, func, select, text, update
+from sqlalchemy import String, delete, func, select, text, update
 
 from app.core.config import get_settings
 from app.db.models import Role, Secret, Session, Task, TaskAttempt, User
@@ -268,7 +268,7 @@ async def task_cancel(task_id: str) -> None:
         except ValueError:
             # Try prefix match
             result = await db.execute(
-                select(Task).where(Task.id.cast(str).startswith(task_id))
+                select(Task).where(Task.id.cast(String).startswith(task_id))
             )
             task = result.scalar()
             if not task:
@@ -300,7 +300,7 @@ async def task_unhide(task_id: str) -> None:
             uuid = UUID(task_id)
         except ValueError:
             result = await db.execute(
-                select(Task).where(Task.id.cast(str).startswith(task_id))
+                select(Task).where(Task.id.cast(String).startswith(task_id))
             )
             task = result.scalar()
             if not task:
