@@ -57,6 +57,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Changed
 
+- [6faaad9] Updated contributor warning-ledger policy to a green-state default (`none`) with explicit chain/owner/target requirements whenever npm deprecation warnings recur (`docs/CONTRIBUTING.md`).
 - [80718f1] Removed recurring npm deprecation-warning chains in web dependency installs by upgrading `jsdom` and modernizing toolchain dependencies, plus forcing non-deprecated `glob` resolution via overrides so clean `npm ci` no longer emits the prior `glob` / `whatwg-encoding` warnings (`web/package.json`, `web/package-lock.json`).
 - [6bd48a2] Synchronized web lockfile with current package manifest (restoring `npm ci` determinism) and codified strict npm deprecation-warning handling policy with tracked ownership/removal targets in contributor/execution docs (`web/package-lock.json`, `web/package.json`, `docs/CONTRIBUTING.md`, `docs/EXECUTION_PROTOCOL.md`).
 - [8382667] Hardened production predeploy validation to fail on non-HTTPS public URL configuration (`SUPABASE_URL`, `SUPABASE_JWT_ISSUER`, `CORS_ORIGINS`, `RESEND_API_BASE_URL`, and non-empty `NEXT_PUBLIC_API_BASE_URL`) with regression coverage updates (`infra/scripts/predeploy-check.sh`, `infra/tests/test_predeploy_check.sh`, `docs/DEPLOYMENT.md`).
