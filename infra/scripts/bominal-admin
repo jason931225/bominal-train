@@ -24,10 +24,11 @@ if [[ -f "/.dockerenv" ]]; then
 else
     detect_compose_cmd
     COMPOSE_FILE="$(resolve_compose_file "$REPO_ROOT")"
-    if ! compose_service_is_running "$COMPOSE_FILE" "api"; then
-        echo "Error: api service is not running for compose file: $COMPOSE_FILE"
+    API_SERVICE="$(first_running_compose_service "$COMPOSE_FILE" "api-gateway" "api" || true)"
+    if [[ -z "$API_SERVICE" ]]; then
+        echo "Error: api-gateway service is not running for compose file: $COMPOSE_FILE"
         echo "Start the stack before running bominal-admin."
         exit 1
     fi
-    exec "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" exec -T api python -m app.admin_cli "$@"
+    exec "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" exec -T "$API_SERVICE" python -m app.admin_cli "$@"
 fi

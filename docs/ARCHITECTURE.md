@@ -21,18 +21,25 @@ Shared infrastructure:
 
 Queue domain contracts:
 
-- `train:queue` is consumed by `worker` (`app.worker_train.WorkerTrainSettings`) for train tasks and queued email delivery jobs.
+- `train:queue` is consumed by `worker-train` (`app.worker_train.WorkerTrainSettings`) for train tasks and queued email delivery jobs.
 - `restaurant:queue` is consumed by `worker-restaurant` (`app.worker_restaurant.WorkerRestaurantSettings`) for restaurant-domain jobs.
 
 ## Runtime topology (Docker Compose)
 
 - `infra/docker-compose.yml` (development): hot reload + bind mounts
 - `infra/docker-compose.prod.yml` (deployment): immutable containers, no dev reload flags
+- API runtime split:
+  - `api-gateway` (public edge API, bound to host `:8000`)
+  - `api-train` (private train-domain API container)
+  - `api-restaurant` (private restaurant-domain API container)
+- Worker runtime split:
+  - `worker-train` consumes `train:queue`
+  - `worker-restaurant` consumes `restaurant:queue`
 
 Main service ports:
 
 - Web: `3000`
-- API: `8000`
+- API gateway: `8000`
 - Postgres: `5432`
 - Redis: `6379`
 - Mailpit UI (dev): `8025`
@@ -154,6 +161,29 @@ Provider integration:
   - `provider + account_ref + restaurant_id`
 - Non-committing restaurant phases (for example search/availability) do not acquire payment lease.
 - Policy writes only safe attempt metadata (`meta_json_safe`) and avoids credential/token persistence.
+- Provider adapter scaffolding is defined in `api/app/modules/restaurant/providers/` with canonical operations:
+  - `auth.start`, `auth.complete`, `auth.refresh`, `profile.get`, `search.availability`, `reservation.create`, `reservation.cancel`
+- OpenTable stage-1 adapter implementation currently provides:
+  - live refresh/profile/cancel paths
+  - concrete OTP auth paths (`/dapi/authentication/sendotpfromsignin`, `/dapi/authentication/signinwithotp`) with env override support
+  - frozen OTP response normalization (challenge-reference enforcement on `auth.start`; body-level failure enforcement on `auth.complete`)
+  - frozen `search.availability` contract via `RestaurantsAvailability` persisted query (hash-configurable)
+  - frozen `reservation.create` contract via two-step flow:
+    - `BookDetailsStandardSlotLock` persisted mutation (hash-configurable)
+    - `POST /dapi/booking/make-reservation` commit path (configurable path)
+  - optional post-create `BookingConfirmationPageInFlow` enrichment (hash-configurable, non-blocking on failure)
+  - normalized safe reservation-create output fields (`confirmation_enrichment`, `policy_safe`) for artifact persistence
+- Resy stage-2 adapter implementation currently provides:
+  - password auth via `POST /4/auth/password` for `auth.start`
+  - challenge-token based `auth.complete` for single-step password flow
+  - config-driven API key/origin headers with body-level failure normalization on HTTP 200 responses
+  - `auth.refresh` via `POST /3/auth/refresh` with safe refresh metadata normalization
+  - `profile.get` via `GET /2/user` with safe identity/count normalization
+  - `search.availability` via `GET /4/find` with canonical slot token extraction
+  - `reservation.create` via two-step `POST /3/details` -> `POST /3/book`
+  - `reservation.cancel` via `POST /3/cancel` with token fallback retry path
+  - supporting provider-specific `logout` helper via `POST /3/auth/logout` (non-canonical operation)
+- Provider contract research and payload schemas are maintained under `docs/provider-research/`.
 - CatchTable endpoint implementation references are sourced from read-only `third_party/catchtable` files (`reservation.py`, `session.py`, `configs.py`, `main.py`).
 
 ## Data model highlights

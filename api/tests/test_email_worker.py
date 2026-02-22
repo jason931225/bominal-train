@@ -102,3 +102,53 @@ async def test_deliver_email_job_accepts_unknown_theme_with_fallback(monkeypatch
     assert captured["subject"] == "Template Subject"
     assert "Template Preheader" in captured["text"]
     assert "Theme fallback body" in captured["html"]
+
+
+@pytest.mark.asyncio
+async def test_deliver_email_job_accepts_legacy_template_payload_without_render_fields(monkeypatch):
+    captured: dict[str, str] = {}
+
+    async def _fake_send(payload: EmailJobPayload):
+        captured["subject"] = payload.subject
+        captured["text"] = payload.text_body
+        captured["html"] = payload.html_body or ""
+        return EmailSendResult(status="sent", recipient=payload.to_email, provider="log")
+
+    monkeypatch.setattr(email_worker, "send_email", _fake_send)
+
+    payload = {
+        "to_email": "legacy-template@example.com",
+        "subject": "Verify your email for bominal",
+        "template_id": "onboarding_verify",
+        "metadata": {"kind": "onboarding_verify"},
+    }
+
+    result = await email_worker.deliver_email_job({"job_id": "legacy-template-job"}, payload)
+
+    assert result["status"] == "sent"
+    assert captured["subject"] == "Verify your email for bominal"
+    assert "Verify your email for bominal" in captured["text"]
+    assert "Verify your email for bominal" in captured["html"]
+
+
+@pytest.mark.asyncio
+async def test_deliver_email_job_accepts_legacy_raw_payload_without_text_body(monkeypatch):
+    captured: dict[str, str] = {}
+
+    async def _fake_send(payload: EmailJobPayload):
+        captured["subject"] = payload.subject
+        captured["text"] = payload.text_body
+        return EmailSendResult(status="sent", recipient=payload.to_email, provider="log")
+
+    monkeypatch.setattr(email_worker, "send_email", _fake_send)
+
+    payload = {
+        "to_email": "legacy-raw@example.com",
+        "subject": "Legacy subject only",
+    }
+
+    result = await email_worker.deliver_email_job({"job_id": "legacy-raw-job"}, payload)
+
+    assert result["status"] == "sent"
+    assert captured["subject"] == "Legacy subject only"
+    assert captured["text"] == "Legacy subject only"
