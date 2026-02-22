@@ -34,7 +34,9 @@ Deploy script guardrails:
 - Runs strict preflight checks before pull/deploy (env + compose + memory/swap threshold).
 - Enforces deprecation registry gate for production-scoped removals/deadlines.
 - Chooses bootstrap-safe first deploy path when no stack is running.
+- Uses image-aware rolling updates on running stacks (skip unchanged per-service image groups: api-gateway/api-train/api-restaurant/worker-train/worker-restaurant/web).
 - Auto rollback on smoke failure is enabled by default (`AUTO_ROLLBACK_ON_SMOKE_FAILURE=true`).
+- Logs tracked working-tree dirty state before deploy; set `DEPLOY_FAIL_ON_DIRTY_REPO=true` to hard-fail on dirty tracked files.
 
 Compatibility notice:
 - `infra/docker-compose.deploy.yml.deprecated` is deprecated and removed from active operator workflow.
@@ -60,6 +62,15 @@ Start stack (dev):
 
 ```bash
 docker compose -f infra/docker-compose.yml up --build
+```
+
+`infra/scripts/local-run.sh` and `infra/scripts/local-check.sh` now invoke compose with `--remove-orphans` to prevent stale-service warning drift when switching stacks.
+
+If you see orphan warnings after switching compose files (for example, legacy `bominal-caddy`), run one-time cleanup:
+
+```bash
+docker compose -p bominal -f infra/docker-compose.yml down --remove-orphans || true
+docker compose -p bominal -f infra/docker-compose.prod.yml down --remove-orphans || true
 ```
 
 Start stack (prod profile file):
@@ -219,7 +230,26 @@ bominal-admin db stats
 
 # Check encryption status
 bominal-admin secret check
+
+# Prepare a new primary KEK version (prints env payload)
+bominal-admin secret prepare-kek-rotation --new-version <N>
+
+# KEK rotation dry-run / execute
+bominal-admin secret rotate-kek --dry-run
+bominal-admin secret rotate-kek --yes
+
+# Continuous batch rewrap in background
+bominal-admin secret rotate-kek-background --yes --batch-size 200 --sleep-seconds 0.5
+
+# Retire an old KEK only after rewrap completion + retention window
+bominal-admin secret retire-kek --version <OLD> --rotation-completed-at <UTC_ISO8601> --yes
 ```
+
+Rapid successive KEK rotations:
+- Each deploy uses current `KEK_VERSION` as the write key for new wraps.
+- Keep all intermediate/old versions in `MASTER_KEYS_BY_VERSION` until the latest rewrap completes.
+- If a new rotation is introduced before prior rewrap completion, rerun `rotate-kek-background` after the newest deploy so all rows converge to the newest `KEK_VERSION`.
+- Do not retire any old version until `retire-kek` confirms zero references + retention window elapsed.
 
 DB checks:
 

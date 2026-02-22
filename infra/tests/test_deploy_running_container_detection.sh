@@ -130,6 +130,18 @@ if ! rg -q "up -d --wait --no-deps api-gateway api-train api-restaurant" "$UPDAT
   exit 1
 fi
 
+if ! rg -q "up -d --wait --no-deps worker-train worker-restaurant" "$UPDATE_CALLS"; then
+  echo "FAIL: rolling deploy did not use no-deps worker update step" >&2
+  cat "$UPDATE_CALLS" >&2
+  exit 1
+fi
+
+if ! rg -q "up -d --wait --no-deps web" "$UPDATE_CALLS"; then
+  echo "FAIL: rolling deploy did not roll web service when changed" >&2
+  cat "$UPDATE_CALLS" >&2
+  exit 1
+fi
+
 if rg -q "up -d --wait postgres redis api-gateway api-train api-restaurant worker-train worker-restaurant web caddy" "$UPDATE_CALLS"; then
   echo "FAIL: running-stack deploy unexpectedly used bootstrap path" >&2
   cat "$UPDATE_CALLS" >&2

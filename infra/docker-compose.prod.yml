@@ -68,7 +68,7 @@ services:
 
   api-gateway:
     # Pull pre-built image from Artifact Registry instead of building
-    image: ${API_IMAGE:-us-central1-docker.pkg.dev/${GCP_PROJECT_ID:-bominal}/bominal/api:latest}
+    image: ${API_GATEWAY_IMAGE:-us-central1-docker.pkg.dev/${GCP_PROJECT_ID:-bominal}/bominal/api-gateway:latest}
     container_name: bominal-api-gateway
     working_dir: /app
     command: >
@@ -103,7 +103,7 @@ services:
 
   api-train:
     # Pull pre-built image from Artifact Registry instead of building
-    image: ${API_IMAGE:-us-central1-docker.pkg.dev/${GCP_PROJECT_ID:-bominal}/bominal/api:latest}
+    image: ${API_TRAIN_IMAGE:-us-central1-docker.pkg.dev/${GCP_PROJECT_ID:-bominal}/bominal/api-train:latest}
     container_name: bominal-api-train
     working_dir: /app
     command: >
@@ -133,7 +133,7 @@ services:
 
   api-restaurant:
     # Pull pre-built image from Artifact Registry instead of building
-    image: ${API_IMAGE:-us-central1-docker.pkg.dev/${GCP_PROJECT_ID:-bominal}/bominal/api:latest}
+    image: ${API_RESTAURANT_IMAGE:-us-central1-docker.pkg.dev/${GCP_PROJECT_ID:-bominal}/bominal/api-restaurant:latest}
     container_name: bominal-api-restaurant
     working_dir: /app
     command: >
@@ -163,7 +163,7 @@ services:
 
   worker-train:
     # Pull pre-built image from Artifact Registry instead of building
-    image: ${API_IMAGE:-us-central1-docker.pkg.dev/${GCP_PROJECT_ID:-bominal}/bominal/api:latest}
+    image: ${WORKER_TRAIN_IMAGE:-us-central1-docker.pkg.dev/${GCP_PROJECT_ID:-bominal}/bominal/api-train:latest}
     container_name: bominal-worker-train
     working_dir: /app
     command: >
@@ -193,7 +193,7 @@ services:
 
   worker-restaurant:
     # Pull pre-built image from Artifact Registry instead of building
-    image: ${API_IMAGE:-us-central1-docker.pkg.dev/${GCP_PROJECT_ID:-bominal}/bominal/api:latest}
+    image: ${WORKER_RESTAURANT_IMAGE:-us-central1-docker.pkg.dev/${GCP_PROJECT_ID:-bominal}/bominal/api-restaurant:latest}
     container_name: bominal-worker-restaurant
     working_dir: /app
     command: >
