@@ -13,7 +13,10 @@ Bominal is a modular monorepo with three runtime tiers:
 Shared infrastructure:
 
 - **Postgres** for primary data storage
-- **Redis** for queueing + token-bucket rate limiting
+- **Redis** split by purpose:
+  - non-CDE Redis for queueing + token-bucket rate limiting (`REDIS_URL_NON_CDE` or fallback `REDIS_URL`)
+  - CDE Redis for encrypted CVV TTL cache (`REDIS_URL_CDE` or fallback `REDIS_URL`)
+  - CDE Redis endpoint must be non-durable and must not be Upstash-hosted
 - **Mailpit** in local dev (SMTP sink + inbox UI)
 
 Queue domain contracts:

@@ -27,6 +27,7 @@ bominal is a modular product foundation with:
 - If Supabase auth is enabled, API must verify JWT signature and claims against Supabase JWKS before mapping `sub` to local user role.
 - Payment card payloads are encrypted at rest with envelope encryption (AES-256-GCM DEK + KEK wrapping).
 - CVV may exist only in encrypted Redis cache with bounded TTL and must never be stored in Postgres.
+- CDE Redis for CVV cache (`REDIS_URL_CDE` or fallback `REDIS_URL`) must not be Upstash-hosted; Upstash is allowed only for non-CDE Redis (`REDIS_URL_NON_CDE`).
 - Provider payment egress must use allowlisted domains with TLS verification enabled.
 - Logs, queues, and artifacts must not contain raw cardholder data or raw provider payment payloads.
 

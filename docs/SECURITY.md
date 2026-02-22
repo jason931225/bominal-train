@@ -48,6 +48,10 @@ Used for:
 - Payment card persisted encrypted in `secrets`
 - CVV is not persisted to Postgres
 - CVV is cached temporarily in Redis (encrypted payload) with TTL (`PAYMENT_CVV_TTL_SECONDS`)
+- Redis routing is split by purpose:
+  - `REDIS_URL_NON_CDE`: queueing, rate limiting, non-sensitive cache
+  - `REDIS_URL_CDE`: CDE-only CVV cache
+  - `REDIS_URL_CDE` falls back to `REDIS_URL` when unset
 
 ## Logging and safe metadata
 
@@ -110,6 +114,7 @@ Violation of this section is CRITICAL.
   - `PAYMENT_CVV_TTL_MIN_SECONDS`
   - `PAYMENT_CVV_TTL_MAX_SECONDS`
 - TTL MUST be set on write and MUST NOT be extended indefinitely.
+- CDE Redis endpoint (`REDIS_URL_CDE` or fallback `REDIS_URL`) MUST NOT be Upstash-hosted.
 - Production Redis for CDE workloads MUST NOT persist CVV-bearing keys to disk (`AOF`/`RDB` disabled).
 - CVV-bearing keys MUST be excluded from backups.
 - CVV MUST NEVER appear in Postgres, queue payloads, artifacts, or logs.
