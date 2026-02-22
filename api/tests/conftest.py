@@ -68,11 +68,11 @@ async def client(db_session_factory):
 class MockRedisContextManager:
     """Async context manager wrapper for fakeredis in tests.
     
-    Used to mock get_redis_pool() which returns an async context manager.
+    Used to mock get_cde_redis_pool()/get_redis_pool() context manager helpers.
     
     Usage:
         fake_redis = fakeredis.aioredis.FakeRedis()
-        monkeypatch.setattr("app.services.wallet.get_redis_pool", 
+        monkeypatch.setattr("app.services.wallet.get_cde_redis_pool",
                             lambda: MockRedisContextManager(fake_redis))
     """
     def __init__(self, redis):
@@ -106,7 +106,7 @@ async def fake_redis_pool():
     
     Usage:
         fake_redis = fakeredis.aioredis.FakeRedis()
-        monkeypatch.setattr("app.services.wallet.get_redis_pool", 
+        monkeypatch.setattr("app.services.wallet.get_cde_redis_pool",
                             lambda: fake_redis_pool_wrapper(fake_redis))
     """
     redis = fakeredis.aioredis.FakeRedis()

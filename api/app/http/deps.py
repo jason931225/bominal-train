@@ -9,9 +9,11 @@ from sqlalchemy.orm import joinedload
 from app.core.config import get_settings
 from app.core.rate_limit import rate_limiter
 from app.core.security import hash_token
+from app.core.supabase_jwt import SupabaseJWTError, verify_supabase_jwt
 from app.db.models import Session, User
 from app.db.session import get_db
 from app.services.auth import request_ip, should_update_session_activity
+from app.services.identity import get_or_create_local_user_from_supabase_claims
 
 settings = get_settings()
 ACCESS_REVIEW_PENDING_DETAIL = "Application is under review"
@@ -23,6 +25,18 @@ def _unauthorized() -> HTTPException:
 
 def _forbidden(detail: str = "Insufficient permissions") -> HTTPException:
     return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
+
+
+def _extract_bearer_token(authorization_header: str | None) -> str | None:
+    if not authorization_header:
+        return None
+    parts = authorization_header.strip().split(None, 1)
+    if len(parts) != 2:
+        return None
+    if parts[0].lower() != "bearer":
+        return None
+    token = parts[1].strip()
+    return token or None
 
 
 async def auth_rate_limit(request: Request) -> None:
@@ -43,8 +57,15 @@ async def get_current_session(
     session_token: str | None = Cookie(default=None, alias=settings.session_cookie_name),
     db: AsyncSession = Depends(get_db),
 ) -> Session:
-    if not session_token:
+    auth_session = await _resolve_session_from_cookie(session_token=session_token, db=db)
+    if auth_session is None:
         raise _unauthorized()
+    return auth_session
+
+
+async def _resolve_session_from_cookie(*, session_token: str | None, db: AsyncSession) -> Session | None:
+    if not session_token:
+        return None
 
     now = datetime.now(timezone.utc)
     token_hash = hash_token(session_token)
@@ -58,9 +79,8 @@ async def get_current_session(
     )
     result = await db.execute(stmt)
     auth_session = result.scalar_one_or_none()
-
-    if not auth_session:
-        raise _unauthorized()
+    if auth_session is None:
+        return None
 
     if should_update_session_activity(
         last_seen_at=auth_session.last_seen_at,
@@ -73,7 +93,37 @@ async def get_current_session(
     return auth_session
 
 
-async def get_current_user(auth_session: Session = Depends(get_current_session)) -> User:
+async def _resolve_user_from_supabase_bearer(*, bearer_token: str, db: AsyncSession) -> User:
+    try:
+        claims = verify_supabase_jwt(bearer_token)
+    except SupabaseJWTError as exc:
+        raise _unauthorized() from exc
+
+    try:
+        return await get_or_create_local_user_from_supabase_claims(db, claims=claims)
+    except ValueError as exc:
+        raise _unauthorized() from exc
+
+
+async def get_current_user(
+    request: Request,
+    session_token: str | None = Cookie(default=None, alias=settings.session_cookie_name),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    auth_mode = settings.auth_mode
+    bearer_token = _extract_bearer_token(request.headers.get("authorization"))
+
+    if auth_mode == "supabase":
+        if not bearer_token:
+            raise _unauthorized()
+        return await _resolve_user_from_supabase_bearer(bearer_token=bearer_token, db=db)
+
+    if auth_mode == "dual" and bearer_token:
+        return await _resolve_user_from_supabase_bearer(bearer_token=bearer_token, db=db)
+
+    auth_session = await _resolve_session_from_cookie(session_token=session_token, db=db)
+    if auth_session is None:
+        raise _unauthorized()
     return auth_session.user
 
 
