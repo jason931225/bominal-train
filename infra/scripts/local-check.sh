@@ -22,6 +22,10 @@ command -v docker >/dev/null 2>&1 || { echo "Error: docker is required"; exit 1;
 command -v curl >/dev/null 2>&1 || { echo "Error: curl is required"; exit 1; }
 detect_compose_cmd
 
+APP_VERSION="$(resolve_dev_app_version "$REPO_ROOT")"
+BUILD_VERSION="$(resolve_dev_build_version "$REPO_ROOT")"
+export APP_VERSION BUILD_VERSION
+
 print_logs() {
   echo ""
   echo "=== Recent docker compose logs (api/worker/worker-restaurant/web/mailpit) ==="
@@ -47,6 +51,7 @@ if [[ ! -f "infra/env/dev/api.env" ]]; then
 fi
 
 echo "=== bominal local check ==="
+echo "→ Using APP_VERSION=$APP_VERSION BUILD_VERSION=$BUILD_VERSION"
 echo "→ Starting Docker Compose services..."
 "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --build
 

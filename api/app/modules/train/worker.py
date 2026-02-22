@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import random
 import time
 from dataclasses import dataclass
@@ -41,6 +42,37 @@ from app.services.wallet import get_payment_card_for_execution
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
+# Poll-delay model constants.
+#
+# We model provider-search retry delay with:
+#   1) a deterministic stretched-exponential mean curve mu(t)
+#   2) multiplicative mean-preserving gamma jitter G, where E[G] = 1
+#
+# Definitions:
+#   t  = seconds until departure/expiry
+#   t0 = 24h boundary (seconds)
+#   M  = TRAIN_POLL_MAX_SECONDS
+#   B  = mean target at t0 (24h), default 1.25s
+#
+# Mean curve:
+#   x = max(t - t0, 0)
+#   mu(t) = M - (M - B) * exp(-(x / tau)^p)
+#
+# Anchors used to solve p,tau in closed form:
+#   mu(48h)=1.5, mu(72h)=2.0
+#   (see fit_stretched_exp_params docstring for derivation)
+#
+# Final delay:
+#   raw = mu(t) * G, with G ~ Gamma(k, theta=1/k), k=4 -> E[G]=1
+#   delay = clamp(raw, Dmin, M)
+POLL_CURVE_T0_SECONDS = 24 * 60 * 60
+POLL_CURVE_T48_SECONDS = 48 * 60 * 60
+POLL_CURVE_T72_SECONDS = 72 * 60 * 60
+POLL_CURVE_BASELINE_MEAN_SECONDS = 1.25
+POLL_CURVE_ANCHOR_48H_MEAN_SECONDS = 1.5
+POLL_CURVE_ANCHOR_72H_MEAN_SECONDS = 2.0
+POLL_GAMMA_SHAPE = 4.0
+POLL_DELAY_MIN_SECONDS = 0.1
 
 
 @dataclass(slots=True)
@@ -211,10 +243,122 @@ def _is_non_payment_expiry_reserve_error(outcome: ProviderOutcome) -> bool:
     )
 
 
-def _poll_delay_seconds(search_attempt_count: int) -> float:
-    base = min(settings.train_poll_max_seconds, settings.train_poll_min_seconds * (2 ** min(search_attempt_count, 3)))
-    jitter = random.uniform(0.1, 0.9)
-    return max(settings.train_poll_min_seconds, min(settings.train_poll_max_seconds, base + jitter))
+def _seconds_until_next_departure(ranked: list[dict[str, Any]]) -> float | None:
+    now = _utc_now_aware()
+    deltas: list[float] = []
+    for row in ranked:
+        departure_at = str(row.get("departure_at") or "")
+        if not departure_at:
+            continue
+        try:
+            departure = _as_aware_utc(datetime.fromisoformat(departure_at))
+        except ValueError:
+            continue
+        deltas.append((departure - now).total_seconds())
+
+    if not deltas:
+        return None
+
+    future = [delta for delta in deltas if delta > 0]
+    if future:
+        return min(future)
+    return 0.0
+
+
+def fit_stretched_exp_params(max_interval: float, baseline_mean: float) -> tuple[float, float]:
+    """
+    Fit stretched-exponential parameters from fixed anchors.
+
+    Curve:
+        mu(t) = M - (M - B) * exp(-(x/tau)^p), x = max(t - t0, 0)
+
+    with:
+        mu(48h)=1.5, mu(72h)=2.0
+
+    Closed-form derivation used in code:
+        r_i = (M - mu_i)/(M - B)
+        y_i = -ln(r_i) = (x_i/tau)^p
+        p = ln(y_2 / y_1) / ln(x_2 / x_1)
+        tau = x_1 / y_1^(1/p)
+
+    Notes:
+    - No regression/optimization step is used; anchors determine p,tau exactly.
+    - This keeps behavior explainable, stable, and easy to validate in tests.
+    - We intentionally validate ordering/bounds before solving to fail fast if
+      constants or env overrides become inconsistent.
+    """
+    denominator = max_interval - baseline_mean
+    if denominator <= 0:
+        raise ValueError("max_interval must be greater than baseline_mean")
+
+    x1 = float(POLL_CURVE_T48_SECONDS - POLL_CURVE_T0_SECONDS)
+    x2 = float(POLL_CURVE_T72_SECONDS - POLL_CURVE_T0_SECONDS)
+    if x1 <= 0 or x2 <= x1:
+        raise ValueError("invalid anchor times for stretched exponential fitting")
+
+    r1 = (max_interval - POLL_CURVE_ANCHOR_48H_MEAN_SECONDS) / denominator
+    r2 = (max_interval - POLL_CURVE_ANCHOR_72H_MEAN_SECONDS) / denominator
+    if not (0.0 < r2 < r1 < 1.0):
+        raise ValueError("anchor means must satisfy baseline < mu(48h) < mu(72h) < max_interval")
+
+    y1 = -math.log(r1)
+    y2 = -math.log(r2)
+    if y1 <= 0 or y2 <= y1:
+        raise ValueError("invalid transformed anchor values for stretched exponential fitting")
+
+    p = math.log(y2 / y1) / math.log(x2 / x1)
+    tau = x1 / (y1 ** (1.0 / p))
+    return p, tau
+
+
+def _mean_poll_delay_seconds(seconds_until_departure: float, max_interval: float) -> float:
+    """
+    Deterministic mean delay mu(t) before stochastic jitter.
+
+    Behavior summary:
+    - For t <= 24h, x=0 so mu(t)=B (baseline target around 1.25s).
+    - As t grows, mu(t) increases smoothly toward M with stretched-exponential
+      curvature controlled by (p, tau).
+    - The result is bounded to [POLL_DELAY_MIN_SECONDS, M] for safety.
+    """
+    baseline = min(POLL_CURVE_BASELINE_MEAN_SECONDS, max_interval)
+    if max_interval <= baseline:
+        return max_interval
+
+    p, tau = fit_stretched_exp_params(max_interval, baseline)
+    x = max(seconds_until_departure - POLL_CURVE_T0_SECONDS, 0.0)
+    mean = max_interval - (max_interval - baseline) * math.exp(-((x / tau) ** p))
+    return max(POLL_DELAY_MIN_SECONDS, min(max_interval, mean))
+
+
+def _poll_delay_seconds(search_attempt_count: int, *, seconds_until_departure: float | None) -> float:
+    """
+    Compute provider-search retry delay.
+
+    This function intentionally combines:
+    1) deterministic mean curve: mu(t)
+    2) mean-preserving multiplicative gamma jitter:
+         raw = mu(t) * G,  G ~ Gamma(k, theta=1/k), k=4
+       so:
+         E[raw] = mu(t) * E[G] = mu(t)
+
+    Why multiplicative jitter:
+    - Preserves expected delay equal to mu(t) across all t.
+    - Maintains relative variability instead of fixed absolute jitter.
+    - Avoids piecewise scheduling while still providing stochastic spacing.
+    """
+    # search_attempt_count is intentionally retained for signature compatibility.
+    _ = search_attempt_count
+    max_interval = max(settings.train_poll_max_seconds, POLL_DELAY_MIN_SECONDS)
+    t = float(seconds_until_departure if seconds_until_departure is not None else POLL_CURVE_T0_SECONDS)
+
+    # Mean curve + mean-preserving gamma scaling:
+    # raw = mu(t) * G, where E[G]=1, so unclamped expectation tracks mu(t).
+    mean_delay = _mean_poll_delay_seconds(t, max_interval)
+    gamma_scale = 1.0 / POLL_GAMMA_SHAPE
+    gamma_multiplier = random.gammavariate(POLL_GAMMA_SHAPE, gamma_scale)
+    raw_delay = mean_delay * gamma_multiplier
+    return max(POLL_DELAY_MIN_SECONDS, min(max_interval, raw_delay))
 
 
 def _normalize_ranked_selection(spec_json: dict[str, Any]) -> list[dict[str, Any]]:
@@ -625,7 +769,7 @@ async def _provider_search_and_reserve(
                 ok=False,
                 retryable=True,
                 error_code="seat_unavailable",
-                error_message_safe="No selected trains currently available",
+                error_message_safe="No available seats in selected trains right now",
                 duration_ms=search_duration,
                 meta_json_safe={
                     "rate_limit_wait_ms": limit_result.waited_ms,
@@ -1165,6 +1309,7 @@ async def _run_train_task_inner(
         if not ranked:
             await _mark_failed(db, task)
             return
+        seconds_until_departure = _seconds_until_next_departure(ranked)
 
         providers = sorted({row["provider"] for row in ranked})
         if not providers:
@@ -1205,7 +1350,11 @@ async def _run_train_task_inner(
             if login_attempt is not None:
                 await _persist_attempts(db, task=task, attempts=[login_attempt])
                 if login_retryable and _utc_now_aware() < _as_aware_utc(task.deadline_at):
-                    await _schedule_retry(db, task, _poll_delay_seconds(search_attempt_count + 1))
+                    await _schedule_retry(
+                        db,
+                        task,
+                        _poll_delay_seconds(search_attempt_count + 1, seconds_until_departure=seconds_until_departure),
+                    )
                 else:
                     await _mark_failed(db, task)
                 return
@@ -1232,7 +1381,11 @@ async def _run_train_task_inner(
 
             if not pay_outcome.ok:
                 if pay_outcome.retryable and _utc_now_aware() < _as_aware_utc(task.deadline_at):
-                    await _schedule_retry(db, task, _poll_delay_seconds(search_attempt_count + 1))
+                    await _schedule_retry(
+                        db,
+                        task,
+                        _poll_delay_seconds(search_attempt_count + 1, seconds_until_departure=seconds_until_departure),
+                    )
                 else:
                     await _mark_failed(db, task)
                 return
@@ -1334,7 +1487,11 @@ async def _run_train_task_inner(
         if not candidates:
             retryable_any = any(result.retryable for result in provider_results)
             if retryable_any and _utc_now_aware() < _as_aware_utc(task.deadline_at):
-                await _schedule_retry(db, task, _poll_delay_seconds(search_attempt_count + 1))
+                await _schedule_retry(
+                    db,
+                    task,
+                    _poll_delay_seconds(search_attempt_count + 1, seconds_until_departure=seconds_until_departure),
+                )
             else:
                 await _mark_failed(db, task)
             return
@@ -1383,7 +1540,11 @@ async def _run_train_task_inner(
             if cancel_outcome.error_code == "not_supported":
                 continue
             if cancel_outcome.retryable and _utc_now_aware() < _as_aware_utc(task.deadline_at):
-                await _schedule_retry(db, task, _poll_delay_seconds(search_attempt_count + 1))
+                await _schedule_retry(
+                    db,
+                    task,
+                    _poll_delay_seconds(search_attempt_count + 1, seconds_until_departure=seconds_until_departure),
+                )
             else:
                 await _mark_failed(db, task)
             return
@@ -1409,7 +1570,11 @@ async def _run_train_task_inner(
 
         if not pay_outcome.ok:
             if pay_outcome.retryable and _utc_now_aware() < _as_aware_utc(task.deadline_at):
-                await _schedule_retry(db, task, _poll_delay_seconds(search_attempt_count + 1))
+                await _schedule_retry(
+                    db,
+                    task,
+                    _poll_delay_seconds(search_attempt_count + 1, seconds_until_departure=seconds_until_departure),
+                )
             else:
                 await _mark_failed(db, task)
             return

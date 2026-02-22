@@ -2,19 +2,23 @@ from __future__ import annotations
 
 import asyncio
 import json
+import random
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 import fakeredis.aioredis
 import pytest
 from fastapi import HTTPException
+from pydantic import ValidationError
 from sqlalchemy import select
 
+import app.modules.train.worker as train_worker
 from app.db.models import Artifact, Task, TaskAttempt, User
 from app.modules.train.providers.base import ProviderOutcome, ProviderSchedule
 from app.modules.train.providers.ktx_client import parse_ktx_search_response
 from app.modules.train.providers.srt_client import parse_srt_search_response
 from app.modules.train.rate_limiter import RedisTokenBucketLimiter
+from app.modules.train.schemas import TrainPassengers
 from app.modules.train.service import get_task_detail, list_tasks, retry_task_now
 from app.modules.train.schemas import ProviderCredentialStatus
 from app.modules.train.worker import run_train_task
@@ -23,6 +27,55 @@ from tests.conftest import make_fake_get_redis_client
 
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def test_train_passengers_allows_children_only() -> None:
+    passengers = TrainPassengers(adults=0, children=1)
+    assert passengers.adults == 0
+    assert passengers.children == 1
+
+
+def test_train_passengers_requires_at_least_one_total() -> None:
+    with pytest.raises(ValidationError):
+        TrainPassengers(adults=0, children=0)
+
+
+def test_poll_delay_seconds_mean_curve_hits_anchor_targets() -> None:
+    max_interval = float(train_worker.settings.train_poll_max_seconds)
+    assert train_worker._mean_poll_delay_seconds(24 * 60 * 60, max_interval) == pytest.approx(1.25, abs=1e-6)
+    assert train_worker._mean_poll_delay_seconds(48 * 60 * 60, max_interval) == pytest.approx(1.5, abs=1e-6)
+    assert train_worker._mean_poll_delay_seconds(72 * 60 * 60, max_interval) == pytest.approx(2.0, abs=1e-6)
+
+
+def test_poll_delay_seconds_gamma_sampling_preserves_mean_for_unclamped_regime(monkeypatch) -> None:
+    # Use a deterministic RNG stream for reproducibility.
+    seeded_rng = random.Random(20260222)
+    monkeypatch.setattr(train_worker.random, "gammavariate", seeded_rng.gammavariate)
+
+    t = 48 * 60 * 60
+    max_interval = float(train_worker.settings.train_poll_max_seconds)
+    target_mean = train_worker._mean_poll_delay_seconds(t, max_interval)
+
+    samples = [train_worker._poll_delay_seconds(1, seconds_until_departure=t) for _ in range(20_000)]
+    sample_mean = sum(samples) / len(samples)
+
+    # At 48h and current defaults, clamp interactions are minimal; mean should stay close.
+    assert sample_mean == pytest.approx(target_mean, abs=0.03)
+
+
+def test_poll_delay_seconds_is_clamped_to_valid_bounds(monkeypatch) -> None:
+    seeded_rng = random.Random(7)
+    monkeypatch.setattr(train_worker.random, "gammavariate", seeded_rng.gammavariate)
+
+    max_interval = float(train_worker.settings.train_poll_max_seconds)
+    min_interval = float(train_worker.POLL_DELAY_MIN_SECONDS)
+    all_samples: list[float] = []
+
+    for t in (0, 24 * 60 * 60, 48 * 60 * 60, 72 * 60 * 60, 14 * 24 * 60 * 60):
+        all_samples.extend(train_worker._poll_delay_seconds(1, seconds_until_departure=t) for _ in range(2_000))
+
+    assert min(all_samples) >= min_interval
+    assert max(all_samples) <= max_interval
 
 
 async def _register_and_login(client, db_session, *, email: str = "train-user@example.com") -> str:
@@ -219,6 +272,77 @@ async def test_train_search_returns_provider_errors_when_all_fail(client, db_ses
     )
     assert response.status_code == 502
     assert "All provider searches failed" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_train_search_returns_partial_provider_errors_with_200(client, db_session, monkeypatch):
+    fake_redis = fakeredis.aioredis.FakeRedis()
+
+    class MixedProvider:
+        def __init__(self, provider_name: str):
+            self.provider_name = provider_name
+
+        async def login(self, **kwargs):
+            return ProviderOutcome(ok=True)
+
+        async def search(self, **kwargs):
+            if self.provider_name == "SRT":
+                return ProviderOutcome(
+                    ok=False,
+                    retryable=True,
+                    error_code="provider_unreachable",
+                    error_message_safe="temporary provider error",
+                )
+            return ProviderOutcome(ok=True, data={"schedules": []})
+
+        async def reserve(self, **kwargs):
+            return ProviderOutcome(ok=False)
+
+        async def pay(self, **kwargs):
+            return ProviderOutcome(ok=False)
+
+        async def cancel(self, **kwargs):
+            return ProviderOutcome(ok=False)
+
+    monkeypatch.setattr("app.modules.train.service.get_redis_client", make_fake_get_redis_client(fake_redis))
+    monkeypatch.setattr(
+        "app.modules.train.service.get_provider_client",
+        lambda provider: MixedProvider(provider),
+    )
+
+    cookie = await _register_and_login(client, db_session, email="search-partial-fail@example.com")
+    srt_credentials_res = await client.post(
+        "/api/train/credentials/srt",
+        cookies={"bominal_session": cookie},
+        json={"username": "srt-user", "password": "srt-pass"},
+    )
+    assert srt_credentials_res.status_code == 200
+
+    ktx_credentials_res = await client.post(
+        "/api/train/credentials/ktx",
+        cookies={"bominal_session": cookie},
+        json={"username": "ktx-user", "password": "ktx-pass"},
+    )
+    assert ktx_credentials_res.status_code == 200
+
+    response = await client.post(
+        "/api/train/search",
+        cookies={"bominal_session": cookie},
+        json={
+            "providers": ["SRT", "KTX"],
+            "dep": "수서",
+            "arr": "마산",
+            "date": _utc_now().date().isoformat(),
+            "time_window": {"start": "06:00", "end": "12:00"},
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["schedules"] == []
+    assert body["provider_errors"]["SRT"]["error_code"] == "provider_unreachable"
+    assert body["provider_errors"]["SRT"]["error_message"] == "temporary provider error"
+    assert "KTX" not in body["provider_errors"]
 
 
 @pytest.mark.asyncio
@@ -1165,13 +1289,21 @@ async def test_list_tasks_refreshes_completed_ticket_status_on_page_load(client,
     )
     await db_session.commit()
 
-    response = await client.get(
+    completed_response = await client.get(
         "/api/train/tasks?status=completed&refresh_completed=true",
         cookies={"bominal_session": cookie},
     )
-    assert response.status_code == 200
-    rows = response.json()["tasks"]
-    task_row = next(row for row in rows if row["id"] == str(task.id))
+    assert completed_response.status_code == 200
+    completed_rows = completed_response.json()["tasks"]
+    assert all(row["id"] != str(task.id) for row in completed_rows)
+
+    active_response = await client.get(
+        "/api/train/tasks?status=active",
+        cookies={"bominal_session": cookie},
+    )
+    assert active_response.status_code == 200
+    active_rows = active_response.json()["tasks"]
+    task_row = next(row for row in active_rows if row["id"] == str(task.id))
     assert task_row["ticket_status"] == "awaiting_payment"
     assert task_row["ticket_paid"] is False
     assert task_row["ticket_reservation_id"] == "PNR-LIST-1"
@@ -2363,6 +2495,130 @@ async def test_task_list_latest_ticket_tie_breaks_with_descending_id(db_session)
 
 
 @pytest.mark.asyncio
+async def test_task_list_classifies_completed_awaiting_payment_as_active(db_session):
+    user = User(
+        email="awaiting-payment-active@example.com",
+        password_hash="x",
+        display_name="Awaiting Payment Active User",
+        role_id=2,
+    )
+    db_session.add(user)
+    await db_session.flush()
+
+    pending_task = Task(
+        user_id=user.id,
+        module="train",
+        state="COMPLETED",
+        deadline_at=_utc_now() + timedelta(minutes=20),
+        completed_at=_utc_now(),
+        spec_json={"provider": "SRT"},
+        idempotency_key="awaiting-payment-active",
+    )
+    paid_task = Task(
+        user_id=user.id,
+        module="train",
+        state="COMPLETED",
+        deadline_at=_utc_now() + timedelta(minutes=20),
+        completed_at=_utc_now(),
+        spec_json={"provider": "SRT"},
+        idempotency_key="awaiting-payment-paid",
+    )
+    db_session.add_all([pending_task, paid_task])
+    await db_session.flush()
+
+    db_session.add_all(
+        [
+            Artifact(
+                task_id=pending_task.id,
+                module="train",
+                kind="ticket",
+                data_json_safe={
+                    "status": "awaiting_payment",
+                    "paid": False,
+                    "reservation_id": "PENDING-RES-1",
+                },
+            ),
+            Artifact(
+                task_id=paid_task.id,
+                module="train",
+                kind="ticket",
+                data_json_safe={
+                    "status": "paid",
+                    "paid": True,
+                    "reservation_id": "PAID-RES-1",
+                },
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    active_response = await list_tasks(db_session, user=user, status_filter="active")
+    active_ids = {item.id for item in active_response.tasks}
+    assert pending_task.id in active_ids
+    assert paid_task.id not in active_ids
+
+    completed_response = await list_tasks(db_session, user=user, status_filter="completed")
+    completed_ids = {item.id for item in completed_response.tasks}
+    assert pending_task.id not in completed_ids
+    assert paid_task.id in completed_ids
+
+
+@pytest.mark.asyncio
+async def test_active_task_list_refreshes_awaiting_payment_ticket_status(db_session, monkeypatch):
+    fake_redis = fakeredis.aioredis.FakeRedis()
+    monkeypatch.setattr("app.modules.train.service.get_redis_client", make_fake_get_redis_client(fake_redis))
+
+    user = User(
+        email="awaiting-payment-refresh@example.com",
+        password_hash="x",
+        display_name="Awaiting Payment Refresh User",
+        role_id=2,
+    )
+    db_session.add(user)
+    await db_session.flush()
+
+    task = Task(
+        user_id=user.id,
+        module="train",
+        state="COMPLETED",
+        deadline_at=_utc_now() + timedelta(minutes=30),
+        completed_at=_utc_now(),
+        spec_json={"provider": "SRT"},
+        idempotency_key="awaiting-payment-refresh",
+    )
+    db_session.add(task)
+    await db_session.flush()
+
+    db_session.add(
+        Artifact(
+            task_id=task.id,
+            module="train",
+            kind="ticket",
+            data_json_safe={
+                "provider": "SRT",
+                "reservation_id": "REFRESH-RES-1",
+                "status": "awaiting_payment",
+                "paid": False,
+            },
+        )
+    )
+    await db_session.commit()
+
+    refresh_calls = 0
+
+    async def _fake_refresh(db, *, user, artifact, limiter, force=False, client_cache=None):
+        nonlocal refresh_calls
+        refresh_calls += 1
+        return False
+
+    monkeypatch.setattr("app.modules.train.service._refresh_ticket_artifact_status", _fake_refresh)
+
+    response = await list_tasks(db_session, user=user, status_filter="active")
+    assert any(item.id == task.id for item in response.tasks)
+    assert refresh_calls >= 1
+
+
+@pytest.mark.asyncio
 async def test_task_list_limit_bounds_results(db_session):
     user = User(
         email="task-limit@example.com",
@@ -2606,6 +2862,34 @@ def test_parse_srt_search_response_from_srtgo_shape():
     assert schedules[0].provider == "SRT"
     assert schedules[0].availability["general"] is True
     assert schedules[0].departure_at.utcoffset() == timedelta(hours=9)
+
+
+def test_parse_srt_search_response_accepts_numeric_train_code():
+    raw = {
+        "outDataSets": {
+            "dsOutput0": [{"strResult": "SUCC", "msgTxt": "ok"}],
+            "dsOutput1": [
+                {
+                    "stlbTrnClsfCd": 17,
+                    "trnNo": "301",
+                    "dptDt": "20260203",
+                    "dptTm": "103000",
+                    "arvDt": "20260203",
+                    "arvTm": "123500",
+                    "gnrmRsvPsbStr": "예약가능",
+                    "sprmRsvPsbStr": "매진",
+                    "rsvWaitPsbCd": "9",
+                    "rsvWaitPsbCdNm": "가능",
+                }
+            ],
+        }
+    }
+
+    outcome = parse_srt_search_response(json.dumps(raw), dep="수서", arr="부산")
+    assert outcome.ok is True
+    schedules = outcome.data["schedules"]
+    assert len(schedules) == 1
+    assert schedules[0].provider == "SRT"
 
 
 def test_parse_ktx_search_response_from_srtgo_shape():
