@@ -48,7 +48,7 @@ fi
 
 if [[ "${1:-}" == "compose" ]]; then
   if [[ "$*" == *"ps --services --filter status=running"* ]]; then
-    printf 'api\nweb\n'
+    printf 'api-gateway\nweb\n'
     exit 0
   fi
   exit 0

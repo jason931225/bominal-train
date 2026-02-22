@@ -23,7 +23,7 @@ git submodule update --init --recursive
 If you prefer containerized local simulation, use:
 
 ```bash
-docker compose -f infra/docker compose.yml up --build
+docker compose -f infra/docker-compose.yml up --build
 ```
 
 ## Development conventions
@@ -34,6 +34,7 @@ docker compose -f infra/docker compose.yml up --build
 - Do not edit `third_party/srtgo` or `third_party/catchtable` (read-only references).
 - Keep API handlers thin; move orchestration/business logic into service/worker layers.
 - Favor additive migrations and backward-safe schema evolution.
+- For restaurant/train provider onboarding, follow `docs/playbooks/restaurant-provider-adapter-workflow.md` and update `docs/provider-research/*` first.
 
 ## 2) Frontend (Next.js + TS + Tailwind)
 
