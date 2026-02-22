@@ -25,9 +25,9 @@ settings = get_settings()
 # Argon2id with conservative interactive defaults per OWASP guidelines.
 # time_cost=3, memory_cost=64MB provides good security/performance balance.
 password_hasher = PasswordHasher(
-    time_cost=3,
-    memory_cost=65536,
-    parallelism=4,
+    time_cost=settings.password_hash_time_cost,
+    memory_cost=settings.password_hash_memory_cost_kib,
+    parallelism=settings.password_hash_parallelism,
     hash_len=32,
     salt_len=16,
 )

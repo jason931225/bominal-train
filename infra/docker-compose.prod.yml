@@ -32,19 +32,19 @@ services:
       retries: 10
     restart: unless-stopped
 
-  api:
+  api-gateway:
     # Pull pre-built image from Artifact Registry instead of building
     image: ${API_IMAGE:-us-central1-docker.pkg.dev/${GCP_PROJECT_ID:-bominal}/bominal/api:latest}
-    container_name: bominal-api
+    container_name: bominal-api-gateway
     working_dir: /app
     command: >
-      sh -c "python scripts/check_duplicate_display_names.py && alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+      sh -c "python scripts/check_duplicate_display_names.py && alembic upgrade head && uvicorn app.main_gateway:app --host 0.0.0.0 --port 8000"
     env_file:
       - ./env/prod/api.env
     deploy:
       resources:
         limits:
-          memory: 256M
+          memory: 224M
     healthcheck:
       # NOTE: use explicit IPv4 loopback instead of `localhost` to avoid
       # slow/blocked IPv6 resolution in minimal base images (can cause Docker
@@ -63,10 +63,62 @@ services:
       - "127.0.0.1:8000:8000"
     restart: unless-stopped
 
-  worker:
+  api-train:
     # Pull pre-built image from Artifact Registry instead of building
     image: ${API_IMAGE:-us-central1-docker.pkg.dev/${GCP_PROJECT_ID:-bominal}/bominal/api:latest}
-    container_name: bominal-worker
+    container_name: bominal-api-train
+    working_dir: /app
+    command: >
+      sh -c "uvicorn app.main_train:app --host 0.0.0.0 --port 8000"
+    env_file:
+      - ./env/prod/api.env
+    deploy:
+      resources:
+        limits:
+          memory: 160M
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)\""]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  api-restaurant:
+    # Pull pre-built image from Artifact Registry instead of building
+    image: ${API_IMAGE:-us-central1-docker.pkg.dev/${GCP_PROJECT_ID:-bominal}/bominal/api:latest}
+    container_name: bominal-api-restaurant
+    working_dir: /app
+    command: >
+      sh -c "uvicorn app.main_restaurant:app --host 0.0.0.0 --port 8000"
+    env_file:
+      - ./env/prod/api.env
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)\""]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  worker-train:
+    # Pull pre-built image from Artifact Registry instead of building
+    image: ${API_IMAGE:-us-central1-docker.pkg.dev/${GCP_PROJECT_ID:-bominal}/bominal/api:latest}
+    container_name: bominal-worker-train
     working_dir: /app
     command: >
       sh -c "arq app.worker_train.WorkerTrainSettings"
@@ -132,7 +184,7 @@ services:
       retries: 5
       start_period: 60s
     depends_on:
-      api:
+      api-gateway:
         condition: service_healthy
     ports:
       - "127.0.0.1:3000:3000"
@@ -142,7 +194,7 @@ services:
     image: caddy:2.9-alpine
     container_name: bominal-caddy
     depends_on:
-      api:
+      api-gateway:
         condition: service_healthy
       web:
         condition: service_healthy

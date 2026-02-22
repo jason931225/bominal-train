@@ -20,7 +20,7 @@ fi
 if [[ "${1:-}" == "compose" ]]; then
   if [[ "$*" == *" ps"* ]]; then
     sleep "${DOCKER_STUB_SLEEP_SECONDS:-0}"
-    echo "api"
+    echo "api-gateway"
     exit 0
   fi
   exit 0

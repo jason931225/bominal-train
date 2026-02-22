@@ -50,8 +50,8 @@ sudo -u bominal /opt/bominal/repo/infra/scripts/quick-restart.sh
 Check VM stack:
 
 ```bash
-docker compose -f infra/docker compose.prod.yml ps
-docker compose -f infra/docker compose.prod.yml logs -f caddy api worker worker-restaurant web
+docker compose -f infra/docker-compose.prod.yml ps
+docker compose -f infra/docker-compose.prod.yml logs -f caddy api-gateway api-train api-restaurant worker-train worker-restaurant web
 ```
 
 ### Docker (local simulation)
@@ -59,25 +59,25 @@ docker compose -f infra/docker compose.prod.yml logs -f caddy api worker worker-
 Start stack (dev):
 
 ```bash
-docker compose -f infra/docker compose.yml up --build
+docker compose -f infra/docker-compose.yml up --build
 ```
 
 Start stack (prod profile file):
 
 ```bash
-docker compose -f infra/docker compose.prod.yml up -d --build
+docker compose -f infra/docker-compose.prod.yml up -d --build
 ```
 
 Stop stack:
 
 ```bash
-docker compose -f infra/docker compose.yml down
+docker compose -f infra/docker-compose.yml down
 ```
 
 Hard reset (destroys local DB volume):
 
 ```bash
-docker compose -f infra/docker compose.yml down -v
+docker compose -f infra/docker-compose.yml down -v
 ```
 
 ## Observability quick checks
@@ -99,15 +99,15 @@ curl -sS https://localhost/health -k
 Container status/logs:
 
 ```bash
-docker compose -f infra/docker compose.yml ps
-docker compose -f infra/docker compose.yml logs -f api worker worker-restaurant web
+docker compose -f infra/docker-compose.yml ps
+docker compose -f infra/docker-compose.yml logs -f api-gateway api-train api-restaurant worker-train worker-restaurant web
 ```
 
 Production status/logs:
 
 ```bash
-docker compose -f infra/docker compose.prod.yml ps
-docker compose -f infra/docker compose.prod.yml logs -f caddy api worker worker-restaurant web
+docker compose -f infra/docker-compose.prod.yml ps
+docker compose -f infra/docker-compose.prod.yml logs -f caddy api-gateway api-train api-restaurant worker-train worker-restaurant web
 ```
 
 Security checks for payment/CDE runtime:
@@ -144,7 +144,7 @@ infra/scripts/benchmark-train-task-list.sh \
 If running from a containerized shell where API is on the compose network:
 
 ```bash
-infra/scripts/benchmark-train-task-list.sh --base-url http://api:8000
+infra/scripts/benchmark-train-task-list.sh --base-url http://api-gateway:8000
 ```
 
 Hybrid benchmark gate check (relative improvement + absolute SLO ceilings):
@@ -195,13 +195,13 @@ bominal-admin secret check
 DB checks:
 
 ```bash
-docker compose -f infra/docker compose.yml exec postgres \
+docker compose -f infra/docker-compose.yml exec postgres \
   psql -U bominal -d bominal \
   -c "select id, state, created_at, completed_at from tasks order by created_at desc limit 20;"
 ```
 
 ```bash
-docker compose -f infra/docker compose.yml exec postgres \
+docker compose -f infra/docker-compose.yml exec postgres \
   psql -U bominal -d bominal \
   -c "select task_id, action, provider, ok, retryable, started_at from task_attempts order by started_at desc limit 30;"
 ```
@@ -230,8 +230,8 @@ Notes:
 
 Checklist:
 
-1. `docker compose -f infra/docker compose.prod.yml ps`
-2. `docker compose -f infra/docker compose.prod.yml logs --tail=200 caddy api worker worker-restaurant web`
+1. `docker compose -f infra/docker-compose.prod.yml ps`
+2. `docker compose -f infra/docker-compose.prod.yml logs --tail=200 caddy api-gateway api-train api-restaurant worker-train worker-restaurant web`
 3. Verify env files exist:
    - `infra/env/prod/postgres.env`
    - `infra/env/prod/api.env`
@@ -261,7 +261,7 @@ sudo -u bominal /opt/bominal/repo/infra/scripts/quick-restart.sh
 This starts containers in the correct order using existing images. For a specific service only:
 
 ```bash
-sudo -u bominal /opt/bominal/repo/infra/scripts/quick-restart.sh api
+sudo -u bominal /opt/bominal/repo/infra/scripts/quick-restart.sh api-gateway
 ```
 
 Verify after restart:
@@ -318,7 +318,7 @@ Cause: stale/corrupt Next build cache.
 Fix:
 
 ```bash
-docker compose -f infra/docker compose.yml exec web sh -lc "cd /app && rm -rf .next && npm run dev -- -H 0.0.0.0 -p 3000"
+docker compose -f infra/docker-compose.yml exec web sh -lc "cd /app && rm -rf .next && npm run dev -- -H 0.0.0.0 -p 3000"
 ```
 
 If still broken, restart web container.
@@ -335,7 +335,7 @@ Checklist:
 Recovery:
 
 ```bash
-docker compose -f infra/docker compose.yml restart worker
+docker compose -f infra/docker-compose.yml restart worker-train
 ```
 
 Worker startup automatically re-enqueues recoverable tasks from DB.
@@ -383,19 +383,19 @@ Bominal behavior:
 Check current revision:
 
 ```bash
-docker compose -f infra/docker compose.yml exec api alembic current
+docker compose -f infra/docker-compose.yml exec api-gateway alembic current
 ```
 
 Bring to head:
 
 ```bash
-docker compose -f infra/docker compose.yml exec api alembic upgrade head
+docker compose -f infra/docker-compose.yml exec api-gateway alembic upgrade head
 ```
 
 If stack already running after pulling migrations:
 
 ```bash
-docker compose -f infra/docker compose.yml restart api worker worker-restaurant
+docker compose -f infra/docker-compose.yml restart api-gateway api-train api-restaurant worker-train worker-restaurant
 ```
 
 ## 6) API crash loop on startup (ImportError)
@@ -407,8 +407,8 @@ Checklist:
 1. Inspect API logs:
 
 ```bash
-docker compose -f infra/docker compose.prod.yml logs --tail=200 api
-# Or: sudo -u bominal docker logs --tail=200 bominal-api
+docker compose -f infra/docker-compose.prod.yml logs --tail=200 api-gateway
+# Or: sudo -u bominal docker logs --tail=200 bominal-api-gateway
 ```
 
 2. If you see an import error like:
@@ -473,7 +473,7 @@ Recovery:
 3. Restart worker domains after config changes:
 
 ```bash
-docker compose -f infra/docker compose.yml restart worker worker-restaurant
+docker compose -f infra/docker-compose.yml restart worker-train worker-restaurant
 ```
 
 ## Task/ticket lifecycle support playbook
