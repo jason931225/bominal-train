@@ -158,7 +158,7 @@ async def on_shutdown(ctx: dict) -> None:
 
 class WorkerSettings:
     functions = [run_train_task, deliver_email_job]
-    redis_settings = RedisSettings.from_dsn(settings.redis_url)
+    redis_settings = RedisSettings.from_dsn(settings.resolved_redis_url_non_cde)
     queue_name = TRAIN_QUEUE_NAME
     on_startup = on_startup
     on_shutdown = on_shutdown
