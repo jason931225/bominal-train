@@ -243,6 +243,7 @@ class ProviderReservationOut(BaseModel):
     provider: TrainProvider
     paid: bool
     waiting: bool = False
+    expired: bool = False
     running: bool | None = None
     train_no: str | None = None
     train_code: str | None = None

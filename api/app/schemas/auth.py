@@ -41,6 +41,8 @@ class UserOut(BaseModel):
     billing_postal_code: str | None
     birthday: date | None
     role: str
+    access_status: Literal["pending", "approved", "rejected"]
+    access_reviewed_at: datetime | None
     created_at: datetime
 
 

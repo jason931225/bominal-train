@@ -4,12 +4,16 @@ on:
   push:
     branches: [main]
     paths:
+      - "api/**"
+      - "web/**"
       - "infra/**"
       - "docs/**"
       - "AGENTS.md"
       - ".github/workflows/infra-tests.yml"
   pull_request:
     paths:
+      - "api/**"
+      - "web/**"
       - "infra/**"
       - "docs/**"
       - "AGENTS.md"
@@ -23,14 +27,30 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: web/package-lock.json
+
       - name: Run infra tests
         run: |
           python3 -m unittest discover -s infra/tests -p 'test_*.py'
+
+      - name: Install web test dependencies
+        run: |
+          npm ci --prefix web
+
+      - name: Run web unit tests
+        run: |
+          npm run --prefix web test:ci
 
       - name: Validate docs pointer library
         run: |
@@ -51,6 +71,10 @@ jobs:
       - name: Validate train task list benchmark script
         run: |
           bash infra/tests/test_benchmark_train_task_list.sh
+
+      - name: Validate train task list benchmark compare scripts
+        run: |
+          bash infra/tests/test_benchmark_train_task_list_compare.sh
 
       - name: Validate local DB reset script
         run: |
@@ -79,3 +103,7 @@ jobs:
       - name: Validate sensitive log scanner
         run: |
           bash infra/tests/test_sensitive_log_scan.sh
+
+      - name: Validate semantic version mapping
+        run: |
+          bash infra/tests/test_versioning.sh

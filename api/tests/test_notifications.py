@@ -3,14 +3,20 @@ from __future__ import annotations
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import select
 
+from app.db.models import User
 
-async def _register_and_login(client, *, email: str) -> str:
+async def _register_and_login(client, db_session, *, email: str) -> str:
     register = await client.post(
         "/api/auth/register",
         json={"email": email, "password": "SuperSecret123", "display_name": "Notify User"},
     )
     assert register.status_code == 201
+
+    user = (await db_session.execute(select(User).where(User.email == email))).scalar_one()
+    user.access_status = "approved"
+    await db_session.commit()
 
     login = await client.post(
         "/api/auth/login",
@@ -29,8 +35,8 @@ async def test_email_status_requires_auth(client):
 
 
 @pytest.mark.asyncio
-async def test_send_test_email_queues_job(client, monkeypatch):
-    cookie = await _register_and_login(client, email=f"notify-{uuid4().hex[:8]}@example.com")
+async def test_send_test_email_queues_job(client, db_session, monkeypatch):
+    cookie = await _register_and_login(client, db_session, email=f"notify-{uuid4().hex[:8]}@example.com")
 
     captured: dict[str, object] = {}
 
@@ -62,8 +68,8 @@ async def test_send_test_email_queues_job(client, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_send_test_email_returns_503_when_disabled(client, monkeypatch):
-    cookie = await _register_and_login(client, email=f"notify-disabled-{uuid4().hex[:8]}@example.com")
+async def test_send_test_email_returns_503_when_disabled(client, db_session, monkeypatch):
+    cookie = await _register_and_login(client, db_session, email=f"notify-disabled-{uuid4().hex[:8]}@example.com")
 
     monkeypatch.setattr("app.http.routes.notifications.settings.email_provider", "disabled")
 

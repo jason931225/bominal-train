@@ -13,6 +13,8 @@ export type BominalUser = {
   billing_postal_code: string | null;
   birthday: string | null;
   role: "admin" | "user" | string;
+  access_status: "pending" | "approved" | "rejected" | string;
+  access_reviewed_at: string | null;
   created_at: string;
 };
 

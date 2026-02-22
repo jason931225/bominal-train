@@ -1,7 +1,10 @@
 export const ROUTES = {
+  applicationReview: "/application-review",
   dashboard: "/dashboard",
   login: "/login",
   register: "/register",
+  forgotPassword: "/forgot-password",
+  resetPassword: "/reset-password",
 
   modules: {
     train: "/modules/train",
