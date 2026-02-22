@@ -28,12 +28,12 @@ export APP_VERSION BUILD_VERSION
 
 print_logs() {
   echo ""
-  echo "=== Recent docker compose logs (api/worker/worker-restaurant/web/mailpit) ==="
-  "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" logs --tail=200 api worker worker-restaurant web mailpit 2>/dev/null || true
+  echo "=== Recent docker compose logs (api-gateway/api-train/api-restaurant/worker-train/worker-restaurant/web/mailpit) ==="
+  "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" logs --tail=200 api-gateway api-train api-restaurant worker-train worker-restaurant web mailpit 2>/dev/null || true
   echo ""
   echo "Hint: run:"
   echo "  ${COMPOSE_CMD[*]} -f $COMPOSE_FILE ps"
-  echo "  ${COMPOSE_CMD[*]} -f $COMPOSE_FILE logs -f api worker worker-restaurant web mailpit"
+  echo "  ${COMPOSE_CMD[*]} -f $COMPOSE_FILE logs -f api-gateway api-train api-restaurant worker-train worker-restaurant web mailpit"
 }
 
 cleanup() {
@@ -108,8 +108,8 @@ if [[ "$mailpit_code" != "200" && "$mailpit_code" != "302" && "$mailpit_code" !=
   exit 1
 fi
 
-echo "→ Running backend tests (api: pytest -q)..."
-if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" exec -T api pytest -q; then
+echo "→ Running backend tests (api-gateway: pytest -q)..."
+if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" exec -T api-gateway pytest -q; then
   echo "  FAILED: backend tests"
   print_logs
   exit 1
