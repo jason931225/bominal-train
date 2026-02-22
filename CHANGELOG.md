@@ -13,6 +13,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+- [eb417fe] Added active PCI runtime policy codification and redaction/envelope hardening plan documents with canonical pointer registration (`docs/plans/active/2026-02-22-pci-runtime-policy-codification.md`, `docs/plans/2026-02-22-redaction-envelope-hardening.md`, `docs/plans/active/README.md`, `docs/README.md`).
 - [ca58f68] Added SRT provider regression coverage for login-failure JSON signals, unpaid-cutoff expiry detection, old-PNR ticket parsing, standby wait-code routing, reserve-info no-data mapping, and expired-status manual-pay rejection (`api/tests/test_train_provider_crud.py`, `api/tests/test_train_tasks.py`).
 - [8063176] Added PCI-focused security regression tests for redaction, envelope `kek_version` enforcement, safe metadata validation, queue payload safety, runtime Redis guards, logging redaction, and security config validation (`api/tests/test_crypto_redaction.py`, `api/tests/test_crypto_envelope.py`, `api/tests/test_safe_metadata.py`, `api/tests/test_queue_payload_safety.py`, `api/tests/test_runtime_security_checks.py`, `api/tests/test_logging_redaction.py`, `api/tests/test_security_config.py`).
 - [8063176] Added continuous sensitive-log scanning utility and CI test gate for PAN/CVV/header leakage detection (`infra/scripts/scan_sensitive_logs.py`, `infra/tests/test_sensitive_log_scan.sh`, `.github/workflows/infra-tests.yml`).
