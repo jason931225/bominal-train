@@ -99,6 +99,7 @@ Approval strictness increases by risk level.
 - Production read-only by default.
 - Writes require explicit approval and rollback notes.
 - Security/IAM changes always approval-gated.
+- Payment-provider egress allowlist changes are security-boundary changes and always approval-gated.
 
 ## Approval Gates (Human-in-the-loop)
 
@@ -110,6 +111,8 @@ Approval is required for:
 - production writes
 - restricted data access
 - security/IAM policy changes
+- CDE-touching policy/code changes (payment relay, CVV cache handling, envelope crypto behavior)
+- payment-provider egress allowlist or TLS verification policy changes
 
 Required approval context:
 
@@ -141,6 +144,8 @@ For each high-risk tool action, retain:
 - No plaintext secrets in prompts/logs/docs/changelog.
 - Redact tokens/passwords/payment details.
 - Use masked identifiers where possible.
+- Default-deny handling for `Confidential` and `Restricted` data classes unless approval is recorded.
+- Payment cardholder data must remain inside documented CDE boundaries only.
 
 ## AGENTS.md Edit Protocol
 

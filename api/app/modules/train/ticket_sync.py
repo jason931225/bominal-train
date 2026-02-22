@@ -16,11 +16,19 @@ def find_reservation_by_number(reservations: list[dict[str, Any]], reservation_i
     return None
 
 
-def _status_from_snapshot(*, paid: bool | None, waiting: bool | None, reservation_found: bool) -> str:
+def _status_from_snapshot(
+    *,
+    paid: bool | None,
+    waiting: bool | None,
+    expired: bool | None,
+    reservation_found: bool,
+) -> str:
     if not reservation_found:
         return "reservation_not_found"
     if bool(paid):
         return "paid"
+    if bool(expired):
+        return "expired"
     if bool(waiting):
         return "waiting"
     return "awaiting_payment"
@@ -113,6 +121,7 @@ async def fetch_ticket_sync_snapshot(
     reservation_found = reservation_row is not None
     paid = bool(reservation_row.get("paid")) if reservation_row else None
     waiting = bool(reservation_row.get("waiting")) if reservation_row else None
+    expired = bool(reservation_row.get("expired")) if reservation_row else None
 
     if reservation_row:
         snapshot["reservation_snapshot"] = redact_sensitive(reservation_row)
@@ -142,10 +151,13 @@ async def fetch_ticket_sync_snapshot(
         snapshot["paid"] = paid
     if waiting is not None:
         snapshot["waiting"] = waiting
+    if expired is not None:
+        snapshot["expired"] = expired
 
     snapshot["status"] = _status_from_snapshot(
         paid=paid,
         waiting=waiting,
+        expired=expired,
         reservation_found=reservation_found,
     )
     snapshot["provider_sync"] = redact_sensitive(sync_meta)
