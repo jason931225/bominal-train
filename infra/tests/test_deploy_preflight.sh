@@ -124,13 +124,13 @@ if [[ "${1:-}" == "compose" && "${2:-}" == "version" ]]; then
   exit 0
 fi
 
-if [[ "${1:-}" == "compose" ]]; then
+  if [[ "${1:-}" == "compose" ]]; then
   if [[ "$*" == *"config"* ]]; then
     echo "ok"
     exit 0
   fi
   if [[ "$*" == *"ps --services --filter status=running"* ]]; then
-    printf 'api\nweb\n'
+    printf 'api-gateway\nweb\n'
     exit 0
   fi
   exit 0

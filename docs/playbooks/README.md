@@ -19,3 +19,5 @@ Use `docs/playbooks/TEMPLATE.md` and keep all sections complete.
 - `docs/playbooks/daily-operations-chores.md` - routine daily workflow for validation, hygiene, and coordination.
 - `docs/playbooks/new-module-feature-workflow.md` - standardized end-to-end workflow for new module/feature delivery.
 - `docs/playbooks/resy-widget-form-data-capture.md` - Resy widget/form-data capture and replay protocol.
+- `docs/playbooks/restaurant-provider-adapter-workflow.md` - canonical implementation workflow for restaurant provider adapters.
+- `docs/playbooks/provider-adapter-contract-template.md` - reusable contract template for onboarding new providers.

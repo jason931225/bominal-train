@@ -23,7 +23,7 @@ bominal.com {
 
 	@api path /api /api/* /docs /docs/* /openapi.json /redoc /health /healthz
 	handle @api {
-		reverse_proxy api:8000
+		reverse_proxy api-gateway:8000
 	}
 
 	handle {
