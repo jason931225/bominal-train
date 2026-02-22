@@ -426,7 +426,7 @@ def print_recent_tasks(tasks: list[dict]) -> None:
 
 async def run_monitor(watch: bool = False, interval: int = 3) -> None:
     """Run the monitor display."""
-    redis_client = aioredis.from_url(settings.redis_url, decode_responses=False)
+    redis_client = aioredis.from_url(settings.resolved_redis_url_non_cde, decode_responses=False)
     
     try:
         while True:

@@ -14,7 +14,7 @@ _pool: ArqRedis | None = None
 
 
 def _redis_settings() -> RedisSettings:
-    return RedisSettings.from_dsn(settings.redis_url)
+    return RedisSettings.from_dsn(settings.resolved_redis_url_non_cde)
 
 
 async def get_restaurant_queue_pool() -> ArqRedis:

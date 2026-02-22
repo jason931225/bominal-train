@@ -3,8 +3,8 @@
 bominal is a modular product foundation with:
 
 - `web/`: Next.js App Router + TypeScript + Tailwind + Zod
-- `api/`: FastAPI + Postgres + Alembic + session auth
-- `worker-train`: arq train worker for async Train Tasks + queued email jobs
+- `api/`: FastAPI + Postgres + Alembic + configurable auth modes (`legacy`/`supabase`/`dual`)
+- `worker`: arq train worker for async Train Tasks + queued email jobs
 - `worker-restaurant`: arq restaurant worker (isolated queue domain scaffold)
 - `redis`: queue + provider rate limiting
 - `third_party/srtgo`: read-only provider behavior reference (submodule)
@@ -20,14 +20,15 @@ bominal is a modular product foundation with:
 - Deployment: `docs/DEPLOYMENT.md`
 - Operations runbook: `docs/RUNBOOK.md`
 - Security controls: `docs/SECURITY.md`
-- Provider endpoint research and contract maps: `docs/provider-research/README.md`
 
 ## Security contract (production)
 
 - Session cookies must remain `HttpOnly`, `SameSite=Lax`, and `Secure` only in production.
 - Passwords must be hashed with Argon2id; session tokens must be stored hashed.
+- If Supabase auth is enabled, API must verify JWT signature and claims against Supabase JWKS before mapping `sub` to local user role.
 - Payment card payloads are encrypted at rest with envelope encryption (AES-256-GCM DEK + KEK wrapping).
 - CVV may exist only in encrypted Redis cache with bounded TTL and must never be stored in Postgres.
+- CDE Redis for CVV cache (`REDIS_URL_CDE` or fallback `REDIS_URL`) must not be Upstash-hosted; Upstash is allowed only for non-CDE Redis (`REDIS_URL_NON_CDE`).
 - Provider payment egress must use allowlisted domains with TLS verification enabled.
 - Logs, queues, and artifacts must not contain raw cardholder data or raw provider payment payloads.
 
@@ -57,25 +58,23 @@ Development compose uses hot-reload, bind mounts, and env files under `infra/env
 If your machine supports Docker Compose v2 plugin:
 
 ```bash
-docker compose -f infra/docker-compose.yml up --build
+docker compose -f infra/docker compose.yml up --build
 ```
 
 If your machine uses Docker Compose v1 binary:
 
 ```bash
-docker compose -f infra/docker-compose.yml up --build
+docker compose -f infra/docker compose.yml up --build
 ```
 
 Services started by compose:
 
 - web: `http://localhost:3000`
-- api-gateway (public API): `http://localhost:8000`
-- api-train (private train-domain API): compose-internal
-- api-restaurant (private restaurant-domain API): compose-internal
+- api: `http://localhost:8000`
 - postgres: `localhost:5432`
 - redis: `localhost:6379`
 - mailpit (dev inbox): `http://localhost:8025` (SMTP on `localhost:1025`)
-- worker-train: consumes queued Train Tasks + queued email jobs
+- worker: consumes queued Train Tasks + queued email jobs
 - worker-restaurant: reserved for restaurant queue-domain execution
 
 Queue domains:
@@ -98,14 +97,14 @@ Optional cleanup after checks:
 If you pull new backend migrations while containers are already running, restart API/workers once:
 
 ```bash
-docker compose -f infra/docker-compose.yml restart api-gateway api-train api-restaurant worker-train worker-restaurant
+docker compose -f infra/docker compose.yml restart api worker worker-restaurant
 # or (Compose v1):
-docker compose -f infra/docker-compose.yml restart api-gateway api-train api-restaurant worker-train worker-restaurant
+docker compose -f infra/docker compose.yml restart api worker worker-restaurant
 ```
 
 ## Production (manual bootstrap)
 
-Production compose is separated in `infra/docker-compose.prod.yml` (no bind mounts, no dev reload flags).
+Production compose is separated in `infra/docker compose.prod.yml` (no bind mounts, no dev reload flags).
 
 For production deployments, prefer the zero-downtime procedure in `docs/DEPLOYMENT.md`
 (script: `infra/scripts/deploy.sh`). The steps below cover initial
@@ -126,8 +125,23 @@ cp infra/env/prod/web.env.example infra/env/prod/web.env
 cp infra/env/prod/caddy.env.example infra/env/prod/caddy.env
 ```
 
-2) Edit those files and replace every `CHANGE_ME...` value (especially `MASTER_KEY`), and set your public host in `infra/env/prod/caddy.env`.
-   - Keep `infra/env/prod/web.env` `NEXT_PUBLIC_API_BASE_URL` empty so browser auth requests stay same-origin (required for `SameSite=Lax` session cookies).
+Optional:
+- `infra/env/prod/deploy.env` can be created from `infra/env/prod/deploy.env.example` for helper workflows.
+- Canonical `infra/scripts/deploy.sh` does not require `deploy.env`.
+
+2) Edit those files and replace every `CHANGE_ME...` value. Required manual deploy values:
+   - `infra/env/prod/postgres.env`: `POSTGRES_PASSWORD`
+   - `infra/env/prod/api.env`: `GCP_PROJECT_ID`, `INTERNAL_API_KEY`, `MASTER_KEY`, DB password portions of `DATABASE_URL` and `SYNC_DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_JWT_ISSUER`, `RESEND_API_KEY`, and sender-domain placeholder in `EMAIL_FROM_ADDRESS`
+   - `infra/env/prod/web.env`: keep `NEXT_PUBLIC_API_BASE_URL` empty so browser auth requests stay same-origin (required for `SameSite=Lax` session cookies)
+   - `infra/env/prod/caddy.env`: `CADDY_SITE_ADDRESS`, `CADDY_ACME_EMAIL`
+   - Optional, mode-dependent:
+     - `AUTH_MODE=legacy`: Supabase JWT fields can be left empty
+     - `AUTH_MODE=dual`: `SUPABASE_URL`, `SUPABASE_JWT_ISSUER` are still required (and `SUPABASE_JWKS_URL` if overriding default)
+     - `SUPABASE_STORAGE_ENABLED=true`: `SUPABASE_SERVICE_ROLE_KEY`
+     - `EMAIL_PROVIDER=disabled`: Resend credentials may remain unset
+     - `EMAIL_PROVIDER=smtp`: `SMTP_HOST`, `SMTP_PORT`, and SMTP credentials/TLS flags as needed
+
+   Production note: set `DATABASE_URL` / `SYNC_DATABASE_URL` to your managed Postgres endpoint (for example Supabase Postgres). Local dev remains Docker-local Postgres/Redis by default.
 
 3) Deploy (recommended):
 
@@ -139,13 +153,13 @@ If you intentionally need a manual bring-up (not recommended for routine deploys
 use `--wait` when available:
 
 ```bash
-docker compose -f infra/docker-compose.prod.yml up -d --wait
+docker compose -f infra/docker compose.prod.yml up -d --wait
 ```
 
 or (Compose v1):
 
 ```bash
-docker compose -f infra/docker-compose.prod.yml up -d
+docker compose -f infra/docker compose.prod.yml up -d
 ```
 
 4) Verify health:
@@ -154,15 +168,15 @@ docker compose -f infra/docker-compose.prod.yml up -d
 curl -sS http://localhost:8000/health
 curl -sS http://localhost:3000
 curl -sS -I http://localhost
-docker compose -f infra/docker-compose.prod.yml ps
+docker compose -f infra/docker compose.prod.yml ps
 ```
 
 ## Layout
 
 - `web/`
 - `api/`
-- `infra/docker-compose.yml` (development)
-- `infra/docker-compose.prod.yml` (deployment)
+- `infra/docker compose.yml` (development)
+- `infra/docker compose.prod.yml` (deployment)
 - `third_party/srtgo` (read-only reference)
 - `third_party/catchtable` (read-only reference)
 
@@ -186,10 +200,16 @@ Auth uniqueness rules:
 - `email` is unique (case-insensitive)
 - `display_name` is unique (case-insensitive)
 
+Auth modes (`AUTH_MODE`):
+
+- `legacy`: session cookie (`bominal_session`) is required for authenticated routes.
+- `supabase`: API requires `Authorization: Bearer <jwt>`, verifies Supabase JWT (`iss`/`aud`/`exp`), then maps `sub` to local user/role.
+- `dual`: Bearer token is preferred when present; otherwise cookie auth is used.
+
 API access tiers:
 
 - **Public (no login required):** `/api/auth/register`, `/api/auth/login`, `/api/auth/logout`, `/api/auth/request-email-verification`, `/api/auth/verify-email`, `/api/auth/request-password-reset`, `/api/auth/reset-password`
-- **Authenticated session required:** `/api/auth/me`, `/api/auth/account`, `/api/modules`, `/api/train/*`, `/api/wallet/*`, `/api/notifications/*`
+- **Authenticated (`AUTH_MODE` dependent):** `/api/auth/me`, `/api/auth/account`, `/api/modules`, `/api/train/*`, `/api/wallet/*`, `/api/notifications/*`
 - **Internal-only:** `/api/internal/*` with `X-Internal-Api-Key` matching `INTERNAL_API_KEY`
 - **Admin role required:** `/api/admin`
 
@@ -208,7 +228,7 @@ Implemented modules endpoint:
 
 ## Train module API
 
-All endpoints require authenticated session cookie.
+All endpoints require authenticated user context according to `AUTH_MODE`.
 
 - `GET /api/train/stations`
 - `GET /api/train/credentials/status`
@@ -268,7 +288,7 @@ Internal API:
 - Idempotent active-task creation by `(user_id, module, idempotency_key)`
 - Payment idempotency: worker checks existing payment artifact before pay retry
 - Redis token bucket rate limiter applied to provider outbound calls
-- ARQ queue domains are explicit: `train:queue` (worker-train) and `restaurant:queue` (worker-restaurant)
+- ARQ queue domains are explicit: `train:queue` (worker) and `restaurant:queue` (worker-restaurant)
 
 ## Manual verification (Train)
 
@@ -288,7 +308,7 @@ Internal API:
 Check DB task rows:
 
 ```bash
-docker compose -f infra/docker-compose.yml exec postgres \
+docker compose -f infra/docker compose.yml exec postgres \
   psql -U bominal -d bominal \
   -c "select id, state, deadline_at, created_at from tasks order by created_at desc limit 20;"
 ```
@@ -296,7 +316,7 @@ docker compose -f infra/docker-compose.yml exec postgres \
 Check attempts:
 
 ```bash
-docker compose -f infra/docker-compose.yml exec postgres \
+docker compose -f infra/docker compose.yml exec postgres \
   psql -U bominal -d bominal \
   -c "select task_id, action, provider, ok, retryable, started_at from task_attempts order by started_at desc limit 30;"
 ```
@@ -329,13 +349,13 @@ Backend tests include:
 Run tests:
 
 ```bash
-docker compose -f infra/docker-compose.yml exec api-gateway pytest -q
+docker compose -f infra/docker compose.yml exec api pytest -q
 ```
 
 Frontend type-check:
 
 ```bash
-docker compose -f infra/docker-compose.yml exec web npx tsc --noEmit
+docker compose -f infra/docker compose.yml exec web npx tsc --noEmit
 ```
 
 ## Pre-deploy final check
@@ -351,14 +371,14 @@ Run this checklist before first deployment:
 2. **Compose validity**
 
 ```bash
-docker compose -f infra/docker-compose.prod.yml config >/tmp/bominal-prod-compose.txt
+docker compose -f infra/docker compose.prod.yml config >/tmp/bominal-prod-compose.txt
 ```
 
 3. **App checks in dev (recommended before prod push)**
 
 ```bash
-docker compose -f infra/docker-compose.yml exec api-gateway pytest -q
-docker compose -f infra/docker-compose.yml exec web npx tsc --noEmit
+docker compose -f infra/docker compose.yml exec api pytest -q
+docker compose -f infra/docker compose.yml exec web npx tsc --noEmit
 ```
 
 4. **Smoke test after prod up**
@@ -367,18 +387,18 @@ docker compose -f infra/docker-compose.yml exec web npx tsc --noEmit
 curl -sS http://localhost:8000/health
 curl -sS -I http://localhost:3000
 curl -sS -I http://localhost
-docker compose -f infra/docker-compose.prod.yml logs --tail=100 caddy api-gateway api-train api-restaurant worker-train worker-restaurant web
+docker compose -f infra/docker compose.prod.yml logs --tail=100 caddy api worker worker-restaurant web
 ```
 
 Duplicate display name pre-migration check (optional manual run):
 
 ```bash
-docker compose -f infra/docker-compose.prod.yml run --rm api-gateway python scripts/check_duplicate_display_names.py
+docker compose -f infra/docker compose.prod.yml run --rm api python scripts/check_duplicate_display_names.py
 ```
 
 5. **Email configuration**
-   - If email is not in use yet, keep `EMAIL_PROVIDER=disabled` (default in prod template).
-   - Optional: for transactional email later, set `EMAIL_PROVIDER=resend` and configure `RESEND_API_KEY`.
+   - Production template defaults to `EMAIL_PROVIDER=resend`; replace `RESEND_API_KEY` and sender domain placeholders before deploy.
+   - If email is intentionally disabled for an environment, set `EMAIL_PROVIDER=disabled`.
    - Optional: tune Resend HTTP timeout with `RESEND_TIMEOUT_SECONDS` (default `12`).
    - Optional SMTP relay: set `EMAIL_PROVIDER=smtp` and configure `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`.
    - When enabled, set `EMAIL_FROM_ADDRESS` / `EMAIL_FROM_NAME` to your sender identity.
