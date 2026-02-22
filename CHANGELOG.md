@@ -13,6 +13,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+- [a1dfea7] Added CI and production deploy latency optimization plan with canonical pointer registration, including tracked CI bottlenecks, deploy-slowdown hypotheses, Stage10 exploration notes, and phased verification/remediation workstreams (`docs/plans/2026-02-22-ci-and-prod-deploy-latency-optimization.md`, `docs/README.md`).
 - [c7cf56d] Added controlled provider egress gateway infrastructure with dedicated train/restaurant Caddy route allowlists, CI guard coverage for egress Caddyfile policy enforcement, and expanded provider-helper unit coverage (`infra/egress/train/Caddyfile`, `infra/egress/restaurant/Caddyfile`, `infra/tests/test_egress_caddyfiles.sh`, `api/tests/test_train_provider_helpers_units.py`).
 - [7c9fe18] Added focused train-service helper coverage for retry-status branching, task-spec/provider normalization, ticket summary/manual-payment classification, terminal visibility windows, provider-cancel status mapping, and station option exposure (`api/tests/test_train_service_helpers.py`).
 - [129d7dc] Added deep provider-transport regression coverage for allowlist helpers, retry/timeout classification, resilient operation profiles, Httpx redirect/host safety controls, and Curl fallback/close behaviors (`api/tests/test_provider_egress_transport.py`).
