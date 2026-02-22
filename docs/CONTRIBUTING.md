@@ -48,6 +48,9 @@ docker compose -f infra/docker-compose.yml up --build
 - Next.js 16 migration notes:
   - use `proxy.ts` (not `middleware.ts`);
   - `headers()` / `cookies()` APIs are async in server components/helpers (`await headers()`, `await cookies()`).
+- Tailwind 4 migration notes:
+  - PostCSS plugin is `@tailwindcss/postcss` (not `tailwindcss` in `postcss.config.js`);
+  - global CSS uses `@import "tailwindcss";` with `@config "../tailwind.config.ts";`.
 - Wordmark (`bominal`) uses `font-brand` + theme-aware color:
   - default: `text-blossom-800`
   - hover: `text-blossom-700`
@@ -152,6 +155,7 @@ Current compatibility holds (must be re-evaluated during dependency modernizatio
 - `redis` is pinned to `5.3.1` because `arq==0.27.0` requires `redis<6`.
 - `vitest` / `@vitest/coverage-v8` remain on `2.1.9` because `4.x` currently fails this repo's enforced coverage gate without broader test/threshold realignment.
 - `eslint` remains on `9.x` because `eslint@10` is currently incompatible with `eslint-config-next@16.1.6` in this stack.
+- `package.json` overrides enforce patched transitive versions (`esbuild`, `minimatch`, `glob`) so `npm audit` stays green while those major-hold packages remain.
 
 Recommended targeted smoke tests after major changes:
 
