@@ -1,16 +1,14 @@
-FROM node:20-alpine
+FROM node:24-alpine
 
 WORKDIR /app
+
+# Keep default web container lightweight and browser-free.
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
 RUN apk add --no-cache \
     git \
     python3 \
-    chromium \
-    nss \
-    freetype \
-    harfbuzz \
-    ca-certificates \
-    ttf-freefont
+    ca-certificates
 
 COPY package.json package-lock.json ./
 RUN npm ci

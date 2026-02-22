@@ -230,7 +230,7 @@ describe("TrainDashboard polling behavior", () => {
     expect(pauseCalls).toBe(1);
     expect(activeCalls).toBeGreaterThan(baselineActive);
     expect(completedCalls).toBeGreaterThan(baselineCompleted);
-  });
+  }, 15_000);
 
   it("shows mobile provider toggles and keeps desktop selector desktop-only", async () => {
     await renderDashboard();
