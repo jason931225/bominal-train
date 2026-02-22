@@ -53,6 +53,20 @@ compose_service_is_running() {
   "${COMPOSE_CMD[@]}" -f "$compose_file" ps --services --filter status=running 2>/dev/null | grep -Fxq "$service"
 }
 
+first_running_compose_service() {
+  local compose_file="$1"
+  shift
+
+  local service
+  for service in "$@"; do
+    if compose_service_is_running "$compose_file" "$service"; then
+      echo "$service"
+      return 0
+    fi
+  done
+  return 1
+}
+
 require_file() {
   local file="$1"
   if [[ ! -f "$file" ]]; then

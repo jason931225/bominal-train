@@ -9,7 +9,7 @@
 # Can be run:
 #   - On VM directly: /opt/bominal/repo/infra/scripts/bominal-monitor
 #   - In API container: python -m app.monitor
-#   - Via docker exec: docker compose exec api python -m app.monitor
+#   - Via docker exec: docker compose exec api-gateway python -m app.monitor
 
 set -euo pipefail
 
@@ -25,8 +25,9 @@ if [[ -f "/.dockerenv" ]]; then
 else
     detect_compose_cmd
     COMPOSE_FILE="$(resolve_compose_file "$REPO_ROOT")"
-    if ! compose_service_is_running "$COMPOSE_FILE" "api"; then
-        echo "Error: api service is not running for compose file: $COMPOSE_FILE"
+    API_SERVICE="$(first_running_compose_service "$COMPOSE_FILE" "api-gateway" "api" || true)"
+    if [[ -z "$API_SERVICE" ]]; then
+        echo "Error: api-gateway service is not running for compose file: $COMPOSE_FILE"
         echo "Start the stack before running bominal-monitor."
         exit 1
     fi
@@ -40,5 +41,5 @@ else
     echo ""
     
     # Run the rest of the monitor inside the container
-    exec "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" exec -T api python -m app.monitor "$@"
+    exec "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" exec -T "$API_SERVICE" python -m app.monitor "$@"
 fi
