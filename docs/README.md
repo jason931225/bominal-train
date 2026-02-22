@@ -74,6 +74,8 @@ Pointer format convention (mandatory):
 - [PTR-PLAN-013] `docs/plans/active/2026-02-14-stage9-performance-optimization.md` - active Stage 9 backend-first performance optimization execution plan.
 - [PTR-PLAN-014] `docs/plans/active/2026-02-22-wave1-stabilization-gate-tracker.md` - active Wave 1 stabilization gate status tracker with objective evidence and remaining actions.
 - [PTR-PLAN-015] `docs/plans/2026-02-22-pci-dss-owasp-remediation.md` - implementation plan for PCI DSS and OWASP ASVS hardening across docs, runtime controls, and verification gates.
+- [PTR-PLAN-016] `docs/plans/active/2026-02-22-pci-runtime-policy-codification.md` - active PCI runtime isolation policy codification plan for CDE/relay governance controls.
+- [PTR-PLAN-017] `docs/plans/2026-02-22-redaction-envelope-hardening.md` - crypto hardening implementation plan for redaction and envelope key-version enforcement.
 
 ### Playbooks
 
