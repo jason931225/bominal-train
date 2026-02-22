@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 from datetime import datetime, timedelta, timezone
+from uuid import UUID
 
 import fakeredis.aioredis
 import pytest
@@ -1777,6 +1778,139 @@ async def test_seat_preference_fallback_reserves_available_class(
 
 
 @pytest.mark.asyncio
+async def test_ktx_wait_reserve_path_runs_when_selected_train_is_waitlist_only(
+    db_session_factory,
+    db_session,
+    monkeypatch,
+):
+    fake_redis = fakeredis.aioredis.FakeRedis()
+    utc_now_naive = lambda: datetime.now(timezone.utc).replace(tzinfo=None)
+
+    class FakeKTXProvider:
+        provider_name = "KTX"
+
+        def __init__(self):
+            self.reserve_calls: list[str] = []
+
+        async def login(self, **kwargs):
+            return ProviderOutcome(ok=True)
+
+        async def search(self, **kwargs):
+            dep = kwargs["dep"]
+            arr = kwargs["arr"]
+            departure = _utc_now() + timedelta(minutes=20)
+            schedule = ProviderSchedule(
+                schedule_id="ktx-waitlist-only",
+                provider="KTX",
+                dep=dep,
+                arr=arr,
+                departure_at=departure,
+                arrival_at=departure + timedelta(minutes=75),
+                train_no="K310",
+                availability={"general": False, "special": False},
+                metadata={"wait_reserve_flag": "9"},
+            )
+            return ProviderOutcome(ok=True, data={"schedules": [schedule]})
+
+        async def reserve(self, **kwargs):
+            self.reserve_calls.append(kwargs["seat_class"])
+            return ProviderOutcome(ok=True, data={"reservation_id": "ktx-rsv-waitlist"})
+
+        async def pay(self, **kwargs):
+            return ProviderOutcome(ok=False, retryable=False, error_code="unexpected", error_message_safe="unexpected")
+
+        async def cancel(self, **kwargs):
+            return ProviderOutcome(ok=False, retryable=False, error_code="not_supported", error_message_safe="not supported")
+
+    fake_provider = FakeKTXProvider()
+
+    async def _noop_enqueue(task_id: str, defer_seconds: float = 0.0) -> None:
+        return None
+
+    async def _fake_credentials(db, *, user_id, provider):
+        return {"username": "mock-user", "password": "mock-password"}
+
+    class _NoLimitResult:
+        waited_ms = 0
+        rounds = 1
+
+    async def _acquire_without_wait(self, **kwargs):
+        return _NoLimitResult()
+
+    monkeypatch.setattr("app.modules.train.worker.enqueue_train_task", _noop_enqueue)
+    monkeypatch.setattr("app.modules.train.worker.get_provider_client", lambda provider: fake_provider)
+    monkeypatch.setattr("app.modules.train.worker._load_provider_credentials", _fake_credentials)
+    monkeypatch.setattr("app.core.time.utc_now", utc_now_naive)
+    monkeypatch.setattr("app.modules.train.worker.RedisTokenBucketLimiter.acquire_provider_call", _acquire_without_wait)
+
+    user = User(
+        email="ktx-waitlist-worker@example.com",
+        password_hash="x",
+        display_name="KTX Waitlist User",
+        role_id=2,
+    )
+    db_session.add(user)
+    await db_session.flush()
+
+    deadline = utc_now_naive() + timedelta(minutes=45)
+    task = Task(
+        user_id=user.id,
+        module="train",
+        state="QUEUED",
+        deadline_at=deadline,
+        spec_json={
+            "provider": "KTX",
+            "dep": "서울",
+            "arr": "부산",
+            "date": utc_now_naive().date().isoformat(),
+            "selected_trains_ranked": [{"schedule_id": "ktx-waitlist-only", "departure_at": deadline.isoformat(), "rank": 1}],
+            "passengers": {"adults": 1, "children": 0},
+            "seat_class": "general",
+            "auto_pay": False,
+        },
+        idempotency_key="ktx-waitlist-worker",
+    )
+    db_session.add(task)
+    await db_session.flush()
+
+    # Skip the worker's first-cycle visual delay so we can validate reserve behavior in one run.
+    db_session.add(
+        TaskAttempt(
+            task_id=task.id,
+            action="SEARCH",
+            provider="KTX",
+            ok=False,
+            retryable=True,
+            error_code="seed",
+            error_message_safe="seed",
+            duration_ms=1,
+            meta_json_safe={},
+            started_at=utc_now_naive(),
+            finished_at=utc_now_naive(),
+        )
+    )
+    await db_session.commit()
+
+    await run_train_task({"db_factory": db_session_factory, "redis": fake_redis}, str(task.id))
+
+    async with db_session_factory() as verify_session:
+        refreshed = await verify_session.get(Task, task.id)
+        assert refreshed is not None
+        assert refreshed.state == "COMPLETED"
+
+        artifacts = (
+            await verify_session.execute(
+                select(Artifact).where(Artifact.task_id == task.id).where(Artifact.kind == "ticket")
+            )
+        ).scalars().all()
+
+    assert fake_provider.reserve_calls == ["general"]
+    assert len(artifacts) == 1
+    assert artifacts[0].data_json_safe.get("provider") == "KTX"
+    assert artifacts[0].data_json_safe.get("reservation_id") == "ktx-rsv-waitlist"
+
+
+@pytest.mark.asyncio
 async def test_retry_task_now_allows_queued(db_session, monkeypatch):
     calls: list[str] = []
 
@@ -2098,6 +2232,134 @@ async def test_task_list_includes_last_attempt_summary(db_session):
     assert summary.last_attempt_error_message_safe == "reserve failed"
     assert summary.last_attempt_finished_at is not None
     assert summary.last_attempt_at == summary.last_attempt_finished_at
+
+
+@pytest.mark.asyncio
+async def test_task_list_latest_attempt_tie_breaks_with_descending_id(db_session):
+    user = User(
+        email="attempt-tie@example.com",
+        password_hash="x",
+        display_name="Attempt Tie User",
+        role_id=2,
+    )
+    db_session.add(user)
+    await db_session.flush()
+
+    task = Task(
+        user_id=user.id,
+        module="train",
+        state="QUEUED",
+        deadline_at=_utc_now() + timedelta(minutes=10),
+        spec_json={"provider": "SRT"},
+        idempotency_key="attempt-tie-break",
+    )
+    db_session.add(task)
+    await db_session.flush()
+
+    tied_finished_at = _utc_now() - timedelta(seconds=5)
+    db_session.add_all(
+        [
+            TaskAttempt(
+                id=UUID("00000000-0000-0000-0000-000000000001"),
+                task_id=task.id,
+                action="SEARCH",
+                provider="SRT",
+                ok=False,
+                retryable=True,
+                error_code="first_attempt",
+                error_message_safe="first",
+                duration_ms=100,
+                meta_json_safe={},
+                started_at=tied_finished_at - timedelta(seconds=1),
+                finished_at=tied_finished_at,
+            ),
+            TaskAttempt(
+                id=UUID("00000000-0000-0000-0000-000000000002"),
+                task_id=task.id,
+                action="RESERVE",
+                provider="SRT",
+                ok=True,
+                retryable=False,
+                error_code=None,
+                error_message_safe=None,
+                duration_ms=120,
+                meta_json_safe={},
+                started_at=tied_finished_at - timedelta(seconds=2),
+                finished_at=tied_finished_at,
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    response = await list_tasks(db_session, user=user, status_filter="active")
+    summary = next(item for item in response.tasks if item.id == task.id)
+
+    assert summary.last_attempt_action == "RESERVE"
+    assert summary.last_attempt_ok is True
+    assert summary.last_attempt_error_code is None
+    assert summary.last_attempt_error_message_safe is None
+
+
+@pytest.mark.asyncio
+async def test_task_list_latest_ticket_tie_breaks_with_descending_id(db_session):
+    user = User(
+        email="ticket-tie@example.com",
+        password_hash="x",
+        display_name="Ticket Tie User",
+        role_id=2,
+    )
+    db_session.add(user)
+    await db_session.flush()
+
+    task = Task(
+        user_id=user.id,
+        module="train",
+        state="COMPLETED",
+        deadline_at=_utc_now() + timedelta(minutes=10),
+        completed_at=_utc_now(),
+        spec_json={"provider": "SRT"},
+        idempotency_key="ticket-tie-break",
+    )
+    db_session.add(task)
+    await db_session.flush()
+
+    tied_created_at = _utc_now() - timedelta(minutes=1)
+    db_session.add_all(
+        [
+            Artifact(
+                id=UUID("10000000-0000-0000-0000-000000000001"),
+                task_id=task.id,
+                module="train",
+                kind="ticket",
+                data_json_safe={
+                    "status": "reserved",
+                    "paid": False,
+                    "reservation_id": "RES-1",
+                },
+                created_at=tied_created_at,
+            ),
+            Artifact(
+                id=UUID("10000000-0000-0000-0000-000000000002"),
+                task_id=task.id,
+                module="train",
+                kind="ticket",
+                data_json_safe={
+                    "status": "awaiting_payment",
+                    "paid": True,
+                    "reservation_id": "RES-2",
+                },
+                created_at=tied_created_at,
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    response = await list_tasks(db_session, user=user, status_filter="completed")
+    summary = next(item for item in response.tasks if item.id == task.id)
+
+    assert summary.ticket_status == "awaiting_payment"
+    assert summary.ticket_paid is True
+    assert summary.ticket_reservation_id == "RES-2"
 
 
 @pytest.mark.asyncio

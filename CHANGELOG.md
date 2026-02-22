@@ -17,6 +17,8 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - [8063176] Added PCI-focused security regression tests for redaction, envelope `kek_version` enforcement, safe metadata validation, queue payload safety, runtime Redis guards, logging redaction, and security config validation (`api/tests/test_crypto_redaction.py`, `api/tests/test_crypto_envelope.py`, `api/tests/test_safe_metadata.py`, `api/tests/test_queue_payload_safety.py`, `api/tests/test_runtime_security_checks.py`, `api/tests/test_logging_redaction.py`, `api/tests/test_security_config.py`).
 - [8063176] Added continuous sensitive-log scanning utility and CI test gate for PAN/CVV/header leakage detection (`infra/scripts/scan_sensitive_logs.py`, `infra/tests/test_sensitive_log_scan.sh`, `.github/workflows/infra-tests.yml`).
 - [65a179f] Added PCI DSS + OWASP ASVS remediation implementation plan and compliance mapping matrix (`docs/plans/2026-02-22-pci-dss-owasp-remediation.md`, `docs/security/compliance-matrix.md`).
+- [45037ad] Added KTX wait-reserve regression coverage for waitlist-only selected train flows in worker execution (`api/tests/test_train_tasks.py`).
+- [d5b6c96] Added queue re-enqueue regression coverage for stale ARQ result-key clearing, deferred enqueue dedup safety, and rejected enqueue signaling (`api/tests/test_train_queue.py`).
 - [9dc1d9e] Added Wave 1 stabilization gate tracker and canonical pointer entries for reviewer-facing release-gate evidence (`docs/plans/active/2026-02-22-wave1-stabilization-gate-tracker.md`, `docs/plans/active/README.md`, `docs/README.md`).
 - [9dc1d9e] Added provider egress resilience regression coverage for retry classification, bounded retries, and side-effect no-retry guarantees (`api/tests/test_provider_egress_transport.py`).
 - [0d84ae8] Added commit-based changelog governance and CI validation (`infra/tests/test_changelog.sh`).
@@ -38,6 +40,8 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - [f84421d] Added Stage 9 active performance execution plan and pointer registration (`docs/plans/active/2026-02-14-stage9-performance-optimization.md`, `docs/README.md`).
 - [eee7868] Added repeatable train task list latency benchmark script with p50/p95 reporting and validation checks (`infra/scripts/benchmark-train-task-list.sh`, `infra/tests/test_benchmark_train_task_list.sh`).
 - [eee7868] Added high-risk local DB reset workflow with optional fresh-schema rebuild and sign-in credential preservation (`infra/scripts/reset-local-db.sh`, `infra/tests/test_reset_local_db.sh`).
+- [1c118c4] Added hybrid benchmark gate tooling for train task-list latency comparisons (`infra/scripts/benchmark-train-task-list-compare.sh`, `infra/scripts/benchmark-threshold-check.sh`, `infra/benchmarks/train-task-list-baseline.json`, `infra/tests/test_benchmark_train_task_list_compare.sh`).
+- [1c118c4] Added web unit-test harness and polling behavior coverage for train dashboard task refresh logic (`web/vitest.config.ts`, `web/test/setup.ts`, `web/components/train/__tests__/train-dashboard.polling.test.tsx`, `web/package.json`).
 
 ### Changed
 
@@ -45,6 +49,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - [ca58f68] Documented SRT expiration/not-found operational signals and provider contract updates in architecture/runbook docs (`docs/ARCHITECTURE.md`, `docs/RUNBOOK.md`).
 - [4aa5281] Enforced CDE runtime controls with hardened redaction patterns, logging-boundary redaction, `kek_version`-enforced decrypt boundaries, bounded CVV TTL policy settings, provider egress allowlist/redirect SSRF guards, and safe metadata enforcement in worker/service persistence paths (`api/app/core/crypto/redaction.py`, `api/app/core/logging.py`, `api/app/core/crypto/envelope.py`, `api/app/core/crypto/secrets_store.py`, `api/app/core/config.py`, `api/app/services/wallet.py`, `api/app/modules/train/providers/transport.py`, `api/app/core/crypto/safe_metadata.py`, `api/app/modules/train/worker.py`, `api/app/modules/train/service.py`, `api/app/modules/restaurant/worker.py`, `api/app/modules/train/queue.py`, `api/app/modules/restaurant/queue.py`, `api/app/main.py`, `infra/env/dev/api.env`, `infra/env/prod/api.env.example`).
 - [65a179f] Codified PCI relay isolation, CDE boundaries, redaction and Redis CVV enforcement, provider payload safety, and egress security requirements across canonical docs (`docs/SECURITY.md`, `docs/GUARDRAILS.md`, `docs/PERMISSIONS.md`, `docs/ARCHITECTURE.md`, `docs/RUNBOOK.md`, `README.md`, `docs/README.md`).
+- [c982a4f] Updated Wave 1 stabilization gate tracker with dated verification evidence, gate-status closure for W1-G08/W1-G09/W1-G10, and reviewer decision conditions (`docs/plans/active/2026-02-22-wave1-stabilization-gate-tracker.md`).
 - [9dc1d9e] Debounced authenticated session activity writes with configurable interval to reduce DB write amplification while preserving session expiry/revocation checks on each request (`api/app/http/deps.py`, `api/app/services/auth.py`, `api/app/core/config.py`, `api/tests/test_auth_flow.py`).
 - [9dc1d9e] Introduced fail-safe provider transport resilience primitives (operation-aware timeouts, bounded transient retries, non-retryable fail-closed behavior) and wired live/hybrid provider clients to surface structured retryable outcomes (`api/app/modules/train/providers/transport.py`, `api/app/modules/train/providers/factory.py`, `api/app/modules/train/providers/hybrid.py`).
 - [0d84ae8] Enforced changelog requirements in governance docs (`AGENTS.md`, `docs/EXECUTION_PROTOCOL.md`).
@@ -65,8 +70,14 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - [69fd34e] Archived completed restructure stage plans from `docs/plans/active/` to `docs/plans/archive/` and synchronized plan routing/pointers for closure state.
 - [69fd34e] Normalized lock/request ledgers to separate live entries from non-live templates and enforced the rule in infra CI workflow (`docs/LOCK.md`, `docs/REQUEST.md`, `.github/workflows/infra-tests.yml`).
 - [f84421d] Optimized train task list performance with bounded `limit` query support, latest-row summary selection, composite list indexes, and bounded active/completed dashboard polling (`api/app/modules/train/service.py`, `api/app/modules/train/router.py`, `api/alembic/versions/20260214_0008_train_task_perf_indexes.py`, `web/components/train/train-dashboard.tsx`).
+- [0b58ef2] Reduced task-list tail latency by using PostgreSQL `DISTINCT ON` latest-attempt/artifact summary paths with non-Postgres ranking fallback compatibility (`api/app/modules/train/service.py`, `api/alembic/versions/20260215_0009_task_list_tail_latency_indexes.py`).
+- [b386052] Reduced frontend train dashboard polling/load by refreshing completed tasks on periodic or forced triggers and skipping unchanged task-list state commits (`web/components/train/train-dashboard.tsx`).
 - [758f0f5] Documented benchmark/reset shell script operations and guardrails in runbook procedures (`docs/RUNBOOK.md`).
 - [721600a] Extended infra CI workflow to execute benchmark/reset shell script validation tests (`.github/workflows/infra-tests.yml`, `infra/tests/test_benchmark_train_task_list.sh`, `infra/tests/test_reset_local_db.sh`).
+- [6b60051] Documented Stage10 backend performance completion status in architecture and active performance plan (`docs/ARCHITECTURE.md`, `docs/plans/active/2026-02-14-stage9-performance-optimization.md`).
+- [1c118c4] Expanded infra CI validation to run web unit tests and benchmark compare script checks for perf-sensitive path changes (`.github/workflows/infra-tests.yml`).
+- [1c118c4] Added Stage12 perf hardening execution notes and runbook gate command references (`docs/plans/active/2026-02-14-stage9-performance-optimization.md`, `docs/RUNBOOK.md`, `docs/ARCHITECTURE.md`).
+- [d1b8c61] Registered CatchTable reference files as read-only provider endpoint sources in agent and contributor guidance (`AGENTS.md`, `README.md`, `docs/CONTRIBUTING.md`, `docs/ARCHITECTURE.md`).
 
 ### Removed
 
@@ -75,6 +86,8 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- [8938629] Restored wait-reserve-aware seat-class fallback so waitlist-capable KTX/SRT schedules can proceed when direct seat availability is false (`api/app/modules/train/worker.py`).
+- [59ff9b6] Prevented deferred polling self-dedup lockout and stale deterministic enqueue result reuse by splitting deferred/immediate ARQ enqueue semantics (`api/app/modules/train/queue.py`).
 - [15bf7fc] Prevented rollback pointer swap on rollback-deploy failure by making rollback deploy/pull failures propagate and adding canary-stage regression coverage (`infra/scripts/deploy.sh`, `infra/tests/test_deploy_canary_stages.sh`).
 - [220d2c6] Ensured worker shutdown recovers in-flight tasks even when heartbeat cancellation raises `CancelledError`, with regression coverage in `api/tests/test_worker_shutdown_recovery.py`.
 - [b05ca4b] Converted commit-time auth uniqueness races to deterministic `409` conflicts in register/account update flows (`api/app/http/routes/auth.py`).

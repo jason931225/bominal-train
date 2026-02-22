@@ -31,7 +31,7 @@ docker compose -f infra/docker compose.yml up --build
 ## 1) General
 
 - Keep the product name as `bominal`.
-- Do not edit `third_party/srtgo` (read-only reference).
+- Do not edit `third_party/srtgo` or `third_party/catchtable` (read-only references).
 - Keep API handlers thin; move orchestration/business logic into service/worker layers.
 - Favor additive migrations and backward-safe schema evolution.
 
