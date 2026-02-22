@@ -27,6 +27,7 @@ class LoginRequest(BaseModel):
 
 class UserOut(BaseModel):
     id: UUID
+    supabase_user_id: str | None = None
     email: EmailStr
     display_name: str | None
     phone_number: str | None
