@@ -41,6 +41,13 @@ For each notable change in behavior, operations, interfaces, docs governance, or
 3. Keep entries factual and minimal; avoid narrative text.
 4. If exclusion is requested, stop and ask for explicit approval.
 
+## Versioning requirement (mandatory)
+
+- Human-readable versioning is commit-parity based and canonicalized in `docs/releases/version-map.json`.
+- Validate version mapping before completion for version-related changes:
+  - `python3 infra/scripts/version_guard.py validate`
+- Commit-to-version resolution must be deterministic and CI-enforced via `infra/tests/test_versioning.sh`.
+
 ## Required ledgers
 
 - `docs/LOCK.md` for dynamic ownership scopes.

@@ -1,6 +1,6 @@
 # Security
 
-Security controls and expectations for Bominal.
+Security controls and requirements for bominal.
 
 ## Current controls
 
@@ -39,16 +39,360 @@ Used for:
 - KTX credentials
 - Payment card payload
 
+Envelope decrypt behavior:
+
+- Persisted secret decrypt paths must validate stored `kek_version` against active crypto settings.
+- Envelope payload serialization uses JSON with stable separators and ASCII escaping; compatibility-sensitive changes require migration review.
+
 ## Payment data handling
 
 - Payment card persisted encrypted in `secrets`
 - CVV is not persisted to Postgres
 - CVV is cached temporarily in Redis (encrypted payload) with TTL (`PAYMENT_CVV_TTL_SECONDS`)
 
+## PCI Relay Worker Isolation Policy
+
+### Scope
+
+This policy applies to any component that:
+
+- Receives raw cardholder data (PAN, expiry, CVV)
+- Transmits cardholder data to third-party providers
+- Decrypts stored card payload for provider submission
+
+This policy defines bominal's Cardholder Data Environment (CDE) boundary.
+
+### 1. Cardholder Data Environment (CDE) Definition
+
+The CDE includes:
+
+- API code paths that decrypt wallet secrets
+- Any worker that constructs provider payment requests
+- Redis keys storing encrypted CVV
+- Envelope decryption logic for card payload
+- Any runtime memory holding decrypted PAN/CVV
+
+The CDE explicitly does not include:
+
+- Web layer
+- Task metadata storage (`*_safe` fields)
+- Queue payloads
+- Artifacts
+- Logs
+
+No raw cardholder data may enter non-CDE systems.
+
+### 2. Ephemeral Relay Worker Requirements (Mandatory)
+
+Any worker performing payment submission must satisfy all of the following.
+
+Statelessness:
+
+- No card data persisted to Postgres
+- No card data serialized into ARQ jobs
+- No card data written to disk
+- No card data written to artifacts or `task_attempt` rows
+- No card data cached beyond the required execution window
+
+Memory lifetime:
+
+- Decrypt card payload only immediately before provider submission
+- Clear references after submission (explicit variable overwrite where language allows)
+- No reuse of decrypted card payload across retries
+
+Logging prohibition:
+
+- Never log request bodies containing card data
+- Never log provider request/response raw payloads
+- Disable HTTP client debug logging
+- Global redaction middleware must sanitize:
+  - PAN patterns (13-19 digit sequences)
+  - CVV
+  - expiry fields
+  - authorization headers
+  - cookies
+  - session tokens
+
+Violation of this section is CRITICAL.
+
+### 3. Redis CVV Handling
+
+- CVV may exist only in Redis
+- Redis must enforce TTL (`PAYMENT_CVV_TTL_SECONDS`)
+- TTL must be set on write, not extended indefinitely
+- Redis persistence must not store CVV to durable disk snapshots in production
+- Redis AOF/RDB configuration must be reviewed before enabling persistence
+
+CVV must never:
+
+- Appear in Postgres
+- Appear in queue payloads
+- Appear in artifacts
+- Appear in logs
+
+### 4. Queue Safety Contract
+
+ARQ job payloads must never contain:
+
+- PAN
+- CVV
+- Expiry
+- Raw provider request JSON
+- Raw provider response JSON
+- Session tokens
+- Decrypted secrets
+
+Only the following may be queued:
+
+- `task_id`
+- provider identifiers
+- safe metadata
+- reference IDs
+- idempotency keys
+
+Workers must retrieve sensitive data at runtime via secure lookup.
+
+### 5. Provider Payload Safety
+
+Allowed to persist:
+
+- `meta_json_safe`
+- `data_json_safe`
+- masked identifiers (for example, last 4 digits only)
+- provider reservation IDs
+- provider status codes
+
+Never allowed to persist:
+
+- full card numbers
+- CVV
+- full raw provider request payload
+- raw provider response containing sensitive fields
+
+If provider response includes sensitive fields:
+
+- sanitize before persistence
+- store only necessary safe metadata
+
+### 6. Network Egress Controls
+
+Workers handling payment must:
+
+- Connect only to approved provider domains
+- Use TLS 1.2+ with certificate verification enabled
+- Disable proxy inheritance unless explicitly required
+- Enforce connect/read/total timeouts
+
+SSRF risk mitigation:
+
+- No dynamic hostnames from user input
+- Provider base URLs must come from a configuration allowlist
+
+### 7. Observability Constraints
+
+For payment-related flows, logs may include:
+
+- `task_id`
+- provider name
+- attempt number
+- status category (2xx/4xx/5xx)
+- execution time
+
+Logs must never include:
+
+- request bodies
+- response bodies
+- decrypted secrets
+- headers containing credentials
+- cookies
+
+Exception handlers must pass through redaction before emission.
+
+### 8. Retry and Idempotency Controls
+
+- Payment retries must not reuse persisted card payload
+- Payment idempotency must be based on:
+  - provider reservation ID
+  - stored artifact references
+
+If retry occurs:
+
+- re-fetch encrypted secret
+- re-fetch CVV from Redis
+- decrypt only in memory
+
+### 9. Crash and Dump Safety
+
+Production runtime must:
+
+- Disable core dumps
+- Avoid writing stack traces containing request payloads
+- Ensure exception messages do not include decrypted payload
+
+### 10. Security Severity Classification
+
+The following are automatically CRITICAL:
+
+- Plaintext PAN persistence anywhere
+- CVV persistence outside Redis
+- Logging of provider payment payload
+- Queue serialization of card data
+- Missing TTL on CVV
+- Envelope encryption bypass
+- TLS verification disabled
+
+These conditions must block deployment.
+
+### 11. Verification Requirements (Mandatory Before Deploy)
+
+Before any production release affecting payment flows:
+
+Unit tests must verify:
+
+- CVV is never written to Postgres
+- Queue payload schema excludes card fields
+- Redaction function masks PAN patterns
+
+Log scans must confirm:
+
+- No payment payload is logged during integration tests
+
+Manual review must verify:
+
+- Redis config (persistence mode)
+- HTTP client config (TLS verification enabled)
+
+### 12. Relationship to Guardrails
+
+This policy extends:
+
+- `docs/GUARDRAILS.md` (hard constraints)
+- `docs/PERMISSIONS.md` (approval boundaries)
+
+Guardrails override implementation shortcuts. If this policy conflicts with feature velocity, security prevails.
+
 ## Logging and safe metadata
 
 - Sensitive fields are redacted via `redact_sensitive`
 - Task attempts/artifacts store safe metadata only (`meta_json_safe`, `data_json_safe`)
+
+## PCI relay worker isolation policy
+
+This policy applies to any component that receives raw PAN/CVV, decrypts payment payloads, or submits card data to external providers.
+
+### CDE boundary
+
+The Cardholder Data Environment (CDE) includes:
+
+- API code paths that decrypt wallet secrets
+- Workers that construct provider payment requests
+- Redis keys storing encrypted CVV
+- Envelope decryption logic and runtime memory that holds decrypted PAN/CVV
+
+The CDE explicitly excludes:
+
+- Web layer
+- Queue payloads
+- `meta_json_safe` / `data_json_safe` records
+- Artifacts that are not explicitly safe metadata
+- Logs and observability payload bodies
+
+No raw cardholder data may enter non-CDE systems.
+
+### Ephemeral relay worker requirements (mandatory)
+
+Any worker performing payment submission MUST satisfy all requirements below:
+
+- Stateless runtime:
+  - MUST NOT persist card data to Postgres.
+  - MUST NOT serialize card data into ARQ jobs.
+  - MUST NOT write card data to disk, artifacts, or task attempts.
+- Memory lifetime:
+  - MUST decrypt card payload only immediately before provider submission.
+  - MUST drop decrypted references after submission (best-effort zeroization in language/runtime limits).
+  - MUST re-fetch encrypted secret + CVV on retry; MUST NOT reuse persisted plaintext payload.
+- Logging prohibition:
+  - MUST NOT log request or response bodies containing card data.
+  - MUST disable HTTP client debug payload logging.
+  - MUST apply redaction middleware to PAN/CVV/token/header/cookie patterns.
+
+Violation of this section is CRITICAL.
+
+### Redaction enforcement architecture
+
+- `redact_sensitive()` is mandatory at every logging and persistence boundary where untrusted/provider payloads can flow.
+- Global exception handlers MUST redact emitted context.
+- Structured logging formatters MUST redact message, exception text, and `extra` fields before emission.
+- Provider traces written to `meta_json_safe` / `data_json_safe` MUST pass through redaction first.
+
+### Redis CVV policy
+
+- CVV may exist only in Redis and only as encrypted payload.
+- `PAYMENT_CVV_TTL_SECONDS` MUST be bounded by:
+  - `PAYMENT_CVV_TTL_MIN_SECONDS`
+  - `PAYMENT_CVV_TTL_MAX_SECONDS`
+- TTL MUST be set on write and MUST NOT be extended indefinitely.
+- Production Redis for CDE workloads MUST NOT persist CVV-bearing keys to disk (`AOF`/`RDB` disabled).
+- CVV-bearing keys MUST be excluded from backups.
+- CVV MUST NEVER appear in Postgres, queue payloads, artifacts, or logs.
+
+### Queue safety contract
+
+ARQ payloads MUST NOT contain:
+
+- PAN/CVV/expiry
+- decrypted secrets
+- raw provider request or response payloads
+- session tokens or authorization headers
+
+Only safe identifiers may be queued (`task_id`, provider IDs, reference IDs, idempotency keys, safe metadata references).
+
+### Provider payload safety contract
+
+Persistable provider fields are limited to safe metadata:
+
+- `meta_json_safe`
+- `data_json_safe`
+- masked identifiers (for example: last 4 digits)
+- provider reservation IDs
+- provider status/error codes
+
+Never persist:
+
+- full card number
+- CVV
+- full raw provider request JSON
+- raw provider response JSON containing sensitive fields
+
+### Network egress and SSRF controls
+
+Workers handling payment MUST:
+
+- connect only to configured provider domain allowlist (`PAYMENT_PROVIDER_ALLOWED_HOSTS`)
+- enforce TLS certificate verification
+- disable proxy inheritance by default (`PAYMENT_TRANSPORT_TRUST_ENV=false` unless explicitly approved)
+- enforce bounded connect/read/total timeouts
+- reject user-input hostnames and dynamic outbound host routing
+
+### Crash/dump safety
+
+Production runtime MUST:
+
+- disable core dumps for payment execution paths
+- avoid stack traces that include decrypted payloads
+- avoid exception messages that include request/response bodies with sensitive fields
+
+### Severity classification and deploy gate
+
+The following are automatically CRITICAL and block deploy:
+
+- plaintext PAN persistence anywhere
+- CVV persistence outside Redis TTL cache
+- logging of provider payment payloads
+- queue serialization of card data
+- missing CVV TTL on Redis writes
+- envelope encryption bypass
+- TLS verification disabled on provider payment egress
 
 ## Rate limiting
 
@@ -62,11 +406,12 @@ Used for:
 
 ## Security requirements for contributors
 
-1. Never add plaintext secrets to code, logs, tests, or fixtures.
+1. Never add plaintext secrets to code, logs, tests, fixtures, docs, or changelog entries.
 2. Never print decrypted secrets in debug logs.
-3. Any new sensitive field must be added to redaction logic.
+3. Any new sensitive field must be added to redaction logic and corresponding tests.
 4. Keep env secrets outside git (`infra/env/prod/*.env` is gitignored).
 5. Preserve cookie security semantics unless intentionally changed and documented.
+6. For payment/CDE/relay changes, run PCI/ASVS security tests before completion.
 
 ## Hardening backlog
 
@@ -74,7 +419,7 @@ Recommended next steps for production maturity:
 
 - Add CSP and stricter security headers via reverse proxy.
 - Add secret manager integration for `MASTER_KEY` and provider API keys.
-- Implement key rotation workflow with `kek_version` migration path.
+- Complete key rotation workflow using `kek_version` multi-key migration path.
 - Add audit logging for account settings and payment method changes.
 - Add alerting for repeated auth/provider failures.
 

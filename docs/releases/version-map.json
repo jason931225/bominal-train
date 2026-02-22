@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "baseline": {
+    "version": "0.0.1",
+    "commit": "d2061306546cbb981fa14f75ca07fc9de9a7e2fd"
+  },
+  "releases": [
+    {
+      "version": "0.0.1",
+      "commit": "d2061306546cbb981fa14f75ca07fc9de9a7e2fd",
+      "bump": "patch",
+      "date": "2026-02-22",
+      "notes": "Pre-1.0 baseline at repository root. Current builds remain in 0.0.# series."
+    }
+  ]
+}

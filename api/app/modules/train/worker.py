@@ -13,7 +13,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
-from app.core.crypto import redact_sensitive
+from app.core.crypto import redact_sensitive, validate_safe_metadata
 from app.core.crypto.secrets_store import decrypt_secret
 from app.core.time import to_kst, utc_now
 from app.db.models import Artifact, Secret, Task, TaskAttempt, User
@@ -156,6 +156,61 @@ def _is_provider_auth_required_error(outcome: ProviderOutcome) -> bool:
     )
 
 
+def _is_non_payment_expiry_reserve_error(outcome: ProviderOutcome) -> bool:
+    if outcome.ok:
+        return False
+
+    error_code = str(outcome.error_code or "").lower()
+    error_message = str(outcome.error_message_safe or "")
+    error_message_lower = error_message.lower()
+
+    payment_markers = (
+        "payment",
+        "unpaid",
+        "non_payment",
+        "non-payment",
+        "결제",
+        "미결제",
+    )
+    expiry_markers = (
+        "expire",
+        "expired",
+        "expiration",
+        "deadline",
+        "timeout",
+        "window",
+        "만료",
+        "기한",
+    )
+    reservation_status_markers = (
+        "ticket not found",
+        "reservation status",
+        "reservation_not_found",
+        "조회자료가 없습니다",
+        "rowcnt: 0",
+    )
+
+    message_is_non_payment_expiry = any(marker in error_message_lower for marker in payment_markers) and any(
+        marker in error_message_lower for marker in expiry_markers
+    )
+    code_is_non_payment_expiry = any(marker in error_code for marker in payment_markers) and any(
+        marker in error_code for marker in expiry_markers
+    )
+    message_is_korean_payment_expiry = ("결제" in error_message) and any(
+        marker in error_message for marker in ("만료", "기한")
+    )
+    reservation_status_mismatch = (
+        any(marker in error_message_lower for marker in reservation_status_markers)
+        or any(marker in error_code for marker in reservation_status_markers)
+    )
+    return bool(
+        message_is_non_payment_expiry
+        or code_is_non_payment_expiry
+        or message_is_korean_payment_expiry
+        or reservation_status_mismatch
+    )
+
+
 def _poll_delay_seconds(search_attempt_count: int) -> float:
     base = min(settings.train_poll_max_seconds, settings.train_poll_min_seconds * (2 ** min(search_attempt_count, 3)))
     jitter = random.uniform(0.1, 0.9)
@@ -215,7 +270,7 @@ async def _save_attempt(
         error_code=error_code,
         error_message_safe=error_message_safe,
         duration_ms=duration_ms,
-        meta_json_safe=redact_sensitive(meta_json_safe) if meta_json_safe else None,
+        meta_json_safe=validate_safe_metadata(meta_json_safe) if meta_json_safe else None,
         started_at=started_at,
         finished_at=utc_now(),
     )
@@ -713,6 +768,14 @@ async def _provider_search_and_reserve(
     elif relogin_retry_attempted and not reserve_ok:
         reserve_retryable = True
 
+    non_payment_expiry_retry = (
+        not spec.get("auto_pay", True)
+        and not reserve_ok
+        and _is_non_payment_expiry_reserve_error(reserve_outcome)
+    )
+    if non_payment_expiry_retry:
+        reserve_retryable = True
+
     attempts.append(
         PendingAttempt(
             action=ATTEMPT_ACTION_RESERVE,
@@ -733,6 +796,7 @@ async def _provider_search_and_reserve(
                 "auth_relogin_duration_ms": relogin_duration_ms if relogin_retry_attempted else None,
                 "initial_error_code": initial_reserve_error_code,
                 "initial_error_message": initial_reserve_error_message,
+                "non_payment_expiry_retry": non_payment_expiry_retry,
             },
             started_at=reserve_started,
         )
@@ -1014,6 +1078,7 @@ def _build_ticket_data(
             "status",
             "paid",
             "waiting",
+            "expired",
             "payment_deadline_at",
             "tickets",
             "seat_count",
@@ -1029,7 +1094,7 @@ def _build_ticket_data(
                 **payload.get("provider_http", {}),
                 **redact_sensitive(sync_http),
             }
-    return payload
+    return validate_safe_metadata(payload)
 
 
 def _is_shutdown_requested(ctx: dict) -> bool:
@@ -1187,19 +1252,21 @@ async def _run_train_task_inner(
             if pay_trace:
                 provider_http["pay"] = redact_sensitive(pay_trace)
 
-            open_ticket_artifact.data_json_safe = {
-                **open_ticket_artifact.data_json_safe,
-                "paid": True,
-                "status": "paid",
-                "payment_id": pay_outcome.data.get("payment_id"),
-                "ticket_no": pay_outcome.data.get("ticket_no"),
-                "provider_http": provider_http,
-                "provider_sync": sync_snapshot.get("provider_sync"),
-                "reservation_snapshot": sync_snapshot.get("reservation_snapshot"),
-                "tickets": sync_snapshot.get("tickets", open_ticket_artifact.data_json_safe.get("tickets", [])),
-                "seat_count": sync_snapshot.get("seat_count"),
-                "payment_deadline_at": sync_snapshot.get("payment_deadline_at"),
-            }
+            open_ticket_artifact.data_json_safe = validate_safe_metadata(
+                {
+                    **open_ticket_artifact.data_json_safe,
+                    "paid": True,
+                    "status": "paid",
+                    "payment_id": pay_outcome.data.get("payment_id"),
+                    "ticket_no": pay_outcome.data.get("ticket_no"),
+                    "provider_http": provider_http,
+                    "provider_sync": sync_snapshot.get("provider_sync"),
+                    "reservation_snapshot": sync_snapshot.get("reservation_snapshot"),
+                    "tickets": sync_snapshot.get("tickets", open_ticket_artifact.data_json_safe.get("tickets", [])),
+                    "seat_count": sync_snapshot.get("seat_count"),
+                    "payment_deadline_at": sync_snapshot.get("payment_deadline_at"),
+                }
+            )
             task.updated_at = utc_now()
             await db.commit()
             await _mark_completed(db, task)

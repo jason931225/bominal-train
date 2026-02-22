@@ -53,6 +53,9 @@ Pointer format convention (mandatory):
 - [PTR-DOCS-011] `docs/deprecations/2026-02-14-inventory.md` - deprecation inventory with owner/replacement/removal-gate tracking.
 - [PTR-DOCS-012] `docs/DEPRECATION_WORKFLOW.md` - canonical deprecation lifecycle policy across local, GitHub, and production.
 - [PTR-DOCS-013] `docs/deprecations/registry.json` - machine-validated deprecation registry used by CI/deploy guards.
+- [PTR-DOCS-014] `docs/security/compliance-matrix.md` - PCI DSS and OWASP ASVS control-to-enforcement mapping for runtime and CI gates.
+- [PTR-DOCS-015] `docs/releases/README.md` - semantic versioning policy and commit-parity operating model.
+- [PTR-DOCS-016] `docs/releases/version-map.json` - canonical semantic version to commit-hash registry.
 
 ### Program Plans and Closure Artifacts
 
@@ -69,17 +72,10 @@ Pointer format convention (mandatory):
 - [PTR-PLAN-011] `docs/plans/archive/2026-02-14-program-closure-report.md` - final closure report for the restructure program.
 - [PTR-PLAN-012] `docs/plans/active/README.md` - current active-plan state marker.
 - [PTR-PLAN-013] `docs/plans/active/2026-02-14-stage9-performance-optimization.md` - active Stage 9 backend-first performance optimization execution plan.
-- [PTR-PLAN-014] `docs/plans/active/2026-02-17-restaurant-provider-foundations.md` - active restaurant provider contract and adapter-readiness execution plan.
-- [PTR-PLAN-015] `docs/plans/archive/2026-02-18-ktx-wait-reserve-hotfix-closure.md` - closure artifact for KTX wait-reserve candidate-selection regression fix.
-
-### Provider Research
-
-- [PTR-PROV-001] `docs/provider-research/README.md` - provider-research index and redaction policy.
-- [PTR-PROV-002] `docs/provider-research/restaurant-provider-canonical-contract.md` - canonical restaurant adapter operation contract and naming discipline.
-- [PTR-PROV-003] `docs/provider-research/restaurant-provider-endpoint-inventory.md` - operation-to-endpoint inventory for OpenTable/Resy and capture gaps.
-- [PTR-PROV-004] `docs/provider-research/restaurant-db-schema-mapping.md` - safe provider-field to database mapping guidance.
-- [PTR-PROV-005] `docs/provider-research/opentable-endpoints.md` - OpenTable endpoint contract notes including session/human/cpr observations.
-- [PTR-PROV-006] `docs/provider-research/resy-endpoints.md` - Resy endpoint contract notes for password auth and required capture backlog.
+- [PTR-PLAN-014] `docs/plans/active/2026-02-22-wave1-stabilization-gate-tracker.md` - active Wave 1 stabilization gate status tracker with objective evidence and remaining actions.
+- [PTR-PLAN-015] `docs/plans/2026-02-22-pci-dss-owasp-remediation.md` - implementation plan for PCI DSS and OWASP ASVS hardening across docs, runtime controls, and verification gates.
+- [PTR-PLAN-016] `docs/plans/active/2026-02-22-pci-runtime-policy-codification.md` - active PCI runtime isolation policy codification plan for CDE/relay governance controls.
+- [PTR-PLAN-017] `docs/plans/2026-02-22-redaction-envelope-hardening.md` - crypto hardening implementation plan for redaction and envelope key-version enforcement.
 
 ### Playbooks
 
@@ -88,8 +84,6 @@ Pointer format convention (mandatory):
 - [PTR-PLAY-003] `docs/playbooks/resy-widget-form-data-capture.md` - Resy form-data capture/replay protocol.
 - [PTR-PLAY-004] `docs/playbooks/daily-operations-chores.md` - standardized daily engineering and operations chore workflow.
 - [PTR-PLAY-005] `docs/playbooks/new-module-feature-workflow.md` - end-to-end workflow for adding modules/features with policy and docs gates.
-- [PTR-PLAY-006] `docs/playbooks/restaurant-provider-adapter-workflow.md` - canonical workflow for implementing restaurant adapters with RED->GREEN verification.
-- [PTR-PLAY-007] `docs/playbooks/provider-adapter-contract-template.md` - reusable provider contract template for train/restaurant onboarding.
 
 ### Validation
 
@@ -97,5 +91,6 @@ Pointer format convention (mandatory):
 - [PTR-OPS-002] `infra/tests/test_intent_routing.sh` - validates required intent keyword mappings.
 - [PTR-OPS-003] `infra/tests/test_docs_consistency.sh` - enforces deployment-policy and docs consistency rules.
 - [PTR-OPS-004] `infra/tests/test_execution_ledgers.sh` - validates lock/request ledger structure and template safety.
+- [PTR-OPS-005] `infra/tests/test_versioning.sh` - validates semantic version registry parity and bump semantics.
 
 For agent-focused instructions, also read the root `AGENTS.md`.

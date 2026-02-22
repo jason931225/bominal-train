@@ -110,6 +110,20 @@ docker compose -f infra/docker-compose.prod.yml ps
 docker compose -f infra/docker-compose.prod.yml logs -f caddy api-gateway api-train api-restaurant worker-train worker-restaurant web
 ```
 
+Security checks for payment/CDE runtime:
+
+```bash
+# Confirm Redis persistence is disabled for CDE runtime.
+docker compose -f infra/docker compose.prod.yml exec redis redis-cli CONFIG GET save
+docker compose -f infra/docker compose.prod.yml exec redis redis-cli CONFIG GET appendonly
+
+# Validate provider egress allowlist and timeout envs are set.
+docker compose -f infra/docker compose.prod.yml exec api env | rg 'PAYMENT_PROVIDER_ALLOWED_HOSTS|TRAIN_PROVIDER_TIMEOUT_|PAYMENT_TRANSPORT_TRUST_ENV'
+
+# Confirm payment logs do not include request/response payload bodies.
+docker compose -f infra/docker compose.prod.yml logs --since=30m api worker | rg -i 'card_number|cvv|authorization|set-cookie|wrapped_dek|ciphertext'
+```
+
 Task-list latency benchmark (backend API):
 
 ```bash
@@ -339,6 +353,24 @@ Actions:
 2. Check selected providers and station names.
 3. Inspect API logs for provider-specific error codes.
 4. Validate station mapping behavior through `/api/train/stations`.
+
+## 4.1) SRT reservation expired or no longer found
+
+Primary expiry indicator (SRT reservation list payload):
+
+1. `stlFlg == "N"` (unpaid)
+2. `now(KST) > iseLmtDt + iseLmtTm` (payment cutoff passed)
+
+Secondary confirmation indicators:
+
+1. `selectListAtc14016_n.do` no longer returns the `pnrNo` (or `rowCnt: 0`)
+2. `getListAtc14087.do` returns `조회자료가 없습니다.`
+
+Bominal behavior:
+
+1. Ticket sync sets status to `expired` for unpaid cutoff-passed reservations.
+2. Manual pay rejects status `expired` with payment-window-expired response.
+3. Non-auto-pay worker reserve failures with not-found/expiry markers are classified retryable and return to `POLLING`.
 
 ## 5) Migrations drift or fail
 

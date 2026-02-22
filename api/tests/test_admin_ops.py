@@ -43,6 +43,7 @@ async def test_admin_ops_status_and_requeue(client, db_session, monkeypatch):
     user = (await db_session.execute(select(User).where(User.email == "ops-admin@example.com"))).scalar_one()
     admin_role = (await db_session.execute(select(Role).where(Role.name == "admin"))).scalar_one()
     user.role_id = admin_role.id
+    user.access_status = "approved"
     await db_session.commit()
 
     # Seed arq keys and heartbeat.
