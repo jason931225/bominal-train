@@ -70,8 +70,19 @@ class EnvelopeCrypto:
         wrapped_dek: str,
         dek_nonce: str,
         aad: str,
+        kek_version: int | None = None,
+        enforce_kek_version: bool = False,
     ) -> dict[str, Any]:
+        if enforce_kek_version and kek_version is None:
+            raise ValueError("kek_version is required when enforcement is enabled")
+        if enforce_kek_version and kek_version != self._kek_version:
+            raise ValueError("kek_version mismatch")
+
         aad_bytes = _b64decode(aad)
         dek = AESGCM(self._master_key).decrypt(_b64decode(dek_nonce), _b64decode(wrapped_dek), aad_bytes)
-        payload_bytes = AESGCM(dek).decrypt(_b64decode(nonce), _b64decode(ciphertext), aad_bytes)
+        try:
+            payload_bytes = AESGCM(dek).decrypt(_b64decode(nonce), _b64decode(ciphertext), aad_bytes)
+        finally:
+            # Best-effort lifetime reduction for sensitive key material.
+            del dek
         return json.loads(payload_bytes.decode("utf-8"))
