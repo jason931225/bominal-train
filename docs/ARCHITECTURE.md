@@ -148,6 +148,12 @@ Data controls:
 - Redaction helper for logs/safe metadata in `redaction.py`
 - Payment CVV not persisted to Postgres; encrypted short-term cache in Redis
 
+Cardholder Data Environment (CDE) boundary:
+
+- In scope: wallet secret decryption paths, payment execution worker paths, CVV Redis keys, in-memory decrypted PAN/CVV.
+- Out of scope: web layer, queue payloads, `meta_json_safe`/`data_json_safe`, non-sensitive artifacts, logs.
+- Raw cardholder data must never cross from CDE code paths into non-CDE persistence or transport layers.
+
 ## Operational notes
 
 - Worker startup re-enqueues recoverable active tasks from DB.
