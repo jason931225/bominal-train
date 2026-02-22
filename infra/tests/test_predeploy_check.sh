@@ -42,6 +42,7 @@ POSTGRES_USER=bominal
 POSTGRES_PASSWORD=strong-password
 EOF
   cat >"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF'
+GCP_PROJECT_ID=test-project
 INTERNAL_API_KEY=abc123
 MASTER_KEY=base64-secret
 EOF
@@ -50,6 +51,7 @@ NEXT_PUBLIC_API_BASE_URL=https://example.com
 EOF
   cat >"$TMP_DIR/repo/infra/env/prod/caddy.env" <<'EOF'
 CADDY_SITE_ADDRESS=example.com
+CADDY_ACME_EMAIL=ops@example.com
 EOF
 }
 

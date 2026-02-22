@@ -218,13 +218,39 @@ for file in "${required_files[@]}"; do
   require_no_env_placeholders "$file"
 done
 
-echo "==> Checking required API security settings"
+echo "==> Checking required API/deploy settings"
 required_api_keys=(
+  "GCP_PROJECT_ID"
   "INTERNAL_API_KEY"
   "MASTER_KEY"
 )
 for key in "${required_api_keys[@]}"; do
   require_env_key_nonempty "infra/env/prod/api.env" "$key"
+done
+
+echo "==> Checking required Postgres settings"
+required_postgres_keys=(
+  "POSTGRES_PASSWORD"
+)
+for key in "${required_postgres_keys[@]}"; do
+  require_env_key_nonempty "infra/env/prod/postgres.env" "$key"
+done
+
+echo "==> Checking required Web settings"
+required_web_keys=(
+  "NEXT_PUBLIC_API_BASE_URL"
+)
+for key in "${required_web_keys[@]}"; do
+  require_env_key_nonempty "infra/env/prod/web.env" "$key"
+done
+
+echo "==> Checking required Caddy settings"
+required_caddy_keys=(
+  "CADDY_SITE_ADDRESS"
+  "CADDY_ACME_EMAIL"
+)
+for key in "${required_caddy_keys[@]}"; do
+  require_env_key_nonempty "infra/env/prod/caddy.env" "$key"
 done
 
 echo "==> Validating production compose configuration"
