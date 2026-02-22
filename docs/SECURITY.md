@@ -382,6 +382,11 @@ Workers handling payment MUST:
 - disable proxy inheritance by default (`PAYMENT_TRANSPORT_TRUST_ENV=false` unless explicitly approved)
 - enforce bounded connect/read/total timeouts
 - reject user-input hostnames and dynamic outbound host routing
+- when egress gateways are configured:
+  - `TRAIN_PROVIDER_EGRESS_PROXY_URL` MUST target internal `egress-train`
+  - `RESTAURANT_PROVIDER_EGRESS_PROXY_URL` MUST target internal `egress-restaurant`
+  - egress gateways MUST deny unmatched paths and methods (fail closed)
+  - egress gateways MUST not expose administrative control surfaces
 
 ### Crash/dump safety
 

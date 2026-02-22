@@ -26,6 +26,28 @@ services:
       timeout: 3s
       retries: 10
 
+  egress-train:
+    image: caddy:2.9-alpine
+    container_name: bominal-egress-train
+    volumes:
+      - ./egress/train/Caddyfile:/etc/caddy/Caddyfile:ro
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  egress-restaurant:
+    image: caddy:2.9-alpine
+    container_name: bominal-egress-restaurant
+    volumes:
+      - ./egress/restaurant/Caddyfile:/etc/caddy/Caddyfile:ro
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   mailpit:
     image: axllent/mailpit:v1.19
     container_name: bominal-mailpit
@@ -49,6 +71,10 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      egress-train:
+        condition: service_healthy
+      egress-restaurant:
+        condition: service_healthy
       mailpit:
         condition: service_started
     ports:
@@ -70,6 +96,10 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      egress-train:
+        condition: service_healthy
+      egress-restaurant:
+        condition: service_healthy
       mailpit:
         condition: service_started
 
@@ -88,6 +118,10 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      egress-train:
+        condition: service_healthy
+      egress-restaurant:
         condition: service_healthy
       mailpit:
         condition: service_started
@@ -108,6 +142,10 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      egress-train:
+        condition: service_healthy
+      egress-restaurant:
+        condition: service_healthy
       mailpit:
         condition: service_started
 
@@ -126,6 +164,10 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      egress-train:
+        condition: service_healthy
+      egress-restaurant:
         condition: service_healthy
       mailpit:
         condition: service_started

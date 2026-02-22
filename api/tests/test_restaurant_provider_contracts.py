@@ -8,11 +8,14 @@ from app.modules.restaurant.providers import (
     RESTAURANT_CANONICAL_OPERATIONS,
     get_restaurant_provider_client,
 )
+from app.modules.restaurant.providers import opentable_adapter, resy_adapter
 from app.modules.restaurant.providers.base import (
     RestaurantProviderClient,
     RestaurantProviderOutcome,
     RestaurantSearchSlot,
 )
+from app.modules.restaurant.providers.opentable_adapter import OpenTableProviderClient
+from app.modules.restaurant.providers.resy_adapter import ResyProviderClient
 
 
 def test_restaurant_canonical_operations_are_stable():
@@ -37,6 +40,40 @@ def test_get_restaurant_provider_client_supports_resy_and_opentable(provider: st
 def test_get_restaurant_provider_client_rejects_unknown_provider():
     with pytest.raises(ValueError):
         get_restaurant_provider_client("UNKNOWN")
+
+
+def test_opentable_default_transport_uses_restaurant_egress_domain(monkeypatch):
+    captured: list[str] = []
+
+    class _DummyTransport:
+        async def request(self, **kwargs):  # noqa: ANN003
+            raise AssertionError("not used")
+
+    def _fake_httpx_transport(*, egress_domain_set: str):
+        captured.append(egress_domain_set)
+        return _DummyTransport()
+
+    monkeypatch.setattr(opentable_adapter, "HttpxTransport", _fake_httpx_transport)
+    client = OpenTableProviderClient()
+    assert client is not None
+    assert captured == ["restaurant"]
+
+
+def test_resy_default_transport_uses_restaurant_egress_domain(monkeypatch):
+    captured: list[str] = []
+
+    class _DummyTransport:
+        async def request(self, **kwargs):  # noqa: ANN003
+            raise AssertionError("not used")
+
+    def _fake_httpx_transport(*, egress_domain_set: str):
+        captured.append(egress_domain_set)
+        return _DummyTransport()
+
+    monkeypatch.setattr(resy_adapter, "HttpxTransport", _fake_httpx_transport)
+    client = ResyProviderClient()
+    assert client is not None
+    assert captured == ["restaurant"]
 
 
 @pytest.mark.asyncio

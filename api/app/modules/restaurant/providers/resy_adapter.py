@@ -147,7 +147,7 @@ class ResyProviderClient(ScaffoldRestaurantProviderClient):
         refresh_path: str = _DEFAULT_REFRESH_PATH,
         logout_path: str = _DEFAULT_LOGOUT_PATH,
     ) -> None:
-        self._transport = transport or HttpxTransport()
+        self._transport = transport or HttpxTransport(egress_domain_set="restaurant")
         self._base_url = base_url.rstrip("/")
         self._timeout_seconds = timeout_seconds
         self._auth_password_path = auth_password_path or _DEFAULT_AUTH_PASSWORD_PATH

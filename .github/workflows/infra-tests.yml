@@ -104,6 +104,10 @@ jobs:
         run: |
           bash infra/tests/test_sensitive_log_scan.sh
 
+      - name: Validate egress Caddyfile guards
+        run: |
+          bash infra/tests/test_egress_caddyfiles.sh
+
       - name: Validate semantic version mapping
         run: |
           bash infra/tests/test_versioning.sh
