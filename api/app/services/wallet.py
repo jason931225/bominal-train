@@ -56,12 +56,20 @@ def _serialize_encrypted_payload(payload: dict) -> str:
 def _deserialize_cached_cvv_payload(value: str) -> dict | None:
     try:
         encrypted_payload = json.loads(value)
+        raw_kek_version = encrypted_payload.get("kek_version")
+        parsed_kek_version: int | None = None
+        if raw_kek_version is not None:
+            parsed_kek_version = int(raw_kek_version)
+        if settings.payment_require_cvv_kek_version and parsed_kek_version is None:
+            return None
         decrypted_payload = get_envelope_crypto().decrypt_payload(
             ciphertext=encrypted_payload["ciphertext"],
             nonce=encrypted_payload["nonce"],
             wrapped_dek=encrypted_payload["wrapped_dek"],
             dek_nonce=encrypted_payload["dek_nonce"],
             aad=encrypted_payload["aad"],
+            kek_version=parsed_kek_version,
+            enforce_kek_version=settings.payment_require_cvv_kek_version or parsed_kek_version is not None,
         )
         if not isinstance(decrypted_payload, dict):
             return None
@@ -99,7 +107,10 @@ async def _load_cached_cvv_until(*, user_id: UUID) -> datetime | None:
 
 
 async def _cache_cvv(*, user_id: UUID, cvv: str) -> datetime:
-    ttl_seconds = max(60, settings.payment_cvv_ttl_seconds)
+    ttl_seconds = max(
+        settings.payment_cvv_ttl_min_seconds,
+        min(settings.payment_cvv_ttl_seconds, settings.payment_cvv_ttl_max_seconds),
+    )
     expires_at = utc_now() + timedelta(seconds=ttl_seconds)
     encrypted = get_envelope_crypto().encrypt_payload(
         payload={"cvv": cvv, "expires_at": expires_at.isoformat()},
@@ -116,6 +127,7 @@ async def _cache_cvv(*, user_id: UUID, cvv: str) -> datetime:
                     "wrapped_dek": encrypted.wrapped_dek,
                     "dek_nonce": encrypted.dek_nonce,
                     "aad": encrypted.aad,
+                    "kek_version": encrypted.kek_version,
                 }
             ),
             ex=ttl_seconds,

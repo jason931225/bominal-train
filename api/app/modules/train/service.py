@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.config import get_settings
+from app.core.crypto import validate_safe_metadata
 from app.core.crypto.secrets_store import build_encrypted_secret, decrypt_secret
 from app.core.crypto.redaction import redact_sensitive
 from app.core.redis import get_redis_client
@@ -140,7 +141,7 @@ def _build_task_attempt(
         error_code=error_code,
         error_message_safe=error_message_safe,
         duration_ms=duration_ms,
-        meta_json_safe=redact_sensitive(meta_json_safe) if meta_json_safe else None,
+        meta_json_safe=validate_safe_metadata(meta_json_safe) if meta_json_safe else None,
         started_at=started_at,
         finished_at=finished_at or utc_now(),
     )
@@ -1066,7 +1067,7 @@ async def _refresh_ticket_artifact_status(
             sync_meta["error"] = exc.detail
             current_data["provider_sync"] = sync_meta
             current_data["last_provider_sync_at"] = utc_now().isoformat()
-            artifact.data_json_safe = current_data
+            artifact.data_json_safe = validate_safe_metadata(current_data)
             return True
         clients[provider] = client
 
@@ -1083,7 +1084,7 @@ async def _refresh_ticket_artifact_status(
         sync_meta["error"] = f"provider_sync_error:{type(exc).__name__}"
         current_data["provider_sync"] = sync_meta
         current_data["last_provider_sync_at"] = utc_now().isoformat()
-        artifact.data_json_safe = current_data
+        artifact.data_json_safe = validate_safe_metadata(current_data)
         return True
 
     merged_status = snapshot.get("status", current_data.get("status"))
@@ -1110,7 +1111,7 @@ async def _refresh_ticket_artifact_status(
         }
 
     if merged_data != current_data:
-        artifact.data_json_safe = merged_data
+        artifact.data_json_safe = validate_safe_metadata(merged_data)
         return True
     return False
 
@@ -1357,14 +1358,16 @@ async def pay_task(db: AsyncSession, *, task_id: UUID, user: User) -> TaskAction
         error_code=outcome.error_code,
         error_message_safe=outcome.error_message_safe,
         duration_ms=duration_ms,
-        meta_json_safe={
-            "manual_trigger": True,
-            "rate_limit_wait_ms": limit.waited_ms,
-            "rate_limit_rounds": limit.rounds,
-            "reservation_id": reservation_id,
-            "payment_card_configured": bool(payment_card),
-            "payment_id": outcome.data.get("payment_id"),
-        },
+        meta_json_safe=validate_safe_metadata(
+            {
+                "manual_trigger": True,
+                "rate_limit_wait_ms": limit.waited_ms,
+                "rate_limit_rounds": limit.rounds,
+                "reservation_id": reservation_id,
+                "payment_card_configured": bool(payment_card),
+                "payment_id": outcome.data.get("payment_id"),
+            }
+        ),
         started_at=started_at,
         finished_at=finished_at,
     )
@@ -1382,14 +1385,16 @@ async def pay_task(db: AsyncSession, *, task_id: UUID, user: User) -> TaskAction
     if pay_trace:
         provider_http["pay"] = redact_sensitive(pay_trace)
 
-    artifact.data_json_safe = {
-        **artifact_data,
-        "paid": True,
-        "status": "paid",
-        "payment_id": outcome.data.get("payment_id"),
-        "ticket_no": outcome.data.get("ticket_no"),
-        "provider_http": provider_http,
-    }
+    artifact.data_json_safe = validate_safe_metadata(
+        {
+            **artifact_data,
+            "paid": True,
+            "status": "paid",
+            "payment_id": outcome.data.get("payment_id"),
+            "ticket_no": outcome.data.get("ticket_no"),
+            "provider_http": provider_http,
+        }
+    )
     updated = True
 
     try:
@@ -1403,11 +1408,13 @@ async def pay_task(db: AsyncSession, *, task_id: UUID, user: User) -> TaskAction
     except Exception as exc:
         sync_meta = dict(artifact.data_json_safe.get("provider_sync") or {})
         sync_meta["pay_sync_error"] = f"provider_sync_error:{type(exc).__name__}"
-        artifact.data_json_safe = {
-            **artifact.data_json_safe,
-            "provider_sync": sync_meta,
-            "last_provider_sync_at": utc_now().isoformat(),
-        }
+        artifact.data_json_safe = validate_safe_metadata(
+            {
+                **artifact.data_json_safe,
+                "provider_sync": sync_meta,
+                "last_provider_sync_at": utc_now().isoformat(),
+            }
+        )
     else:
         merged_data = dict(artifact.data_json_safe)
         for key in (
@@ -1432,7 +1439,7 @@ async def pay_task(db: AsyncSession, *, task_id: UUID, user: User) -> TaskAction
         merged_data["paid"] = True
         merged_data["status"] = "paid"
         merged_data["last_provider_sync_at"] = snapshot.get("synced_at", utc_now().isoformat())
-        artifact.data_json_safe = merged_data
+        artifact.data_json_safe = validate_safe_metadata(merged_data)
 
     if task.state in ACTIVE_TASK_STATES or task.state in {"FAILED", "PAUSED"}:
         task.state = "COMPLETED"
@@ -1567,36 +1574,44 @@ async def cancel_ticket(db: AsyncSession, *, artifact_id: UUID, user: User) -> T
         provider_http["cancel"] = redact_sensitive(cancel_trace)
 
     if not outcome.ok and outcome.error_code == "not_supported":
-        artifact.data_json_safe = {
-            **artifact.data_json_safe,
-            "provider_http": provider_http,
-        }
+        artifact.data_json_safe = validate_safe_metadata(
+            {
+                **artifact.data_json_safe,
+                "provider_http": provider_http,
+            }
+        )
         await db.commit()
         return TicketCancelResponse(status="not_supported", detail=outcome.error_message_safe or "not supported")
 
     if not outcome.ok and outcome.error_code == "reservation_not_found":
-        artifact.data_json_safe = {
-            **artifact.data_json_safe,
-            "status": "reservation_not_found",
-            "provider_http": provider_http,
-        }
+        artifact.data_json_safe = validate_safe_metadata(
+            {
+                **artifact.data_json_safe,
+                "status": "reservation_not_found",
+                "provider_http": provider_http,
+            }
+        )
         await db.commit()
         return TicketCancelResponse(status="not_found", detail=outcome.error_message_safe or "Reservation not found")
 
     if not outcome.ok:
-        artifact.data_json_safe = {
-            **artifact.data_json_safe,
-            "provider_http": provider_http,
-        }
+        artifact.data_json_safe = validate_safe_metadata(
+            {
+                **artifact.data_json_safe,
+                "provider_http": provider_http,
+            }
+        )
         await db.commit()
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=outcome.error_message_safe or "Cancel failed")
 
-    artifact.data_json_safe = {
-        **artifact.data_json_safe,
-        "cancelled": True,
-        "status": "cancelled",
-        "provider_http": provider_http,
-    }
+    artifact.data_json_safe = validate_safe_metadata(
+        {
+            **artifact.data_json_safe,
+            "cancelled": True,
+            "status": "cancelled",
+            "provider_http": provider_http,
+        }
+    )
     updated = True
     updated = await _refresh_ticket_artifact_status(
         db,
@@ -1607,11 +1622,13 @@ async def cancel_ticket(db: AsyncSession, *, artifact_id: UUID, user: User) -> T
         client_cache=client_cache,
     ) or updated
 
-    artifact.data_json_safe = {
-        **artifact.data_json_safe,
-        "cancelled": True,
-        "status": "cancelled",
-    }
+    artifact.data_json_safe = validate_safe_metadata(
+        {
+            **artifact.data_json_safe,
+            "cancelled": True,
+            "status": "cancelled",
+        }
+    )
     await db.commit()
     return TicketCancelResponse(status="cancelled", detail="Ticket cancelled")
 
