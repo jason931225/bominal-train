@@ -13,6 +13,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+- [eb417fe] Added active PCI runtime policy codification and redaction/envelope hardening plan documents with canonical pointer registration (`docs/plans/active/2026-02-22-pci-runtime-policy-codification.md`, `docs/plans/2026-02-22-redaction-envelope-hardening.md`, `docs/plans/active/README.md`, `docs/README.md`).
 - [9dc1d9e] Added Wave 1 stabilization gate tracker and canonical pointer entries for reviewer-facing release-gate evidence (`docs/plans/active/2026-02-22-wave1-stabilization-gate-tracker.md`, `docs/plans/active/README.md`, `docs/README.md`).
 - [9dc1d9e] Added provider egress resilience regression coverage for retry classification, bounded retries, and side-effect no-retry guarantees (`api/tests/test_provider_egress_transport.py`).
 - [0d84ae8] Added commit-based changelog governance and CI validation (`infra/tests/test_changelog.sh`).
