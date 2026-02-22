@@ -47,7 +47,7 @@ async def test_remove_payment_settings_wipes_saved_data(client, db_session, monk
     async def _get_fake_redis():
         return fake_redis
 
-    monkeypatch.setattr("app.services.wallet.get_redis_pool", lambda: MockRedisContextManager(fake_redis))
+    monkeypatch.setattr("app.services.wallet.get_cde_redis_pool", lambda: MockRedisContextManager(fake_redis))
 
     email = "wallet-remove@example.com"
     cookie = await _register_and_login(client, db_session, email=email)
@@ -107,7 +107,7 @@ async def test_remove_payment_settings_wipes_saved_data(client, db_session, monk
 @pytest.mark.asyncio
 async def test_remove_payment_settings_is_idempotent(client, db_session, monkeypatch):
     fake_redis = fakeredis.aioredis.FakeRedis()
-    monkeypatch.setattr("app.services.wallet.get_redis_pool", lambda: MockRedisContextManager(fake_redis))
+    monkeypatch.setattr("app.services.wallet.get_cde_redis_pool", lambda: MockRedisContextManager(fake_redis))
 
     cookie = await _register_and_login(client, db_session, email="wallet-remove-idempotent@example.com")
 
@@ -119,7 +119,7 @@ async def test_remove_payment_settings_is_idempotent(client, db_session, monkeyp
 @pytest.mark.asyncio
 async def test_payment_card_cache_blob_has_kek_version_and_bounded_ttl(client, db_session, monkeypatch):
     fake_redis = fakeredis.aioredis.FakeRedis()
-    monkeypatch.setattr("app.services.wallet.get_redis_pool", lambda: MockRedisContextManager(fake_redis))
+    monkeypatch.setattr("app.services.wallet.get_cde_redis_pool", lambda: MockRedisContextManager(fake_redis))
 
     cookie = await _register_and_login(client, db_session, email="wallet-cache-kek@example.com")
 
@@ -156,7 +156,7 @@ async def test_payment_card_cache_blob_has_kek_version_and_bounded_ttl(client, d
 @pytest.mark.asyncio
 async def test_payment_card_status_returns_not_configured_on_kek_version_mismatch(client, db_session, monkeypatch):
     fake_redis = fakeredis.aioredis.FakeRedis()
-    monkeypatch.setattr("app.services.wallet.get_redis_pool", lambda: MockRedisContextManager(fake_redis))
+    monkeypatch.setattr("app.services.wallet.get_cde_redis_pool", lambda: MockRedisContextManager(fake_redis))
 
     email = "wallet-kek-mismatch@example.com"
     cookie = await _register_and_login(client, db_session, email=email)

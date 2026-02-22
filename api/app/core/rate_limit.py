@@ -111,7 +111,7 @@ _use_redis = settings.rate_limit_use_redis if hasattr(settings, 'rate_limit_use_
 
 def _create_rate_limiter():
     """Create appropriate rate limiter based on configuration."""
-    if _use_redis and settings.redis_url:
+    if _use_redis and settings.resolved_redis_url_non_cde:
         return RedisRateLimiter()
     return InMemoryRateLimiter()
 
