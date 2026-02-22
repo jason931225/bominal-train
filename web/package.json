@@ -12,11 +12,12 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
+    "@tailwindcss/postcss": "^4.2.0",
     "framer-motion": "^12.34.3",
     "next": "16.1.6",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
-    "zod": "3.24.1"
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",
@@ -32,11 +33,13 @@
     "eslint-config-next": "16.1.6",
     "jsdom": "^28.1.0",
     "postcss": "^8.5.6",
-    "tailwindcss": "3.4.17",
+    "tailwindcss": "^4.2.0",
     "typescript": "^5.9.3",
     "vitest": "^2.1.9"
   },
   "overrides": {
-    "glob": "^13.0.0"
+    "esbuild": "^0.27.3",
+    "glob": "^13.0.0",
+    "minimatch": "^10.2.2"
   }
 }
