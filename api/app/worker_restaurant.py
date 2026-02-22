@@ -11,7 +11,7 @@ settings = get_settings()
 
 class WorkerRestaurantSettings:
     functions = [run_restaurant_task]
-    redis_settings = RedisSettings.from_dsn(settings.redis_url)
+    redis_settings = RedisSettings.from_dsn(settings.resolved_redis_url_non_cde)
     queue_name = RESTAURANT_QUEUE_NAME
     max_jobs = 10
     job_timeout = 300

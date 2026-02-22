@@ -113,6 +113,12 @@ docker compose -f infra/docker-compose.prod.yml logs -f caddy api-gateway api-tr
 Security checks for payment/CDE runtime:
 
 ```bash
+# Confirm Redis split config (non-CDE vs CDE) in API runtime.
+docker compose -f infra/docker compose.prod.yml exec api env | rg 'REDIS_URL(_NON_CDE|_CDE)?'
+
+# Confirm effective CDE Redis endpoint is not Upstash-hosted.
+docker compose -f infra/docker compose.prod.yml exec api python -c "from app.core.config import get_settings,is_upstash_redis_url; s=get_settings(); print('resolved_redis_url_cde=', s.resolved_redis_url_cde); assert not is_upstash_redis_url(s.resolved_redis_url_cde)"
+
 # Confirm Redis persistence is disabled for CDE runtime.
 docker compose -f infra/docker compose.prod.yml exec redis redis-cli CONFIG GET save
 docker compose -f infra/docker compose.prod.yml exec redis redis-cli CONFIG GET appendonly
@@ -428,6 +434,16 @@ bominal-deploy
 2. Open Mailpit UI: `http://localhost:8025`.
 3. Check API `EMAIL_PROVIDER` setting (`smtp` for local Mailpit).
 4. Trigger `/api/notifications/email/test` while logged in.
+
+## 6.1) Train notifications not arriving with Resend (production)
+
+1. Check API env values in `infra/env/prod/api.env`:
+   - `EMAIL_PROVIDER=resend`
+   - `RESEND_API_KEY` set
+   - `EMAIL_FROM_ADDRESS` uses a verified Resend sender/domain
+2. Verify worker is healthy and consuming `train:queue`.
+3. Trigger `/api/notifications/email/test` from an authenticated session.
+4. Inspect API/worker logs for redacted delivery errors (no payload bodies).
 
 ## 7) Restaurant task policy behavior (stage scaffold)
 
