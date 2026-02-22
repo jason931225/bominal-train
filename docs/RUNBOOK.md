@@ -64,6 +64,12 @@ Start stack (dev):
 docker compose -f infra/docker-compose.yml up --build
 ```
 
+Run frontend E2E with dedicated Chromium profile:
+
+```bash
+docker compose -f infra/docker-compose.yml --profile e2e run --rm --build web-e2e
+```
+
 `infra/scripts/local-run.sh` and `infra/scripts/local-check.sh` now invoke compose with `--remove-orphans` to prevent stale-service warning drift when switching stacks.
 
 If you see orphan warnings after switching compose files (for example, legacy `bominal-caddy`), run one-time cleanup:

@@ -48,6 +48,9 @@ docker compose -f infra/docker-compose.yml up --build
 - Next.js 16 migration notes:
   - use `proxy.ts` (not `middleware.ts`);
   - `headers()` / `cookies()` APIs are async in server components/helpers (`await headers()`, `await cookies()`).
+- Container dependency split:
+  - `web/Dockerfile.dev` is Chromium-free for faster default dev/test/build loops;
+  - Playwright E2E runs in dedicated `web/Dockerfile.e2e` / `web-e2e` compose profile.
 - Tailwind 4 migration notes:
   - PostCSS plugin is `@tailwindcss/postcss` (not `tailwindcss` in `postcss.config.js`);
   - global CSS uses `@import "tailwindcss";` with `@config "../tailwind.config.ts";`.
@@ -112,6 +115,12 @@ Frontend unit tests with coverage gate:
 
 ```bash
 (cd web && npm run test:ci)
+```
+
+Frontend E2E tests (containerized, Chromium-enabled profile):
+
+```bash
+docker compose -f infra/docker-compose.yml --profile e2e run --rm --build web-e2e
 ```
 
 Web dependency lockfile hygiene (mandatory when `web/package.json` changes):
