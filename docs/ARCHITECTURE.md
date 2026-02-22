@@ -105,6 +105,27 @@ Task list performance controls:
 - Frontend task list state updates are key-compared before commit to avoid unnecessary rerender churn when payloads are unchanged.
 - Performance regression safeguards include hybrid benchmark gate scripts (relative improvement + absolute ceilings) and frontend polling-behavior unit tests in CI.
 
+Worker provider-search retry delay model:
+
+- Worker retry timing for provider search/reserve paths uses a **single stretched-exponential mean curve** with multiplicative **mean-preserving gamma jitter** (implemented in `api/app/modules/train/worker.py`).
+- Definitions:
+  - `t`: seconds until departure/expiry.
+  - `M`: `TRAIN_POLL_MAX_SECONDS`.
+  - `B`: baseline mean at 24h (`1.25s`).
+  - `t0 = 86400` (24h).
+- Mean curve:
+  - `x = max(t - t0, 0)`
+  - `mu(t) = M - (M - B) * exp(-(x / tau)^p)`
+- Parameters `(p, tau)` are solved from fixed anchors (closed form, no regression):
+  - `mu(48h) = 1.5`
+  - `mu(72h) = 2.0`
+  - `p = ln(y2 / y1) / ln(x2 / x1)`, `tau = x1 / y1^(1/p)`,
+    where `y_i = -ln((M - mu_i)/(M - B))`, `x_i = t_i - t0`.
+- Jitter:
+  - `G ~ Gamma(k=4, theta=1/k)` so `E[G] = 1`.
+  - `raw = mu(t) * G`, `delay = clamp(raw, 0.1, M)`.
+  - Unclamped expectation remains `E[raw] = mu(t)`.
+
 Provider integration:
 
 - Interface in `api/app/modules/train/providers/base.py`

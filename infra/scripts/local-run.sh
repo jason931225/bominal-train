@@ -14,6 +14,11 @@ echo "=== Starting bominal development environment ==="
 
 detect_compose_cmd
 
+APP_VERSION="$(resolve_dev_app_version "$REPO_ROOT")"
+BUILD_VERSION="$(resolve_dev_build_version "$REPO_ROOT")"
+export APP_VERSION BUILD_VERSION
+echo "→ Using APP_VERSION=$APP_VERSION BUILD_VERSION=$BUILD_VERSION"
+
 # Check if setup has been run
 required_dev_files=(
   "infra/env/dev/api.env"
