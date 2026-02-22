@@ -126,16 +126,10 @@ NPM warning handling (mandatory):
     - target removal version/date.
 - Suppressing warnings without remediation or explicit tracked ownership is not allowed.
 
-Current tracked npm deprecation warnings (must be revisited):
+Current tracked npm deprecation warnings:
 
-- `whatwg-encoding@3.1.1` deprecation warning.
-  - Chain: `jsdom -> whatwg-encoding`
-  - Owner: Web Platform
-  - Target removal: next jsdom major/minor upgrade cycle in active sprint.
-- `glob@10.5.0` deprecation warning.
-  - Chain: `@vitest/coverage-v8 -> test-exclude -> glob@10.5.0`
-  - Owner: Web Platform
-  - Target removal: next vitest/@vitest/coverage-v8 upgrade cycle in active sprint.
+- none (must remain empty in green state).
+- if any warning appears again, add it here with chain/owner/target-removal before staging.
 
 Recommended targeted smoke tests after major changes:
 
