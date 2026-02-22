@@ -5,7 +5,7 @@ Thanks for contributing to Bominal.
 ## Prerequisites
 
 - Python 3.14.3+
-- Node.js 20+
+- Node.js 24+
 - Postgres + Redis (local services)
 - Git with submodule support
 - Docker + Docker Compose (optional, for containerized simulation)
@@ -152,10 +152,17 @@ Future-proof dependency policy:
 
 Current compatibility holds (must be re-evaluated during dependency modernization):
 
-- `redis` is pinned to `5.3.1` because `arq==0.27.0` requires `redis<6`.
-- `vitest` / `@vitest/coverage-v8` remain on `2.1.9` because `4.x` currently fails this repo's enforced coverage gate without broader test/threshold realignment.
-- `eslint` remains on `9.x` because `eslint@10` is currently incompatible with `eslint-config-next@16.1.6` in this stack.
-- `package.json` overrides enforce patched transitive versions (`esbuild`, `minimatch`, `glob`) so `npm audit` stays green while those major-hold packages remain.
+- `redis-py` library hold:
+  - Python client `redis` is pinned to `5.3.1` because `arq==0.27.0` requires `redis<6`.
+  - This is not a Redis server-version hold; runtime Redis server remains modern (`redis:7-alpine` in local stack).
+- `vitest` / `@vitest/coverage-v8` hold:
+  - remain on `2.1.9` because `4.x` currently fails this repo's enforced coverage gate without broader test/threshold realignment.
+  - exit criteria: validate `vitest` 4 coverage behavior and timing on CI runners, then migrate config/tests in a dedicated PR.
+- `eslint` hold:
+  - current stable baseline is `eslint` `9.x`; `eslint@10` is currently incompatible with `eslint-config-next@16.1.6` in this stack.
+  - exit criteria: upgrade when Next/eslint-config-next support for ESLint 10 is validated in this repo.
+- security overrides:
+  - `package.json` overrides enforce patched transitive versions (`esbuild`, `minimatch`, `glob`) so `npm audit` stays green while major-hold packages remain.
 
 Recommended targeted smoke tests after major changes:
 
