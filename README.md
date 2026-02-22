@@ -97,6 +97,12 @@ Optional cleanup after checks:
 ./infra/scripts/local-check.sh --down
 ```
 
+Frontend E2E tests run in a dedicated Chromium-enabled compose profile:
+
+```bash
+docker compose -f infra/docker-compose.yml --profile e2e run --rm --build web-e2e
+```
+
 If you pull new backend migrations while containers are already running, restart API/workers once:
 
 ```bash
