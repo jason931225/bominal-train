@@ -69,6 +69,7 @@ Pointer format convention (mandatory):
 - [PTR-PLAN-011] `docs/plans/archive/2026-02-14-program-closure-report.md` - final closure report for the restructure program.
 - [PTR-PLAN-012] `docs/plans/active/README.md` - current active-plan state marker.
 - [PTR-PLAN-013] `docs/plans/active/2026-02-14-stage9-performance-optimization.md` - active Stage 9 backend-first performance optimization execution plan.
+- [PTR-PLAN-014] `docs/plans/active/2026-02-22-wave1-stabilization-gate-tracker.md` - active Wave 1 stabilization gate status tracker with objective evidence and remaining actions.
 
 ### Playbooks
 

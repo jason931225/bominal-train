@@ -76,6 +76,16 @@ def utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _as_utc(value: datetime) -> datetime:
+    return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+
+
+def should_update_session_activity(*, last_seen_at: datetime, now: datetime, debounce_seconds: int) -> bool:
+    if debounce_seconds <= 0:
+        return True
+    return (_as_utc(now) - _as_utc(last_seen_at)) >= timedelta(seconds=debounce_seconds)
+
+
 def _deleted_email_for_user(user_id: UUID) -> str:
     return f"deleted-{user_id}@deleted.bominal.local"
 
