@@ -65,6 +65,13 @@ EMAIL_REGEX = re.compile(r"[^@]+@[^@]+\.[^@]+")
 # Korean mobile numbers: 01X-XXXX-XXXX (accepts with or without dashes)
 PHONE_NUMBER_REGEX = re.compile(r"01[0-9]-?\d{3,4}-?\d{4}")
 SRT_STATION_NAME_BY_CODE = {code: name for name, code in SRT_STATION_CODE.items()}
+SRT_PASSENGER_TYPE_BY_CODE = {
+    "1": "어른/청소년",
+    "2": "장애 1~3급",
+    "3": "장애 4~6급",
+    "4": "경로",
+    "5": "어린이",
+}
 
 
 def _as_list(value: Any) -> list[Any]:
@@ -222,9 +229,27 @@ def parse_srt_login_response(response_text: str) -> ProviderOutcome:
             error_message_safe="SRT login response was not valid JSON",
         )
 
+    msg_text = str(payload.get("MSG") or "")
+    str_result = str(payload.get("strResult") or "")
+    rtn_code = str(payload.get("RTNCD") or "")
+    if "존재하지않는 회원입니다" in msg_text or "비밀번호 오류" in msg_text:
+        return ProviderOutcome(
+            ok=False,
+            retryable=False,
+            error_code="invalid_credentials",
+            error_message_safe="SRT login failed. Check your username or password.",
+        )
+    if str_result.upper() == "FAIL" and rtn_code.upper() == "N":
+        return ProviderOutcome(
+            ok=False,
+            retryable=False,
+            error_code="login_failed",
+            error_message_safe=msg_text or "SRT login failed",
+        )
+
     user_map = payload.get("userMap")
     if not isinstance(user_map, dict):
-        msg = payload.get("MSG") or "SRT login failed"
+        msg = msg_text or "SRT login failed"
         return ProviderOutcome(
             ok=False,
             retryable=False,
@@ -313,16 +338,16 @@ def _build_srt_passenger_payload(*, adults: int, children: int, special_seat: bo
     payload: dict[str, str] = {
         "totPrnb": str(total),
         "psgGridcnt": str(len(rows)),
-        "locSeatAttCd1": "000",
-        "rqSeatAttCd1": "015",
-        "dirSeatAttCd1": "009",
-        "smkSeatAttCd1": "000",
-        "etcSeatAttCd1": "000",
-        "psrmClCd1": "2" if special_seat else "1",
     }
     for idx, (passenger_type, count) in enumerate(rows, start=1):
         payload[f"psgTpCd{idx}"] = passenger_type
         payload[f"psgInfoPerPrnb{idx}"] = str(count)
+        payload[f"locSeatAttCd{idx}"] = "000"
+        payload[f"rqSeatAttCd{idx}"] = "015"
+        payload[f"dirSeatAttCd{idx}"] = "009"
+        payload[f"smkSeatAttCd{idx}"] = "000"
+        payload[f"etcSeatAttCd{idx}"] = "000"
+        payload[f"psrmClCd{idx}"] = "2" if special_seat else "1"
     return payload
 
 
@@ -330,17 +355,57 @@ def _seat_class_is_special(seat_class: str) -> bool:
     return seat_class in {"special", "special_preferred"}
 
 
+def _standby_available_from_code(value: Any) -> bool:
+    # srtgo parity: standby is available when wait code contains "9".
+    return "9" in str(value or "")
+
+
 def _reservation_paid(pay_row: dict[str, Any]) -> bool:
     return str(pay_row.get("stlFlg") or "").upper() == "Y"
 
 
+def _reservation_payment_deadline(pay_row: dict[str, Any]) -> datetime | None:
+    payment_date = str(pay_row.get("iseLmtDt") or "")
+    payment_time = str(pay_row.get("iseLmtTm") or "")
+    return _parse_srt_datetime(payment_date, payment_time)
+
+
+def _reservation_expired_unpaid(
+    pay_row: dict[str, Any],
+    *,
+    now: datetime | None = None,
+) -> bool:
+    # Primary expiry signal: unpaid + now(KST) > payment cutoff.
+    if _reservation_paid(pay_row):
+        return False
+    payment_deadline_at = _reservation_payment_deadline(pay_row)
+    if payment_deadline_at is None:
+        return False
+    current = now if now is not None else now_kst()
+    return current > payment_deadline_at
+
+
+def _is_srt_reservation_not_found_message(message: str | None) -> bool:
+    message_text = str(message or "")
+    message_lower = message_text.lower()
+    return (
+        "조회자료가 없습니다" in message_text
+        or "reservation not found" in message_lower
+        or "ticket not found" in message_lower
+        or "not found" in message_lower
+    )
+
+
 def _build_srt_ticket_dict(raw: dict[str, Any]) -> dict[str, Any]:
     seat_class_code = str(raw.get("psrmClCd") or "")
+    passenger_type_code = str(raw.get("psgTpCd") or "")
     return {
         "car_no": raw.get("scarNo"),
         "seat_no": raw.get("seatNo"),
         "seat_class_code": seat_class_code,
         "seat_class_name": "특실" if seat_class_code == "2" else ("일반실" if seat_class_code == "1" else ""),
+        "passenger_type_code": passenger_type_code or None,
+        "passenger_type_name": SRT_PASSENGER_TYPE_BY_CODE.get(passenger_type_code),
         "discount_type_code": raw.get("dcntKndCd"),
         "price": _to_int(raw.get("rcvdAmt"), 0),
         "original_price": _to_int(raw.get("stdrPrc"), 0),
@@ -771,7 +836,7 @@ class SRTClient:
 
         has_general = bool(schedule.availability.get("general"))
         has_special = bool(schedule.availability.get("special"))
-        standby_possible = _to_int((schedule.metadata or {}).get("reserve_wait_code"), default=-1) >= 0
+        standby_possible = _standby_available_from_code((schedule.metadata or {}).get("reserve_wait_code"))
         if not (has_general or has_special):
             if standby_possible:
                 return await self.reserve_standby(
@@ -1085,6 +1150,7 @@ class SRTClient:
 
         train_list = _as_list(payload.get("trainListMap"))
         pay_list = _as_list(payload.get("payListMap"))
+        kst_now = now_kst()
         reservations: list[dict[str, Any]] = []
         for train_row, pay_row in zip(train_list, pay_list):
             if not isinstance(train_row, dict) or not isinstance(pay_row, dict):
@@ -1108,7 +1174,8 @@ class SRTClient:
             arrival_at = _parse_srt_datetime(arv_date, arv_time)
             payment_date = str(pay_row.get("iseLmtDt") or "")
             payment_time = str(pay_row.get("iseLmtTm") or "")
-            payment_deadline_at = _parse_srt_datetime(payment_date, payment_time)
+            payment_deadline_at = _reservation_payment_deadline(pay_row)
+            expired = _reservation_expired_unpaid(pay_row, now=kst_now)
 
             dep_code = str(pay_row.get("dptRsStnCd") or "")
             arr_code = str(pay_row.get("arvRsStnCd") or "")
@@ -1125,6 +1192,7 @@ class SRTClient:
                     "provider": "SRT",
                     "paid": is_paid,
                     "waiting": not bool(is_paid or payment_date or payment_time),
+                    "expired": expired,
                     "running": "tkSpecNum" not in train_row,
                     "train_no": pay_row.get("trnNo"),
                     "train_code": pay_row.get("stlbTrnClsfCd"),
@@ -1141,6 +1209,7 @@ class SRTClient:
                         "arr_station_code": arr_code,
                         "reserve_wait_name": train_row.get("rsvWaitPsbCdNm"),
                         "reserve_wait_code": train_row.get("rsvWaitPsbCd"),
+                        "payment_cutoff_passed": expired,
                     },
                 }
             )
@@ -1204,6 +1273,13 @@ class SRTClient:
             default_message="SRT failed to return ticket info",
         )
         if failure is not None:
+            if _is_srt_reservation_not_found_message(failure.error_message_safe):
+                return ProviderOutcome(
+                    ok=False,
+                    retryable=False,
+                    error_code="reservation_not_found",
+                    error_message_safe="SRT reservation not found for ticket info",
+                )
             return failure
 
         ticket_rows = [
@@ -1257,6 +1333,27 @@ class SRTClient:
 
         error_code = str(payload.get("ErrorCode") or "")
         error_message = str(payload.get("ErrorMsg") or "")
+        if _is_srt_reservation_not_found_message(error_message):
+            return ProviderOutcome(
+                ok=False,
+                retryable=False,
+                error_code="reservation_not_found",
+                error_message_safe="SRT reservation not found",
+            )
+        status_failure = _srt_status_failure(
+            payload,
+            error_prefix="srt_reserve_info_fail",
+            default_message="SRT reserve info failed",
+        )
+        if status_failure is not None:
+            if _is_srt_reservation_not_found_message(status_failure.error_message_safe):
+                return ProviderOutcome(
+                    ok=False,
+                    retryable=False,
+                    error_code="reservation_not_found",
+                    error_message_safe="SRT reservation not found",
+                )
+            return status_failure
         if error_code and error_code != "0":
             return ProviderOutcome(
                 ok=False,

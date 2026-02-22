@@ -46,6 +46,8 @@ class AdminUserSummary(BaseModel):
     email: str
     display_name: str | None
     role: str
+    access_status: Literal["pending", "approved", "rejected"]
+    access_reviewed_at: datetime | None
     created_at: datetime
     last_seen_at: datetime | None
     session_count: int
@@ -65,6 +67,8 @@ class AdminUserDetail(BaseModel):
     display_name: str | None
     phone_number: str | None
     role: str
+    access_status: Literal["pending", "approved", "rejected"]
+    access_reviewed_at: datetime | None
     created_at: datetime
     updated_at: datetime
     email_verified_at: datetime | None
@@ -76,6 +80,10 @@ class AdminUserDetail(BaseModel):
 
 class UpdateUserRole(BaseModel):
     role: Literal["admin", "user"]
+
+
+class UpdateUserAccess(BaseModel):
+    access_status: Literal["pending", "approved", "rejected"]
 
 
 class RevokeSessionsRequest(BaseModel):
@@ -396,6 +404,7 @@ async def list_users(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     search: str | None = Query(None),
+    access_status: Literal["pending", "approved", "rejected"] | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
 ) -> AdminUserList:
     """List all users with pagination and optional search."""
@@ -408,6 +417,8 @@ async def list_users(
             User.email,
             User.display_name,
             Role.name.label("role"),
+            User.access_status,
+            User.access_reviewed_at,
             User.created_at,
             func.max(Session.last_seen_at).label("last_seen_at"),
             func.count(func.distinct(Session.id)).label("session_count"),
@@ -416,7 +427,7 @@ async def list_users(
         .join(Role, User.role_id == Role.id)
         .outerjoin(Session, Session.user_id == User.id)
         .outerjoin(Task, Task.user_id == User.id)
-        .group_by(User.id, Role.name)
+        .group_by(User.id, Role.name, User.access_status, User.access_reviewed_at)
     )
 
     if search:
@@ -424,14 +435,18 @@ async def list_users(
         query = query.where(
             (User.email.ilike(search_pattern)) | (User.display_name.ilike(search_pattern))
         )
+    if access_status is not None:
+        query = query.where(User.access_status == access_status)
 
     # Get total count
-    count_query = select(func.count(func.distinct(User.id)))
+    count_query = select(func.count(func.distinct(User.id))).select_from(User)
     if search:
         search_pattern = f"%{search}%"
         count_query = count_query.where(
             (User.email.ilike(search_pattern)) | (User.display_name.ilike(search_pattern))
         )
+    if access_status is not None:
+        count_query = count_query.where(User.access_status == access_status)
     total = (await db.execute(count_query)).scalar_one()
 
     # Paginate
@@ -445,6 +460,8 @@ async def list_users(
             email=row.email,
             display_name=row.display_name,
             role=row.role,
+            access_status=row.access_status,
+            access_reviewed_at=row.access_reviewed_at,
             created_at=row.created_at,
             last_seen_at=row.last_seen_at,
             session_count=row.session_count,
@@ -496,6 +513,8 @@ async def get_user_detail(user_id: UUID, db: AsyncSession = Depends(get_db)) -> 
         display_name=user.display_name,
         phone_number=user.phone_number,
         role=user.role.name,
+        access_status=user.access_status,
+        access_reviewed_at=user.access_reviewed_at,
         created_at=user.created_at,
         updated_at=user.updated_at,
         email_verified_at=user.email_verified_at,
@@ -525,6 +544,52 @@ async def update_user_role(
     await db.commit()
 
     return MessageResponse(message=f"User role updated to {body.role}")
+
+
+@router.patch("/users/{user_id}/access", response_model=MessageResponse)
+async def update_user_access(
+    user_id: UUID,
+    body: UpdateUserAccess,
+    db: AsyncSession = Depends(get_db),
+    admin_user: User = Depends(get_current_admin),
+) -> MessageResponse:
+    """Update a user's access-review status (pending/approved/rejected)."""
+    user = (
+        await db.execute(select(User).options(joinedload(User.role)).where(User.id == user_id))
+    ).scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    next_status = body.access_status
+    if user.id == admin_user.id and next_status != "approved":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot remove your own approved access status",
+        )
+
+    now = datetime.now(timezone.utc)
+    user.access_status = next_status
+    user.access_reviewed_at = None if next_status == "pending" else now
+
+    revoked_count = 0
+    if next_status != "approved":
+        revoke_result = await db.execute(
+            update(Session)
+            .where(
+                Session.user_id == user_id,
+                Session.revoked_at.is_(None),
+                Session.expires_at > now,
+            )
+            .values(revoked_at=now)
+        )
+        revoked_count = int(revoke_result.rowcount or 0)
+
+    await db.commit()
+
+    message = f"User access updated to {next_status}"
+    if revoked_count:
+        message = f"{message}; revoked {revoked_count} active session(s)"
+    return MessageResponse(message=message)
 
 
 @router.post("/users/{user_id}/revoke-sessions", response_model=MessageResponse)

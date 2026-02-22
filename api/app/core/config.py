@@ -60,6 +60,7 @@ class Settings(BaseSettings):
     session_days_default: int = Field(default=7, alias="SESSION_DAYS_DEFAULT")
     session_days_remember: int = Field(default=90, alias="SESSION_DAYS_REMEMBER")
     session_activity_debounce_seconds: int = Field(default=60, alias="SESSION_ACTIVITY_DEBOUNCE_SECONDS", ge=0)
+    access_approval_required: bool = Field(default=True, alias="ACCESS_APPROVAL_REQUIRED")
 
     rate_limit_window_seconds: int = Field(default=60, alias="RATE_LIMIT_WINDOW_SECONDS")
     rate_limit_max_requests: int = Field(default=20, alias="RATE_LIMIT_MAX_REQUESTS")
@@ -109,7 +110,15 @@ class Settings(BaseSettings):
     restaurant_auth_refresh_retries: int = Field(default=2, alias="RESTAURANT_AUTH_REFRESH_RETRIES")
     restaurant_payment_lease_ttl_seconds: int = Field(default=120, alias="RESTAURANT_PAYMENT_LEASE_TTL_SECONDS")
     restaurant_bootstrap_timeout_seconds: float = Field(default=20.0, alias="RESTAURANT_BOOTSTRAP_TIMEOUT_SECONDS")
-    payment_cvv_ttl_seconds: int = Field(default=3600, alias="PAYMENT_CVV_TTL_SECONDS")
+    payment_cvv_ttl_seconds: int = Field(default=600, alias="PAYMENT_CVV_TTL_SECONDS")
+    payment_cvv_ttl_min_seconds: int = Field(default=60, alias="PAYMENT_CVV_TTL_MIN_SECONDS")
+    payment_cvv_ttl_max_seconds: int = Field(default=900, alias="PAYMENT_CVV_TTL_MAX_SECONDS")
+    payment_provider_allowed_hosts: Annotated[List[str], NoDecode] = Field(
+        default=["app.srail.or.kr", "smart.letskorail.com"],
+        alias="PAYMENT_PROVIDER_ALLOWED_HOSTS",
+    )
+    payment_transport_trust_env: bool = Field(default=False, alias="PAYMENT_TRANSPORT_TRUST_ENV")
+    payment_require_cvv_kek_version: bool = Field(default=False, alias="PAYMENT_REQUIRE_CVV_KEK_VERSION")
 
     email_provider: str = Field(default="smtp", alias="EMAIL_PROVIDER")
     email_from_name: str = Field(default="bominal", alias="EMAIL_FROM_NAME")
@@ -132,6 +141,14 @@ class Settings(BaseSettings):
         if isinstance(value, str):
             return [origin.strip() for origin in value.split(",") if origin.strip()]
         return value
+
+    @field_validator("payment_provider_allowed_hosts", mode="before")
+    @classmethod
+    def parse_payment_provider_allowed_hosts(cls, value: str | list[str]) -> list[str]:
+        if isinstance(value, str):
+            parsed = [host.strip().lower() for host in value.split(",") if host.strip()]
+            return parsed
+        return [str(host).strip().lower() for host in value if str(host).strip()]
 
     @field_validator("email_provider")
     @classmethod
@@ -167,6 +184,16 @@ class Settings(BaseSettings):
             raise ValueError("MASTER_KEY must be overridden in production")
         if self.app_env.lower() == "production" and not self.internal_api_key:
             raise ValueError("INTERNAL_API_KEY must be set in production")
+        if self.payment_cvv_ttl_min_seconds < 1:
+            raise ValueError("PAYMENT_CVV_TTL_MIN_SECONDS must be >= 1")
+        if self.payment_cvv_ttl_max_seconds < self.payment_cvv_ttl_min_seconds:
+            raise ValueError("PAYMENT_CVV_TTL_MAX_SECONDS must be >= PAYMENT_CVV_TTL_MIN_SECONDS")
+        if not (self.payment_cvv_ttl_min_seconds <= self.payment_cvv_ttl_seconds <= self.payment_cvv_ttl_max_seconds):
+            raise ValueError(
+                "PAYMENT_CVV_TTL_SECONDS must be within PAYMENT_CVV_TTL_MIN_SECONDS..PAYMENT_CVV_TTL_MAX_SECONDS"
+            )
+        if self.app_env.lower() == "production" and not self.payment_provider_allowed_hosts:
+            raise ValueError("PAYMENT_PROVIDER_ALLOWED_HOSTS must be set in production")
         if self.smtp_use_ssl and self.smtp_starttls:
             raise ValueError("SMTP_USE_SSL and SMTP_STARTTLS cannot both be true")
         if self.email_provider == "resend" and not self.resend_api_key:

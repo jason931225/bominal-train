@@ -129,6 +129,27 @@ async def test_fail_closed_for_non_retryable_transport_error():
     assert len(base.requests) == 1
 
 
+@pytest.mark.asyncio
+async def test_blocks_non_allowlisted_host_before_transport_call():
+    base = _SequenceTransport(actions=[_Action(status_code=200)])
+    transport = ResilientTransport(
+        base,
+        provider="SRT",
+        retry_attempts=2,
+        retry_backoff_seconds=0.0,
+    )
+
+    with pytest.raises(ProviderTransportError) as exc_info:
+        await transport.request(
+            method="GET",
+            url="https://evil.example.com/collect",
+        )
+
+    assert exc_info.value.retryable is False
+    assert exc_info.value.error_code == "srt_provider_transport_error"
+    assert len(base.requests) == 0
+
+
 def test_retryable_status_code_classification():
     assert is_retryable_status_code(429) is True
     assert is_retryable_status_code(500) is True

@@ -11,11 +11,12 @@ Build and operate **bominal**, a modular product platform with:
 - `worker` (arq background jobs)
 - `redis` (queue + train-provider rate limiter)
 - `third_party/srtgo` (read-only train provider reference)
+- `third_party/catchtable` (read-only restaurant provider endpoint reference)
 
 ## Non-negotiables
 
 1. Preserve product name as `bominal` in UI, config, and docs.
-2. Treat `third_party/srtgo` as read-only. Never patch or reformat it.
+2. Treat `third_party/srtgo` and `third_party/catchtable` as read-only. Never patch or reformat them.
 3. Keep provider integrations source-aligned with `srtgo/srt.py` and `srtgo/ktx.py`.
 4. Never log sensitive data (passwords, tokens, card data, CVV, full provider payloads with secrets).
 5. Keep session auth cookie behavior:
@@ -97,6 +98,11 @@ Any new canonical doc/plan used for implementation must be added there using the
 - `api/app/db/` SQLAlchemy models/session
 - `api/alembic/versions/` DB migrations
 - `infra/` compose files, env files, scripts
+- `third_party/catchtable/` read-only reference files for restaurant CatchTable provider endpoint implementation:
+  - `third_party/catchtable/reservation.py`
+  - `third_party/catchtable/session.py`
+  - `third_party/catchtable/configs.py`
+  - `third_party/catchtable/main.py`
 
 ## Local workflow
 

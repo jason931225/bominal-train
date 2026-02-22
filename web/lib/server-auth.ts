@@ -64,12 +64,28 @@ export async function requireUser(): Promise<BominalUser> {
   return user;
 }
 
+export function isApprovedUser(user: BominalUser): boolean {
+  return String(user.access_status || "").toLowerCase() === "approved";
+}
+
+export function postLoginRouteForUser(user: BominalUser): string {
+  return isApprovedUser(user) ? ROUTES.dashboard : ROUTES.applicationReview;
+}
+
+export async function requireApprovedUser(): Promise<BominalUser> {
+  const user = await requireUser();
+  if (!isApprovedUser(user)) {
+    redirect(ROUTES.applicationReview);
+  }
+  return user;
+}
+
 /**
  * Require admin role. Redirects to /dashboard if not admin.
  * Use for admin-only pages like maintenance dashboard.
  */
 export async function requireAdminUser(): Promise<BominalUser> {
-  const user = await requireUser();
+  const user = await requireApprovedUser();
   if (user.role !== "admin") {
     redirect(`${ROUTES.dashboard}?denied=1`);
   }
