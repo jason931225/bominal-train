@@ -154,7 +154,10 @@ def parse_srt_search_response(response_text: str, dep: str, arr: str) -> Provide
     schedules: list[ProviderSchedule] = []
 
     for row in rows:
-        if row.get("stlbTrnClsfCd") != "17":
+        # Some responses return train code as int (17) instead of string ("17").
+        # Accept missing code as well to avoid dropping valid schedule rows on schema drift.
+        train_code = str(row.get("stlbTrnClsfCd") or "").strip()
+        if train_code and train_code != "17":
             continue
 
         dep_date = row.get("dptDt")

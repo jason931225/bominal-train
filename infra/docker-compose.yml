@@ -136,12 +136,42 @@ services:
       dockerfile: Dockerfile.dev
     container_name: bominal-web
     working_dir: /app
-    command: >
-      sh -c "npm install && rm -rf .next && npm run dev -- -H 0.0.0.0 -p 3000"
+    environment:
+      APP_VERSION: ${APP_VERSION:-0.0.0}
+      BUILD_VERSION: ${BUILD_VERSION:-dev}
+    command:
+      - sh
+      - -ec
+      - |
+        if [ -z "$${APP_VERSION:-}" ] || [ "$${APP_VERSION}" = "0.0.0" ]; then
+          RESOLVED_APP_VERSION="$$(python3 /repo/infra/scripts/version_guard.py resolve --commit HEAD 2>/dev/null | sed 's/^v//' || true)"
+          if [ -n "$$RESOLVED_APP_VERSION" ]; then
+            export APP_VERSION="$$RESOLVED_APP_VERSION"
+          fi
+        fi
+        if [ -z "$${APP_VERSION:-}" ]; then
+          export APP_VERSION="0.0.0"
+        fi
+
+        if [ -z "$${BUILD_VERSION:-}" ] || [ "$${BUILD_VERSION}" = "dev" ]; then
+          RESOLVED_BUILD_VERSION="$$(git -C /repo rev-parse --short HEAD 2>/dev/null || true)"
+          if [ -n "$$RESOLVED_BUILD_VERSION" ]; then
+            export BUILD_VERSION="$$RESOLVED_BUILD_VERSION"
+          fi
+        fi
+        if [ -z "$${BUILD_VERSION:-}" ]; then
+          export BUILD_VERSION="dev"
+        fi
+
+        echo "→ web using APP_VERSION=$$APP_VERSION BUILD_VERSION=$$BUILD_VERSION"
+        npm install
+        rm -rf .next
+        npm run dev -- -H 0.0.0.0 -p 3000
     env_file:
       - ./env/dev/web.env
     volumes:
       - ../web:/app
+      - ..:/repo:ro
       - web_node_modules:/app/node_modules
     depends_on:
       - api-gateway

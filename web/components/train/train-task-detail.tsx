@@ -10,7 +10,9 @@ import { ROUTES } from "@/lib/routes";
 import { UI_BUTTON_DANGER_SM, UI_BUTTON_OUTLINE_SM } from "@/lib/ui";
 import type { TrainArtifact, TrainTaskAttempt, TrainTaskSummary } from "@/lib/types";
 
-const POLL_MS = 4000;
+const POLL_MS = 10000;
+const ATTEMPTS_PAGE_SIZE_OPTIONS = [10, 20, 50, 100, "all"] as const;
+type AttemptsPageSize = (typeof ATTEMPTS_PAGE_SIZE_OPTIONS)[number];
 const SMALL_BUTTON_CLASS = UI_BUTTON_OUTLINE_SM;
 const SMALL_DANGER_BUTTON_CLASS = UI_BUTTON_DANGER_SM;
 const SMALL_SUCCESS_BUTTON_CLASS =
@@ -83,6 +85,8 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
   const { locale, t } = useLocale();
   const [task, setTask] = useState<TrainTaskSummary | null>(null);
   const [attempts, setAttempts] = useState<TrainTaskAttempt[]>([]);
+  const [attemptsPageSize, setAttemptsPageSize] = useState<AttemptsPageSize>(20);
+  const [attemptsPage, setAttemptsPage] = useState(1);
   const [artifacts, setArtifacts] = useState<TrainArtifact[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -114,6 +118,15 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
     const cancelled = readBoolean(ticketArtifact.data_json_safe.cancelled) ?? false;
     return status === "awaiting_payment" && paid !== true && !cancelled;
   }, [ticketArtifact]);
+  const totalAttemptPages = useMemo(() => {
+    if (attemptsPageSize === "all") return 1;
+    return Math.max(1, Math.ceil(attempts.length / attemptsPageSize));
+  }, [attempts.length, attemptsPageSize]);
+  const pagedAttempts = useMemo(() => {
+    if (attemptsPageSize === "all") return attempts;
+    const start = (attemptsPage - 1) * attemptsPageSize;
+    return attempts.slice(start, start + attemptsPageSize);
+  }, [attempts, attemptsPage, attemptsPageSize]);
 
   const loadDetail = async () => {
     try {
@@ -148,6 +161,10 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
     }, POLL_MS);
     return () => window.clearInterval(interval);
   }, [taskId]);
+
+  useEffect(() => {
+    setAttemptsPage((current) => Math.min(Math.max(1, current), totalAttemptPages));
+  }, [totalAttemptPages]);
 
   const cancelTicket = async () => {
     if (!ticketArtifact) {
@@ -363,45 +380,6 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
       ) : null}
 
       <div className="rounded-2xl border border-blossom-100 bg-white p-6 shadow-petal">
-        <h2 className="text-lg font-semibold text-slate-800">{t("train.attemptsTimeline")}</h2>
-        <div className="mt-4 overflow-x-auto">
-          <table className="min-w-full text-left text-sm">
-            <thead>
-              <tr className="text-slate-500">
-                <th className="pb-2 pr-3">{t("train.attemptTable.action")}</th>
-                <th className="pb-2 pr-3">{t("train.attemptTable.provider")}</th>
-                <th className="pb-2 pr-3">{t("train.attemptTable.ok")}</th>
-                <th className="pb-2 pr-3">{t("train.attemptTable.retryable")}</th>
-                <th className="pb-2 pr-3">{t("train.attemptTable.duration")}</th>
-                <th className="pb-2 pr-3">{t("train.attemptTable.started")}</th>
-                <th className="pb-2">{t("train.attemptTable.error")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {attempts.map((attempt) => (
-                <tr key={attempt.id} className="border-t border-blossom-100">
-                  <td className="py-2 pr-3">{attempt.action}</td>
-                  <td className="py-2 pr-3">{attempt.provider}</td>
-                  <td className="py-2 pr-3">{attempt.ok ? "yes" : "no"}</td>
-                  <td className="py-2 pr-3">{attempt.retryable ? "yes" : "no"}</td>
-                  <td className="py-2 pr-3">{attempt.duration_ms}ms</td>
-                  <td className="py-2 pr-3">{formatDateTimeKstSeconds(attempt.started_at, locale)}</td>
-                  <td className="py-2">{attempt.error_message_safe || "-"}</td>
-                </tr>
-              ))}
-              {attempts.length === 0 ? (
-                <tr>
-                  <td className="py-2 text-slate-500" colSpan={7}>
-                    {t("train.empty.attempts")}
-                  </td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div className="rounded-2xl border border-blossom-100 bg-white p-6 shadow-petal">
         <h2 className="text-lg font-semibold text-slate-800">{t("train.ticketArtifacts")}</h2>
         <ul className="mt-4 space-y-3 text-sm">
           {artifacts.length === 0 ? <li className="text-slate-500">{t("train.empty.artifacts")}</li> : null}
@@ -471,6 +449,94 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
             </li>
           ))}
         </ul>
+      </div>
+
+      <div className="rounded-2xl border border-blossom-100 bg-white p-6 shadow-petal">
+        <h2 className="text-lg font-semibold text-slate-800">{t("train.attemptsTimeline")}</h2>
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm">
+          <label className="inline-flex items-center gap-2 text-slate-700">
+            <span>{t("train.attemptPagination.actionsPerPage")}</span>
+            <select
+              value={String(attemptsPageSize)}
+              onChange={(event) => {
+                const next = event.target.value === "all" ? "all" : Number.parseInt(event.target.value, 10);
+                if (
+                  next === "all" ||
+                  next === 10 ||
+                  next === 20 ||
+                  next === 50 ||
+                  next === 100
+                ) {
+                  setAttemptsPageSize(next);
+                  setAttemptsPage(1);
+                }
+              }}
+              className="rounded-lg border border-blossom-200 bg-white px-2 py-1 text-sm text-slate-700"
+            >
+              {ATTEMPTS_PAGE_SIZE_OPTIONS.map((option) => (
+                <option key={String(option)} value={String(option)}>
+                  {option === "all" ? t("train.attemptPagination.all") : option}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="inline-flex items-center gap-2">
+            <span className="text-xs text-slate-500">
+              {t("train.attemptPagination.page")} {attemptsPage} / {totalAttemptPages}
+            </span>
+            <button
+              type="button"
+              onClick={() => setAttemptsPage((current) => Math.max(1, current - 1))}
+              disabled={attemptsPage <= 1}
+              className={attemptsPage <= 1 ? SMALL_DISABLED_BUTTON_CLASS : SMALL_BUTTON_CLASS}
+            >
+              {t("train.attemptPagination.prev")}
+            </button>
+            <button
+              type="button"
+              onClick={() => setAttemptsPage((current) => Math.min(totalAttemptPages, current + 1))}
+              disabled={attemptsPage >= totalAttemptPages}
+              className={attemptsPage >= totalAttemptPages ? SMALL_DISABLED_BUTTON_CLASS : SMALL_BUTTON_CLASS}
+            >
+              {t("train.attemptPagination.next")}
+            </button>
+          </div>
+        </div>
+        <div className="mt-4 overflow-x-auto">
+          <table className="min-w-full text-left text-sm">
+            <thead>
+              <tr className="text-slate-500">
+                <th className="pb-2 pr-3">{t("train.attemptTable.action")}</th>
+                <th className="pb-2 pr-3">{t("train.attemptTable.provider")}</th>
+                <th className="pb-2 pr-3">{t("train.attemptTable.ok")}</th>
+                <th className="pb-2 pr-3">{t("train.attemptTable.retryable")}</th>
+                <th className="pb-2 pr-3">{t("train.attemptTable.duration")}</th>
+                <th className="pb-2 pr-3">{t("train.attemptTable.started")}</th>
+                <th className="pb-2">{t("train.attemptTable.error")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pagedAttempts.map((attempt) => (
+                <tr key={attempt.id} className="border-t border-blossom-100">
+                  <td className="py-2 pr-3">{attempt.action}</td>
+                  <td className="py-2 pr-3">{attempt.provider}</td>
+                  <td className="py-2 pr-3">{attempt.ok ? "yes" : "no"}</td>
+                  <td className="py-2 pr-3">{attempt.retryable ? "yes" : "no"}</td>
+                  <td className="py-2 pr-3">{attempt.duration_ms}ms</td>
+                  <td className="py-2 pr-3">{formatDateTimeKstSeconds(attempt.started_at, locale)}</td>
+                  <td className="py-2">{attempt.error_message_safe || "-"}</td>
+                </tr>
+              ))}
+              {pagedAttempts.length === 0 ? (
+                <tr>
+                  <td className="py-2 text-slate-500" colSpan={7}>
+                    {t("train.empty.attempts")}
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
       </div>
     </section>
   );

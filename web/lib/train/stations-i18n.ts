@@ -43,10 +43,14 @@ export const ROMANIZED_STATION_NAME: Record<string, string> = {
   "포항": "Pohang"
 };
 
-export function formatStationLabel(nameKo: string, locale: Locale): string {
+export function formatStationLabel(
+  nameKo: string,
+  locale: Locale,
+  options?: { compact?: boolean },
+): string {
   if (locale === "ko") return nameKo;
   const romanized = ROMANIZED_STATION_NAME[nameKo];
   if (!romanized) return nameKo;
+  if (options?.compact) return romanized;
   return `${romanized} (${nameKo})`;
 }
-
