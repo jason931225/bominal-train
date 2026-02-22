@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
 from app.modules.train.providers.ktx_client import KTXClient
-from app.modules.train.providers.srt_client import SRTClient
+from app.modules.train.providers.srt_client import SRTClient, parse_srt_login_response
 from app.modules.train.providers.transport import TransportResponse
 
 
@@ -25,6 +26,53 @@ class _QueueTransport:
             text=json.dumps(payload),
             headers={},
         )
+
+
+def test_srt_parse_login_failed_response_with_msg():
+    payload = {
+        "strResult": "FAIL",
+        "RTNCD": "N",
+        "MSG": "비밀번호 오류입니다.",
+        "userMap": {"USER_DV": "A", "wctNo": "81301"},
+    }
+    outcome = parse_srt_login_response(json.dumps(payload))
+    assert outcome.ok is False
+    assert outcome.error_code == "invalid_credentials"
+
+
+@pytest.mark.asyncio
+async def test_srt_get_reservations_handles_no_data_resultmap():
+    transport = _QueueTransport(
+        [
+            {
+                "userMap": {
+                    "MB_CRD_NO": "1234567890",
+                    "CUST_NM": "Tester",
+                    "MBL_PHONE": "01012341234",
+                }
+            },
+            {
+                "resultMap": [
+                    {
+                        "msgCd": "IRZ000005",
+                        "strResult": "SUCC",
+                        "msgTxt": "조회할 자료가 없습니다.",
+                        "totPageCnt": 0,
+                        "rowCnt": 0,
+                    }
+                ],
+                "trainListMap": [],
+                "payListMap": [],
+            },
+        ]
+    )
+    client = SRTClient(transport=transport)
+    login = await client.login(user_id="u1", credentials={"username": "mock-user", "password": "mock-pass"})
+    assert login.ok is True
+
+    reservations = await client.get_reservations(user_id="u1")
+    assert reservations.ok is True
+    assert reservations.data["reservations"] == []
 
 
 @pytest.mark.asyncio
@@ -88,6 +136,330 @@ async def test_srt_get_reservations_parses_ticket_info():
     assert rows[0]["dep"] == "수서"
     assert rows[0]["arr"] == "마산"
     assert rows[0]["tickets"][0]["seat_no"] == "7A"
+
+
+@pytest.mark.asyncio
+async def test_srt_get_reservations_marks_unpaid_cutoff_expired(monkeypatch):
+    kst = timezone(timedelta(hours=9))
+    monkeypatch.setattr(
+        "app.modules.train.providers.srt_client.now_kst",
+        lambda: datetime(2026, 2, 22, 13, 33, 26, tzinfo=kst),
+    )
+
+    transport = _QueueTransport(
+        [
+            {
+                "userMap": {
+                    "MB_CRD_NO": "1234567890",
+                    "CUST_NM": "Tester",
+                    "MBL_PHONE": "01012341234",
+                }
+            },
+            {
+                "resultMap": [{"strResult": "SUCC", "msgTxt": ""}],
+                "trainListMap": [{"pnrNo": "PNR-EXPIRED-1", "rcvdAmt": "55000", "tkSpecNum": "1"}],
+                "payListMap": [
+                    {
+                        "stlFlg": "N",
+                        "stlbTrnClsfCd": "17",
+                        "trnNo": "381",
+                        "dptDt": "20260222",
+                        "dptTm": "120400",
+                        "dptRsStnCd": "0551",
+                        "arvTm": "151800",
+                        "arvRsStnCd": "0059",
+                        "iseLmtDt": "20260222",
+                        "iseLmtTm": "132906",
+                    }
+                ],
+            },
+            {
+                "resultMap": [{"strResult": "SUCC", "msgTxt": ""}],
+                "trainListMap": [],
+            },
+        ]
+    )
+    client = SRTClient(transport=transport)
+    login = await client.login(user_id="u1", credentials={"username": "mock-user", "password": "mock-pass"})
+    assert login.ok is True
+
+    reservations = await client.get_reservations(user_id="u1")
+    assert reservations.ok is True
+    row = reservations.data["reservations"][0]
+    assert row["reservation_id"] == "PNR-EXPIRED-1"
+    assert row["paid"] is False
+    assert row["expired"] is True
+    assert row["payment_deadline_at"] == "2026-02-22T13:29:06+09:00"
+
+
+@pytest.mark.asyncio
+async def test_srt_ticket_info_supports_old_pnr_response_without_pnr_field():
+    transport = _QueueTransport(
+        [
+            {
+                "userMap": {
+                    "MB_CRD_NO": "1234567890",
+                    "CUST_NM": "Tester",
+                    "MBL_PHONE": "01012341234",
+                }
+            },
+            {
+                "resultMap": [{"msgCd": "IRZ000010", "strResult": "SUCC", "msgTxt": "정상적으로 조회가 완료되었습니다."}],
+                "trainListMap": [
+                    {
+                        "scarNo": 3,
+                        "seatNo": "2B",
+                        "psrmClCd": "2",
+                        "psgTpCd": "4",
+                        "dcntKndCd": "000",
+                        "rcvdAmt": "00000029100",
+                        "stdrPrc": "00000029100",
+                        "dcntPrc": "00000000000",
+                    }
+                ],
+                "tranferListMap": [],
+            },
+        ]
+    )
+    client = SRTClient(transport=transport)
+    login = await client.login(user_id="u1", credentials={"username": "mock-user", "password": "mock-pass"})
+    assert login.ok is True
+
+    outcome = await client.ticket_info(reservation_id="OLD-PNR-1", user_id="u1")
+    assert outcome.ok is True
+    assert outcome.data["reservation_id"] == "OLD-PNR-1"
+    assert outcome.data["tickets"][0]["seat_no"] == "2B"
+    assert outcome.data["tickets"][0]["seat_class_code"] == "2"
+    assert outcome.data["tickets"][0]["passenger_type_code"] == "4"
+    assert outcome.data["tickets"][0]["passenger_type_name"] == "경로"
+
+
+@pytest.mark.asyncio
+async def test_srt_reserve_payload_includes_passenger_specific_seat_fields():
+    transport = _QueueTransport(
+        [
+            {
+                "userMap": {
+                    "MB_CRD_NO": "1234567890",
+                    "CUST_NM": "Tester",
+                    "MBL_PHONE": "01012341234",
+                }
+            },
+            {
+                "outDataSets": {
+                    "dsOutput0": [{"strResult": "SUCC", "msgTxt": ""}],
+                    "dsOutput1": [
+                        {
+                            "stlbTrnClsfCd": "17",
+                            "trnNo": "381",
+                            "dptDt": "20260226",
+                            "dptTm": "120400",
+                            "arvDt": "20260226",
+                            "arvTm": "151800",
+                            "dptRsStnCd": "0551",
+                            "arvRsStnCd": "0059",
+                            "dptStnRunOrdr": "001",
+                            "arvStnRunOrdr": "010",
+                            "dptStnConsOrdr": "001",
+                            "arvStnConsOrdr": "010",
+                            "gnrmRsvPsbStr": "예약가능",
+                            "sprmRsvPsbStr": "매진",
+                        }
+                    ],
+                }
+            },
+            {
+                "resultMap": [{"strResult": "SUCC", "msgTxt": ""}],
+                "reservListMap": [{"pnrNo": "PNR-RES-9001"}],
+            },
+        ]
+    )
+    client = SRTClient(transport=transport)
+    login = await client.login(user_id="u1", credentials={"username": "mock-user", "password": "mock-pass"})
+    assert login.ok is True
+
+    async def _skip_netfunnel() -> None:
+        return None
+
+    client._netfunnel.run = _skip_netfunnel  # type: ignore[method-assign]
+
+    search = await client.search(
+        dep="수서",
+        arr="마산",
+        date_value=datetime(2026, 2, 26, tzinfo=timezone(timedelta(hours=9))).date(),
+        time_window_start="00:00",
+        time_window_end="23:59",
+        user_id="u1",
+    )
+    assert search.ok is True
+    schedules = search.data["schedules"]
+    assert schedules
+
+    reserved = await client.reserve(
+        schedule_id=schedules[0].schedule_id,
+        seat_class="general",
+        passengers={"adults": 1, "children": 1},
+        user_id="u1",
+    )
+    assert reserved.ok is True
+    assert reserved.data["reservation_id"] == "PNR-RES-9001"
+
+    reserve_requests = [req for req in transport.requests if req.get("url", "").endswith("selectListArc05013_n.do")]
+    assert reserve_requests, "Expected one SRT reserve request"
+    payload = reserve_requests[0]["data"]
+    assert payload["totPrnb"] == "2"
+    assert payload["psgGridcnt"] == "2"
+    assert payload["psgTpCd1"] == "1"
+    assert payload["psgInfoPerPrnb1"] == "1"
+    assert payload["psgTpCd2"] == "5"
+    assert payload["psgInfoPerPrnb2"] == "1"
+    assert payload["locSeatAttCd2"] == "000"
+    assert payload["rqSeatAttCd2"] == "015"
+    assert payload["dirSeatAttCd2"] == "009"
+    assert payload["smkSeatAttCd2"] == "000"
+    assert payload["etcSeatAttCd2"] == "000"
+    assert payload["psrmClCd2"] == "1"
+
+
+@pytest.mark.asyncio
+async def test_srt_reserve_sold_out_without_standby_code():
+    transport = _QueueTransport(
+        [
+            {
+                "userMap": {
+                    "MB_CRD_NO": "1234567890",
+                    "CUST_NM": "Tester",
+                    "MBL_PHONE": "01012341234",
+                }
+            },
+            {
+                "outDataSets": {
+                    "dsOutput0": [{"strResult": "SUCC", "msgTxt": ""}],
+                    "dsOutput1": [
+                        {
+                            "stlbTrnClsfCd": "17",
+                            "trnNo": "381",
+                            "dptDt": "20260226",
+                            "dptTm": "120400",
+                            "arvDt": "20260226",
+                            "arvTm": "151800",
+                            "dptRsStnCd": "0551",
+                            "arvRsStnCd": "0059",
+                            "dptStnRunOrdr": "001",
+                            "arvStnRunOrdr": "010",
+                            "dptStnConsOrdr": "001",
+                            "arvStnConsOrdr": "010",
+                            "gnrmRsvPsbStr": "매진",
+                            "sprmRsvPsbStr": "매진",
+                            "rsvWaitPsbCd": "0",
+                        }
+                    ],
+                }
+            },
+        ]
+    )
+    client = SRTClient(transport=transport)
+    login = await client.login(user_id="u1", credentials={"username": "mock-user", "password": "mock-pass"})
+    assert login.ok is True
+
+    async def _skip_netfunnel() -> None:
+        return None
+
+    client._netfunnel.run = _skip_netfunnel  # type: ignore[method-assign]
+    search = await client.search(
+        dep="수서",
+        arr="마산",
+        date_value=datetime(2026, 2, 26, tzinfo=timezone(timedelta(hours=9))).date(),
+        time_window_start="00:00",
+        time_window_end="23:59",
+        user_id="u1",
+    )
+    assert search.ok is True
+
+    reserved = await client.reserve(
+        schedule_id=search.data["schedules"][0].schedule_id,
+        seat_class="general",
+        passengers={"adults": 1, "children": 0},
+        user_id="u1",
+    )
+    assert reserved.ok is False
+    assert reserved.error_code == "sold_out"
+    reserve_requests = [req for req in transport.requests if req.get("url", "").endswith("selectListArc05013_n.do")]
+    assert not reserve_requests
+
+
+@pytest.mark.asyncio
+async def test_srt_reserve_uses_standby_when_wait_code_contains_9():
+    transport = _QueueTransport(
+        [
+            {
+                "userMap": {
+                    "MB_CRD_NO": "1234567890",
+                    "CUST_NM": "Tester",
+                    "MBL_PHONE": "01012341234",
+                }
+            },
+            {
+                "outDataSets": {
+                    "dsOutput0": [{"strResult": "SUCC", "msgTxt": ""}],
+                    "dsOutput1": [
+                        {
+                            "stlbTrnClsfCd": "17",
+                            "trnNo": "381",
+                            "dptDt": "20260226",
+                            "dptTm": "120400",
+                            "arvDt": "20260226",
+                            "arvTm": "151800",
+                            "dptRsStnCd": "0551",
+                            "arvRsStnCd": "0059",
+                            "dptStnRunOrdr": "001",
+                            "arvStnRunOrdr": "010",
+                            "dptStnConsOrdr": "001",
+                            "arvStnConsOrdr": "010",
+                            "gnrmRsvPsbStr": "매진",
+                            "sprmRsvPsbStr": "매진",
+                            "rsvWaitPsbCd": "9",
+                        }
+                    ],
+                }
+            },
+            {
+                "resultMap": [{"strResult": "SUCC", "msgTxt": ""}],
+                "reservListMap": [{"pnrNo": "PNR-STANDBY-1"}],
+            },
+            {"resultMap": [{"strResult": "SUCC", "msgTxt": ""}]},
+        ]
+    )
+    client = SRTClient(transport=transport)
+    login = await client.login(user_id="u1", credentials={"username": "mock-user", "password": "mock-pass"})
+    assert login.ok is True
+
+    async def _skip_netfunnel() -> None:
+        return None
+
+    client._netfunnel.run = _skip_netfunnel  # type: ignore[method-assign]
+    search = await client.search(
+        dep="수서",
+        arr="마산",
+        date_value=datetime(2026, 2, 26, tzinfo=timezone(timedelta(hours=9))).date(),
+        time_window_start="00:00",
+        time_window_end="23:59",
+        user_id="u1",
+    )
+    assert search.ok is True
+
+    reserved = await client.reserve(
+        schedule_id=search.data["schedules"][0].schedule_id,
+        seat_class="general",
+        passengers={"adults": 1, "children": 0},
+        user_id="u1",
+    )
+    assert reserved.ok is True
+    assert reserved.data["standby"] is True
+
+    reserve_requests = [req for req in transport.requests if req.get("url", "").endswith("selectListArc05013_n.do")]
+    assert reserve_requests, "Expected reserve request for standby path"
+    assert reserve_requests[0]["data"]["jobId"] == "1102"
 
 
 @pytest.mark.asyncio
@@ -397,6 +769,74 @@ async def test_srt_cancel_paid_uses_refund_flow():
     refund_payload = refund_calls[0]["data"]
     assert refund_payload["pnr_no"] == "PNR5005"
     assert refund_payload["saleWctNo"] == "WCTNO55"
+
+
+@pytest.mark.asyncio
+async def test_srt_cancel_paid_returns_not_found_when_reserve_info_empty():
+    transport = _QueueTransport(
+        [
+            {
+                "userMap": {
+                    "MB_CRD_NO": "1234567890",
+                    "CUST_NM": "Tester",
+                    "MBL_PHONE": "01012341234",
+                }
+            },
+            {
+                "ErrorCode": "0",
+                "ErrorMsg": "조회자료가 없습니다.",
+            },
+        ]
+    )
+    client = SRTClient(transport=transport)
+    login = await client.login(user_id="u1", credentials={"username": "mock-user", "password": "mock-pass"})
+    assert login.ok is True
+
+    cancelled = await client.cancel(
+        artifact_data={"reservation_id": "PNR-NOT-FOUND-1", "paid": True, "status": "paid"},
+        user_id="u1",
+    )
+    assert cancelled.ok is False
+    assert cancelled.error_code == "reservation_not_found"
+
+
+@pytest.mark.asyncio
+async def test_srt_cancel_paid_returns_not_found_when_reserve_info_status_dataset_fails():
+    transport = _QueueTransport(
+        [
+            {
+                "userMap": {
+                    "MB_CRD_NO": "1234567890",
+                    "CUST_NM": "Tester",
+                    "MBL_PHONE": "01012341234",
+                }
+            },
+            {
+                "ErrorCode": "0",
+                "ErrorMsg": "",
+                "outDataSets": {
+                    "dsOutput0": [
+                        {
+                            "msgCd": "WRT300005",
+                            "strResult": "FAIL",
+                            "msgTxt": "조회자료가 없습니다.",
+                        }
+                    ],
+                    "dsOutput1": [],
+                },
+            },
+        ]
+    )
+    client = SRTClient(transport=transport)
+    login = await client.login(user_id="u1", credentials={"username": "mock-user", "password": "mock-pass"})
+    assert login.ok is True
+
+    cancelled = await client.cancel(
+        artifact_data={"reservation_id": "PNR-NOT-FOUND-2", "paid": True, "status": "paid"},
+        user_id="u1",
+    )
+    assert cancelled.ok is False
+    assert cancelled.error_code == "reservation_not_found"
 
 
 @pytest.mark.asyncio

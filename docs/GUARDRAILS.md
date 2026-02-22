@@ -38,6 +38,12 @@ These rules are hard constraints. If a request conflicts with guardrails, refuse
 8. No financial actions without approval
 - Purchases/refunds/transfers/billing changes require explicit multi-step approval.
 
+9. No PCI relay boundary violations
+- Payment relay workers must remain stateless and ephemeral.
+- Never persist PAN/CVV to DB, queues, artifacts, logs, or disk.
+- Never disable TLS verification for provider payment egress.
+- Never allow non-allowlisted payment provider outbound domains.
+
 ## Required Agent Behavior
 
 1. Minimize scope
@@ -60,6 +66,8 @@ These rules are hard constraints. If a request conflicts with guardrails, refuse
 - Accessing local credential stores without explicit authorization.
 - Mass outbound communications.
 - Unbounded scraping that bypasses policy controls.
+- Logging provider request/response bodies that may contain payment data.
+- Queue serialization of cardholder data or decrypted secrets.
 
 ## Break-glass Requirements
 

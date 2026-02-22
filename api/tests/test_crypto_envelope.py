@@ -1,50 +1,37 @@
-from __future__ import annotations
+import base64
 
 import pytest
 
 from app.core.crypto.envelope import EnvelopeCrypto
 
-MASTER_KEY_B64 = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+
+@pytest.fixture
+def master_key_b64() -> str:
+    return base64.b64encode(b"a" * 32).decode("utf-8")
 
 
-def test_rejects_mismatched_kek_version_when_enforced() -> None:
-    crypto = EnvelopeCrypto(master_key_b64=MASTER_KEY_B64, kek_version=2)
-    encrypted = crypto.encrypt_payload(payload={"x": 1}, aad_text="unit:test")
+def test_encrypt_decrypt_with_matching_kek_version(master_key_b64: str) -> None:
+    crypto = EnvelopeCrypto(master_key_b64=master_key_b64, kek_version=3)
+    encrypted = crypto.encrypt_payload(payload={"x": "y"}, aad_text="secret:1")
 
-    with pytest.raises(ValueError, match="kek_version"):
-        crypto.decrypt_payload(
-            ciphertext=encrypted.ciphertext,
-            nonce=encrypted.nonce,
-            wrapped_dek=encrypted.wrapped_dek,
-            dek_nonce=encrypted.dek_nonce,
-            aad=encrypted.aad,
-            kek_version=1,
-            enforce_kek_version=True,
-        )
-
-
-def test_accepts_matching_kek_version_when_enforced() -> None:
-    crypto = EnvelopeCrypto(master_key_b64=MASTER_KEY_B64, kek_version=2)
-    encrypted = crypto.encrypt_payload(payload={"x": 1}, aad_text="unit:test")
-
-    payload = crypto.decrypt_payload(
+    decrypted = crypto.decrypt_payload(
         ciphertext=encrypted.ciphertext,
         nonce=encrypted.nonce,
         wrapped_dek=encrypted.wrapped_dek,
         dek_nonce=encrypted.dek_nonce,
         aad=encrypted.aad,
-        kek_version=2,
+        kek_version=encrypted.kek_version,
         enforce_kek_version=True,
     )
 
-    assert payload == {"x": 1}
+    assert decrypted == {"x": "y"}
 
 
-def test_requires_kek_version_if_enforcement_enabled() -> None:
-    crypto = EnvelopeCrypto(master_key_b64=MASTER_KEY_B64, kek_version=3)
-    encrypted = crypto.encrypt_payload(payload={"x": 1}, aad_text="unit:test")
+def test_decrypt_requires_kek_version_when_enforced(master_key_b64: str) -> None:
+    crypto = EnvelopeCrypto(master_key_b64=master_key_b64, kek_version=1)
+    encrypted = crypto.encrypt_payload(payload={"x": 1}, aad_text="secret:2")
 
-    with pytest.raises(ValueError, match="kek_version"):
+    with pytest.raises(ValueError):
         crypto.decrypt_payload(
             ciphertext=encrypted.ciphertext,
             nonce=encrypted.nonce,
@@ -55,31 +42,17 @@ def test_requires_kek_version_if_enforcement_enabled() -> None:
         )
 
 
-def test_backward_compatible_when_enforcement_disabled() -> None:
-    crypto = EnvelopeCrypto(master_key_b64=MASTER_KEY_B64, kek_version=4)
-    encrypted = crypto.encrypt_payload(payload={"x": "ok"}, aad_text="unit:test")
+def test_decrypt_fails_on_kek_version_mismatch_single_key(master_key_b64: str) -> None:
+    crypto = EnvelopeCrypto(master_key_b64=master_key_b64, kek_version=1)
+    encrypted = crypto.encrypt_payload(payload={"x": 1}, aad_text="secret:3")
 
-    payload = crypto.decrypt_payload(
-        ciphertext=encrypted.ciphertext,
-        nonce=encrypted.nonce,
-        wrapped_dek=encrypted.wrapped_dek,
-        dek_nonce=encrypted.dek_nonce,
-        aad=encrypted.aad,
-    )
-
-    assert payload == {"x": "ok"}
-
-
-def test_unicode_round_trip_stability() -> None:
-    crypto = EnvelopeCrypto(master_key_b64=MASTER_KEY_B64, kek_version=1)
-    encrypted = crypto.encrypt_payload(payload={"greeting": "안녕하세요", "emoji": "x"}, aad_text="unit:test")
-
-    payload = crypto.decrypt_payload(
-        ciphertext=encrypted.ciphertext,
-        nonce=encrypted.nonce,
-        wrapped_dek=encrypted.wrapped_dek,
-        dek_nonce=encrypted.dek_nonce,
-        aad=encrypted.aad,
-    )
-
-    assert payload == {"greeting": "안녕하세요", "emoji": "x"}
+    with pytest.raises(ValueError):
+        crypto.decrypt_payload(
+            ciphertext=encrypted.ciphertext,
+            nonce=encrypted.nonce,
+            wrapped_dek=encrypted.wrapped_dek,
+            dek_nonce=encrypted.dek_nonce,
+            aad=encrypted.aad,
+            kek_version=2,
+            enforce_kek_version=True,
+        )

@@ -60,10 +60,13 @@ async def test_admin_route_requires_admin_role(client, db_session):
     unauthorized = await client.get("/api/admin")
     assert unauthorized.status_code == 401
 
+    user = (await db_session.execute(select(User).where(User.email == "access-admin@example.com"))).scalar_one()
+    user.access_status = "approved"
+    await db_session.commit()
+
     forbidden = await client.get("/api/admin", cookies={"bominal_session": session_cookie})
     assert forbidden.status_code == 403
 
-    user = (await db_session.execute(select(User).where(User.email == "access-admin@example.com"))).scalar_one()
     admin_role = (await db_session.execute(select(Role).where(Role.name == "admin"))).scalar_one()
     user.role_id = admin_role.id
     await db_session.commit()

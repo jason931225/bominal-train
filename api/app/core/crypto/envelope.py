@@ -2,7 +2,7 @@ import base64
 import json
 import os
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Mapping
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
@@ -31,15 +31,43 @@ class EnvelopeCrypto:
     - Generates a random DEK for each record.
     - Encrypts payload with DEK using AES-256-GCM.
     - Wraps DEK using KEK (MASTER_KEY) with AES-256-GCM.
+    - Supports optional keyring by version for rotation-safe decrypt.
     """
 
-    def __init__(self, master_key_b64: str, kek_version: int = 1):
-        master_key = _b64decode(master_key_b64)
-        if len(master_key) != 32:
-            raise ValueError("MASTER_KEY must decode to 32 bytes")
+    def __init__(
+        self,
+        master_key_b64: str | None = None,
+        kek_version: int = 1,
+        *,
+        master_keys_b64_by_version: Mapping[int, str] | None = None,
+        active_kek_version: int | None = None,
+    ):
+        keys: dict[int, bytes] = {}
 
-        self._master_key = master_key
-        self._kek_version = kek_version
+        if master_keys_b64_by_version:
+            for version, encoded in master_keys_b64_by_version.items():
+                decoded = _b64decode(encoded)
+                if len(decoded) != 32:
+                    raise ValueError(f"MASTER_KEY for version {version} must decode to 32 bytes")
+                keys[int(version)] = decoded
+        elif master_key_b64 is not None:
+            master_key = _b64decode(master_key_b64)
+            if len(master_key) != 32:
+                raise ValueError("MASTER_KEY must decode to 32 bytes")
+            keys[int(kek_version)] = master_key
+        else:
+            raise ValueError("master_key_b64 or master_keys_b64_by_version must be provided")
+
+        resolved_active = int(active_kek_version if active_kek_version is not None else kek_version)
+        if resolved_active not in keys:
+            raise ValueError("active KEK version must exist in keyring")
+
+        self._keys = keys
+        self._kek_version = resolved_active
+
+    @property
+    def kek_version(self) -> int:
+        return self._kek_version
 
     def encrypt_payload(self, payload: dict[str, Any], aad_text: str) -> EncryptedSecret:
         dek = os.urandom(32)
@@ -51,7 +79,7 @@ class EnvelopeCrypto:
         payload_ciphertext = AESGCM(dek).encrypt(payload_nonce, payload_bytes, aad_bytes)
 
         dek_nonce = os.urandom(12)
-        wrapped_dek = AESGCM(self._master_key).encrypt(dek_nonce, dek, aad_bytes)
+        wrapped_dek = AESGCM(self._keys[self._kek_version]).encrypt(dek_nonce, dek, aad_bytes)
 
         return EncryptedSecret(
             ciphertext=_b64encode(payload_ciphertext),
@@ -74,15 +102,23 @@ class EnvelopeCrypto:
         enforce_kek_version: bool = False,
     ) -> dict[str, Any]:
         if enforce_kek_version and kek_version is None:
-            raise ValueError("kek_version is required when enforcement is enabled")
-        if enforce_kek_version and kek_version != self._kek_version:
-            raise ValueError("kek_version mismatch")
+            raise ValueError("kek_version is required when enforce_kek_version=True")
+
+        version = int(kek_version if kek_version is not None else self._kek_version)
+        key = self._keys.get(version)
+        if key is None:
+            raise ValueError(f"Unknown kek_version: {version}")
+
+        if enforce_kek_version and version != self._kek_version and len(self._keys) == 1:
+            raise ValueError(f"kek_version mismatch: {version} != {self._kek_version}")
 
         aad_bytes = _b64decode(aad)
-        dek = AESGCM(self._master_key).decrypt(_b64decode(dek_nonce), _b64decode(wrapped_dek), aad_bytes)
+        dek = AESGCM(key).decrypt(_b64decode(dek_nonce), _b64decode(wrapped_dek), aad_bytes)
+        payload_bytes = AESGCM(dek).decrypt(_b64decode(nonce), _b64decode(ciphertext), aad_bytes)
+
         try:
-            payload_bytes = AESGCM(dek).decrypt(_b64decode(nonce), _b64decode(ciphertext), aad_bytes)
+            return json.loads(payload_bytes.decode("utf-8"))
         finally:
-            # Best-effort lifetime reduction for sensitive key material.
+            # Best-effort lifetime reduction for sensitive references.
             del dek
-        return json.loads(payload_bytes.decode("utf-8"))
+            del payload_bytes
