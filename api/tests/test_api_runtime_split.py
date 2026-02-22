@@ -10,8 +10,10 @@ def _paths(app) -> set[str]:
     return {route.path for route in app.routes}
 
 
-def test_default_app_is_gateway_app():
-    assert default_app is gateway_app
+def test_default_app_exposes_compatibility_route_surface():
+    default_paths = _paths(default_app)
+    assert "/api/auth/login" in default_paths
+    assert "/api/train/stations" in default_paths
 
 
 def test_gateway_routes_exclude_train_domain_routes():

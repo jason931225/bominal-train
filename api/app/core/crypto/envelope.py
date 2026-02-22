@@ -109,9 +109,6 @@ class EnvelopeCrypto:
         if key is None:
             raise ValueError(f"Unknown kek_version: {version}")
 
-        if enforce_kek_version and version != self._kek_version and len(self._keys) == 1:
-            raise ValueError(f"kek_version mismatch: {version} != {self._kek_version}")
-
         aad_bytes = _b64decode(aad)
         dek = AESGCM(key).decrypt(_b64decode(dek_nonce), _b64decode(wrapped_dek), aad_bytes)
         payload_bytes = AESGCM(dek).decrypt(_b64decode(nonce), _b64decode(ciphertext), aad_bytes)

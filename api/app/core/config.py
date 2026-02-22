@@ -75,6 +75,9 @@ class Settings(BaseSettings):
     session_days_remember: int = Field(default=90, alias="SESSION_DAYS_REMEMBER")
     session_activity_debounce_seconds: int = Field(default=60, alias="SESSION_ACTIVITY_DEBOUNCE_SECONDS", ge=0)
     access_approval_required: bool = Field(default=True, alias="ACCESS_APPROVAL_REQUIRED")
+    password_hash_time_cost: int = Field(default=3, alias="PASSWORD_HASH_TIME_COST")
+    password_hash_memory_cost_kib: int = Field(default=65536, alias="PASSWORD_HASH_MEMORY_COST_KIB")
+    password_hash_parallelism: int = Field(default=4, alias="PASSWORD_HASH_PARALLELISM")
 
     rate_limit_window_seconds: int = Field(default=60, alias="RATE_LIMIT_WINDOW_SECONDS")
     rate_limit_max_requests: int = Field(default=20, alias="RATE_LIMIT_MAX_REQUESTS")
@@ -134,6 +137,69 @@ class Settings(BaseSettings):
     restaurant_auth_refresh_retries: int = Field(default=2, alias="RESTAURANT_AUTH_REFRESH_RETRIES")
     restaurant_payment_lease_ttl_seconds: int = Field(default=120, alias="RESTAURANT_PAYMENT_LEASE_TTL_SECONDS")
     restaurant_bootstrap_timeout_seconds: float = Field(default=20.0, alias="RESTAURANT_BOOTSTRAP_TIMEOUT_SECONDS")
+    restaurant_opentable_base_url: str = Field(default="https://www.opentable.com", alias="RESTAURANT_OPENTABLE_BASE_URL")
+    restaurant_opentable_timeout_seconds: float = Field(default=20.0, alias="RESTAURANT_OPENTABLE_TIMEOUT_SECONDS")
+    restaurant_opentable_auth_start_path: str = Field(
+        default="/dapi/authentication/sendotpfromsignin",
+        alias="RESTAURANT_OPENTABLE_AUTH_START_PATH",
+    )
+    restaurant_opentable_auth_complete_path: str = Field(
+        default="/dapi/authentication/signinwithotp",
+        alias="RESTAURANT_OPENTABLE_AUTH_COMPLETE_PATH",
+    )
+    restaurant_opentable_autocomplete_operation_name: str = Field(
+        default="Autocomplete",
+        alias="RESTAURANT_OPENTABLE_AUTOCOMPLETE_OPERATION_NAME",
+    )
+    restaurant_opentable_autocomplete_operation_sha256: str = Field(
+        default="fe1d118abd4c227750693027c2414d43014c2493f64f49bcef5a65274ce9c3c3",
+        alias="RESTAURANT_OPENTABLE_AUTOCOMPLETE_OPERATION_SHA256",
+    )
+    restaurant_opentable_search_operation_name: str = Field(
+        default="RestaurantsAvailability",
+        alias="RESTAURANT_OPENTABLE_SEARCH_OPERATION_NAME",
+    )
+    restaurant_opentable_search_operation_sha256: str = Field(
+        default="b2d05a06151b3cb21d9dfce4f021303eeba288fac347068b29c1cb66badc46af",
+        alias="RESTAURANT_OPENTABLE_SEARCH_OPERATION_SHA256",
+    )
+    restaurant_opentable_search_slot_path: str = Field(
+        default="data.availability",
+        alias="RESTAURANT_OPENTABLE_SEARCH_SLOT_PATH",
+    )
+    restaurant_opentable_create_operation_name: str = Field(
+        default="BookDetailsStandardSlotLock",
+        alias="RESTAURANT_OPENTABLE_CREATE_OPERATION_NAME",
+    )
+    restaurant_opentable_create_operation_sha256: str = Field(
+        default="1100bf68905fd7cb1d4fd0f4504a4954aa28ec45fb22913fa977af8b06fd97fa",
+        alias="RESTAURANT_OPENTABLE_CREATE_OPERATION_SHA256",
+    )
+    restaurant_opentable_create_path: str = Field(
+        default="/dapi/booking/make-reservation",
+        alias="RESTAURANT_OPENTABLE_CREATE_PATH",
+    )
+    restaurant_opentable_confirmation_operation_name: str = Field(
+        default="BookingConfirmationPageInFlow",
+        alias="RESTAURANT_OPENTABLE_CONFIRMATION_OPERATION_NAME",
+    )
+    restaurant_opentable_confirmation_operation_sha256: str = Field(
+        default="6be25f0bbc8fe75483bdfe96ae78fb20075b978842e4b44964aed3591611aa99",
+        alias="RESTAURANT_OPENTABLE_CONFIRMATION_OPERATION_SHA256",
+    )
+    restaurant_resy_base_url: str = Field(default="https://api.resy.com", alias="RESTAURANT_RESY_BASE_URL")
+    restaurant_resy_timeout_seconds: float = Field(default=20.0, alias="RESTAURANT_RESY_TIMEOUT_SECONDS")
+    restaurant_resy_auth_password_path: str = Field(default="/4/auth/password", alias="RESTAURANT_RESY_AUTH_PASSWORD_PATH")
+    restaurant_resy_auth_api_key: str | None = Field(default=None, alias="RESTAURANT_RESY_AUTH_API_KEY")
+    restaurant_resy_x_origin: str = Field(default="https://resy.com", alias="RESTAURANT_RESY_X_ORIGIN")
+    restaurant_resy_profile_path: str = Field(default="/2/user", alias="RESTAURANT_RESY_PROFILE_PATH")
+    restaurant_resy_search_path: str = Field(default="/4/find", alias="RESTAURANT_RESY_SEARCH_PATH")
+    restaurant_resy_create_details_path: str = Field(default="/3/details", alias="RESTAURANT_RESY_CREATE_DETAILS_PATH")
+    restaurant_resy_create_book_path: str = Field(default="/3/book", alias="RESTAURANT_RESY_CREATE_BOOK_PATH")
+    restaurant_resy_cancel_path: str = Field(default="/3/cancel", alias="RESTAURANT_RESY_CANCEL_PATH")
+    restaurant_resy_source_id: str = Field(default="resy.com-venue-details", alias="RESTAURANT_RESY_SOURCE_ID")
+    restaurant_resy_refresh_path: str = Field(default="/3/auth/refresh", alias="RESTAURANT_RESY_REFRESH_PATH")
+    restaurant_resy_logout_path: str = Field(default="/3/auth/logout", alias="RESTAURANT_RESY_LOGOUT_PATH")
     payment_cvv_ttl_seconds: int = Field(default=600, alias="PAYMENT_CVV_TTL_SECONDS")
     payment_cvv_ttl_min_seconds: int = Field(default=60, alias="PAYMENT_CVV_TTL_MIN_SECONDS")
     payment_cvv_ttl_max_seconds: int = Field(default=900, alias="PAYMENT_CVV_TTL_MAX_SECONDS")
@@ -207,6 +273,17 @@ class Settings(BaseSettings):
     def validate_non_negative_train_provider_float_settings(cls, value: float) -> float:
         if value < 0:
             raise ValueError("TRAIN_PROVIDER timeout/retry float settings must be non-negative")
+        return value
+
+    @field_validator(
+        "password_hash_time_cost",
+        "password_hash_memory_cost_kib",
+        "password_hash_parallelism",
+    )
+    @classmethod
+    def validate_positive_password_hash_settings(cls, value: int) -> int:
+        if value < 1:
+            raise ValueError("PASSWORD_HASH_* settings must be >= 1")
         return value
 
     @model_validator(mode="after")
