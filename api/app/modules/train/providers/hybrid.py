@@ -46,6 +46,8 @@ class _HybridProviderClient(TrainProviderClient):
             for schedule in schedules:
                 schedule.metadata = {**schedule.metadata, "source": "live"}
             return live
+        if not live.retryable:
+            return live
 
         fallback = await self._mock_client.search(
             dep=dep,
@@ -134,6 +136,8 @@ class _HybridProviderClient(TrainProviderClient):
         )
         if live.ok:
             return live
+        if not live.retryable:
+            return live
         return await self._mock_client.get_reservations(
             user_id=user_id,
             paid_only=paid_only,
@@ -151,6 +155,8 @@ class _HybridProviderClient(TrainProviderClient):
             user_id=user_id,
         )
         if live.ok:
+            return live
+        if not live.retryable:
             return live
         return await self._mock_client.ticket_info(
             reservation_id=reservation_id,
