@@ -29,4 +29,6 @@ def decrypt_secret(secret: Secret) -> dict[str, Any]:
         wrapped_dek=secret.wrapped_dek,
         dek_nonce=secret.dek_nonce,
         aad=secret.aad,
+        kek_version=secret.kek_version,
+        enforce_kek_version=True,
     )

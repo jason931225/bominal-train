@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from uuid import UUID
+
 from arq import create_pool
 from arq.connections import ArqRedis, RedisSettings
 
@@ -23,6 +25,12 @@ async def get_queue_pool() -> ArqRedis:
 
 
 async def enqueue_train_task(task_id: str, defer_seconds: float = 0.0) -> None:
+    # Queue safety contract: task queues only carry task identifiers.
+    try:
+        UUID(task_id)
+    except Exception as exc:
+        raise ValueError("train queue payload must contain a valid task UUID only") from exc
+
     pool = await get_queue_pool()
     job_id = f"train:{task_id}"
     if defer_seconds > 0:

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Protocol
+from urllib.parse import urljoin, urlparse
 
 import httpx
 
@@ -38,6 +39,28 @@ _EXECUTE_URL_TOKENS = (
     "atc02063",
     "refundsrequest",
 )
+
+_REDIRECT_STATUS_CODES = {301, 302, 303, 307, 308}
+_MAX_REDIRECT_HOPS = 3
+
+
+def _normalize_allowed_hosts(hosts: list[str]) -> set[str]:
+    return {str(host).strip().lower() for host in hosts if str(host).strip()}
+
+
+def _is_host_allowed(*, host: str, allowed_hosts: set[str]) -> bool:
+    if not host:
+        return False
+    if host in allowed_hosts:
+        return True
+    return any(host.endswith(f".{allowed}") for allowed in allowed_hosts)
+
+
+def _assert_allowed_host(url: str, *, allowed_hosts: set[str]) -> None:
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower()
+    if not _is_host_allowed(host=host, allowed_hosts=allowed_hosts):
+        raise RuntimeError(f"provider egress host is not allowlisted: {host or 'unknown'}")
 
 
 @dataclass(slots=True)
@@ -137,6 +160,7 @@ class ResilientTransport:
             if total_timeout_seconds is not None
             else settings.train_provider_timeout_total_seconds,
         )
+        self._allowed_hosts = _normalize_allowed_hosts(settings.payment_provider_allowed_hosts)
         self._sleeper = sleeper
 
     async def request(
@@ -157,6 +181,7 @@ class ResilientTransport:
 
         for attempt in range(1, max_attempts + 1):
             try:
+                _assert_allowed_host(url, allowed_hosts=self._allowed_hosts)
                 response = await self._transport.request(
                     method=method,
                     url=url,
@@ -286,7 +311,12 @@ class ResilientTransport:
 
 class HttpxTransport:
     def __init__(self) -> None:
-        self._client = httpx.AsyncClient(follow_redirects=True)
+        settings = get_settings()
+        self._allowed_hosts = _normalize_allowed_hosts(settings.payment_provider_allowed_hosts)
+        self._client = httpx.AsyncClient(
+            follow_redirects=False,
+            trust_env=settings.payment_transport_trust_env,
+        )
 
     async def request(
         self,
@@ -300,7 +330,7 @@ class HttpxTransport:
         timeout: float | OperationTimeout = LEGACY_DEFAULT_TIMEOUT_SECONDS,
         operation: str | None = None,
     ) -> TransportResponse:
-        del operation  # transport compatibility hook
+        resolved_operation = (operation or _DEFAULT_OPERATION).lower()
         if isinstance(timeout, OperationTimeout):
             resolved_timeout: float | httpx.Timeout = httpx.Timeout(
                 timeout=timeout.total,
@@ -311,20 +341,55 @@ class HttpxTransport:
             )
         else:
             resolved_timeout = timeout
-        response = await self._client.request(
-            method,
-            url,
-            headers=headers,
-            json=json_body,
-            data=data,
-            params=params,
-            timeout=resolved_timeout,
-        )
-        return TransportResponse(
-            status_code=response.status_code,
-            text=response.text,
-            headers=dict(response.headers),
-        )
+
+        current_url = url
+        current_method = method
+        current_json = json_body
+        current_data = data
+        current_params = params
+
+        for _ in range(_MAX_REDIRECT_HOPS + 1):
+            _assert_allowed_host(current_url, allowed_hosts=self._allowed_hosts)
+            response = await self._client.request(
+                current_method,
+                current_url,
+                headers=headers,
+                json=current_json,
+                data=current_data,
+                params=current_params,
+                timeout=resolved_timeout,
+            )
+            if response.status_code not in _REDIRECT_STATUS_CODES:
+                return TransportResponse(
+                    status_code=response.status_code,
+                    text=response.text,
+                    headers=dict(response.headers),
+                )
+
+            location = response.headers.get("location")
+            if not location:
+                return TransportResponse(
+                    status_code=response.status_code,
+                    text=response.text,
+                    headers=dict(response.headers),
+                )
+
+            if resolved_operation in {_EXECUTE_OPERATION, _DEFAULT_OPERATION}:
+                raise RuntimeError("redirect blocked for side-effecting provider operation")
+
+            next_url = urljoin(current_url, location)
+            _assert_allowed_host(next_url, allowed_hosts=self._allowed_hosts)
+
+            current_url = next_url
+            current_params = None
+            if response.status_code == 303 or (
+                response.status_code in {301, 302} and current_method.upper() not in {"GET", "HEAD"}
+            ):
+                current_method = "GET"
+                current_json = None
+                current_data = None
+
+        raise RuntimeError("provider redirect hop limit exceeded")
 
     async def close(self) -> None:
         await self._client.aclose()
@@ -342,12 +407,14 @@ class CurlCffiTransport:
         impersonate: str = "chrome131_android",
         default_headers: dict[str, str] | None = None,
     ) -> None:
+        settings = get_settings()
         try:
             import curl_cffi.requests  # type: ignore
         except Exception as exc:  # pragma: no cover - optional dependency
             raise RuntimeError("curl_cffi is not installed") from exc
 
         self._requests = curl_cffi.requests
+        self._allowed_hosts = _normalize_allowed_hosts(settings.payment_provider_allowed_hosts)
         self._impersonate = self._resolve_impersonate(impersonate)
         self._session = self._requests.AsyncSession(impersonate=self._impersonate)
         if default_headers:
@@ -389,7 +456,8 @@ class CurlCffiTransport:
         timeout: float | OperationTimeout = LEGACY_DEFAULT_TIMEOUT_SECONDS,
         operation: str | None = None,
     ) -> TransportResponse:
-        del operation  # transport compatibility hook
+        resolved_operation = (operation or _DEFAULT_OPERATION).lower()
+        _assert_allowed_host(url, allowed_hosts=self._allowed_hosts)
         curl_timeout = timeout.total if isinstance(timeout, OperationTimeout) else timeout
         try:
             response = await self._session.request(
@@ -400,7 +468,23 @@ class CurlCffiTransport:
                 data=data,
                 params=params,
                 timeout=curl_timeout,
+                allow_redirects=False,
             )
+            if response.status_code in _REDIRECT_STATUS_CODES:
+                location = response.headers.get("location")
+                if location:
+                    if resolved_operation in {_EXECUTE_OPERATION, _DEFAULT_OPERATION}:
+                        raise RuntimeError("redirect blocked for side-effecting provider operation")
+                    redirected_url = urljoin(url, location)
+                    _assert_allowed_host(redirected_url, allowed_hosts=self._allowed_hosts)
+                    return await self._fallback_transport.request(
+                        method="GET",
+                        url=redirected_url,
+                        headers=headers,
+                        params=None,
+                        timeout=timeout,
+                        operation=resolved_operation,
+                    )
             return TransportResponse(
                 status_code=response.status_code,
                 text=response.text,
@@ -419,6 +503,7 @@ class CurlCffiTransport:
                 data=data,
                 params=params,
                 timeout=timeout,
+                operation=resolved_operation,
             )
             return fallback
 

@@ -13,7 +13,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
-from app.core.crypto import redact_sensitive
+from app.core.crypto import redact_sensitive, validate_safe_metadata
 from app.core.crypto.secrets_store import decrypt_secret
 from app.core.time import to_kst, utc_now
 from app.db.models import Artifact, Secret, Task, TaskAttempt, User
@@ -192,7 +192,7 @@ async def _save_attempt(
         error_code=error_code,
         error_message_safe=error_message_safe,
         duration_ms=duration_ms,
-        meta_json_safe=redact_sensitive(meta_json_safe) if meta_json_safe else None,
+        meta_json_safe=validate_safe_metadata(meta_json_safe) if meta_json_safe else None,
         started_at=started_at,
         finished_at=utc_now(),
     )
@@ -1006,7 +1006,7 @@ def _build_ticket_data(
                 **payload.get("provider_http", {}),
                 **redact_sensitive(sync_http),
             }
-    return payload
+    return validate_safe_metadata(payload)
 
 
 def _is_shutdown_requested(ctx: dict) -> bool:
@@ -1164,19 +1164,21 @@ async def _run_train_task_inner(
             if pay_trace:
                 provider_http["pay"] = redact_sensitive(pay_trace)
 
-            open_ticket_artifact.data_json_safe = {
-                **open_ticket_artifact.data_json_safe,
-                "paid": True,
-                "status": "paid",
-                "payment_id": pay_outcome.data.get("payment_id"),
-                "ticket_no": pay_outcome.data.get("ticket_no"),
-                "provider_http": provider_http,
-                "provider_sync": sync_snapshot.get("provider_sync"),
-                "reservation_snapshot": sync_snapshot.get("reservation_snapshot"),
-                "tickets": sync_snapshot.get("tickets", open_ticket_artifact.data_json_safe.get("tickets", [])),
-                "seat_count": sync_snapshot.get("seat_count"),
-                "payment_deadline_at": sync_snapshot.get("payment_deadline_at"),
-            }
+            open_ticket_artifact.data_json_safe = validate_safe_metadata(
+                {
+                    **open_ticket_artifact.data_json_safe,
+                    "paid": True,
+                    "status": "paid",
+                    "payment_id": pay_outcome.data.get("payment_id"),
+                    "ticket_no": pay_outcome.data.get("ticket_no"),
+                    "provider_http": provider_http,
+                    "provider_sync": sync_snapshot.get("provider_sync"),
+                    "reservation_snapshot": sync_snapshot.get("reservation_snapshot"),
+                    "tickets": sync_snapshot.get("tickets", open_ticket_artifact.data_json_safe.get("tickets", [])),
+                    "seat_count": sync_snapshot.get("seat_count"),
+                    "payment_deadline_at": sync_snapshot.get("payment_deadline_at"),
+                }
+            )
             task.updated_at = utc_now()
             await db.commit()
             await _mark_completed(db, task)
