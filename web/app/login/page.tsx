@@ -10,7 +10,7 @@ import { getOptionalUser } from "@/lib/server-auth";
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams?: { registered?: string };
+  searchParams?: { registered?: string; reset?: string };
 }) {
   const user = await getOptionalUser();
   if (user) {
@@ -26,6 +26,12 @@ export default async function LoginPage({
       {searchParams?.registered === "1" ? (
         <p className="mt-4 rounded-xl bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
           {t("auth.accountCreatedPleaseSignIn")}
+        </p>
+      ) : null}
+
+      {searchParams?.reset === "1" ? (
+        <p className="mt-4 rounded-xl bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+          {t("auth.passwordResetComplete")}
         </p>
       ) : null}
 

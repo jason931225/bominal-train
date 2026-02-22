@@ -6,6 +6,8 @@ on:
     paths:
       - 'api/**'
       - 'web/**'
+      - 'docs/releases/**'
+      - 'infra/scripts/version_guard.py'
       - '.github/workflows/build-push.yml'
   workflow_dispatch:
 
@@ -25,6 +27,8 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
@@ -62,6 +66,17 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Resolve app version
+        id: app_version
+        run: |
+          resolved="$(python3 infra/scripts/version_guard.py resolve --commit "$GITHUB_SHA")"
+          numeric="${resolved#v}"
+          numeric="${numeric%%-*}"
+          numeric="${numeric%%+*}"
+          echo "app_version=$numeric" >> "$GITHUB_OUTPUT"
+          echo "Resolved app version: $resolved"
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
@@ -87,6 +102,8 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          build-args: BUILD_VERSION=${{ github.sha }}
+          build-args: |
+            BUILD_VERSION=${{ github.sha }}
+            APP_VERSION=${{ steps.app_version.outputs.app_version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

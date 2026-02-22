@@ -27,6 +27,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
@@ -97,3 +99,11 @@ jobs:
       - name: Validate docs consistency
         run: |
           bash infra/tests/test_docs_consistency.sh
+
+      - name: Validate sensitive log scanner
+        run: |
+          bash infra/tests/test_sensitive_log_scan.sh
+
+      - name: Validate semantic version mapping
+        run: |
+          bash infra/tests/test_versioning.sh

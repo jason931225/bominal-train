@@ -24,12 +24,12 @@ detect_compose_cmd
 
 print_logs() {
   echo ""
-  echo "=== Recent docker compose logs (api-gateway/api-train/api-restaurant/worker-train/worker-restaurant/web) ==="
-  "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" logs --tail=200 api-gateway api-train api-restaurant worker-train worker-restaurant web 2>/dev/null || true
+  echo "=== Recent docker compose logs (api/worker/worker-restaurant/web/mailpit) ==="
+  "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" logs --tail=200 api worker worker-restaurant web mailpit 2>/dev/null || true
   echo ""
   echo "Hint: run:"
   echo "  ${COMPOSE_CMD[*]} -f $COMPOSE_FILE ps"
-  echo "  ${COMPOSE_CMD[*]} -f $COMPOSE_FILE logs -f api-gateway api-train api-restaurant worker-train worker-restaurant web"
+  echo "  ${COMPOSE_CMD[*]} -f $COMPOSE_FILE logs -f api worker worker-restaurant web mailpit"
 }
 
 cleanup() {
@@ -87,8 +87,24 @@ if [[ "$web_code" != "200" && "$web_code" != "302" && "$web_code" != "307" && "$
   exit 1
 fi
 
-echo "→ Running backend tests (api-gateway: pytest -q)..."
-if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" exec -T api-gateway pytest -q; then
+echo "→ Waiting for Mailpit UI (http://localhost:8025)..."
+mailpit_code=""
+for _ in $(seq 1 30); do
+  mailpit_code="$(curl -sS -o /dev/null -w '%{http_code}' http://localhost:8025 2>/dev/null || true)"
+  if [[ "$mailpit_code" == "200" || "$mailpit_code" == "302" || "$mailpit_code" == "307" || "$mailpit_code" == "308" ]]; then
+    echo "  OK (HTTP $mailpit_code)"
+    break
+  fi
+  sleep 1
+done
+if [[ "$mailpit_code" != "200" && "$mailpit_code" != "302" && "$mailpit_code" != "307" && "$mailpit_code" != "308" ]]; then
+  echo "  FAILED: Mailpit did not respond with 200/3xx (last HTTP ${mailpit_code:-<empty>})"
+  print_logs
+  exit 1
+fi
+
+echo "→ Running backend tests (api: pytest -q)..."
+if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" exec -T api pytest -q; then
   echo "  FAILED: backend tests"
   print_logs
   exit 1

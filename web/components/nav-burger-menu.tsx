@@ -33,6 +33,7 @@ export function NavBurgerMenu({ isAdmin = false }: { isAdmin?: boolean }) {
   const { mode, theme, setMode } = useTheme();
   const { t } = useLocale();
   const [themeMenuOpen, setThemeMenuOpen] = useState(false);
+  const appVersion = (process.env.APP_VERSION ?? "0.0.0").trim() || "0.0.0";
   const themeLabel = (value: ThemeMode) => t(`theme.${value}`);
   const selectedThemeLabel = themeLabel(mode);
 
@@ -135,7 +136,7 @@ export function NavBurgerMenu({ isAdmin = false }: { isAdmin?: boolean }) {
         <div className="mt-1 border-t border-blossom-100 pt-1">
           <LogoutButton variant="menu" />
         </div>
-        <p className="px-3 pt-2 text-center text-[10px] text-slate-400">v{process.env.BUILD_VERSION}</p>
+        <p className="px-3 pt-2 text-center text-[10px] text-slate-400">{appVersion}</p>
       </div>
     </details>
   );

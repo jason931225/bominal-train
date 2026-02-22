@@ -22,6 +22,26 @@ bominal is a modular product foundation with:
 - Security controls: `docs/SECURITY.md`
 - Provider endpoint research and contract maps: `docs/provider-research/README.md`
 
+## Security contract (production)
+
+- Session cookies must remain `HttpOnly`, `SameSite=Lax`, and `Secure` only in production.
+- Passwords must be hashed with Argon2id; session tokens must be stored hashed.
+- Payment card payloads are encrypted at rest with envelope encryption (AES-256-GCM DEK + KEK wrapping).
+- CVV may exist only in encrypted Redis cache with bounded TTL and must never be stored in Postgres.
+- Provider payment egress must use allowlisted domains with TLS verification enabled.
+- Logs, queues, and artifacts must not contain raw cardholder data or raw provider payment payloads.
+
+## Versioning contract
+
+- Human-readable versions are resolved from commit parity via `docs/releases/version-map.json`.
+- Current track remains `0.0.#` (pre-1.0).
+- Validation command:
+
+```bash
+python3 infra/scripts/version_guard.py validate
+python3 infra/scripts/version_guard.py resolve --commit HEAD
+```
+
 ## Bootstrap
 
 From repo root:
@@ -63,7 +83,7 @@ Queue domains:
 - `train:queue`: train tasks + queued email delivery
 - `restaurant:queue`: restaurant worker domain
 
-One-command local verification (starts stack, waits for health, runs backend tests + web typecheck):
+One-command local verification (starts stack, waits for API/web/Mailpit health, runs backend tests + web typecheck):
 
 ```bash
 ./infra/scripts/local-check.sh
@@ -107,6 +127,7 @@ cp infra/env/prod/caddy.env.example infra/env/prod/caddy.env
 ```
 
 2) Edit those files and replace every `CHANGE_ME...` value (especially `MASTER_KEY`), and set your public host in `infra/env/prod/caddy.env`.
+   - Keep `infra/env/prod/web.env` `NEXT_PUBLIC_API_BASE_URL` empty so browser auth requests stay same-origin (required for `SameSite=Lax` session cookies).
 
 3) Deploy (recommended):
 
@@ -394,6 +415,7 @@ Or run the bundled checker:
 - Password hashing: Argon2id
 - Session IDs are never returned in JSON responses
 - Cookie: `httpOnly`, `SameSite=Lax`, `Secure` in production only
+- Browser auth requests must be same-origin (`/api/...`) or `SameSite=Lax` session cookies may be rejected in cross-site contexts
 - Secrets use envelope encryption (`AES-256-GCM` DEK per record + KEK wrap via `MASTER_KEY`)
 - Payment CVV is not stored in Postgres; it is cached encrypted in Redis with TTL (`PAYMENT_CVV_TTL_SECONDS`, default 3600)
 - Never run production with default `MASTER_KEY`; app now rejects that in production mode

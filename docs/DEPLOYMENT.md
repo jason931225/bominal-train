@@ -306,7 +306,7 @@ for f in infra/env/prod/*.env.example; do cp "$f" "${f%.example}"; done
 Edit each file and replace all `CHANGE_ME` values:
 - `infra/env/prod/postgres.env` - database credentials
 - `infra/env/prod/api.env` - MASTER_KEY, INTERNAL_API_KEY, DATABASE_URL
-- `infra/env/prod/web.env` - NEXT_PUBLIC_API_BASE_URL
+- `infra/env/prod/web.env` - keep `NEXT_PUBLIC_API_BASE_URL` empty for same-origin browser API calls
 - `infra/env/prod/caddy.env` - CADDY_SITE_ADDRESS, CADDY_ACME_EMAIL
 
 Generate secrets:

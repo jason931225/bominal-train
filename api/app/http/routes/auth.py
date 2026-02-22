@@ -2,6 +2,7 @@ import logging
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse
@@ -44,7 +45,7 @@ logger = logging.getLogger(__name__)
 
 INVALID_LOGIN_DETAIL = "Invalid email or password"
 EMAIL_OTP_TTL_MINUTES = 10
-PASSWORD_RESET_OTP_TTL_MINUTES = 10
+PASSWORD_RESET_OTP_TTL_MINUTES = 15
 
 
 def _new_otp_code() -> str:
@@ -117,7 +118,8 @@ async def _issue_password_reset_token(db: AsyncSession, *, user_id) -> tuple[str
 
 
 def _verification_template_payload(*, email: str, display_name: str | None, code: str) -> EmailTemplateJobPayload:
-    verify_url = f"{_public_base_url()}/api/auth/verify-email?email={email}&code={code}"
+    verify_query = urlencode({"email": email, "code": code})
+    verify_url = f"{_public_base_url()}/api/auth/verify-email?{verify_query}"
     return EmailTemplateJobPayload(
         to_email=email,
         subject="Verify your email for bominal",
@@ -161,7 +163,8 @@ def _verification_template_payload(*, email: str, display_name: str | None, code
 
 
 def _password_reset_template_payload(*, email: str, code: str) -> EmailTemplateJobPayload:
-    reset_url = f"{_public_base_url()}/api/auth/reset-password?email={email}&code={code}"
+    reset_query = urlencode({"email": email, "code": code})
+    reset_url = f"{_public_base_url()}/reset-password?{reset_query}"
     return EmailTemplateJobPayload(
         to_email=email,
         subject="Reset your bominal password",
@@ -227,6 +230,7 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
         password_hash=hash_password(payload.password),
         display_name=payload.display_name,
         ui_locale="en",
+        access_status="pending",
         role_id=user_role.id,
     )
     db.add(user)

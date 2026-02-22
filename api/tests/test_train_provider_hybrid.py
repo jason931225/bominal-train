@@ -59,6 +59,39 @@ class _LiveFailingClient:
         return ProviderOutcome(ok=False)
 
 
+class _LiveNonRetryableFailingClient:
+    provider_name = "SRT"
+
+    async def login(self, *, user_id: str, credentials: dict[str, str] | None = None) -> ProviderOutcome:
+        return ProviderOutcome(ok=True)
+
+    async def search(self, **kwargs) -> ProviderOutcome:
+        return ProviderOutcome(
+            ok=False,
+            retryable=False,
+            error_code="invalid_credentials",
+            error_message_safe="invalid credentials",
+        )
+
+    async def reserve(self, **kwargs) -> ProviderOutcome:
+        return ProviderOutcome(ok=False)
+
+    async def pay(self, **kwargs) -> ProviderOutcome:
+        return ProviderOutcome(ok=False)
+
+    async def cancel(self, **kwargs) -> ProviderOutcome:
+        return ProviderOutcome(ok=False)
+
+    async def reserve_standby(self, **kwargs) -> ProviderOutcome:
+        return ProviderOutcome(ok=False)
+
+    async def get_reservations(self, **kwargs) -> ProviderOutcome:
+        return ProviderOutcome(ok=False)
+
+    async def ticket_info(self, **kwargs) -> ProviderOutcome:
+        return ProviderOutcome(ok=False)
+
+
 class _MockSuccessClient:
     provider_name = "SRT"
 
@@ -156,3 +189,24 @@ async def test_hybrid_provider_falls_back_to_mock_search():
     assert len(schedules) == 1
     assert schedules[0].metadata["source"] == "mock-fallback"
     assert schedules[0].metadata["live_error_code"] == "provider_unreachable"
+
+
+@pytest.mark.asyncio
+async def test_hybrid_provider_does_not_fallback_on_non_retryable_search_error():
+    hybrid = _HybridProviderClient(
+        live_client=_LiveNonRetryableFailingClient(),
+        mock_client=_MockSuccessClient(),
+    )
+
+    result = await hybrid.search(
+        dep="수서",
+        arr="마산",
+        date_value=date(2026, 2, 3),
+        time_window_start="08:00",
+        time_window_end="12:00",
+        user_id="u1",
+    )
+
+    assert result.ok is False
+    assert result.retryable is False
+    assert result.error_code == "invalid_credentials"
