@@ -11,11 +11,22 @@ async def test_train_queue_pool_uses_train_queue_name(monkeypatch):
 
     train_queue._pool = None
     captured: dict[str, object] = {}
+    dsn: dict[str, str] = {}
 
     async def _fake_create_pool(settings, **kwargs):  # noqa: ANN001
         captured["kwargs"] = kwargs
         return object()
 
+    def _fake_from_dsn(*args, **kwargs):  # noqa: ANN001, ANN002, ANN003
+        value = kwargs.get("dsn")
+        if value is None and args:
+            value = args[-1]
+        dsn["value"] = str(value)
+        return object()
+
+    monkeypatch.setattr(train_queue.settings, "redis_url", "redis://legacy:6379/0")
+    monkeypatch.setattr(train_queue.settings, "redis_url_non_cde", "redis://non-cde:6380/2")
+    monkeypatch.setattr(train_queue.RedisSettings, "from_dsn", _fake_from_dsn)
     monkeypatch.setattr(train_queue, "create_pool", _fake_create_pool)
 
     await train_queue.get_queue_pool()
@@ -23,6 +34,7 @@ async def test_train_queue_pool_uses_train_queue_name(monkeypatch):
     kwargs = captured.get("kwargs")
     assert isinstance(kwargs, dict)
     assert kwargs["default_queue_name"] == TRAIN_QUEUE_NAME
+    assert dsn.get("value") == "redis://non-cde:6380/2"
 
 
 @pytest.mark.asyncio
@@ -31,11 +43,22 @@ async def test_email_queue_pool_uses_train_queue_name(monkeypatch):
 
     email_queue._pool = None
     captured: dict[str, object] = {}
+    dsn: dict[str, str] = {}
 
     async def _fake_create_pool(settings, **kwargs):  # noqa: ANN001
         captured["kwargs"] = kwargs
         return object()
 
+    def _fake_from_dsn(*args, **kwargs):  # noqa: ANN001, ANN002, ANN003
+        value = kwargs.get("dsn")
+        if value is None and args:
+            value = args[-1]
+        dsn["value"] = str(value)
+        return object()
+
+    monkeypatch.setattr(email_queue.settings, "redis_url", "redis://legacy:6379/0")
+    monkeypatch.setattr(email_queue.settings, "redis_url_non_cde", "redis://non-cde:6380/2")
+    monkeypatch.setattr(email_queue.RedisSettings, "from_dsn", _fake_from_dsn)
     monkeypatch.setattr(email_queue, "create_pool", _fake_create_pool)
 
     await email_queue.get_email_queue_pool()
@@ -43,6 +66,7 @@ async def test_email_queue_pool_uses_train_queue_name(monkeypatch):
     kwargs = captured.get("kwargs")
     assert isinstance(kwargs, dict)
     assert kwargs["default_queue_name"] == TRAIN_QUEUE_NAME
+    assert dsn.get("value") == "redis://non-cde:6380/2"
 
 
 @pytest.mark.asyncio
@@ -51,11 +75,22 @@ async def test_restaurant_queue_pool_uses_restaurant_queue_name(monkeypatch):
 
     restaurant_queue._pool = None
     captured: dict[str, object] = {}
+    dsn: dict[str, str] = {}
 
     async def _fake_create_pool(settings, **kwargs):  # noqa: ANN001
         captured["kwargs"] = kwargs
         return object()
 
+    def _fake_from_dsn(*args, **kwargs):  # noqa: ANN001, ANN002, ANN003
+        value = kwargs.get("dsn")
+        if value is None and args:
+            value = args[-1]
+        dsn["value"] = str(value)
+        return object()
+
+    monkeypatch.setattr(restaurant_queue.settings, "redis_url", "redis://legacy:6379/0")
+    monkeypatch.setattr(restaurant_queue.settings, "redis_url_non_cde", "redis://non-cde:6380/2")
+    monkeypatch.setattr(restaurant_queue.RedisSettings, "from_dsn", _fake_from_dsn)
     monkeypatch.setattr(restaurant_queue, "create_pool", _fake_create_pool)
 
     await restaurant_queue.get_restaurant_queue_pool()
@@ -63,6 +98,7 @@ async def test_restaurant_queue_pool_uses_restaurant_queue_name(monkeypatch):
     kwargs = captured.get("kwargs")
     assert isinstance(kwargs, dict)
     assert kwargs["default_queue_name"] == RESTAURANT_QUEUE_NAME
+    assert dsn.get("value") == "redis://non-cde:6380/2"
 
 
 class _FakeQueuePool:

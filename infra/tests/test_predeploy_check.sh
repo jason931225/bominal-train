@@ -43,6 +43,10 @@ POSTGRES_PASSWORD=strong-password
 EOF
   cat >"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF'
 GCP_PROJECT_ID=test-project
+DATABASE_URL=postgresql+asyncpg://bominal:strong-password@postgres:5432/bominal
+SYNC_DATABASE_URL=postgresql+psycopg://bominal:strong-password@postgres:5432/bominal
+AUTH_MODE=legacy
+EMAIL_PROVIDER=disabled
 INTERNAL_API_KEY=abc123
 MASTER_KEY=base64-secret
 EOF
@@ -115,6 +119,35 @@ make_valid_registry
 # Missing required security key should fail.
 echo "MASTER_KEY=abc" >"$TMP_DIR/repo/infra/env/prod/api.env"
 assert_fails "missing INTERNAL_API_KEY" env PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" BOMINAL_ROOT_DIR="$TMP_DIR/repo" "$SCRIPT" --skip-smoke-tests
+
+# Supabase auth mode without required issuer/url should fail.
+make_valid_envs
+cat >"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF'
+GCP_PROJECT_ID=test-project
+DATABASE_URL=postgresql+asyncpg://bominal:strong-password@postgres:5432/bominal
+SYNC_DATABASE_URL=postgresql+psycopg://bominal:strong-password@postgres:5432/bominal
+AUTH_MODE=supabase
+SUPABASE_URL=
+SUPABASE_JWT_ISSUER=
+EMAIL_PROVIDER=disabled
+INTERNAL_API_KEY=abc123
+MASTER_KEY=base64-secret
+EOF
+assert_fails "supabase mode requires issuer/url" env PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" BOMINAL_ROOT_DIR="$TMP_DIR/repo" "$SCRIPT" --skip-smoke-tests
+
+# Resend provider without API key should fail.
+make_valid_envs
+cat >"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF'
+GCP_PROJECT_ID=test-project
+DATABASE_URL=postgresql+asyncpg://bominal:strong-password@postgres:5432/bominal
+SYNC_DATABASE_URL=postgresql+psycopg://bominal:strong-password@postgres:5432/bominal
+AUTH_MODE=legacy
+EMAIL_PROVIDER=resend
+RESEND_API_KEY=
+INTERNAL_API_KEY=abc123
+MASTER_KEY=base64-secret
+EOF
+assert_fails "resend requires api key" env PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" BOMINAL_ROOT_DIR="$TMP_DIR/repo" "$SCRIPT" --skip-smoke-tests
 
 # Overdue production deprecation with active references should fail deploy gate.
 make_valid_envs

@@ -400,6 +400,16 @@ bominal-deploy
 3. Check API `EMAIL_PROVIDER` setting (`smtp` for local Mailpit).
 4. Trigger `/api/notifications/email/test` while logged in.
 
+## 6.1) Train notifications not arriving with Resend (production)
+
+1. Check API env values in `infra/env/prod/api.env`:
+   - `EMAIL_PROVIDER=resend`
+   - `RESEND_API_KEY` set
+   - `EMAIL_FROM_ADDRESS` uses a verified Resend sender/domain
+2. Verify worker is healthy and consuming `train:queue`.
+3. Trigger `/api/notifications/email/test` from an authenticated session.
+4. Inspect API/worker logs for redacted delivery errors (no payload bodies).
+
 ## 7) Restaurant task policy behavior (stage scaffold)
 
 Symptoms:
