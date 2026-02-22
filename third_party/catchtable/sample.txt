@@ -1,0 +1,31 @@
+SHOP_REF = "_-hP-1O_bz8CWlKL9eePUw" # 키친 마이야르
+SHOP_NAME="kitchenmaillard"  # 키친 마이야르
+SCHEDULE_LIST = [
+    {
+        "day": "230211",
+        "time": "1730",
+        "encrypted": {
+            "encryptedParamString": "h7ynWwS492JUk/WGKwEgoNJbyF99sgtvdgNVRBmp6FJ18vs+HtJVe1RHnv2PhisUthdUUbzHMffn0iVGI2Br98rqI2Mlx15Hwlvsd+a+wy8jGvqYtYffFhjG96O3gbdYw3/xvqjcXJfs3kJz8xZkmmDRWUfFUISpFbQGyUY5hPGLf0nomIMosyFMvI4IcR/QPpd386DowcM4CU59+MBJ4z0i4JCvYwPEHMbL50JJTwV2JSvmCgTUt6k7vbu8CFtj0WkuChtTYlbXlQ2bo9eqWJ92AHkW7QQLzMtYhdp2zhpgKdDdDo+4dV+xpjyGAUgSIsJxOxc9ahm5YYj2/pFt5w==",
+            "c1": "9",
+            "c2": "5",
+            "c3": "4",
+            "c4": "6"
+        }
+    },
+]
+
+SHOP_REF="pQUWDMHkPf2II_uVDPCFFQ"  # 아리아
+SHOP_NAME="aria"  # 아리아
+SCHEDULE_LIST = [
+    {
+        "day": "230129",
+        "time": "1950",
+        "encrypted": {
+            "encryptedParamString": "ZdjQPmC0GterUYhV0TZQUErKflDBEWDAa1BiRPAxm/HbDK11ThKf4ss9Po/n3x++rntmaYbmGFrbOQ1VadYlkIYMc8PfLLxgP6DC7a+tuHC/V/x+ksl/gFlDgaZaolxOUU0qsiYbmEA8oR7F9cpGU38RkcPZH3SrI8DeMNzDm8xFB72GgoJHVrLIcsGw37BIM0ZYSeT1nasOFm9ZVFyo4/Pn9uZLkP+UWc/3318DRT2cicQU6Fio71kUlDOnLk9/2OpUpP/0zOHuD9aSjcFO+cRW9TG2OgUyoGBYZcjgkFx8sGSt8sbsHUojAPWvdurNpcJhk6CcScD4B4DiD9dOfQ==",
+            "c1": "4",
+            "c2": "2",
+            "c3": "8",
+            "c4": "6"
+        }
+    }, 
+]
