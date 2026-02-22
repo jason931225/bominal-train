@@ -13,6 +13,9 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+- [8063176] Added PCI-focused security regression tests for redaction, envelope `kek_version` enforcement, safe metadata validation, queue payload safety, runtime Redis guards, logging redaction, and security config validation (`api/tests/test_crypto_redaction.py`, `api/tests/test_crypto_envelope.py`, `api/tests/test_safe_metadata.py`, `api/tests/test_queue_payload_safety.py`, `api/tests/test_runtime_security_checks.py`, `api/tests/test_logging_redaction.py`, `api/tests/test_security_config.py`).
+- [8063176] Added continuous sensitive-log scanning utility and CI test gate for PAN/CVV/header leakage detection (`infra/scripts/scan_sensitive_logs.py`, `infra/tests/test_sensitive_log_scan.sh`, `.github/workflows/infra-tests.yml`).
+- [65a179f] Added PCI DSS + OWASP ASVS remediation implementation plan and compliance mapping matrix (`docs/plans/2026-02-22-pci-dss-owasp-remediation.md`, `docs/security/compliance-matrix.md`).
 - [9dc1d9e] Added Wave 1 stabilization gate tracker and canonical pointer entries for reviewer-facing release-gate evidence (`docs/plans/active/2026-02-22-wave1-stabilization-gate-tracker.md`, `docs/plans/active/README.md`, `docs/README.md`).
 - [9dc1d9e] Added provider egress resilience regression coverage for retry classification, bounded retries, and side-effect no-retry guarantees (`api/tests/test_provider_egress_transport.py`).
 - [0d84ae8] Added commit-based changelog governance and CI validation (`infra/tests/test_changelog.sh`).
@@ -37,6 +40,8 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Changed
 
+- [4aa5281] Enforced CDE runtime controls with hardened redaction patterns, logging-boundary redaction, `kek_version`-enforced decrypt boundaries, bounded CVV TTL policy settings, provider egress allowlist/redirect SSRF guards, and safe metadata enforcement in worker/service persistence paths (`api/app/core/crypto/redaction.py`, `api/app/core/logging.py`, `api/app/core/crypto/envelope.py`, `api/app/core/crypto/secrets_store.py`, `api/app/core/config.py`, `api/app/services/wallet.py`, `api/app/modules/train/providers/transport.py`, `api/app/core/crypto/safe_metadata.py`, `api/app/modules/train/worker.py`, `api/app/modules/train/service.py`, `api/app/modules/restaurant/worker.py`, `api/app/modules/train/queue.py`, `api/app/modules/restaurant/queue.py`, `api/app/main.py`, `infra/env/dev/api.env`, `infra/env/prod/api.env.example`).
+- [65a179f] Codified PCI relay isolation, CDE boundaries, redaction and Redis CVV enforcement, provider payload safety, and egress security requirements across canonical docs (`docs/SECURITY.md`, `docs/GUARDRAILS.md`, `docs/PERMISSIONS.md`, `docs/ARCHITECTURE.md`, `docs/RUNBOOK.md`, `README.md`, `docs/README.md`).
 - [9dc1d9e] Debounced authenticated session activity writes with configurable interval to reduce DB write amplification while preserving session expiry/revocation checks on each request (`api/app/http/deps.py`, `api/app/services/auth.py`, `api/app/core/config.py`, `api/tests/test_auth_flow.py`).
 - [9dc1d9e] Introduced fail-safe provider transport resilience primitives (operation-aware timeouts, bounded transient retries, non-retryable fail-closed behavior) and wired live/hybrid provider clients to surface structured retryable outcomes (`api/app/modules/train/providers/transport.py`, `api/app/modules/train/providers/factory.py`, `api/app/modules/train/providers/hybrid.py`).
 - [0d84ae8] Enforced changelog requirements in governance docs (`AGENTS.md`, `docs/EXECUTION_PROTOCOL.md`).
