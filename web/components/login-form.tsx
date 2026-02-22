@@ -74,7 +74,6 @@ export function LoginForm() {
       }
 
       router.push(ROUTES.dashboard);
-      router.refresh();
     } catch {
       setFormError(t("auth.apiUnreachable"));
     } finally {

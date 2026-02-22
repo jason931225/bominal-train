@@ -132,7 +132,7 @@ Optional:
 2) Edit those files and replace every `CHANGE_ME...` value. Required manual deploy values:
    - `infra/env/prod/postgres.env`: `POSTGRES_PASSWORD`
    - `infra/env/prod/api.env`: `GCP_PROJECT_ID`, `INTERNAL_API_KEY`, `MASTER_KEY`, DB password portions of `DATABASE_URL` and `SYNC_DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_JWT_ISSUER`, `RESEND_API_KEY`, and sender-domain placeholder in `EMAIL_FROM_ADDRESS`
-   - `infra/env/prod/web.env`: `NEXT_PUBLIC_API_BASE_URL`
+   - `infra/env/prod/web.env`: keep `NEXT_PUBLIC_API_BASE_URL` empty so browser auth requests stay same-origin (required for `SameSite=Lax` session cookies)
    - `infra/env/prod/caddy.env`: `CADDY_SITE_ADDRESS`, `CADDY_ACME_EMAIL`
    - Optional, mode-dependent:
      - `AUTH_MODE=legacy`: Supabase JWT fields can be left empty
@@ -435,6 +435,7 @@ Or run the bundled checker:
 - Password hashing: Argon2id
 - Session IDs are never returned in JSON responses
 - Cookie: `httpOnly`, `SameSite=Lax`, `Secure` in production only
+- Browser auth requests must be same-origin (`/api/...`) or `SameSite=Lax` session cookies may be rejected in cross-site contexts
 - Secrets use envelope encryption (`AES-256-GCM` DEK per record + KEK wrap via `MASTER_KEY`)
 - Payment CVV is not stored in Postgres; it is cached encrypted in Redis with TTL (`PAYMENT_CVV_TTL_SECONDS`, default 3600)
 - Never run production with default `MASTER_KEY`; app now rejects that in production mode
