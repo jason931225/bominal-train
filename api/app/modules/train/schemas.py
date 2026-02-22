@@ -53,8 +53,14 @@ class ScheduleOut(BaseModel):
     metadata: dict[str, str | int | bool | None] = Field(default_factory=dict)
 
 
+class ProviderSearchErrorOut(BaseModel):
+    error_code: str | None = None
+    error_message: str | None = None
+
+
 class TrainSearchResponse(BaseModel):
     schedules: list[ScheduleOut]
+    provider_errors: dict[str, ProviderSearchErrorOut] = Field(default_factory=dict)
 
 
 class TrainStationOut(BaseModel):
@@ -102,8 +108,14 @@ class KTXCredentialStatusResponse(ProviderCredentialStatus):
 
 
 class TrainPassengers(BaseModel):
-    adults: int = Field(ge=1, le=9)
+    adults: int = Field(ge=0, le=9)
     children: int = Field(default=0, ge=0, le=9)
+
+    @model_validator(mode="after")
+    def validate_total_passengers(self) -> "TrainPassengers":
+        if (self.adults + self.children) < 1:
+            raise ValueError("at least one passenger is required")
+        return self
 
 
 class RankedTrainSelection(BaseModel):
