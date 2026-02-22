@@ -138,7 +138,7 @@ class Settings(BaseSettings):
     payment_cvv_ttl_min_seconds: int = Field(default=60, alias="PAYMENT_CVV_TTL_MIN_SECONDS")
     payment_cvv_ttl_max_seconds: int = Field(default=900, alias="PAYMENT_CVV_TTL_MAX_SECONDS")
     payment_provider_allowed_hosts: Annotated[List[str], NoDecode] = Field(
-        default=["app.srail.or.kr", "smart.letskorail.com"],
+        default=["app.srail.or.kr", "letskorail.com"],
         alias="PAYMENT_PROVIDER_ALLOWED_HOSTS",
     )
     payment_transport_trust_env: bool = Field(default=False, alias="PAYMENT_TRANSPORT_TRUST_ENV")

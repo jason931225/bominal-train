@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { NavBurgerMenu } from "@/components/nav-burger-menu";
+import { TopNavTaskAttention } from "@/components/top-nav-task-attention";
 import { TopNavBrand } from "@/components/top-nav-brand";
 import type { Locale } from "@/lib/i18n";
 import { t } from "@/lib/i18n";
@@ -43,18 +44,13 @@ export function TopNav({ user, locale }: { user: BominalUser | null; locale: Loc
   const brandSectionLabel = getBrandSectionLabel(locale, pathname);
 
   return (
-    <header className="sticky top-0 z-20 border-b border-blossom-100/80 bg-white/90 backdrop-blur">
+    <header className="sticky top-0 z-[140] border-b border-blossom-100 bg-white">
       <div className="mx-auto flex w-full max-w-5xl items-center justify-between px-4 py-3.5 sm:px-6">
         <TopNavBrand href={user ? ROUTES.dashboard : ROUTES.login} sectionLabel={brandSectionLabel} />
 
         {user ? (
           <div className="flex items-center gap-3">
-            <span
-              title={user.display_name?.trim() || user.email}
-              className="inline-flex h-9 max-w-[11rem] items-center truncate rounded-full border border-blossom-200 bg-white px-3 text-sm font-medium text-slate-700 shadow-sm"
-            >
-              {user.display_name?.trim() || user.email}
-            </span>
+            <TopNavTaskAttention userId={user.id} displayName={user.display_name?.trim() || user.email} />
             <NavBurgerMenu isAdmin={user.role === "admin"} />
           </div>
         ) : (

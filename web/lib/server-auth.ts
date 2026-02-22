@@ -28,20 +28,30 @@ const fetchMe = cache(async (): Promise<BominalUser | null> => {
     return null;
   }
 
-  const response = await fetch(`${serverApiBaseUrl}/api/auth/me`, {
-    method: "GET",
-    headers: {
-      cookie: cookieHeader,
-    },
-    cache: "no-store",
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${serverApiBaseUrl}/api/auth/me`, {
+      method: "GET",
+      headers: {
+        cookie: cookieHeader,
+      },
+      cache: "no-store",
+    });
+  } catch {
+    // Auth backend may be unavailable during startup; treat as unauthenticated.
+    return null;
+  }
 
   if (!response.ok) {
     return null;
   }
 
-  const data = (await response.json()) as AuthMeResponse;
-  return data.user;
+  try {
+    const data = (await response.json()) as AuthMeResponse;
+    return data.user;
+  } catch {
+    return null;
+  }
 });
 
 /**
