@@ -8,6 +8,7 @@ bominal is a modular product foundation with:
 - `worker-restaurant`: arq restaurant worker (isolated queue domain scaffold)
 - `redis`: queue + provider rate limiting
 - `third_party/srtgo`: read-only provider behavior reference (submodule)
+- `third_party/catchtable`: read-only provider endpoint reference for restaurant module
 
 ## Documentation pack
 
@@ -30,6 +31,17 @@ bominal is a modular product foundation with:
 - CDE Redis for CVV cache (`REDIS_URL_CDE` or fallback `REDIS_URL`) must not be Upstash-hosted; Upstash is allowed only for non-CDE Redis (`REDIS_URL_NON_CDE`).
 - Provider payment egress must use allowlisted domains with TLS verification enabled.
 - Logs, queues, and artifacts must not contain raw cardholder data or raw provider payment payloads.
+
+## Versioning contract
+
+- Human-readable versions are resolved from commit parity via `docs/releases/version-map.json`.
+- Current track remains `0.0.#` (pre-1.0).
+- Validation command:
+
+```bash
+python3 infra/scripts/version_guard.py validate
+python3 infra/scripts/version_guard.py resolve --commit HEAD
+```
 
 ## Bootstrap
 
@@ -70,7 +82,7 @@ Queue domains:
 - `train:queue`: train tasks + queued email delivery
 - `restaurant:queue`: restaurant worker domain
 
-One-command local verification (starts stack, waits for health, runs backend tests + web typecheck):
+One-command local verification (starts stack, waits for API/web/Mailpit health, runs backend tests + web typecheck):
 
 ```bash
 ./infra/scripts/local-check.sh
@@ -166,6 +178,7 @@ docker compose -f infra/docker compose.prod.yml ps
 - `infra/docker compose.yml` (development)
 - `infra/docker compose.prod.yml` (deployment)
 - `third_party/srtgo` (read-only reference)
+- `third_party/catchtable` (read-only reference)
 
 ## Auth + modules
 
@@ -400,6 +413,11 @@ Or run the bundled checker:
 ## Notes on provider implementation
 
 - Source-of-truth reference repo is available at `third_party/srtgo`.
+- CatchTable restaurant endpoint reference files are available at `third_party/catchtable` (read-only):
+  - `third_party/catchtable/reservation.py`
+  - `third_party/catchtable/session.py`
+  - `third_party/catchtable/configs.py`
+  - `third_party/catchtable/main.py`
 - `TRAIN_PROVIDER_MODE` options:
   - `mock`: mock schedules + mock reserve/pay
   - `hybrid`: live schedules first, fallback to mock; mock reserve/pay

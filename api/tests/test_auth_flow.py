@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from app.core.security import hash_token
-from app.db.models import Secret, Session, Task, User
+from app.db.models import PasswordResetToken, Secret, Session, Task, User
 from app.services.wallet import LEGACY_PAYMENT_CVV_REDIS_KEY_PREFIX, PAYMENT_CVV_REDIS_KEY_PREFIX
 from tests.conftest import MockRedisContextManager
 
@@ -196,7 +196,7 @@ async def test_request_email_verification_and_verify_email_with_otp(client, monk
 
 
 @pytest.mark.asyncio
-async def test_request_password_reset_and_reset_password_with_otp(client, monkeypatch):
+async def test_request_password_reset_and_reset_password_with_otp(client, monkeypatch, db_session):
     captured: dict[str, object] = {}
 
     async def _fake_enqueue(payload, defer_seconds: float = 0.0):
@@ -204,6 +204,7 @@ async def test_request_password_reset_and_reset_password_with_otp(client, monkey
         return "job-reset-1"
 
     monkeypatch.setattr("app.http.routes.auth.enqueue_template_email", _fake_enqueue)
+    monkeypatch.setattr("app.http.routes.auth._public_base_url", lambda: "https://app.example.com")
 
     email = f"reset-{uuid4().hex[:8]}@example.com"
     await client.post(
@@ -213,7 +214,22 @@ async def test_request_password_reset_and_reset_password_with_otp(client, monkey
 
     request_res = await client.post("/api/auth/request-password-reset", json={"email": email})
     assert request_res.status_code == 200
+    reset_payload = captured["payload"]
+    assert reset_payload.context["reset"]["ttl_minutes"] == 15
+    assert reset_payload.context["reset"]["url"].startswith("https://app.example.com/reset-password?email=")
     otp = _extract_otp_code(captured["payload"])
+
+    user = (await db_session.execute(select(User).where(User.email == email))).scalar_one()
+    reset_token = (
+        await db_session.execute(
+            select(PasswordResetToken)
+            .where(PasswordResetToken.user_id == user.id)
+            .where(PasswordResetToken.used_at.is_(None))
+        )
+    ).scalar_one()
+    now = datetime.now(timezone.utc)
+    expires_delta = _as_utc(reset_token.expires_at) - now
+    assert 14 * 60 <= expires_delta.total_seconds() <= 15 * 60
 
     reset_res = await client.post(
         "/api/auth/reset-password",

@@ -54,6 +54,8 @@ Pointer format convention (mandatory):
 - [PTR-DOCS-012] `docs/DEPRECATION_WORKFLOW.md` - canonical deprecation lifecycle policy across local, GitHub, and production.
 - [PTR-DOCS-013] `docs/deprecations/registry.json` - machine-validated deprecation registry used by CI/deploy guards.
 - [PTR-DOCS-014] `docs/security/compliance-matrix.md` - PCI DSS and OWASP ASVS control-to-enforcement mapping for runtime and CI gates.
+- [PTR-DOCS-015] `docs/releases/README.md` - semantic versioning policy and commit-parity operating model.
+- [PTR-DOCS-016] `docs/releases/version-map.json` - canonical semantic version to commit-hash registry.
 
 ### Program Plans and Closure Artifacts
 
@@ -87,5 +89,6 @@ Pointer format convention (mandatory):
 - [PTR-OPS-002] `infra/tests/test_intent_routing.sh` - validates required intent keyword mappings.
 - [PTR-OPS-003] `infra/tests/test_docs_consistency.sh` - enforces deployment-policy and docs consistency rules.
 - [PTR-OPS-004] `infra/tests/test_execution_ledgers.sh` - validates lock/request ledger structure and template safety.
+- [PTR-OPS-005] `infra/tests/test_versioning.sh` - validates semantic version registry parity and bump semantics.
 
 For agent-focused instructions, also read the root `AGENTS.md`.

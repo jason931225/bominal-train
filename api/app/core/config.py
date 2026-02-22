@@ -74,6 +74,7 @@ class Settings(BaseSettings):
     session_days_default: int = Field(default=7, alias="SESSION_DAYS_DEFAULT")
     session_days_remember: int = Field(default=90, alias="SESSION_DAYS_REMEMBER")
     session_activity_debounce_seconds: int = Field(default=60, alias="SESSION_ACTIVITY_DEBOUNCE_SECONDS", ge=0)
+    access_approval_required: bool = Field(default=True, alias="ACCESS_APPROVAL_REQUIRED")
 
     rate_limit_window_seconds: int = Field(default=60, alias="RATE_LIMIT_WINDOW_SECONDS")
     rate_limit_max_requests: int = Field(default=20, alias="RATE_LIMIT_MAX_REQUESTS")
