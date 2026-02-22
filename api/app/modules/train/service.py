@@ -853,26 +853,34 @@ async def _latest_attempt_map(db: AsyncSession, task_ids: list[UUID]) -> dict[UU
     if not task_ids:
         return {}
 
-    ranked_attempts = (
-        select(
-            TaskAttempt.id.label("attempt_id"),
-            TaskAttempt.task_id.label("task_id"),
-            func.row_number()
-            .over(
-                partition_by=TaskAttempt.task_id,
-                order_by=(TaskAttempt.finished_at.desc(), TaskAttempt.id.desc()),
-            )
-            .label("attempt_rank"),
+    is_postgres = bool(db.bind is not None and db.bind.dialect.name == "postgresql")
+    if is_postgres:
+        stmt = (
+            select(TaskAttempt)
+            .where(TaskAttempt.task_id.in_(task_ids))
+            .distinct(TaskAttempt.task_id)
+            .order_by(TaskAttempt.task_id.asc(), TaskAttempt.finished_at.desc(), TaskAttempt.id.desc())
         )
-        .where(TaskAttempt.task_id.in_(task_ids))
-        .subquery()
-    )
-
-    stmt = (
-        select(TaskAttempt)
-        .join(ranked_attempts, TaskAttempt.id == ranked_attempts.c.attempt_id)
-        .where(ranked_attempts.c.attempt_rank == 1)
-    )
+    else:
+        ranked_attempts = (
+            select(
+                TaskAttempt.id.label("attempt_id"),
+                TaskAttempt.task_id.label("task_id"),
+                func.row_number()
+                .over(
+                    partition_by=TaskAttempt.task_id,
+                    order_by=(TaskAttempt.finished_at.desc(), TaskAttempt.id.desc()),
+                )
+                .label("attempt_rank"),
+            )
+            .where(TaskAttempt.task_id.in_(task_ids))
+            .subquery()
+        )
+        stmt = (
+            select(TaskAttempt)
+            .join(ranked_attempts, TaskAttempt.id == ranked_attempts.c.attempt_id)
+            .where(ranked_attempts.c.attempt_rank == 1)
+        )
     attempts = (await db.execute(stmt)).scalars().all()
     return {attempt.task_id: attempt for attempt in attempts}
 
@@ -881,27 +889,36 @@ async def _latest_ticket_artifact_map(db: AsyncSession, task_ids: list[UUID]) ->
     if not task_ids:
         return {}
 
-    ranked_artifacts = (
-        select(
-            Artifact.id.label("artifact_id"),
-            Artifact.task_id.label("task_id"),
-            func.row_number()
-            .over(
-                partition_by=Artifact.task_id,
-                order_by=(Artifact.created_at.desc(), Artifact.id.desc()),
-            )
-            .label("artifact_rank"),
+    is_postgres = bool(db.bind is not None and db.bind.dialect.name == "postgresql")
+    if is_postgres:
+        stmt = (
+            select(Artifact)
+            .where(Artifact.task_id.in_(task_ids))
+            .where(Artifact.kind == "ticket")
+            .distinct(Artifact.task_id)
+            .order_by(Artifact.task_id.asc(), Artifact.created_at.desc(), Artifact.id.desc())
         )
-        .where(Artifact.task_id.in_(task_ids))
-        .where(Artifact.kind == "ticket")
-        .subquery()
-    )
-
-    stmt = (
-        select(Artifact)
-        .join(ranked_artifacts, Artifact.id == ranked_artifacts.c.artifact_id)
-        .where(ranked_artifacts.c.artifact_rank == 1)
-    )
+    else:
+        ranked_artifacts = (
+            select(
+                Artifact.id.label("artifact_id"),
+                Artifact.task_id.label("task_id"),
+                func.row_number()
+                .over(
+                    partition_by=Artifact.task_id,
+                    order_by=(Artifact.created_at.desc(), Artifact.id.desc()),
+                )
+                .label("artifact_rank"),
+            )
+            .where(Artifact.task_id.in_(task_ids))
+            .where(Artifact.kind == "ticket")
+            .subquery()
+        )
+        stmt = (
+            select(Artifact)
+            .join(ranked_artifacts, Artifact.id == ranked_artifacts.c.artifact_id)
+            .where(ranked_artifacts.c.artifact_rank == 1)
+        )
     artifacts = (await db.execute(stmt)).scalars().all()
     return {artifact.task_id: artifact for artifact in artifacts}
 

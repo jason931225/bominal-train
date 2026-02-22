@@ -127,6 +127,23 @@ If running from a containerized shell where API is on the compose network:
 infra/scripts/benchmark-train-task-list.sh --base-url http://api:8000
 ```
 
+Hybrid benchmark gate check (relative improvement + absolute SLO ceilings):
+
+```bash
+infra/scripts/benchmark-train-task-list-compare.sh \
+  --baseline-json infra/benchmarks/train-task-list-baseline.json \
+  --run-live \
+  --relative-p95-min-improvement 15 \
+  --relative-mean-min-improvement 10 \
+  --absolute-p95-max 12 \
+  --absolute-mean-max 10 \
+  -- \
+  --base-url http://localhost:8000 \
+  --iterations 30 \
+  --active-limit 60 \
+  --completed-limit 80
+```
+
 Live system monitor (production):
 
 ```bash

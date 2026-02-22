@@ -32,6 +32,8 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - [f84421d] Added Stage 9 active performance execution plan and pointer registration (`docs/plans/active/2026-02-14-stage9-performance-optimization.md`, `docs/README.md`).
 - [eee7868] Added repeatable train task list latency benchmark script with p50/p95 reporting and validation checks (`infra/scripts/benchmark-train-task-list.sh`, `infra/tests/test_benchmark_train_task_list.sh`).
 - [eee7868] Added high-risk local DB reset workflow with optional fresh-schema rebuild and sign-in credential preservation (`infra/scripts/reset-local-db.sh`, `infra/tests/test_reset_local_db.sh`).
+- [1c118c4] Added hybrid benchmark gate tooling for train task-list latency comparisons (`infra/scripts/benchmark-train-task-list-compare.sh`, `infra/scripts/benchmark-threshold-check.sh`, `infra/benchmarks/train-task-list-baseline.json`, `infra/tests/test_benchmark_train_task_list_compare.sh`).
+- [1c118c4] Added web unit-test harness and polling behavior coverage for train dashboard task refresh logic (`web/vitest.config.ts`, `web/test/setup.ts`, `web/components/train/__tests__/train-dashboard.polling.test.tsx`, `web/package.json`).
 
 ### Changed
 
@@ -53,8 +55,14 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - [69fd34e] Archived completed restructure stage plans from `docs/plans/active/` to `docs/plans/archive/` and synchronized plan routing/pointers for closure state.
 - [69fd34e] Normalized lock/request ledgers to separate live entries from non-live templates and enforced the rule in infra CI workflow (`docs/LOCK.md`, `docs/REQUEST.md`, `.github/workflows/infra-tests.yml`).
 - [f84421d] Optimized train task list performance with bounded `limit` query support, latest-row summary selection, composite list indexes, and bounded active/completed dashboard polling (`api/app/modules/train/service.py`, `api/app/modules/train/router.py`, `api/alembic/versions/20260214_0008_train_task_perf_indexes.py`, `web/components/train/train-dashboard.tsx`).
+- [0b58ef2] Reduced task-list tail latency by using PostgreSQL `DISTINCT ON` latest-attempt/artifact summary paths with non-Postgres ranking fallback compatibility (`api/app/modules/train/service.py`, `api/alembic/versions/20260215_0009_task_list_tail_latency_indexes.py`).
+- [b386052] Reduced frontend train dashboard polling/load by refreshing completed tasks on periodic or forced triggers and skipping unchanged task-list state commits (`web/components/train/train-dashboard.tsx`).
 - [758f0f5] Documented benchmark/reset shell script operations and guardrails in runbook procedures (`docs/RUNBOOK.md`).
 - [721600a] Extended infra CI workflow to execute benchmark/reset shell script validation tests (`.github/workflows/infra-tests.yml`, `infra/tests/test_benchmark_train_task_list.sh`, `infra/tests/test_reset_local_db.sh`).
+- [6b60051] Documented Stage10 backend performance completion status in architecture and active performance plan (`docs/ARCHITECTURE.md`, `docs/plans/active/2026-02-14-stage9-performance-optimization.md`).
+- [1c118c4] Expanded infra CI validation to run web unit tests and benchmark compare script checks for perf-sensitive path changes (`.github/workflows/infra-tests.yml`).
+- [1c118c4] Added Stage12 perf hardening execution notes and runbook gate command references (`docs/plans/active/2026-02-14-stage9-performance-optimization.md`, `docs/RUNBOOK.md`, `docs/ARCHITECTURE.md`).
+- [d1b8c61] Registered CatchTable reference files as read-only provider endpoint sources in agent and contributor guidance (`AGENTS.md`, `README.md`, `docs/CONTRIBUTING.md`, `docs/ARCHITECTURE.md`).
 
 ### Removed
 

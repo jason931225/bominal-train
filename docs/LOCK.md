@@ -61,6 +61,43 @@ Rules:
 - created_at_utc: 2026-02-15T03:48:05Z
 - released_at_utc: 2026-02-15T03:49:26Z
 
+### LOCK-2026-02-15-STAGE10
+- status: RELEASED
+- owner_session: Codex Session
+- scope:
+  - `api/**`
+  - `infra/**`
+  - `docs/**`
+  - `CHANGELOG.md`
+- reason: Stage 10 backend task-list tail-latency optimization and benchmark rerun
+- created_at_utc: 2026-02-15T04:01:19Z
+- released_at_utc: 2026-02-15T04:09:48Z
+
+### LOCK-2026-02-15-STAGE11
+- status: RELEASED
+- owner_session: Codex Session
+- scope:
+  - `web/**`
+  - `docs/**`
+  - `CHANGELOG.md`
+- reason: Stage 11 frontend task-dashboard polling and render performance optimization
+- created_at_utc: 2026-02-15T04:10:50Z
+- released_at_utc: 2026-02-15T04:12:48Z
+
+### LOCK-2026-02-15-STAGE12
+- status: RELEASED
+- owner_session: Codex Session
+- scope:
+  - `api/**`
+  - `web/**`
+  - `infra/**`
+  - `.github/workflows/infra-tests.yml`
+  - `docs/**`
+  - `CHANGELOG.md`
+- reason: Stage 12 comprehensive perf hardening (frontend tests + benchmark gates + CI/docs)
+- created_at_utc: 2026-02-15T04:24:19Z
+- released_at_utc: 2026-02-15T04:40:39Z
+
 ## Template (Non-live Example)
 
 ### LOCK-EXAMPLE-001

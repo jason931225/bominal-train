@@ -52,6 +52,7 @@ const TASK_LIST_ERROR_MESSAGE = "task_list_error";
 const SESSION_EXPIRED_MESSAGE = "session_expired";
 const ACTIVE_TASK_FETCH_LIMIT = 60;
 const COMPLETED_TASK_FETCH_LIMIT = 80;
+const COMPLETED_TASK_REFRESH_INTERVAL_TICKS = 3;
 
 /**
  * Normalize Korean phone numbers to 11-digit format (e.g., 01012345678).
@@ -296,6 +297,30 @@ function taskInfoFromSpec(task: TrainTaskSummary): {
   };
 }
 
+function taskSummaryRenderKey(task: TrainTaskSummary): string {
+  return [
+    task.id,
+    task.state,
+    task.updated_at,
+    task.last_attempt_at ?? "",
+    task.last_attempt_action ?? "",
+    task.last_attempt_ok == null ? "" : String(task.last_attempt_ok),
+    task.last_attempt_error_code ?? "",
+    task.next_run_at ?? "",
+    task.retry_now_allowed ? "1" : "0",
+    task.retry_now_reason ?? "",
+    task.retry_now_available_at ?? "",
+    task.ticket_status ?? "",
+    task.ticket_paid == null ? "" : String(task.ticket_paid),
+    task.ticket_payment_deadline_at ?? "",
+    task.ticket_reservation_id ?? "",
+  ].join("|");
+}
+
+function taskListRenderKey(tasks: TrainTaskSummary[]): string {
+  return tasks.map((task) => taskSummaryRenderKey(task)).join(";");
+}
+
 export function TrainDashboard() {
   const { locale, t } = useLocale();
   const seatClassLabels = useMemo<Record<TrainSeatClass, string>>(
@@ -345,6 +370,7 @@ export function TrainDashboard() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const tasksLoadInFlight = useRef(false);
+  const tasksPollTick = useRef(0);
 
   const scheduleById = useMemo(() => {
     const map = new Map<string, TrainSchedule>();
@@ -382,19 +408,29 @@ export function TrainDashboard() {
   const createDisabled = !showRanking || selectedSchedules.length === 0 || creatingTask;
   const autoPayAvailable = Boolean(paymentCardStatus?.configured);
 
-  const reloadTasks = async (options?: { refreshCompleted?: boolean }) => {
+  const reloadTasks = async (options?: { refreshCompleted?: boolean; forceCompleted?: boolean }) => {
     if (tasksLoadInFlight.current) return;
     tasksLoadInFlight.current = true;
     try {
+      const shouldLoadCompleted =
+        options?.forceCompleted === true ||
+        options?.refreshCompleted === true ||
+        tasksPollTick.current % COMPLETED_TASK_REFRESH_INTERVAL_TICKS === 0;
       const [active, completed] = await Promise.all([
         fetchTasksByStatus("active", { limit: ACTIVE_TASK_FETCH_LIMIT }),
-        fetchTasksByStatus("completed", {
-          refreshCompleted: options?.refreshCompleted,
-          limit: COMPLETED_TASK_FETCH_LIMIT,
-        }),
+        shouldLoadCompleted
+          ? fetchTasksByStatus("completed", {
+              refreshCompleted: options?.refreshCompleted,
+              limit: COMPLETED_TASK_FETCH_LIMIT,
+            })
+          : Promise.resolve(null),
       ]);
-      setActiveTasks(active);
-      setCompletedTasks(completed);
+      const nextActiveKey = taskListRenderKey(active);
+      setActiveTasks((current) => (taskListRenderKey(current) === nextActiveKey ? current : active));
+      if (completed !== null) {
+        const nextCompletedKey = taskListRenderKey(completed);
+        setCompletedTasks((current) => (taskListRenderKey(current) === nextCompletedKey ? current : completed));
+      }
       setErrorMessage((current) => {
         if (current === TASK_LIST_ERROR_MESSAGE || current === SESSION_EXPIRED_MESSAGE) {
           return null;
@@ -536,21 +572,22 @@ export function TrainDashboard() {
   }, [hasAnyConnectedProvider, ktxVerified, srtVerified]);
 
   useEffect(() => {
-    const tick = async () => {
+    const tick = async (options?: { refreshCompleted?: boolean; forceCompleted?: boolean }) => {
       if (document.visibilityState === "hidden") {
         return;
       }
-      await reloadTasks();
+      tasksPollTick.current += 1;
+      await reloadTasks(options);
     };
 
-    void reloadTasks({ refreshCompleted: true });
+    void reloadTasks({ refreshCompleted: true, forceCompleted: true });
     const interval = window.setInterval(() => {
       void tick();
     }, POLL_MS);
 
     const onVisibilityChange = () => {
       if (document.visibilityState === "visible") {
-        void tick();
+        void tick({ forceCompleted: true });
       }
     };
 
@@ -827,7 +864,7 @@ export function TrainDashboard() {
       };
 
       setNotice(payload.deduplicated ? t("train.notice.taskDeduplicated") : t("train.notice.taskCreatedQueued"));
-      await reloadTasks();
+      await reloadTasks({ forceCompleted: true });
     } catch {
       setErrorMessage(t("train.error.createTask"));
     } finally {
@@ -852,7 +889,7 @@ export function TrainDashboard() {
         setErrorMessage(detail);
         return;
       }
-      await reloadTasks();
+      await reloadTasks({ forceCompleted: true });
     } catch {
       setErrorMessage(t("train.task.actionFailed"));
     }
@@ -895,7 +932,7 @@ export function TrainDashboard() {
       }
 
       setNotice(cancelPayload?.detail ?? t("train.notice.ticketCancelDone"));
-      await reloadTasks();
+      await reloadTasks({ forceCompleted: true });
     } catch {
       setErrorMessage(t("train.error.ticketCancel"));
     } finally {
@@ -922,7 +959,7 @@ export function TrainDashboard() {
       }
 
       setNotice(t("train.notice.paymentProcessed"));
-      await reloadTasks({ refreshCompleted: true });
+      await reloadTasks({ refreshCompleted: true, forceCompleted: true });
     } catch {
       setErrorMessage(t("train.error.paymentProcess"));
     } finally {
