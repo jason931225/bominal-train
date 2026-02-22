@@ -3,6 +3,8 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CHANGELOG_PATH="$ROOT_DIR/CHANGELOG.md"
+TMP_UNRELEASED="$(mktemp)"
+trap 'rm -f "$TMP_UNRELEASED"' EXIT
 
 if [[ ! -f "$CHANGELOG_PATH" ]]; then
   echo "ERROR: missing CHANGELOG.md at repository root" >&2
@@ -14,18 +16,20 @@ if ! grep -q '^## Unreleased$' "$CHANGELOG_PATH"; then
   exit 1
 fi
 
-UNRELEASED="$({ awk '
+# Extract the Unreleased section once into a temp file to avoid
+# large in-memory shell substitutions on long changelogs.
+awk '
   /^## Unreleased$/ {in_section=1; next}
   /^## / && in_section {exit}
   in_section {print}
-' "$CHANGELOG_PATH"; } )"
+' "$CHANGELOG_PATH" >"$TMP_UNRELEASED"
 
-if [[ -z "${UNRELEASED//[[:space:]]/}" ]]; then
+if [[ -z "$(tr -d '[:space:]' <"$TMP_UNRELEASED")" ]]; then
   echo "ERROR: Unreleased section is empty" >&2
   exit 1
 fi
 
-CATEGORY_LINES="$(printf '%s\n' "$UNRELEASED" | grep -E '^### ' || true)"
+CATEGORY_LINES="$(grep -E '^### ' "$TMP_UNRELEASED" || true)"
 if [[ -z "$CATEGORY_LINES" ]]; then
   echo "ERROR: Unreleased section must contain at least one Keep a Changelog category header (e.g., ### Added)" >&2
   exit 1
@@ -38,7 +42,7 @@ if [[ -n "$INVALID_CATEGORIES" ]]; then
   exit 1
 fi
 
-ENTRY_LINES="$(printf '%s\n' "$UNRELEASED" | grep -E '^- ' || true)"
+ENTRY_LINES="$(grep -E '^- ' "$TMP_UNRELEASED" || true)"
 if [[ -z "$ENTRY_LINES" ]]; then
   echo "ERROR: Unreleased section must contain at least one bullet entry" >&2
   exit 1
