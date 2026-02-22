@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { DynaPuff, Noto_Sans_KR, Noto_Serif_KR } from "next/font/google";
 import { headers } from "next/headers";
 
 import "./globals.css";
@@ -12,28 +11,66 @@ import { localeFromAcceptLanguage, localeFromUser, type Locale } from "@/lib/i18
 import { getOptionalUser } from "@/lib/server-auth";
 import { seasonFromMonth } from "@/lib/theme";
 
-const fontSans = Noto_Sans_KR({
-  // `next/font/google` subset typing for KR fonts currently only accepts "latin".
-  // The font itself includes Korean glyphs; this controls which subset files Next requests.
-  subsets: ["latin"],
-  variable: "--font-sans",
-  display: "swap",
-});
+const DEFAULT_FONT_BASE_URL =
+  "https://github.com/jason931225/bominal.github.io/raw/refs/heads/main/public/font";
+const GOOGLE_FONT_STYLESHEET_URL =
+  "https://fonts.googleapis.com/css2?family=DynaPuff:wght@400;600;700&family=Noto+Sans+KR:wght@100..900&family=Noto+Serif+KR:wght@400;600;700&display=swap";
 
-const fontDisplay = Noto_Serif_KR({
-  subsets: ["latin"],
-  weight: ["400", "600", "700"],
-  variable: "--font-display",
-  display: "swap",
-});
+function resolveFontBaseUrl(value: string | undefined): string {
+  if (!value) return DEFAULT_FONT_BASE_URL;
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol !== "https:") return DEFAULT_FONT_BASE_URL;
+    return parsed.toString().replace(/\/+$/, "");
+  } catch {
+    return DEFAULT_FONT_BASE_URL;
+  }
+}
 
-const fontBrand = DynaPuff({
-  subsets: ["latin"],
-  // Use a dedicated variable so we can keep other headings on the display font.
-  variable: "--font-brand",
-  display: "swap",
-  weight: ["400", "600", "700"],
-});
+function remoteFontFaceCss(fontBaseUrl: string): string {
+  return `
+@font-face {
+  font-family: "Bominal Sans Fallback";
+  src: url("${fontBaseUrl}/NotoSansKR-Regular.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Bominal Display Fallback";
+  src: url("${fontBaseUrl}/NotoSerifKR-Regular.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Bominal Display Fallback";
+  src: url("${fontBaseUrl}/NotoSerifKR-SemiBold.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Bominal Display Fallback";
+  src: url("${fontBaseUrl}/NotoSerifKR-Bold.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Bominal Brand Fallback";
+  src: url("${fontBaseUrl}/DynaPuff-SemiBold.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+}
+:root {
+  --font-sans: "Noto Sans KR", "Bominal Sans Fallback";
+  --font-display: "Noto Serif KR", "Bominal Display Fallback";
+  --font-brand: "DynaPuff", "Bominal Brand Fallback";
+}
+`;
+}
 
 export const metadata: Metadata = {
   title: "bominal",
@@ -54,15 +91,19 @@ export default async function RootLayout({
   const acceptLanguage = headerStore.get("accept-language");
   const locale = resolveRequestLocale(localeFromUser(user), acceptLanguage);
   const initialTheme = seasonFromMonth(new Date().getMonth() + 1);
+  const fontBaseUrl = resolveFontBaseUrl(process.env.NEXT_PUBLIC_FONT_BASE_URL);
 
   return (
     <html
       lang={locale}
       data-theme-mode="auto"
       data-theme={initialTheme}
-      className={`${fontSans.variable} ${fontDisplay.variable} ${fontBrand.variable}`}
       suppressHydrationWarning
     >
+      <head>
+        <link rel="stylesheet" href={GOOGLE_FONT_STYLESHEET_URL} />
+        <style id="remote-font-faces">{remoteFontFaceCss(fontBaseUrl)}</style>
+      </head>
       <body className="font-sans antialiased">
         <ThemeInitScript />
         <ThemeProvider>
