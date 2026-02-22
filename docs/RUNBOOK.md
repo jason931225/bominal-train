@@ -110,6 +110,20 @@ docker compose -f infra/docker compose.prod.yml ps
 docker compose -f infra/docker compose.prod.yml logs -f caddy api worker worker-restaurant web
 ```
 
+Security checks for payment/CDE runtime:
+
+```bash
+# Confirm Redis persistence is disabled for CDE runtime.
+docker compose -f infra/docker compose.prod.yml exec redis redis-cli CONFIG GET save
+docker compose -f infra/docker compose.prod.yml exec redis redis-cli CONFIG GET appendonly
+
+# Validate provider egress allowlist and timeout envs are set.
+docker compose -f infra/docker compose.prod.yml exec api env | rg 'PAYMENT_PROVIDER_ALLOWED_HOSTS|TRAIN_PROVIDER_TIMEOUT_|PAYMENT_TRANSPORT_TRUST_ENV'
+
+# Confirm payment logs do not include request/response payload bodies.
+docker compose -f infra/docker compose.prod.yml logs --since=30m api worker | rg -i 'card_number|cvv|authorization|set-cookie|wrapped_dek|ciphertext'
+```
+
 Task-list latency benchmark (backend API):
 
 ```bash

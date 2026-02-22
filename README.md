@@ -20,6 +20,15 @@ bominal is a modular product foundation with:
 - Operations runbook: `docs/RUNBOOK.md`
 - Security controls: `docs/SECURITY.md`
 
+## Security contract (production)
+
+- Session cookies must remain `HttpOnly`, `SameSite=Lax`, and `Secure` only in production.
+- Passwords must be hashed with Argon2id; session tokens must be stored hashed.
+- Payment card payloads are encrypted at rest with envelope encryption (AES-256-GCM DEK + KEK wrapping).
+- CVV may exist only in encrypted Redis cache with bounded TTL and must never be stored in Postgres.
+- Provider payment egress must use allowlisted domains with TLS verification enabled.
+- Logs, queues, and artifacts must not contain raw cardholder data or raw provider payment payloads.
+
 ## Bootstrap
 
 From repo root:
