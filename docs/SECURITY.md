@@ -39,11 +39,237 @@ Used for:
 - KTX credentials
 - Payment card payload
 
+Envelope decrypt behavior:
+
+- Persisted secret decrypt paths must validate stored `kek_version` against active crypto settings.
+- Envelope payload serialization uses JSON with stable separators and ASCII escaping; compatibility-sensitive changes require migration review.
+
 ## Payment data handling
 
 - Payment card persisted encrypted in `secrets`
 - CVV is not persisted to Postgres
 - CVV is cached temporarily in Redis (encrypted payload) with TTL (`PAYMENT_CVV_TTL_SECONDS`)
+
+## PCI Relay Worker Isolation Policy
+
+### Scope
+
+This policy applies to any component that:
+
+- Receives raw cardholder data (PAN, expiry, CVV)
+- Transmits cardholder data to third-party providers
+- Decrypts stored card payload for provider submission
+
+This policy defines bominal's Cardholder Data Environment (CDE) boundary.
+
+### 1. Cardholder Data Environment (CDE) Definition
+
+The CDE includes:
+
+- API code paths that decrypt wallet secrets
+- Any worker that constructs provider payment requests
+- Redis keys storing encrypted CVV
+- Envelope decryption logic for card payload
+- Any runtime memory holding decrypted PAN/CVV
+
+The CDE explicitly does not include:
+
+- Web layer
+- Task metadata storage (`*_safe` fields)
+- Queue payloads
+- Artifacts
+- Logs
+
+No raw cardholder data may enter non-CDE systems.
+
+### 2. Ephemeral Relay Worker Requirements (Mandatory)
+
+Any worker performing payment submission must satisfy all of the following.
+
+Statelessness:
+
+- No card data persisted to Postgres
+- No card data serialized into ARQ jobs
+- No card data written to disk
+- No card data written to artifacts or `task_attempt` rows
+- No card data cached beyond the required execution window
+
+Memory lifetime:
+
+- Decrypt card payload only immediately before provider submission
+- Clear references after submission (explicit variable overwrite where language allows)
+- No reuse of decrypted card payload across retries
+
+Logging prohibition:
+
+- Never log request bodies containing card data
+- Never log provider request/response raw payloads
+- Disable HTTP client debug logging
+- Global redaction middleware must sanitize:
+  - PAN patterns (13-19 digit sequences)
+  - CVV
+  - expiry fields
+  - authorization headers
+  - cookies
+  - session tokens
+
+Violation of this section is CRITICAL.
+
+### 3. Redis CVV Handling
+
+- CVV may exist only in Redis
+- Redis must enforce TTL (`PAYMENT_CVV_TTL_SECONDS`)
+- TTL must be set on write, not extended indefinitely
+- Redis persistence must not store CVV to durable disk snapshots in production
+- Redis AOF/RDB configuration must be reviewed before enabling persistence
+
+CVV must never:
+
+- Appear in Postgres
+- Appear in queue payloads
+- Appear in artifacts
+- Appear in logs
+
+### 4. Queue Safety Contract
+
+ARQ job payloads must never contain:
+
+- PAN
+- CVV
+- Expiry
+- Raw provider request JSON
+- Raw provider response JSON
+- Session tokens
+- Decrypted secrets
+
+Only the following may be queued:
+
+- `task_id`
+- provider identifiers
+- safe metadata
+- reference IDs
+- idempotency keys
+
+Workers must retrieve sensitive data at runtime via secure lookup.
+
+### 5. Provider Payload Safety
+
+Allowed to persist:
+
+- `meta_json_safe`
+- `data_json_safe`
+- masked identifiers (for example, last 4 digits only)
+- provider reservation IDs
+- provider status codes
+
+Never allowed to persist:
+
+- full card numbers
+- CVV
+- full raw provider request payload
+- raw provider response containing sensitive fields
+
+If provider response includes sensitive fields:
+
+- sanitize before persistence
+- store only necessary safe metadata
+
+### 6. Network Egress Controls
+
+Workers handling payment must:
+
+- Connect only to approved provider domains
+- Use TLS 1.2+ with certificate verification enabled
+- Disable proxy inheritance unless explicitly required
+- Enforce connect/read/total timeouts
+
+SSRF risk mitigation:
+
+- No dynamic hostnames from user input
+- Provider base URLs must come from a configuration allowlist
+
+### 7. Observability Constraints
+
+For payment-related flows, logs may include:
+
+- `task_id`
+- provider name
+- attempt number
+- status category (2xx/4xx/5xx)
+- execution time
+
+Logs must never include:
+
+- request bodies
+- response bodies
+- decrypted secrets
+- headers containing credentials
+- cookies
+
+Exception handlers must pass through redaction before emission.
+
+### 8. Retry and Idempotency Controls
+
+- Payment retries must not reuse persisted card payload
+- Payment idempotency must be based on:
+  - provider reservation ID
+  - stored artifact references
+
+If retry occurs:
+
+- re-fetch encrypted secret
+- re-fetch CVV from Redis
+- decrypt only in memory
+
+### 9. Crash and Dump Safety
+
+Production runtime must:
+
+- Disable core dumps
+- Avoid writing stack traces containing request payloads
+- Ensure exception messages do not include decrypted payload
+
+### 10. Security Severity Classification
+
+The following are automatically CRITICAL:
+
+- Plaintext PAN persistence anywhere
+- CVV persistence outside Redis
+- Logging of provider payment payload
+- Queue serialization of card data
+- Missing TTL on CVV
+- Envelope encryption bypass
+- TLS verification disabled
+
+These conditions must block deployment.
+
+### 11. Verification Requirements (Mandatory Before Deploy)
+
+Before any production release affecting payment flows:
+
+Unit tests must verify:
+
+- CVV is never written to Postgres
+- Queue payload schema excludes card fields
+- Redaction function masks PAN patterns
+
+Log scans must confirm:
+
+- No payment payload is logged during integration tests
+
+Manual review must verify:
+
+- Redis config (persistence mode)
+- HTTP client config (TLS verification enabled)
+
+### 12. Relationship to Guardrails
+
+This policy extends:
+
+- `docs/GUARDRAILS.md` (hard constraints)
+- `docs/PERMISSIONS.md` (approval boundaries)
+
+Guardrails override implementation shortcuts. If this policy conflicts with feature velocity, security prevails.
 
 ## Logging and safe metadata
 
