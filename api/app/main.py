@@ -13,7 +13,7 @@ from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import HTMLResponse, JSONResponse
 from sqlalchemy import text
 
-from app.http.deps import get_current_user, get_current_admin
+from app.http.deps import get_current_admin, get_current_approved_user, get_current_user
 from app.http.routes import admin, auth, internal, modules, notifications, wallet
 from app.core.config import get_settings
 from app.core.logging import setup_logging, get_logger
@@ -86,23 +86,23 @@ app.include_router(
     modules.router,
     prefix="/api",
     tags=["modules", "authenticated"],
-    dependencies=[Depends(get_current_user)],
+    dependencies=[Depends(get_current_approved_user)],
 )
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
 app.include_router(
     wallet.router,
     tags=["wallet", "authenticated"],
-    dependencies=[Depends(get_current_user)],
+    dependencies=[Depends(get_current_approved_user)],
 )
 app.include_router(
     notifications.router,
     tags=["notifications", "authenticated"],
-    dependencies=[Depends(get_current_user)],
+    dependencies=[Depends(get_current_approved_user)],
 )
 app.include_router(
     train_router,
     tags=["train", "authenticated"],
-    dependencies=[Depends(get_current_user)],
+    dependencies=[Depends(get_current_approved_user)],
 )
 app.include_router(internal.router)
 

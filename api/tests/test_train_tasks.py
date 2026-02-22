@@ -24,11 +24,17 @@ def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-async def _register_and_login(client, *, email: str = "train-user@example.com") -> str:
-    await client.post(
+async def _register_and_login(client, db_session, *, email: str = "train-user@example.com") -> str:
+    register_res = await client.post(
         "/api/auth/register",
         json={"email": email, "password": "SuperSecret123", "display_name": "Train User"},
     )
+    assert register_res.status_code == 201
+
+    user = (await db_session.execute(select(User).where(User.email == email))).scalar_one()
+    user.access_status = "approved"
+    await db_session.commit()
+
     login_res = await client.post(
         "/api/auth/login",
         json={"email": email, "password": "SuperSecret123", "remember_me": True},
@@ -40,7 +46,7 @@ async def _register_and_login(client, *, email: str = "train-user@example.com") 
 
 
 @pytest.mark.asyncio
-async def test_train_task_creation_idempotency(client, monkeypatch):
+async def test_train_task_creation_idempotency(client, db_session, monkeypatch):
     fake_redis = fakeredis.aioredis.FakeRedis()
 
     async def _noop_enqueue(task_id: str, defer_seconds: float = 0.0) -> None:
@@ -49,7 +55,7 @@ async def test_train_task_creation_idempotency(client, monkeypatch):
     monkeypatch.setattr("app.modules.train.service.enqueue_train_task", _noop_enqueue)
     monkeypatch.setattr("app.modules.train.service.get_redis_client", make_fake_get_redis_client(fake_redis))
 
-    cookie = await _register_and_login(client)
+    cookie = await _register_and_login(client, db_session)
 
     stations_res = await client.get("/api/train/stations", cookies={"bominal_session": cookie})
     assert stations_res.status_code == 200
@@ -108,7 +114,7 @@ async def test_train_task_creation_idempotency(client, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_train_task_creation_accepts_mixed_provider_selection(client, monkeypatch):
+async def test_train_task_creation_accepts_mixed_provider_selection(client, db_session, monkeypatch):
     fake_redis = fakeredis.aioredis.FakeRedis()
 
     async def _noop_enqueue(task_id: str, defer_seconds: float = 0.0) -> None:
@@ -127,7 +133,7 @@ async def test_train_task_creation_accepts_mixed_provider_selection(client, monk
     monkeypatch.setattr("app.modules.train.service.get_redis_client", make_fake_get_redis_client(fake_redis))
     monkeypatch.setattr("app.modules.train.service._verify_provider_credentials", _always_verified)
 
-    cookie = await _register_and_login(client, email="mixed-task@example.com")
+    cookie = await _register_and_login(client, db_session, email="mixed-task@example.com")
     departure = (_utc_now() + timedelta(hours=2)).isoformat()
     departure_later = (_utc_now() + timedelta(hours=3)).isoformat()
 
@@ -155,7 +161,7 @@ async def test_train_task_creation_accepts_mixed_provider_selection(client, monk
 
 
 @pytest.mark.asyncio
-async def test_train_search_returns_provider_errors_when_all_fail(client, monkeypatch):
+async def test_train_search_returns_provider_errors_when_all_fail(client, db_session, monkeypatch):
     fake_redis = fakeredis.aioredis.FakeRedis()
 
     class FailingProvider:
@@ -184,7 +190,7 @@ async def test_train_search_returns_provider_errors_when_all_fail(client, monkey
     monkeypatch.setattr("app.modules.train.service.get_redis_client", make_fake_get_redis_client(fake_redis))
     monkeypatch.setattr("app.modules.train.service.get_provider_client", lambda provider: FailingProvider())
 
-    cookie = await _register_and_login(client, email="search-fail@example.com")
+    cookie = await _register_and_login(client, db_session, email="search-fail@example.com")
     srt_credentials_res = await client.post(
         "/api/train/credentials/srt",
         cookies={"bominal_session": cookie},
@@ -215,11 +221,11 @@ async def test_train_search_returns_provider_errors_when_all_fail(client, monkey
 
 
 @pytest.mark.asyncio
-async def test_srt_credentials_required_for_srt_search(client, monkeypatch):
+async def test_srt_credentials_required_for_srt_search(client, db_session, monkeypatch):
     fake_redis = fakeredis.aioredis.FakeRedis()
     monkeypatch.setattr("app.modules.train.service.get_redis_client", make_fake_get_redis_client(fake_redis))
 
-    cookie = await _register_and_login(client, email="credential-check@example.com")
+    cookie = await _register_and_login(client, db_session, email="credential-check@example.com")
 
     missing_res = await client.post(
         "/api/train/search",
@@ -259,11 +265,11 @@ async def test_srt_credentials_required_for_srt_search(client, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_provider_credentials_status_checks_both(client, monkeypatch):
+async def test_provider_credentials_status_checks_both(client, db_session, monkeypatch):
     fake_redis = fakeredis.aioredis.FakeRedis()
     monkeypatch.setattr("app.modules.train.service.get_redis_client", make_fake_get_redis_client(fake_redis))
 
-    cookie = await _register_and_login(client, email="status-check@example.com")
+    cookie = await _register_and_login(client, db_session, email="status-check@example.com")
 
     initial_status = await client.get("/api/train/credentials/status", cookies={"bominal_session": cookie})
     assert initial_status.status_code == 200
@@ -684,6 +690,134 @@ async def test_worker_relogs_and_retries_reserve_on_provider_auth_error(db_sessi
 
 
 @pytest.mark.asyncio
+async def test_worker_resumes_polling_when_reserve_fails_due_to_non_payment_expiry(
+    db_session_factory, db_session, monkeypatch
+):
+    fake_redis = fakeredis.aioredis.FakeRedis()
+    enqueued: list[tuple[str, float]] = []
+
+    class _NoLimitResult:
+        waited_ms = 0
+        rounds = 1
+
+    async def _no_limit(self, **kwargs):
+        return _NoLimitResult()
+
+    async def _capture_enqueue(task_id: str, defer_seconds: float = 0.0) -> None:
+        enqueued.append((task_id, defer_seconds))
+
+    async def _fake_credentials(db, *, user_id, provider):
+        return {"username": f"{provider.lower()}-user", "password": "secret"}
+
+    class FakeProvider:
+        provider_name = "SRT"
+
+        async def login(self, **kwargs):
+            return ProviderOutcome(ok=True)
+
+        async def search(self, **kwargs):
+            departure = _utc_now() + timedelta(minutes=35)
+            return ProviderOutcome(
+                ok=True,
+                data={
+                    "schedules": [
+                        ProviderSchedule(
+                            schedule_id="srt-non-pay-expiry",
+                            provider="SRT",
+                            dep=kwargs["dep"],
+                            arr=kwargs["arr"],
+                            departure_at=departure,
+                            arrival_at=departure + timedelta(minutes=100),
+                            train_no="S777",
+                            availability={"general": True, "special": False},
+                        )
+                    ]
+                },
+            )
+
+        async def reserve(self, **kwargs):
+            return ProviderOutcome(
+                ok=False,
+                retryable=False,
+                error_code="srt_reserve_fail",
+                error_message_safe="Ticket not found: check reservation status",
+            )
+
+        async def pay(self, **kwargs):
+            return ProviderOutcome(ok=False)
+
+        async def cancel(self, **kwargs):
+            return ProviderOutcome(ok=True)
+
+    monkeypatch.setattr("app.modules.train.worker.enqueue_train_task", _capture_enqueue)
+    monkeypatch.setattr("app.modules.train.worker.RedisTokenBucketLimiter.acquire_provider_call", _no_limit)
+    monkeypatch.setattr("app.modules.train.worker._load_provider_credentials", _fake_credentials)
+    monkeypatch.setattr("app.modules.train.worker.get_provider_client", lambda _provider: FakeProvider())
+
+    user = User(
+        email="reserve-non-payment-expiry@example.com",
+        password_hash="x",
+        display_name="Reserve Non Payment Expiry User",
+        role_id=2,
+    )
+    db_session.add(user)
+    await db_session.flush()
+
+    task = Task(
+        user_id=user.id,
+        module="train",
+        state="QUEUED",
+        deadline_at=_utc_now() + timedelta(hours=1),
+        spec_json={
+            "provider": "SRT",
+            "providers": ["SRT"],
+            "dep": "수서",
+            "arr": "부산",
+            "date": _utc_now().date().isoformat(),
+            "selected_trains_ranked": [
+                {
+                    "schedule_id": "srt-non-pay-expiry",
+                    "departure_at": (_utc_now() + timedelta(hours=2)).isoformat(),
+                    "rank": 1,
+                    "provider": "SRT",
+                }
+            ],
+            "passengers": {"adults": 1, "children": 0},
+            "seat_class": "general",
+            "auto_pay": False,
+        },
+        idempotency_key="reserve-non-payment-expiry",
+    )
+    db_session.add(task)
+    await db_session.commit()
+
+    await run_train_task({"db_factory": db_session_factory, "redis": fake_redis}, str(task.id))
+
+    async with db_session_factory() as verify_session:
+        refreshed = await verify_session.get(Task, task.id)
+        assert refreshed is not None
+        assert refreshed.state == "POLLING"
+        assert refreshed.spec_json.get("next_run_at")
+
+        reserve_attempt = (
+            await verify_session.execute(
+                select(TaskAttempt)
+                .where(TaskAttempt.task_id == task.id)
+                .where(TaskAttempt.action == "RESERVE")
+                .order_by(TaskAttempt.started_at.desc())
+                .limit(1)
+            )
+        ).scalar_one()
+
+    assert reserve_attempt.retryable is True
+    assert reserve_attempt.meta_json_safe is not None
+    assert reserve_attempt.meta_json_safe.get("non_payment_expiry_retry") is True
+    assert len(enqueued) == 1
+    assert enqueued[0][0] == str(task.id)
+    assert enqueued[0][1] > 0
+
+
+@pytest.mark.asyncio
 async def test_worker_relogs_and_retries_pay_on_provider_auth_error(db_session_factory, db_session, monkeypatch):
     fake_redis = fakeredis.aioredis.FakeRedis()
 
@@ -1000,7 +1134,7 @@ async def test_list_tasks_refreshes_completed_ticket_status_on_page_load(client,
     monkeypatch.setattr("app.modules.train.service._get_logged_in_provider_client", _fake_client)
 
     email = "list-refresh@example.com"
-    cookie = await _register_and_login(client, email=email)
+    cookie = await _register_and_login(client, db_session, email=email)
 
     user = (await db_session.execute(select(User).where(User.email == email))).scalar_one()
     task = Task(
@@ -1161,7 +1295,7 @@ async def test_manual_pay_rejects_expired_payment_window(client, db_session, mon
     fake_redis = fakeredis.aioredis.FakeRedis()
     monkeypatch.setattr("app.modules.train.service.get_redis_client", make_fake_get_redis_client(fake_redis))
 
-    cookie = await _register_and_login(client, email="manual-pay-expired@example.com")
+    cookie = await _register_and_login(client, db_session, email="manual-pay-expired@example.com")
     user = (await db_session.execute(select(User).where(User.email == "manual-pay-expired@example.com"))).scalar_one()
 
     task = Task(
@@ -1186,6 +1320,50 @@ async def test_manual_pay_rejects_expired_payment_window(client, db_session, mon
                 "status": "awaiting_payment",
                 "paid": False,
                 "payment_deadline_at": (_utc_now() - timedelta(minutes=1)).isoformat(),
+            },
+        )
+    )
+    await db_session.commit()
+
+    response = await client.post(
+        f"/api/train/tasks/{task.id}/pay",
+        cookies={"bominal_session": cookie},
+    )
+    assert response.status_code == 409
+    assert "payment window has expired" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_manual_pay_rejects_expired_ticket_status(client, db_session, monkeypatch):
+    fake_redis = fakeredis.aioredis.FakeRedis()
+    monkeypatch.setattr("app.modules.train.service.get_redis_client", make_fake_get_redis_client(fake_redis))
+
+    cookie = await _register_and_login(client, db_session, email="manual-pay-expired-status@example.com")
+    user = (
+        await db_session.execute(select(User).where(User.email == "manual-pay-expired-status@example.com"))
+    ).scalar_one()
+
+    task = Task(
+        user_id=user.id,
+        module="train",
+        state="COMPLETED",
+        deadline_at=_utc_now() + timedelta(hours=1),
+        spec_json={"module": "train"},
+        idempotency_key="manual-pay-expired-status",
+    )
+    db_session.add(task)
+    await db_session.flush()
+
+    db_session.add(
+        Artifact(
+            task_id=task.id,
+            module="train",
+            kind="ticket",
+            data_json_safe={
+                "provider": "SRT",
+                "reservation_id": "PNR-EXPIRED-STATUS-1",
+                "status": "expired",
+                "paid": False,
             },
         )
     )
@@ -1275,7 +1453,7 @@ async def test_manual_pay_marks_ticket_paid(client, db_session, monkeypatch):
 
     monkeypatch.setattr("app.modules.train.service._get_logged_in_provider_client", _fake_logged_in_provider_client)
 
-    cookie = await _register_and_login(client, email="manual-pay-success@example.com")
+    cookie = await _register_and_login(client, db_session, email="manual-pay-success@example.com")
     user = (await db_session.execute(select(User).where(User.email == "manual-pay-success@example.com"))).scalar_one()
 
     task = Task(
@@ -1399,7 +1577,7 @@ async def test_manual_cancel_records_cancel_attempt(client, db_session, monkeypa
 
     monkeypatch.setattr("app.modules.train.service._get_logged_in_provider_client", _fake_logged_in_provider_client)
 
-    cookie = await _register_and_login(client, email="manual-cancel-attempt@example.com")
+    cookie = await _register_and_login(client, db_session, email="manual-cancel-attempt@example.com")
     user = (await db_session.execute(select(User).where(User.email == "manual-cancel-attempt@example.com"))).scalar_one()
 
     task = Task(
@@ -1952,8 +2130,8 @@ async def test_task_list_limit_bounds_results(db_session):
 
 
 @pytest.mark.asyncio
-async def test_train_tasks_endpoint_rejects_invalid_limit_query(client):
-    cookie = await _register_and_login(client, email="task-limit-query@example.com")
+async def test_train_tasks_endpoint_rejects_invalid_limit_query(client, db_session):
+    cookie = await _register_and_login(client, db_session, email="task-limit-query@example.com")
 
     response = await client.get(
         "/api/train/tasks?status=active&limit=0",

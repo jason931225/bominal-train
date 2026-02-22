@@ -133,6 +133,61 @@ def _is_provider_auth_required_error(outcome: ProviderOutcome) -> bool:
     )
 
 
+def _is_non_payment_expiry_reserve_error(outcome: ProviderOutcome) -> bool:
+    if outcome.ok:
+        return False
+
+    error_code = str(outcome.error_code or "").lower()
+    error_message = str(outcome.error_message_safe or "")
+    error_message_lower = error_message.lower()
+
+    payment_markers = (
+        "payment",
+        "unpaid",
+        "non_payment",
+        "non-payment",
+        "결제",
+        "미결제",
+    )
+    expiry_markers = (
+        "expire",
+        "expired",
+        "expiration",
+        "deadline",
+        "timeout",
+        "window",
+        "만료",
+        "기한",
+    )
+    reservation_status_markers = (
+        "ticket not found",
+        "reservation status",
+        "reservation_not_found",
+        "조회자료가 없습니다",
+        "rowcnt: 0",
+    )
+
+    message_is_non_payment_expiry = any(marker in error_message_lower for marker in payment_markers) and any(
+        marker in error_message_lower for marker in expiry_markers
+    )
+    code_is_non_payment_expiry = any(marker in error_code for marker in payment_markers) and any(
+        marker in error_code for marker in expiry_markers
+    )
+    message_is_korean_payment_expiry = ("결제" in error_message) and any(
+        marker in error_message for marker in ("만료", "기한")
+    )
+    reservation_status_mismatch = (
+        any(marker in error_message_lower for marker in reservation_status_markers)
+        or any(marker in error_code for marker in reservation_status_markers)
+    )
+    return bool(
+        message_is_non_payment_expiry
+        or code_is_non_payment_expiry
+        or message_is_korean_payment_expiry
+        or reservation_status_mismatch
+    )
+
+
 def _poll_delay_seconds(search_attempt_count: int) -> float:
     base = min(settings.train_poll_max_seconds, settings.train_poll_min_seconds * (2 ** min(search_attempt_count, 3)))
     jitter = random.uniform(0.1, 0.9)
@@ -690,6 +745,14 @@ async def _provider_search_and_reserve(
     elif relogin_retry_attempted and not reserve_ok:
         reserve_retryable = True
 
+    non_payment_expiry_retry = (
+        not spec.get("auto_pay", True)
+        and not reserve_ok
+        and _is_non_payment_expiry_reserve_error(reserve_outcome)
+    )
+    if non_payment_expiry_retry:
+        reserve_retryable = True
+
     attempts.append(
         PendingAttempt(
             action=ATTEMPT_ACTION_RESERVE,
@@ -710,6 +773,7 @@ async def _provider_search_and_reserve(
                 "auth_relogin_duration_ms": relogin_duration_ms if relogin_retry_attempted else None,
                 "initial_error_code": initial_reserve_error_code,
                 "initial_error_message": initial_reserve_error_message,
+                "non_payment_expiry_retry": non_payment_expiry_retry,
             },
             started_at=reserve_started,
         )
@@ -991,6 +1055,7 @@ def _build_ticket_data(
             "status",
             "paid",
             "waiting",
+            "expired",
             "payment_deadline_at",
             "tickets",
             "seat_count",

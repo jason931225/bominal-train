@@ -23,6 +23,7 @@ Use this before broad file reads. Resolve intent, then open only mapped canonica
 | `deploy` | `docs/DEPLOYMENT.md` | `docs/RUNBOOK.md` |
 | `rollback` | `docs/DEPLOYMENT.md` | `docs/RUNBOOK.md` |
 | `deprecate` / `sunset` / `compatibility window` / `removal` | `docs/DEPRECATION_WORKFLOW.md` | `docs/deprecations/registry.json`, `docs/deprecations/2026-02-14-inventory.md` |
+| `version` / `semver` / `release version` | `docs/releases/README.md` | `docs/releases/version-map.json`, `infra/scripts/version_guard.py` |
 | `lock` / `request` / `conflict` | `docs/EXECUTION_PROTOCOL.md` | `docs/LOCK.md`, `docs/REQUEST.md` |
 | `resy` / `widget` / `form data` | `docs/playbooks/resy-widget-form-data-capture.md` | `docs/playbooks/new-module-feature-workflow.md` |
 | `new module` / `new feature` | `docs/playbooks/new-module-feature-workflow.md` | `docs/playbooks/daily-operations-chores.md` |
