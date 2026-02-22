@@ -13,14 +13,14 @@ Rules:
 ## Current Entries
 
 ### LOCK-2026-02-22-WAVE1
-- status: ACTIVE
+- status: RELEASED
 - owner_session: Codex Session
 - scope:
   - `docs/**`
   - `CHANGELOG.md`
 - reason: Wave 1 stabilization closure verification and evidence updates
 - created_at_utc: 2026-02-22T00:38:25Z
-- released_at_utc:
+- released_at_utc: 2026-02-22T00:43:49Z
 
 ### LOCK-2026-02-14-STAGE8
 - status: RELEASED
