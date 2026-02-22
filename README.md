@@ -119,14 +119,17 @@ Optional:
 
 2) Edit those files and replace every `CHANGE_ME...` value. Required manual deploy values:
    - `infra/env/prod/postgres.env`: `POSTGRES_PASSWORD`
-   - `infra/env/prod/api.env`: `GCP_PROJECT_ID`, `INTERNAL_API_KEY`, `MASTER_KEY`, DB password portions of `DATABASE_URL` and `SYNC_DATABASE_URL`
+   - `infra/env/prod/api.env`: `GCP_PROJECT_ID`, `INTERNAL_API_KEY`, `MASTER_KEY`, DB password portions of `DATABASE_URL` and `SYNC_DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_JWT_ISSUER`, `RESEND_API_KEY`, and sender-domain placeholder in `EMAIL_FROM_ADDRESS`
    - `infra/env/prod/web.env`: `NEXT_PUBLIC_API_BASE_URL`
    - `infra/env/prod/caddy.env`: `CADDY_SITE_ADDRESS`, `CADDY_ACME_EMAIL`
    - Optional, mode-dependent:
-     - `AUTH_MODE=supabase|dual`: `SUPABASE_URL`, `SUPABASE_JWT_ISSUER` (and `SUPABASE_JWKS_URL` if overriding default)
+     - `AUTH_MODE=legacy`: Supabase JWT fields can be left empty
+     - `AUTH_MODE=dual`: `SUPABASE_URL`, `SUPABASE_JWT_ISSUER` are still required (and `SUPABASE_JWKS_URL` if overriding default)
      - `SUPABASE_STORAGE_ENABLED=true`: `SUPABASE_SERVICE_ROLE_KEY`
-     - `EMAIL_PROVIDER=resend`: `RESEND_API_KEY`
+     - `EMAIL_PROVIDER=disabled`: Resend credentials may remain unset
      - `EMAIL_PROVIDER=smtp`: `SMTP_HOST`, `SMTP_PORT`, and SMTP credentials/TLS flags as needed
+
+   Production note: set `DATABASE_URL` / `SYNC_DATABASE_URL` to your managed Postgres endpoint (for example Supabase Postgres). Local dev remains Docker-local Postgres/Redis by default.
 
 3) Deploy (recommended):
 
@@ -381,8 +384,8 @@ docker compose -f infra/docker compose.prod.yml run --rm api python scripts/chec
 ```
 
 5. **Email configuration**
-   - If email is not in use yet, keep `EMAIL_PROVIDER=disabled` (default in prod template).
-   - Optional: for transactional email later, set `EMAIL_PROVIDER=resend` and configure `RESEND_API_KEY`.
+   - Production template defaults to `EMAIL_PROVIDER=resend`; replace `RESEND_API_KEY` and sender domain placeholders before deploy.
+   - If email is intentionally disabled for an environment, set `EMAIL_PROVIDER=disabled`.
    - Optional: tune Resend HTTP timeout with `RESEND_TIMEOUT_SECONDS` (default `12`).
    - Optional SMTP relay: set `EMAIL_PROVIDER=smtp` and configure `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`.
    - When enabled, set `EMAIL_FROM_ADDRESS` / `EMAIL_FROM_NAME` to your sender identity.

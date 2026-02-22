@@ -5,7 +5,7 @@
 # Checks:
 #   - Required env files exist (postgres.env, api.env, web.env, caddy.env)
 #   - No unresolved CHANGE_ME placeholders
-#   - Required API security keys are set
+#   - Required API/deploy/auth/email settings are set
 #
 # Usage:
 #   ./infra/scripts/predeploy-check.sh
@@ -221,12 +221,55 @@ done
 echo "==> Checking required API/deploy settings"
 required_api_keys=(
   "GCP_PROJECT_ID"
+  "DATABASE_URL"
+  "SYNC_DATABASE_URL"
+  "AUTH_MODE"
+  "EMAIL_PROVIDER"
   "INTERNAL_API_KEY"
   "MASTER_KEY"
 )
 for key in "${required_api_keys[@]}"; do
   require_env_key_nonempty "infra/env/prod/api.env" "$key"
 done
+
+api_auth_mode="$(env_key_value "infra/env/prod/api.env" "AUTH_MODE" | tr '[:upper:]' '[:lower:]')"
+case "$api_auth_mode" in
+  legacy|supabase|dual)
+    ;;
+  *)
+    log_error "AUTH_MODE must be one of: legacy|supabase|dual (got: ${api_auth_mode:-<empty>})"
+    exit 1
+    ;;
+esac
+
+if [[ "$api_auth_mode" == "supabase" || "$api_auth_mode" == "dual" ]]; then
+  require_env_key_nonempty "infra/env/prod/api.env" "SUPABASE_URL"
+  require_env_key_nonempty "infra/env/prod/api.env" "SUPABASE_JWT_ISSUER"
+fi
+
+supabase_storage_enabled="$(env_key_value "infra/env/prod/api.env" "SUPABASE_STORAGE_ENABLED" | tr '[:upper:]' '[:lower:]')"
+if [[ "$supabase_storage_enabled" == "true" || "$supabase_storage_enabled" == "1" || "$supabase_storage_enabled" == "yes" ]]; then
+  require_env_key_nonempty "infra/env/prod/api.env" "SUPABASE_SERVICE_ROLE_KEY"
+fi
+
+email_provider="$(env_key_value "infra/env/prod/api.env" "EMAIL_PROVIDER" | tr '[:upper:]' '[:lower:]')"
+case "$email_provider" in
+  smtp|resend|log|disabled)
+    ;;
+  *)
+    log_error "EMAIL_PROVIDER must be one of: smtp|resend|log|disabled (got: ${email_provider:-<empty>})"
+    exit 1
+    ;;
+esac
+
+if [[ "$email_provider" == "resend" ]]; then
+  require_env_key_nonempty "infra/env/prod/api.env" "RESEND_API_KEY"
+fi
+
+if [[ "$email_provider" == "smtp" ]]; then
+  require_env_key_nonempty "infra/env/prod/api.env" "SMTP_HOST"
+  require_env_key_nonempty "infra/env/prod/api.env" "SMTP_PORT"
+fi
 
 echo "==> Checking required Postgres settings"
 required_postgres_keys=(
