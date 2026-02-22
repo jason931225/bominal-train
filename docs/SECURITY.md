@@ -7,8 +7,11 @@ Security controls and requirements for bominal.
 ## Authentication and sessions
 
 - Password hashing: Argon2id (`api/app/core/security.py`)
-- Session auth with httpOnly cookies
-- Session token stored as hash in DB (`sessions.token_hash`)
+- Auth mode is controlled by `AUTH_MODE`:
+  - `legacy`: session-cookie auth
+  - `supabase`: Bearer JWT auth verified against Supabase JWKS
+  - `dual`: Bearer JWT first, cookie fallback
+- Session token stored as hash in DB (`sessions.token_hash`) for cookie mode
 - Cookie flags:
   - `httponly=True`
   - `samesite="lax"`
@@ -20,9 +23,10 @@ Security controls and requirements for bominal.
 - Role-based user model (`roles`, `users.role_id`)
 - API access separation:
   - Public: unauthenticated auth bootstrap routes
-  - Authenticated: session-cookie required user routes
+  - Authenticated: Supabase Bearer or session-cookie depending on `AUTH_MODE`
   - Internal-only: `X-Internal-Api-Key` header must match `INTERNAL_API_KEY`
-  - Admin: session + `admin` role required
+  - Admin: local DB role (`admin`) required
+- Supabase JWT role claims are not trusted as authorization source; API resolves local user by `sub` and enforces DB role.
 
 ## Secrets at rest
 

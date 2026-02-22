@@ -30,6 +30,7 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    supabase_user_id: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True, index=True)
     email: Mapped[str] = mapped_column(String(320), unique=True, nullable=False, index=True)
     password_hash: Mapped[str] = mapped_column(Text, nullable=False)
     display_name: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True)
@@ -147,6 +148,12 @@ class Artifact(Base):
     module: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     kind: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     data_json_safe: Mapped[dict] = mapped_column(JSON_TYPE, nullable=False)
+    storage_provider: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    storage_bucket: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    storage_object_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    storage_content_type: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    storage_size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    storage_checksum_sha256: Mapped[str | None] = mapped_column(String(128), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
 
     task: Mapped[Task] = relationship(back_populates="artifacts")
