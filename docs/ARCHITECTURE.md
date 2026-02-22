@@ -5,7 +5,7 @@
 Bominal is a modular monorepo with three runtime tiers:
 
 1. **Web** (`web/`): Next.js App Router UI, server-rendered pages + client components
-2. **API** (`api/`): FastAPI REST backend with session auth
+2. **API** (`api/`): FastAPI REST backend with configurable auth mode (`legacy` | `supabase` | `dual`)
 3. **Workers**:
    - `api/app/worker_train.py` -> train-task + queued email execution
    - `api/app/worker_restaurant.py` -> restaurant queue-domain execution scaffold
@@ -13,7 +13,10 @@ Bominal is a modular monorepo with three runtime tiers:
 Shared infrastructure:
 
 - **Postgres** for primary data storage
-- **Redis** for queueing + token-bucket rate limiting
+- **Redis** split by purpose:
+  - non-CDE Redis for queueing + token-bucket rate limiting (`REDIS_URL_NON_CDE` or fallback `REDIS_URL`)
+  - CDE Redis for encrypted CVV TTL cache (`REDIS_URL_CDE` or fallback `REDIS_URL`)
+  - CDE Redis endpoint must be non-durable and must not be Upstash-hosted
 - **Mailpit** in local dev (SMTP sink + inbox UI)
 
 Queue domain contracts:
@@ -70,10 +73,11 @@ Module contract:
 
 ### Auth model
 
-- Session cookies (`bominal_session`) are httpOnly, SameSite=Lax.
-- Cookie `Secure` flag is enabled only when `APP_ENV=production`.
-- Session rows are persisted in `sessions` table with hashed token.
-- `users.email` and `users.display_name` are unique identifiers for account registration/profile updates.
+- `AUTH_MODE=legacy`: session cookie auth (`bominal_session`) with DB-backed hashed session tokens.
+- `AUTH_MODE=supabase`: stateless Bearer token auth; API verifies Supabase JWT (`iss`/`aud`/`exp`) and maps `sub` to local user role.
+- `AUTH_MODE=dual`: Bearer token takes precedence when present; otherwise falls back to session cookie.
+- Session cookie behavior remains `HttpOnly`, `SameSite=Lax`, and `Secure` only in production.
+- Local authorization source of truth remains `users.role_id` / `roles.name` (JWT role claims are not trusted for privilege).
 
 ### API access tiers
 

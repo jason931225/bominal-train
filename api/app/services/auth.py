@@ -20,6 +20,7 @@ ACCOUNT_TASK_REMOVAL_MARKER_KEY = "account_removal_safe"
 def user_to_out(user: User) -> UserOut:
     return UserOut(
         id=user.id,
+        supabase_user_id=user.supabase_user_id,
         email=user.email,
         display_name=user.display_name,
         phone_number=user.phone_number,

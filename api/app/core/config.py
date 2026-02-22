@@ -14,11 +14,25 @@ Security:
 from functools import lru_cache
 from typing import Annotated
 from typing import List
+from urllib.parse import urlparse
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 DEFAULT_MASTER_KEY_B64 = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+UPSTASH_REDIS_HOST_SUFFIXES = ("upstash.io", "upstash.dev", "upstash.com")
+
+
+def is_upstash_redis_url(url: str | None) -> bool:
+    if not url:
+        return False
+    try:
+        host = (urlparse(url).hostname or "").lower().strip()
+    except Exception:
+        return False
+    if not host:
+        return False
+    return any(host == suffix or host.endswith(f".{suffix}") for suffix in UPSTASH_REDIS_HOST_SUFFIXES)
 
 
 class Settings(BaseSettings):
@@ -67,6 +81,8 @@ class Settings(BaseSettings):
     rate_limit_use_redis: bool = Field(default=False, alias="RATE_LIMIT_USE_REDIS")
 
     redis_url: str = Field(default="redis://redis:6379/0", alias="REDIS_URL")
+    redis_url_non_cde: str | None = Field(default=None, alias="REDIS_URL_NON_CDE")
+    redis_url_cde: str | None = Field(default=None, alias="REDIS_URL_CDE")
     internal_api_key: str | None = Field(default=None, alias="INTERNAL_API_KEY")
 
     master_key: str = Field(
@@ -74,6 +90,14 @@ class Settings(BaseSettings):
         alias="MASTER_KEY",
     )
     kek_version: int = Field(default=1, alias="KEK_VERSION")
+    auth_mode: str = Field(default="legacy", alias="AUTH_MODE")
+    supabase_url: str | None = Field(default=None, alias="SUPABASE_URL")
+    supabase_jwks_url: str | None = Field(default=None, alias="SUPABASE_JWKS_URL")
+    supabase_jwt_issuer: str | None = Field(default=None, alias="SUPABASE_JWT_ISSUER")
+    supabase_jwt_audience: str = Field(default="authenticated", alias="SUPABASE_JWT_AUDIENCE")
+    supabase_storage_bucket: str = Field(default="artifacts-safe", alias="SUPABASE_STORAGE_BUCKET")
+    supabase_service_role_key: str | None = Field(default=None, alias="SUPABASE_SERVICE_ROLE_KEY")
+    supabase_storage_enabled: bool = Field(default=False, alias="SUPABASE_STORAGE_ENABLED")
 
     train_provider_mode: str = Field(default="mock", alias="TRAIN_PROVIDER_MODE")
     train_provider_transport: str = Field(default="auto", alias="TRAIN_PROVIDER_TRANSPORT")
@@ -158,6 +182,14 @@ class Settings(BaseSettings):
             raise ValueError("EMAIL_PROVIDER must be one of: smtp, resend, log, disabled")
         return normalized
 
+    @field_validator("auth_mode")
+    @classmethod
+    def validate_auth_mode(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"legacy", "supabase", "dual"}:
+            raise ValueError("AUTH_MODE must be one of: legacy, supabase, dual")
+        return normalized
+
     @field_validator("train_provider_retry_attempts")
     @classmethod
     def validate_train_provider_retry_attempts(cls, value: int) -> int:
@@ -184,6 +216,25 @@ class Settings(BaseSettings):
             raise ValueError("MASTER_KEY must be overridden in production")
         if self.app_env.lower() == "production" and not self.internal_api_key:
             raise ValueError("INTERNAL_API_KEY must be set in production")
+        if is_upstash_redis_url(self.resolved_redis_url_cde):
+            raise ValueError(
+                "REDIS_URL_CDE (or REDIS_URL fallback) cannot point to Upstash for CDE/CVV usage; "
+                "use a non-durable Redis runtime for CDE data"
+            )
+        if self.auth_mode == "supabase":
+            if not self.supabase_url:
+                raise ValueError("SUPABASE_URL must be set when AUTH_MODE is supabase")
+            if not self.supabase_jwt_issuer:
+                raise ValueError("SUPABASE_JWT_ISSUER must be set when AUTH_MODE is supabase")
+        if self.auth_mode == "dual":
+            has_url = bool(self.supabase_url)
+            has_issuer = bool(self.supabase_jwt_issuer)
+            if has_url != has_issuer:
+                raise ValueError(
+                    "SUPABASE_URL and SUPABASE_JWT_ISSUER must be set together when AUTH_MODE=dual"
+                )
+        if self.supabase_storage_enabled and not self.supabase_service_role_key:
+            raise ValueError("SUPABASE_SERVICE_ROLE_KEY is required when SUPABASE_STORAGE_ENABLED=true")
         if self.payment_cvv_ttl_min_seconds < 1:
             raise ValueError("PAYMENT_CVV_TTL_MIN_SECONDS must be >= 1")
         if self.payment_cvv_ttl_max_seconds < self.payment_cvv_ttl_min_seconds:
@@ -203,6 +254,22 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.app_env.lower() == "production"
+
+    @property
+    def resolved_redis_url_non_cde(self) -> str:
+        return (self.redis_url_non_cde or self.redis_url).strip()
+
+    @property
+    def resolved_redis_url_cde(self) -> str:
+        return (self.redis_url_cde or self.redis_url).strip()
+
+    @property
+    def resolved_supabase_jwks_url(self) -> str | None:
+        if self.supabase_jwks_url:
+            return self.supabase_jwks_url
+        if not self.supabase_url:
+            return None
+        return f"{self.supabase_url.rstrip('/')}/auth/v1/.well-known/jwks.json"
 
 
 @lru_cache

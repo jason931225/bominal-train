@@ -227,9 +227,26 @@ cp infra/env/prod/web.env.example infra/env/prod/web.env
 cp infra/env/prod/caddy.env.example infra/env/prod/caddy.env
 ```
 
+Optional:
+- `infra/env/prod/deploy.env` can be created from `infra/env/prod/deploy.env.example` for helper workflows.
+- Canonical `infra/scripts/deploy.sh` does not require `deploy.env`.
+
 ### 2) Configure secrets
 
-Replace all `CHANGE_ME...` values, including `INTERNAL_API_KEY` in `api.env`.
+Replace all `CHANGE_ME...` values. Required manual deploy values:
+- `infra/env/prod/postgres.env`: `POSTGRES_PASSWORD`
+- `infra/env/prod/api.env`: `GCP_PROJECT_ID`, `INTERNAL_API_KEY`, `MASTER_KEY`, DB password portions of `DATABASE_URL` and `SYNC_DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_JWT_ISSUER`, `RESEND_API_KEY`, and sender-domain placeholder in `EMAIL_FROM_ADDRESS`
+- `infra/env/prod/web.env`: `NEXT_PUBLIC_API_BASE_URL`
+- `infra/env/prod/caddy.env`: `CADDY_SITE_ADDRESS`, `CADDY_ACME_EMAIL`
+
+Optional, mode-dependent values:
+- `AUTH_MODE=legacy`: Supabase JWT fields can be left empty
+- `AUTH_MODE=dual`: `SUPABASE_URL`, `SUPABASE_JWT_ISSUER` are still required (and `SUPABASE_JWKS_URL` if overriding default)
+- `SUPABASE_STORAGE_ENABLED=true`: `SUPABASE_SERVICE_ROLE_KEY`
+- `EMAIL_PROVIDER=disabled`: Resend credentials may remain unset
+- `EMAIL_PROVIDER=smtp`: `SMTP_HOST`, `SMTP_PORT`, and SMTP credentials/TLS settings as required
+
+Production note: set `DATABASE_URL` / `SYNC_DATABASE_URL` to your managed Postgres endpoint (for example Supabase Postgres). Local dev defaults remain Docker-local Postgres/Redis.
 
 Generate secure `MASTER_KEY`:
 
@@ -298,12 +315,12 @@ git submodule update --init --recursive
 Create prod env files:
 
 ```bash
-for f in infra/env/prod/*.env.example; do cp "$f" "${f%.example}"; done
+for f in infra/env/prod/*.example; do cp "$f" "${f%.example}"; done
 ```
 
 Edit each file and replace all `CHANGE_ME` values:
 - `infra/env/prod/postgres.env` - database credentials
-- `infra/env/prod/api.env` - MASTER_KEY, INTERNAL_API_KEY, DATABASE_URL
+- `infra/env/prod/api.env` - GCP_PROJECT_ID, MASTER_KEY, INTERNAL_API_KEY, DATABASE_URL, SUPABASE_URL, SUPABASE_JWT_ISSUER, RESEND_API_KEY, EMAIL_FROM_ADDRESS sender domain
 - `infra/env/prod/web.env` - keep `NEXT_PUBLIC_API_BASE_URL` empty for same-origin browser API calls
 - `infra/env/prod/caddy.env` - CADDY_SITE_ADDRESS, CADDY_ACME_EMAIL
 

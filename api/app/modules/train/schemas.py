@@ -201,6 +201,12 @@ class ArtifactOut(BaseModel):
     module: str
     kind: str
     data_json_safe: dict
+    storage_provider: str | None = None
+    storage_bucket: str | None = None
+    storage_object_path: str | None = None
+    storage_content_type: str | None = None
+    storage_size_bytes: int | None = None
+    storage_checksum_sha256: str | None = None
     created_at: datetime
 
 

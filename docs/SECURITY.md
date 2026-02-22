@@ -7,8 +7,11 @@ Security controls and requirements for bominal.
 ## Authentication and sessions
 
 - Password hashing: Argon2id (`api/app/core/security.py`)
-- Session auth with httpOnly cookies
-- Session token stored as hash in DB (`sessions.token_hash`)
+- Auth mode is controlled by `AUTH_MODE`:
+  - `legacy`: session-cookie auth
+  - `supabase`: Bearer JWT auth verified against Supabase JWKS
+  - `dual`: Bearer JWT first, cookie fallback
+- Session token stored as hash in DB (`sessions.token_hash`) for cookie mode
 - Cookie flags:
   - `httponly=True`
   - `samesite="lax"`
@@ -20,9 +23,10 @@ Security controls and requirements for bominal.
 - Role-based user model (`roles`, `users.role_id`)
 - API access separation:
   - Public: unauthenticated auth bootstrap routes
-  - Authenticated: session-cookie required user routes
+  - Authenticated: Supabase Bearer or session-cookie depending on `AUTH_MODE`
   - Internal-only: `X-Internal-Api-Key` header must match `INTERNAL_API_KEY`
-  - Admin: session + `admin` role required
+  - Admin: local DB role (`admin`) required
+- Supabase JWT role claims are not trusted as authorization source; API resolves local user by `sub` and enforces DB role.
 
 ## Secrets at rest
 
@@ -49,6 +53,10 @@ Envelope decrypt behavior:
 - Payment card persisted encrypted in `secrets`
 - CVV is not persisted to Postgres
 - CVV is cached temporarily in Redis (encrypted payload) with TTL (`PAYMENT_CVV_TTL_SECONDS`)
+- Redis routing is split by purpose:
+  - `REDIS_URL_NON_CDE`: queueing, rate limiting, non-sensitive cache
+  - `REDIS_URL_CDE`: CDE-only CVV cache
+  - `REDIS_URL_CDE` falls back to `REDIS_URL` when unset
 
 ## PCI Relay Worker Isolation Policy
 
@@ -332,6 +340,7 @@ Violation of this section is CRITICAL.
   - `PAYMENT_CVV_TTL_MIN_SECONDS`
   - `PAYMENT_CVV_TTL_MAX_SECONDS`
 - TTL MUST be set on write and MUST NOT be extended indefinitely.
+- CDE Redis endpoint (`REDIS_URL_CDE` or fallback `REDIS_URL`) MUST NOT be Upstash-hosted.
 - Production Redis for CDE workloads MUST NOT persist CVV-bearing keys to disk (`AOF`/`RDB` disabled).
 - CVV-bearing keys MUST be excluded from backups.
 - CVV MUST NEVER appear in Postgres, queue payloads, artifacts, or logs.

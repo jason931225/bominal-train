@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.crypto.secrets_store import build_encrypted_secret, decrypt_secret
 from app.core.crypto.service import get_envelope_crypto
-from app.core.redis import get_redis_pool
+from app.core.redis import get_cde_redis_pool
 from app.core.time import utc_now
 from app.db.models import Secret, User
 from app.schemas.wallet import PaymentCardSetRequest, PaymentCardStatusResponse
@@ -86,7 +86,7 @@ def _deserialize_cached_cvv_payload(value: str) -> dict | None:
 
 
 async def _load_cached_cvv_payload(*, user_id: UUID) -> dict | None:
-    async with get_redis_pool() as redis:
+    async with get_cde_redis_pool() as redis:
         for key in (_payment_cvv_redis_key(user_id), _legacy_payment_cvv_redis_key(user_id)):
             encrypted_blob = await redis.get(key)
             if not encrypted_blob:
@@ -117,7 +117,7 @@ async def _cache_cvv(*, user_id: UUID, cvv: str) -> datetime:
         aad_text=f"payment_cvv:{user_id}",
     )
 
-    async with get_redis_pool() as redis:
+    async with get_cde_redis_pool() as redis:
         await redis.set(
             _payment_cvv_redis_key(user_id),
             _serialize_encrypted_payload(
@@ -137,7 +137,7 @@ async def _cache_cvv(*, user_id: UUID, cvv: str) -> datetime:
 
 
 async def _clear_cached_cvv(*, user_id: UUID) -> None:
-    async with get_redis_pool() as redis:
+    async with get_cde_redis_pool() as redis:
         await redis.delete(_payment_cvv_redis_key(user_id), _legacy_payment_cvv_redis_key(user_id))
 
 

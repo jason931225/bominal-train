@@ -39,9 +39,9 @@ async def _enforce_production_security_guards() -> None:
     if not settings.is_production:
         return
 
-    from app.core.redis import get_redis_client
+    from app.core.redis import get_cde_redis_client
 
-    redis = await get_redis_client()
+    redis = await get_cde_redis_client()
     try:
         save_cfg = await redis.config_get("save")
         appendonly_cfg = await redis.config_get("appendonly")
@@ -147,11 +147,18 @@ async def healthcheck() -> dict[str, str | bool]:
     
     # Check Redis connectivity
     try:
-        from app.core.redis import get_redis_client
-        redis = await get_redis_client()
-        await redis.ping()
+        from app.core.redis import get_cde_redis_client, get_redis_client
+
+        redis_non_cde = await get_redis_client()
+        redis_cde = await get_cde_redis_client()
+        await redis_non_cde.ping()
+        await redis_cde.ping()
+        health["redis_non_cde"] = True
+        health["redis_cde"] = True
         health["redis"] = True
     except Exception:
+        health["redis_non_cde"] = False
+        health["redis_cde"] = False
         health["redis"] = False
         health["status"] = "degraded"
     
