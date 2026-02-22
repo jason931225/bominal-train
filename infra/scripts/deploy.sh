@@ -327,8 +327,12 @@ do_rollback() {
   current_commit=$(get_current_version)
   
   # Pull and deploy
-  pull_images
-  deploy_services
+  if ! pull_images; then
+    return 1
+  fi
+  if ! deploy_services; then
+    return 1
+  fi
   
   # Update pointers (swap current and previous)
   echo "$prev_commit" > "$DEPLOY_HISTORY_DIR/current"
@@ -368,13 +372,13 @@ pull_images() {
   if ! docker pull "$API_IMAGE"; then
     log_error "Failed to pull API image: $API_IMAGE"
     log_error "Make sure the image exists and you have access"
-    exit 1
+    return 1
   fi
   
   if ! docker pull "$WEB_IMAGE"; then
     log_error "Failed to pull web image: $WEB_IMAGE"
     log_error "Make sure the image exists and you have access"
-    exit 1
+    return 1
   fi
   
   log_ok "Images pulled successfully"
@@ -394,28 +398,46 @@ deploy_services() {
 
     # Deploy database layer first (usually no changes).
     log_info "Ensuring database services are healthy..."
-    "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait postgres redis
+    if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait postgres redis; then
+      log_error "Failed to deploy database services"
+      return 1
+    fi
 
     # Deploy API (backend must be ready before web).
     log_info "Deploying API service..."
-    "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait --no-deps api
+    if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait --no-deps api; then
+      log_error "Failed to deploy API service"
+      return 1
+    fi
 
     # Deploy workers (can run alongside API).
     log_info "Deploying Worker services..."
-    "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait --no-deps worker worker-restaurant
+    if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait --no-deps worker worker-restaurant; then
+      log_error "Failed to deploy worker services"
+      return 1
+    fi
 
     # Deploy web (depends on API being healthy).
     log_info "Deploying Web service..."
-    "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait --no-deps web
+    if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait --no-deps web; then
+      log_error "Failed to deploy web service"
+      return 1
+    fi
 
     # Reload Caddy (if Caddyfile changed, it auto-reloads).
     log_info "Ensuring Caddy is healthy..."
-    "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait caddy
+    if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait caddy; then
+      log_error "Failed to deploy Caddy service"
+      return 1
+    fi
     return 0
   fi
 
   log_warn "No running bominal containers detected. Using first-deploy bootstrap path."
-  "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait postgres redis api worker worker-restaurant web caddy
+  if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait postgres redis api worker worker-restaurant web caddy; then
+    log_error "Failed to deploy services in bootstrap path"
+    return 1
+  fi
 }
 
 # Verify deployment health

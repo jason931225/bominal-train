@@ -13,6 +13,8 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+- [9dc1d9e] Added Wave 1 stabilization gate tracker and canonical pointer entries for reviewer-facing release-gate evidence (`docs/plans/active/2026-02-22-wave1-stabilization-gate-tracker.md`, `docs/plans/active/README.md`, `docs/README.md`).
+- [9dc1d9e] Added provider egress resilience regression coverage for retry classification, bounded retries, and side-effect no-retry guarantees (`api/tests/test_provider_egress_transport.py`).
 - [0d84ae8] Added commit-based changelog governance and CI validation (`infra/tests/test_changelog.sh`).
 - [0d84ae8] Added standardized documentation workflow and playbook system (`docs/DOCUMENTATION_WORKFLOW.md`, `docs/playbooks/*`).
 - [0d84ae8] Added daily operations/chores playbook for routine low-latency execution (`docs/playbooks/daily-operations-chores.md`).
@@ -37,6 +39,9 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Changed
 
+- [c982a4f] Updated Wave 1 stabilization gate tracker with dated verification evidence, gate-status closure for W1-G08/W1-G09/W1-G10, and reviewer decision conditions (`docs/plans/active/2026-02-22-wave1-stabilization-gate-tracker.md`).
+- [9dc1d9e] Debounced authenticated session activity writes with configurable interval to reduce DB write amplification while preserving session expiry/revocation checks on each request (`api/app/http/deps.py`, `api/app/services/auth.py`, `api/app/core/config.py`, `api/tests/test_auth_flow.py`).
+- [9dc1d9e] Introduced fail-safe provider transport resilience primitives (operation-aware timeouts, bounded transient retries, non-retryable fail-closed behavior) and wired live/hybrid provider clients to surface structured retryable outcomes (`api/app/modules/train/providers/transport.py`, `api/app/modules/train/providers/factory.py`, `api/app/modules/train/providers/hybrid.py`).
 - [0d84ae8] Enforced changelog requirements in governance docs (`AGENTS.md`, `docs/EXECUTION_PROTOCOL.md`).
 - [0d84ae8] Added `CHANGELOG.md` to canonical pointers in `docs/README.md` and required-pointer validation.
 - [0d84ae8] Extended daily chores playbook with token-saving search/navigation operations (`rg --files`, scoped `rg -n`, pointer-first reads).
@@ -71,6 +76,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- [15bf7fc] Prevented rollback pointer swap on rollback-deploy failure by making rollback deploy/pull failures propagate and adding canary-stage regression coverage (`infra/scripts/deploy.sh`, `infra/tests/test_deploy_canary_stages.sh`).
 - [220d2c6] Ensured worker shutdown recovers in-flight tasks even when heartbeat cancellation raises `CancelledError`, with regression coverage in `api/tests/test_worker_shutdown_recovery.py`.
 - [b05ca4b] Converted commit-time auth uniqueness races to deterministic `409` conflicts in register/account update flows (`api/app/http/routes/auth.py`).
 - [b231d4c] Made auth rate-limit client IP extraction proxy-aware (`cf-connecting-ip` / `x-forwarded-for`) in `api/app/http/deps.py`.

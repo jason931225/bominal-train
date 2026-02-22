@@ -11,7 +11,7 @@ from app.core.rate_limit import rate_limiter
 from app.core.security import hash_token
 from app.db.models import Session, User
 from app.db.session import get_db
-from app.services.auth import request_ip
+from app.services.auth import request_ip, should_update_session_activity
 
 settings = get_settings()
 
@@ -61,8 +61,13 @@ async def get_current_session(
     if not auth_session:
         raise _unauthorized()
 
-    auth_session.last_seen_at = now
-    await db.commit()
+    if should_update_session_activity(
+        last_seen_at=auth_session.last_seen_at,
+        now=now,
+        debounce_seconds=settings.session_activity_debounce_seconds,
+    ):
+        auth_session.last_seen_at = now
+        await db.commit()
 
     return auth_session
 
