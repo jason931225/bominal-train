@@ -13,6 +13,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+- [4692ca1] Added focused backend unit suites for `admin_cli`, app-common health/error paths, DB session generator behavior, monitor utility/runtime formatting, and core time conversion parsing (`api/tests/test_admin_cli_units.py`, `api/tests/test_app_common_units.py`, `api/tests/test_db_session.py`, `api/tests/test_monitor_units.py`, `api/tests/test_time_utils.py`).
 - [dee8ac8] Added high-coverage runtime hardening test suites for config/deps/wallet/redis/redaction/envelope/safe-metadata paths, plus split-runtime route/supabase auth regression assertions (`api/tests/test_core_hardening_units.py`, `api/tests/test_runtime_units.py`, `api/tests/test_api_runtime_split.py`, `api/tests/test_supabase_auth.py`).
 - [dee8ac8] Added deploy-history record injection regression coverage to prove deployment records are parsed as data, not executed shell (`infra/tests/test_deploy_history_record_safety.sh`).
 - [7adb5d6] Added top-nav task-attention notifications with per-task alerts, mark-as-read/clear flows, and clickable task routing, plus dev dummy-task alert population support (`web/components/top-nav-task-attention.tsx`, `web/components/top-nav.tsx`, `web/lib/train/dummy-task-cards.ts`, `web/components/train/train-dashboard.tsx`).
@@ -50,6 +51,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Changed
 
+- [4692ca1] Fixed admin task prefix-match SQLAlchemy casting to use dialect-safe `String` casts instead of Python `str`, preventing CLI runtime failures on task cancel/unhide partial-ID lookups (`api/app/admin_cli.py`).
 - [dee8ac8] Hardened deploy runtime record handling by replacing `source`-based rollback/status parsing with strict key/value decoding and updated rolling deploy targets for split API/worker services (`infra/scripts/deploy.sh`, `infra/tests/test_deploy_preflight.sh`).
 - [dee8ac8] Updated local verification/runtime docs and tooling for current security posture, including local-check version wiring, hosted quota runbook guidance (Upstash non-CDE + Supabase), and web coverage dependency support (`infra/scripts/local-check.sh`, `docs/RUNBOOK.md`, `web/package.json`, `web/package-lock.json`).
 - [dee8ac8] Renumbered the access-review migration to preserve linear Alembic history (`api/alembic/versions/20260222_0011_user_access_review_status.py`).
