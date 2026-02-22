@@ -30,3 +30,7 @@ done
 # Start services
 echo "→ Starting Docker Compose services..."
 "${COMPOSE_CMD[@]}" -f infra/docker-compose.yml up --build "$@"
+
+echo ""
+echo "Mailpit dev inbox: http://localhost:8025"
+echo "Mailpit SMTP endpoint: localhost:1025"

@@ -147,6 +147,23 @@ If running from a containerized shell where API is on the compose network:
 infra/scripts/benchmark-train-task-list.sh --base-url http://api:8000
 ```
 
+Hybrid benchmark gate check (relative improvement + absolute SLO ceilings):
+
+```bash
+infra/scripts/benchmark-train-task-list-compare.sh \
+  --baseline-json infra/benchmarks/train-task-list-baseline.json \
+  --run-live \
+  --relative-p95-min-improvement 15 \
+  --relative-mean-min-improvement 10 \
+  --absolute-p95-max 12 \
+  --absolute-mean-max 10 \
+  -- \
+  --base-url http://localhost:8000 \
+  --iterations 30 \
+  --active-limit 60 \
+  --completed-limit 80
+```
+
 Live system monitor (production):
 
 ```bash
@@ -342,6 +359,24 @@ Actions:
 2. Check selected providers and station names.
 3. Inspect API logs for provider-specific error codes.
 4. Validate station mapping behavior through `/api/train/stations`.
+
+## 4.1) SRT reservation expired or no longer found
+
+Primary expiry indicator (SRT reservation list payload):
+
+1. `stlFlg == "N"` (unpaid)
+2. `now(KST) > iseLmtDt + iseLmtTm` (payment cutoff passed)
+
+Secondary confirmation indicators:
+
+1. `selectListAtc14016_n.do` no longer returns the `pnrNo` (or `rowCnt: 0`)
+2. `getListAtc14087.do` returns `조회자료가 없습니다.`
+
+Bominal behavior:
+
+1. Ticket sync sets status to `expired` for unpaid cutoff-passed reservations.
+2. Manual pay rejects status `expired` with payment-window-expired response.
+3. Non-auto-pay worker reserve failures with not-found/expiry markers are classified retryable and return to `POLLING`.
 
 ## 5) Migrations drift or fail
 

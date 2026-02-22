@@ -16,6 +16,7 @@ from app.services.auth import request_ip, should_update_session_activity
 from app.services.identity import get_or_create_local_user_from_supabase_claims
 
 settings = get_settings()
+ACCESS_REVIEW_PENDING_DETAIL = "Application is under review"
 
 
 def _unauthorized() -> HTTPException:
@@ -126,7 +127,19 @@ async def get_current_user(
     return auth_session.user
 
 
-async def get_current_admin(user: User = Depends(get_current_user)) -> User:
+def _is_access_approved(user: User) -> bool:
+    if not settings.access_approval_required:
+        return True
+    return str(user.access_status).lower() == "approved"
+
+
+async def get_current_approved_user(user: User = Depends(get_current_user)) -> User:
+    if not _is_access_approved(user):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=ACCESS_REVIEW_PENDING_DETAIL)
+    return user
+
+
+async def get_current_admin(user: User = Depends(get_current_approved_user)) -> User:
     if user.role.name != "admin":
         raise _forbidden()
     return user

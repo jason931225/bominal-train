@@ -103,6 +103,11 @@ Task list performance controls:
 
 - `/api/train/tasks` supports bounded list reads via `limit` query (`1..500`, default `200`).
 - Latest attempt/ticket summary rows are selected using per-task latest-row ranking queries (window-function strategy) instead of loading full per-task histories in list view.
+- PostgreSQL task-summary paths use `DISTINCT ON` plus descending `(task_id, timestamp, id)` indexes for latest attempt/artifact retrieval; non-Postgres test backends fall back to ranking-query compatibility path.
+- Train list reads use partial indexes for active and terminal states (`user_id + created_at desc`) to reduce tail latency for bounded list fetches.
+- Train dashboard polling fetches active tasks every poll cycle while completed tasks refresh on periodic/forced triggers (initial load, visibility restore, action mutations) to reduce steady-state list load.
+- Frontend task list state updates are key-compared before commit to avoid unnecessary rerender churn when payloads are unchanged.
+- Performance regression safeguards include hybrid benchmark gate scripts (relative improvement + absolute ceilings) and frontend polling-behavior unit tests in CI.
 
 Provider integration:
 
@@ -115,6 +120,11 @@ Provider integration:
 - Factory switching by env:
   - `TRAIN_PROVIDER_MODE`: `mock` | `hybrid` | `real`
   - `TRAIN_PROVIDER_TRANSPORT`: `auto` | `curl_cffi` | `httpx`
+- SRT contract alignment:
+  - Unpaid reservation expiry is determined by `stlFlg != "Y"` and KST comparison `now > iseLmtDt+iseLmtTm`.
+  - Sold-out standby fallback is allowed only when `rsvWaitPsbCd` contains `"9"`.
+  - `reserve_info`/`ticket_info` no-data signals (for example `조회자료가 없습니다.`) are mapped to `reservation_not_found`.
+  - Passenger payload fields are emitted per passenger index (`psgTpCd{n}`, `psgInfoPerPrnb{n}`, seat-attribute keys).
 
 ### Restaurant policy architecture (stage scaffold)
 
@@ -123,6 +133,7 @@ Provider integration:
   - `provider + account_ref + restaurant_id`
 - Non-committing restaurant phases (for example search/availability) do not acquire payment lease.
 - Policy writes only safe attempt metadata (`meta_json_safe`) and avoids credential/token persistence.
+- CatchTable endpoint implementation references are sourced from read-only `third_party/catchtable` files (`reservation.py`, `session.py`, `configs.py`, `main.py`).
 
 ## Data model highlights
 
