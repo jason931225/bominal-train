@@ -135,6 +135,21 @@ MASTER_KEY=base64-secret
 EOF
 assert_fails "supabase mode requires issuer/url" env PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" BOMINAL_ROOT_DIR="$TMP_DIR/repo" "$SCRIPT" --skip-smoke-tests
 
+# Supabase URLs must be HTTPS.
+make_valid_envs
+cat >"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF'
+GCP_PROJECT_ID=test-project
+DATABASE_URL=postgresql+asyncpg://bominal:strong-password@postgres:5432/bominal
+SYNC_DATABASE_URL=postgresql+psycopg://bominal:strong-password@postgres:5432/bominal
+AUTH_MODE=supabase
+SUPABASE_URL=http://supabase.local
+SUPABASE_JWT_ISSUER=http://supabase.local/auth/v1
+EMAIL_PROVIDER=disabled
+INTERNAL_API_KEY=abc123
+MASTER_KEY=base64-secret
+EOF
+assert_fails "supabase urls must be https" env PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" BOMINAL_ROOT_DIR="$TMP_DIR/repo" "$SCRIPT" --skip-smoke-tests
+
 # Resend provider without API key should fail.
 make_valid_envs
 cat >"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF'
@@ -148,6 +163,41 @@ INTERNAL_API_KEY=abc123
 MASTER_KEY=base64-secret
 EOF
 assert_fails "resend requires api key" env PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" BOMINAL_ROOT_DIR="$TMP_DIR/repo" "$SCRIPT" --skip-smoke-tests
+
+# Public web API base URL must be HTTPS when set.
+make_valid_envs
+cat >"$TMP_DIR/repo/infra/env/prod/web.env" <<'EOF'
+NEXT_PUBLIC_API_BASE_URL=http://example.com
+EOF
+assert_fails "web public api base must be https" env PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" BOMINAL_ROOT_DIR="$TMP_DIR/repo" "$SCRIPT" --skip-smoke-tests
+
+# CORS origins must be HTTPS in production.
+make_valid_envs
+cat >"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF'
+GCP_PROJECT_ID=test-project
+DATABASE_URL=postgresql+asyncpg://bominal:strong-password@postgres:5432/bominal
+SYNC_DATABASE_URL=postgresql+psycopg://bominal:strong-password@postgres:5432/bominal
+AUTH_MODE=legacy
+CORS_ORIGINS=http://example.com
+EMAIL_PROVIDER=disabled
+INTERNAL_API_KEY=abc123
+MASTER_KEY=base64-secret
+EOF
+assert_fails "cors origins must be https" env PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" BOMINAL_ROOT_DIR="$TMP_DIR/repo" "$SCRIPT" --skip-smoke-tests
+
+# Resend API base URL must be HTTPS when configured.
+make_valid_envs
+cat >"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF'
+GCP_PROJECT_ID=test-project
+DATABASE_URL=postgresql+asyncpg://bominal:strong-password@postgres:5432/bominal
+SYNC_DATABASE_URL=postgresql+psycopg://bominal:strong-password@postgres:5432/bominal
+AUTH_MODE=legacy
+EMAIL_PROVIDER=disabled
+RESEND_API_BASE_URL=http://api.resend.com
+INTERNAL_API_KEY=abc123
+MASTER_KEY=base64-secret
+EOF
+assert_fails "resend api base url must be https" env PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" BOMINAL_ROOT_DIR="$TMP_DIR/repo" "$SCRIPT" --skip-smoke-tests
 
 # Overdue production deprecation with active references should fail deploy gate.
 make_valid_envs
