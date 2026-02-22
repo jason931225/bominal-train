@@ -113,7 +113,16 @@ cp infra/env/prod/web.env.example infra/env/prod/web.env
 cp infra/env/prod/caddy.env.example infra/env/prod/caddy.env
 ```
 
-2) Edit those files and replace every `CHANGE_ME...` value (especially `MASTER_KEY`), and set your public host in `infra/env/prod/caddy.env`.
+2) Edit those files and replace every `CHANGE_ME...` value. Required manual deploy values:
+   - `infra/env/prod/postgres.env`: `POSTGRES_PASSWORD`
+   - `infra/env/prod/api.env`: `GCP_PROJECT_ID`, `INTERNAL_API_KEY`, `MASTER_KEY`, DB password portions of `DATABASE_URL` and `SYNC_DATABASE_URL`
+   - `infra/env/prod/web.env`: `NEXT_PUBLIC_API_BASE_URL`
+   - `infra/env/prod/caddy.env`: `CADDY_SITE_ADDRESS`, `CADDY_ACME_EMAIL`
+   - Optional, mode-dependent:
+     - `AUTH_MODE=supabase|dual`: `SUPABASE_URL`, `SUPABASE_JWT_ISSUER` (and `SUPABASE_JWKS_URL` if overriding default)
+     - `SUPABASE_STORAGE_ENABLED=true`: `SUPABASE_SERVICE_ROLE_KEY`
+     - `EMAIL_PROVIDER=resend`: `RESEND_API_KEY`
+     - `EMAIL_PROVIDER=smtp`: `SMTP_HOST`, `SMTP_PORT`, and SMTP credentials/TLS flags as needed
 
 3) Deploy (recommended):
 
