@@ -59,6 +59,7 @@ class Settings(BaseSettings):
     session_cookie_name: str = Field(default="bominal_session", alias="SESSION_COOKIE_NAME")
     session_days_default: int = Field(default=7, alias="SESSION_DAYS_DEFAULT")
     session_days_remember: int = Field(default=90, alias="SESSION_DAYS_REMEMBER")
+    session_activity_debounce_seconds: int = Field(default=60, alias="SESSION_ACTIVITY_DEBOUNCE_SECONDS", ge=0)
 
     rate_limit_window_seconds: int = Field(default=60, alias="RATE_LIMIT_WINDOW_SECONDS")
     rate_limit_max_requests: int = Field(default=20, alias="RATE_LIMIT_MAX_REQUESTS")
@@ -75,6 +76,26 @@ class Settings(BaseSettings):
 
     train_provider_mode: str = Field(default="mock", alias="TRAIN_PROVIDER_MODE")
     train_provider_transport: str = Field(default="auto", alias="TRAIN_PROVIDER_TRANSPORT")
+    train_provider_timeout_connect_seconds: float = Field(
+        default=3.0,
+        alias="TRAIN_PROVIDER_TIMEOUT_CONNECT_SECONDS",
+    )
+    train_provider_timeout_read_seconds: float = Field(
+        default=8.0,
+        alias="TRAIN_PROVIDER_TIMEOUT_READ_SECONDS",
+    )
+    train_provider_timeout_total_seconds: float = Field(
+        default=12.0,
+        alias="TRAIN_PROVIDER_TIMEOUT_TOTAL_SECONDS",
+    )
+    train_provider_retry_attempts: int = Field(
+        default=2,
+        alias="TRAIN_PROVIDER_RETRY_ATTEMPTS",
+    )
+    train_provider_retry_backoff_seconds: float = Field(
+        default=0.2,
+        alias="TRAIN_PROVIDER_RETRY_BACKOFF_SECONDS",
+    )
     train_poll_min_seconds: float = Field(default=2.0, alias="TRAIN_POLL_MIN_SECONDS")
     train_poll_max_seconds: float = Field(default=6.0, alias="TRAIN_POLL_MAX_SECONDS")
     train_credential_verify_timeout_seconds: float = Field(
@@ -119,6 +140,25 @@ class Settings(BaseSettings):
         if normalized not in {"smtp", "resend", "log", "disabled"}:
             raise ValueError("EMAIL_PROVIDER must be one of: smtp, resend, log, disabled")
         return normalized
+
+    @field_validator("train_provider_retry_attempts")
+    @classmethod
+    def validate_train_provider_retry_attempts(cls, value: int) -> int:
+        if value < 1:
+            raise ValueError("TRAIN_PROVIDER_RETRY_ATTEMPTS must be at least 1")
+        return value
+
+    @field_validator(
+        "train_provider_timeout_connect_seconds",
+        "train_provider_timeout_read_seconds",
+        "train_provider_timeout_total_seconds",
+        "train_provider_retry_backoff_seconds",
+    )
+    @classmethod
+    def validate_non_negative_train_provider_float_settings(cls, value: float) -> float:
+        if value < 0:
+            raise ValueError("TRAIN_PROVIDER timeout/retry float settings must be non-negative")
+        return value
 
     @model_validator(mode="after")
     def validate_security_settings(self) -> "Settings":

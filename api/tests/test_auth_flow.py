@@ -1,11 +1,13 @@
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 from uuid import uuid4
 
 import fakeredis.aioredis
 import pytest
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
+from app.core.security import hash_token
 from app.db.models import Secret, Session, Task, User
 from app.services.wallet import LEGACY_PAYMENT_CVV_REDIS_KEY_PREFIX, PAYMENT_CVV_REDIS_KEY_PREFIX
 from tests.conftest import MockRedisContextManager
@@ -23,6 +25,10 @@ def _extract_otp_code(template_payload) -> str:
                 return str(current)
             return str(code_value)
     raise AssertionError("OTP block not found")
+
+
+def _as_utc(value: datetime) -> datetime:
+    return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
 
 
 @pytest.mark.asyncio
@@ -61,6 +67,77 @@ async def test_register_login_me_logout_flow(client):
 
     me_after_logout = await client.get("/api/auth/me", cookies={"bominal_session": session_cookie})
     assert me_after_logout.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_session_activity_last_seen_writes_are_debounced(client, db_session, monkeypatch):
+    email = f"debounce-{uuid4().hex[:8]}@example.com"
+    password = "SuperSecret123"
+    await client.post(
+        "/api/auth/register",
+        json={"email": email, "password": password, "display_name": "Debounce User"},
+    )
+    login_res = await client.post(
+        "/api/auth/login",
+        json={"email": email, "password": password, "remember_me": False},
+    )
+    session_cookie = login_res.cookies.get("bominal_session")
+    assert session_cookie
+
+    token_hash = hash_token(session_cookie)
+    session_row = (await db_session.execute(select(Session).where(Session.token_hash == token_hash))).scalar_one()
+    initial_last_seen = _as_utc(session_row.last_seen_at)
+
+    monkeypatch.setattr("app.http.deps.settings.session_activity_debounce_seconds", 60)
+
+    within_debounce_window = initial_last_seen + timedelta(seconds=10)
+    monkeypatch.setattr(
+        "app.http.deps.datetime",
+        SimpleNamespace(now=lambda tz=None, value=within_debounce_window: value if tz else value.replace(tzinfo=None)),
+    )
+    first_me = await client.get("/api/auth/me", cookies={"bominal_session": session_cookie})
+    assert first_me.status_code == 200
+
+    db_session.expire_all()
+    session_after_first_me = (await db_session.execute(select(Session).where(Session.token_hash == token_hash))).scalar_one()
+    assert _as_utc(session_after_first_me.last_seen_at) == initial_last_seen
+
+    after_debounce_window = initial_last_seen + timedelta(seconds=61)
+    monkeypatch.setattr(
+        "app.http.deps.datetime",
+        SimpleNamespace(now=lambda tz=None, value=after_debounce_window: value if tz else value.replace(tzinfo=None)),
+    )
+    second_me = await client.get("/api/auth/me", cookies={"bominal_session": session_cookie})
+    assert second_me.status_code == 200
+
+    db_session.expire_all()
+    session_after_second_me = (await db_session.execute(select(Session).where(Session.token_hash == token_hash))).scalar_one()
+    assert _as_utc(session_after_second_me.last_seen_at) == after_debounce_window
+
+
+@pytest.mark.asyncio
+async def test_me_rejects_expired_session_when_activity_debounce_enabled(client, db_session, monkeypatch):
+    email = f"expired-{uuid4().hex[:8]}@example.com"
+    password = "SuperSecret123"
+    await client.post(
+        "/api/auth/register",
+        json={"email": email, "password": password, "display_name": "Expired User"},
+    )
+    login_res = await client.post(
+        "/api/auth/login",
+        json={"email": email, "password": password, "remember_me": False},
+    )
+    session_cookie = login_res.cookies.get("bominal_session")
+    assert session_cookie
+
+    token_hash = hash_token(session_cookie)
+    session_row = (await db_session.execute(select(Session).where(Session.token_hash == token_hash))).scalar_one()
+    session_row.expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+    await db_session.commit()
+
+    monkeypatch.setattr("app.http.deps.settings.session_activity_debounce_seconds", 3600)
+    me_res = await client.get("/api/auth/me", cookies={"bominal_session": session_cookie})
+    assert me_res.status_code == 401
 
 
 @pytest.mark.asyncio
@@ -248,7 +325,7 @@ async def test_account_update_maps_integrity_error_to_conflict(client, monkeypat
 
     async def _boom(self: AsyncSession):  # type: ignore[no-untyped-def]
         call_count["n"] += 1
-        if call_count["n"] >= 2:
+        if call_count["n"] >= 1:
             raise IntegrityError("update", params={}, orig=Exception("unique constraint failed: users.display_name"))
         return await real_commit(self)
 
