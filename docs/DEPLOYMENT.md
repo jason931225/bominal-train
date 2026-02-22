@@ -25,7 +25,9 @@ The deployment uses Docker Compose health checks and the `--wait` flag:
 1. **Preflight Phase** - Deploy lock + strict preflight checks run before image pull/deploy mutation.
 2. **Deploy Phase** - Script branches by runtime state:
    - first deploy (no running stack): bootstrap-safe full `up -d --wait`
-   - running stack: rolling service updates with `--no-deps` per service
+   - running stack: image-aware rolling updates with `--no-deps` per service
+     - roll only changed services across: `api-gateway`, `api-train`, `api-restaurant`, `worker-train`, `worker-restaurant`, `web`
+     - unchanged services are skipped to reduce restart churn and blast radius
 3. **Verify Phase** - External health checks confirm the deployment:
    - Docker starts the new container
    - Health check runs repeatedly until container is healthy
@@ -70,6 +72,10 @@ sudo -u bominal /opt/bominal/repo/infra/scripts/deploy.sh abc123f
 sudo -u bominal /opt/bominal/repo/infra/scripts/deploy.sh --status
 ```
 
+Optional image override envs (for controlled/manual rollouts):
+- Legacy override: `API_IMAGE` (applies to all API/worker services)
+- Split overrides: `API_GATEWAY_IMAGE`, `API_TRAIN_IMAGE`, `API_RESTAURANT_IMAGE`, `WORKER_TRAIN_IMAGE`, `WORKER_RESTAURANT_IMAGE`, `WEB_IMAGE`
+
 ### Deploy Script Safety Controls
 
 - Single-run deploy lock (default path: `/tmp/bominal-deploy.lock`) blocks concurrent invocations.
@@ -79,6 +85,9 @@ sudo -u bominal /opt/bominal/repo/infra/scripts/deploy.sh --status
   - resource profile threshold gate (memory/swap)
 - Smoke checks are retry-based and tunable (`SMOKE_MAX_ATTEMPTS`, `SMOKE_RETRY_DELAY_SECONDS`).
 - Auto rollback on smoke failure is enabled by default (`AUTO_ROLLBACK_ON_SMOKE_FAILURE=true`).
+- Repo state is checked before deployment:
+  - tracked dirty state is logged
+  - set `DEPLOY_FAIL_ON_DIRTY_REPO=true` to block deploy when tracked files are dirty
 - Threshold knobs:
   - `DEPLOY_MIN_TOTAL_MEMORY_MB` (default `900`)
   - `DEPLOY_MIN_TOTAL_SWAP_MB` (default `900`)
