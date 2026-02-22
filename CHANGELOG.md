@@ -13,6 +13,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+- [c7cf56d] Added controlled provider egress gateway infrastructure with dedicated train/restaurant Caddy route allowlists, CI guard coverage for egress Caddyfile policy enforcement, and expanded provider-helper unit coverage (`infra/egress/train/Caddyfile`, `infra/egress/restaurant/Caddyfile`, `infra/tests/test_egress_caddyfiles.sh`, `api/tests/test_train_provider_helpers_units.py`).
 - [7c9fe18] Added focused train-service helper coverage for retry-status branching, task-spec/provider normalization, ticket summary/manual-payment classification, terminal visibility windows, provider-cancel status mapping, and station option exposure (`api/tests/test_train_service_helpers.py`).
 - [129d7dc] Added deep provider-transport regression coverage for allowlist helpers, retry/timeout classification, resilient operation profiles, Httpx redirect/host safety controls, and Curl fallback/close behaviors (`api/tests/test_provider_egress_transport.py`).
 - [56565fa] Added direct route-level auth coverage for verification/reset token issuance, helper/template branches, session optional paths, and account update validation/error branches, plus expanded admin API integration coverage for stats/user management/train-ops edge flows (`api/tests/test_auth_route_units.py`, `api/tests/test_admin_ops.py`).
@@ -55,6 +56,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Changed
 
+- [c7cf56d] Routed provider transports through optional domain-set egress proxies with host allowlist checks preserved, wired restaurant adapters to restaurant egress routing, added egress services/env defaults to dev/prod compose templates, and codified operational/security runbook coverage for gateway checks (`api/app/modules/train/providers/transport.py`, `api/app/modules/restaurant/providers/opentable_adapter.py`, `api/app/modules/restaurant/providers/resy_adapter.py`, `api/app/core/config.py`, `infra/docker-compose.yml`, `infra/docker-compose.prod.yml`, `infra/env/dev/api.env`, `infra/env/prod/api.env.example`, `docs/ARCHITECTURE.md`, `docs/SECURITY.md`, `docs/RUNBOOK.md`, `docs/DEPLOYMENT.md`, `README.md`, `.github/workflows/infra-tests.yml`).
 - [517b8a0] Expanded email service coverage to exercise SMTP/Resend helper branches, delivery failure mapping, and queue enqueue/defer semantics while preserving runtime behavior (`api/tests/test_email_service.py`, `api/tests/test_email_queue_units.py`).
 - [4692ca1] Fixed admin task prefix-match SQLAlchemy casting to use dialect-safe `String` casts instead of Python `str`, preventing CLI runtime failures on task cancel/unhide partial-ID lookups (`api/app/admin_cli.py`).
 - [dee8ac8] Hardened deploy runtime record handling by replacing `source`-based rollback/status parsing with strict key/value decoding and updated rolling deploy targets for split API/worker services (`infra/scripts/deploy.sh`, `infra/tests/test_deploy_preflight.sh`).
