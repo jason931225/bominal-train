@@ -255,6 +255,12 @@ Replace all `CHANGE_ME...` values. Required manual deploy values:
 Optional, mode-dependent values:
 - `AUTH_MODE=legacy`: Supabase JWT fields can be left empty
 - `AUTH_MODE=dual`: `SUPABASE_URL`, `SUPABASE_JWT_ISSUER` are still required (and `SUPABASE_JWKS_URL` if overriding default)
+
+Production URL scheme enforcement (predeploy gate):
+- `SUPABASE_URL` and `SUPABASE_JWT_ISSUER` must be `https://` when `AUTH_MODE` is `supabase` or `dual`.
+- `CORS_ORIGINS` entries must be `https://`.
+- `RESEND_API_BASE_URL` must be `https://` when set.
+- `NEXT_PUBLIC_API_BASE_URL` may be empty (recommended same-origin) or must be `https://` if set.
 - `SUPABASE_STORAGE_ENABLED=true`: `SUPABASE_SERVICE_ROLE_KEY`
 - `EMAIL_PROVIDER=disabled`: Resend credentials may remain unset
 - `EMAIL_PROVIDER=smtp`: `SMTP_HOST`, `SMTP_PORT`, and SMTP credentials/TLS settings as required

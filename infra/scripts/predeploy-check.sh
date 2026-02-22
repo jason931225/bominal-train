@@ -118,6 +118,37 @@ is_truthy() {
   esac
 }
 
+require_https_url() {
+  local value="$1"
+  local name="$2"
+  if [[ ! "$value" =~ ^https:// ]]; then
+    log_error "$name must start with https:// in production (got: ${value:-<empty>})"
+    exit 1
+  fi
+}
+
+require_https_url_or_empty() {
+  local value="$1"
+  local name="$2"
+  if [[ -z "$value" ]]; then
+    return 0
+  fi
+  require_https_url "$value" "$name"
+}
+
+require_https_csv_origins() {
+  local value="$1"
+  local name="$2"
+  local origin
+  IFS=',' read -ra origins <<<"$value"
+  for origin in "${origins[@]}"; do
+    origin="${origin#"${origin%%[![:space:]]*}"}"
+    origin="${origin%"${origin##*[![:space:]]}"}"
+    [[ -z "$origin" ]] && continue
+    require_https_url "$origin" "$name"
+  done
+}
+
 run_deprecation_gate() {
   require_boolean_like "$allow_deprecation_bypass" "PREDEPLOY_ALLOW_DEPRECATION_BYPASS"
 
@@ -243,8 +274,18 @@ case "$api_auth_mode" in
 esac
 
 if [[ "$api_auth_mode" == "supabase" || "$api_auth_mode" == "dual" ]]; then
-  require_env_key_nonempty "infra/env/prod/api.env" "SUPABASE_URL"
-  require_env_key_nonempty "infra/env/prod/api.env" "SUPABASE_JWT_ISSUER"
+  supabase_url="$(env_key_value "infra/env/prod/api.env" "SUPABASE_URL")"
+  supabase_jwt_issuer="$(env_key_value "infra/env/prod/api.env" "SUPABASE_JWT_ISSUER")"
+  if [[ -z "$supabase_url" ]]; then
+    log_error "Missing required key in infra/env/prod/api.env: SUPABASE_URL"
+    exit 1
+  fi
+  if [[ -z "$supabase_jwt_issuer" ]]; then
+    log_error "Missing required key in infra/env/prod/api.env: SUPABASE_JWT_ISSUER"
+    exit 1
+  fi
+  require_https_url "$supabase_url" "SUPABASE_URL"
+  require_https_url "$supabase_jwt_issuer" "SUPABASE_JWT_ISSUER"
 fi
 
 supabase_storage_enabled="$(env_key_value "infra/env/prod/api.env" "SUPABASE_STORAGE_ENABLED" | tr '[:upper:]' '[:lower:]')"
@@ -271,6 +312,16 @@ if [[ "$email_provider" == "smtp" ]]; then
   require_env_key_nonempty "infra/env/prod/api.env" "SMTP_PORT"
 fi
 
+cors_origins="$(env_key_value "infra/env/prod/api.env" "CORS_ORIGINS")"
+if [[ -n "$cors_origins" ]]; then
+  require_https_csv_origins "$cors_origins" "CORS_ORIGINS"
+fi
+
+resend_api_base_url="$(env_key_value "infra/env/prod/api.env" "RESEND_API_BASE_URL")"
+if [[ -n "$resend_api_base_url" ]]; then
+  require_https_url "$resend_api_base_url" "RESEND_API_BASE_URL"
+fi
+
 echo "==> Checking required Postgres settings"
 required_postgres_keys=(
   "POSTGRES_PASSWORD"
@@ -286,6 +337,9 @@ required_web_keys=(
 for key in "${required_web_keys[@]}"; do
   require_env_key_nonempty "infra/env/prod/web.env" "$key"
 done
+
+next_public_api_base_url="$(env_key_value "infra/env/prod/web.env" "NEXT_PUBLIC_API_BASE_URL")"
+require_https_url_or_empty "$next_public_api_base_url" "NEXT_PUBLIC_API_BASE_URL"
 
 echo "==> Checking required Caddy settings"
 required_caddy_keys=(
