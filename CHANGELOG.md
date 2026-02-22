@@ -37,6 +37,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Changed
 
+- [c982a4f] Updated Wave 1 stabilization gate tracker with dated verification evidence, gate-status closure for W1-G08/W1-G09/W1-G10, and reviewer decision conditions (`docs/plans/active/2026-02-22-wave1-stabilization-gate-tracker.md`).
 - [9dc1d9e] Debounced authenticated session activity writes with configurable interval to reduce DB write amplification while preserving session expiry/revocation checks on each request (`api/app/http/deps.py`, `api/app/services/auth.py`, `api/app/core/config.py`, `api/tests/test_auth_flow.py`).
 - [9dc1d9e] Introduced fail-safe provider transport resilience primitives (operation-aware timeouts, bounded transient retries, non-retryable fail-closed behavior) and wired live/hybrid provider clients to surface structured retryable outcomes (`api/app/modules/train/providers/transport.py`, `api/app/modules/train/providers/factory.py`, `api/app/modules/train/providers/hybrid.py`).
 - [0d84ae8] Enforced changelog requirements in governance docs (`AGENTS.md`, `docs/EXECUTION_PROTOCOL.md`).
