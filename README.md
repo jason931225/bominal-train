@@ -124,6 +124,7 @@ cp infra/env/prod/caddy.env.example infra/env/prod/caddy.env
 ```
 
 2) Edit those files and replace every `CHANGE_ME...` value (especially `MASTER_KEY`), and set your public host in `infra/env/prod/caddy.env`.
+   - Keep `infra/env/prod/web.env` `NEXT_PUBLIC_API_BASE_URL` empty so browser auth requests stay same-origin (required for `SameSite=Lax` session cookies).
 
 3) Deploy (recommended):
 
@@ -411,6 +412,7 @@ Or run the bundled checker:
 - Password hashing: Argon2id
 - Session IDs are never returned in JSON responses
 - Cookie: `httpOnly`, `SameSite=Lax`, `Secure` in production only
+- Browser auth requests must be same-origin (`/api/...`) or `SameSite=Lax` session cookies may be rejected in cross-site contexts
 - Secrets use envelope encryption (`AES-256-GCM` DEK per record + KEK wrap via `MASTER_KEY`)
 - Payment CVV is not stored in Postgres; it is cached encrypted in Redis with TTL (`PAYMENT_CVV_TTL_SECONDS`, default 3600)
 - Never run production with default `MASTER_KEY`; app now rejects that in production mode
