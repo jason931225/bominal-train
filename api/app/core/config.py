@@ -14,11 +14,25 @@ Security:
 from functools import lru_cache
 from typing import Annotated
 from typing import List
+from urllib.parse import urlparse
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 DEFAULT_MASTER_KEY_B64 = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+UPSTASH_REDIS_HOST_SUFFIXES = ("upstash.io", "upstash.dev", "upstash.com")
+
+
+def is_upstash_redis_url(url: str | None) -> bool:
+    if not url:
+        return False
+    try:
+        host = (urlparse(url).hostname or "").lower().strip()
+    except Exception:
+        return False
+    if not host:
+        return False
+    return any(host == suffix or host.endswith(f".{suffix}") for suffix in UPSTASH_REDIS_HOST_SUFFIXES)
 
 
 class Settings(BaseSettings):
@@ -66,6 +80,8 @@ class Settings(BaseSettings):
     rate_limit_use_redis: bool = Field(default=False, alias="RATE_LIMIT_USE_REDIS")
 
     redis_url: str = Field(default="redis://redis:6379/0", alias="REDIS_URL")
+    redis_url_non_cde: str | None = Field(default=None, alias="REDIS_URL_NON_CDE")
+    redis_url_cde: str | None = Field(default=None, alias="REDIS_URL_CDE")
     internal_api_key: str | None = Field(default=None, alias="INTERNAL_API_KEY")
 
     master_key: str = Field(
@@ -199,6 +215,11 @@ class Settings(BaseSettings):
             raise ValueError("MASTER_KEY must be overridden in production")
         if self.app_env.lower() == "production" and not self.internal_api_key:
             raise ValueError("INTERNAL_API_KEY must be set in production")
+        if is_upstash_redis_url(self.resolved_redis_url_cde):
+            raise ValueError(
+                "REDIS_URL_CDE (or REDIS_URL fallback) cannot point to Upstash for CDE/CVV usage; "
+                "use a non-durable Redis runtime for CDE data"
+            )
         if self.auth_mode == "supabase":
             if not self.supabase_url:
                 raise ValueError("SUPABASE_URL must be set when AUTH_MODE is supabase")
@@ -232,6 +253,14 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.app_env.lower() == "production"
+
+    @property
+    def resolved_redis_url_non_cde(self) -> str:
+        return (self.redis_url_non_cde or self.redis_url).strip()
+
+    @property
+    def resolved_redis_url_cde(self) -> str:
+        return (self.redis_url_cde or self.redis_url).strip()
 
     @property
     def resolved_supabase_jwks_url(self) -> str | None:

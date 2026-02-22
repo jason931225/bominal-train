@@ -565,7 +565,7 @@ async def test_delete_account_blocks_when_outstanding_worker_instances_exist(cli
 @pytest.mark.asyncio
 async def test_delete_account_scrubs_user_and_marks_tasks_for_removal(client, db_session, monkeypatch):
     fake_redis = fakeredis.aioredis.FakeRedis()
-    monkeypatch.setattr("app.services.wallet.get_redis_pool", lambda: MockRedisContextManager(fake_redis))
+    monkeypatch.setattr("app.services.wallet.get_cde_redis_pool", lambda: MockRedisContextManager(fake_redis))
 
     email = "account-delete-success@example.com"
     password = "SuperSecret123"

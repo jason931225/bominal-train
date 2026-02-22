@@ -113,6 +113,12 @@ docker compose -f infra/docker compose.prod.yml logs -f caddy api worker worker-
 Security checks for payment/CDE runtime:
 
 ```bash
+# Confirm Redis split config (non-CDE vs CDE) in API runtime.
+docker compose -f infra/docker compose.prod.yml exec api env | rg 'REDIS_URL(_NON_CDE|_CDE)?'
+
+# Confirm effective CDE Redis endpoint is not Upstash-hosted.
+docker compose -f infra/docker compose.prod.yml exec api python -c "from app.core.config import get_settings,is_upstash_redis_url; s=get_settings(); print('resolved_redis_url_cde=', s.resolved_redis_url_cde); assert not is_upstash_redis_url(s.resolved_redis_url_cde)"
+
 # Confirm Redis persistence is disabled for CDE runtime.
 docker compose -f infra/docker compose.prod.yml exec redis redis-cli CONFIG GET save
 docker compose -f infra/docker compose.prod.yml exec redis redis-cli CONFIG GET appendonly

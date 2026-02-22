@@ -2,7 +2,7 @@ import base64
 
 import pytest
 
-from app.core.config import Settings
+from app.core.config import Settings, is_upstash_redis_url
 
 
 _VALID_MASTER_KEY = base64.b64encode(b"x" * 32).decode("utf-8")
@@ -68,3 +68,27 @@ def test_supabase_mode_requires_jwt_issuer(monkeypatch) -> None:
 
     with pytest.raises(ValueError):
         Settings(_env_file=None)
+
+
+def test_rejects_upstash_when_cde_redis_uses_fallback(monkeypatch) -> None:
+    monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.setenv("REDIS_URL", "rediss://example.upstash.io:6379/0")
+    monkeypatch.delenv("REDIS_URL_CDE", raising=False)
+    monkeypatch.delenv("REDIS_URL_NON_CDE", raising=False)
+
+    with pytest.raises(ValueError):
+        Settings(_env_file=None)
+
+
+def test_allows_upstash_for_non_cde_when_cde_redis_is_non_upstash(monkeypatch) -> None:
+    monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.setenv("REDIS_URL", "redis://redis:6379/0")
+    monkeypatch.setenv("REDIS_URL_NON_CDE", "rediss://example.upstash.io:6379/0")
+    monkeypatch.setenv("REDIS_URL_CDE", "redis://redis:6379/1")
+
+    settings = Settings(_env_file=None)
+
+    assert settings.resolved_redis_url_non_cde == "rediss://example.upstash.io:6379/0"
+    assert settings.resolved_redis_url_cde == "redis://redis:6379/1"
+    assert is_upstash_redis_url(settings.resolved_redis_url_non_cde) is True
+    assert is_upstash_redis_url(settings.resolved_redis_url_cde) is False
