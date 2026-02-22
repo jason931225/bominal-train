@@ -23,6 +23,17 @@ permissions:
   contents: read
 
 jobs:
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Secret scan (gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   infra-tests:
     runs-on: ubuntu-latest
     steps:
@@ -32,11 +43,11 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.14"
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "24"
           cache: "npm"
           cache-dependency-path: web/package-lock.json
 
@@ -47,6 +58,16 @@ jobs:
       - name: Install web test dependencies
         run: |
           npm ci --prefix web
+
+      - name: Dependency vulnerability scan (Python)
+        run: |
+          python3 -m pip install --upgrade pip pip-audit
+          pip-audit -r api/requirements-prod.txt --strict
+          pip-audit -r api/requirements.txt --strict
+
+      - name: Dependency vulnerability scan (Web production deps)
+        run: |
+          npm audit --prefix web --omit=dev --audit-level=high
 
       - name: Run web unit tests
         run: |
@@ -92,6 +113,10 @@ jobs:
         run: |
           bash infra/tests/test_predeploy_check.sh
 
+      - name: Validate changed-image rolling deploy path
+        run: |
+          bash infra/tests/test_deploy_changed_image_rollout.sh
+
       - name: Validate intent routing
         run: |
           bash infra/tests/test_intent_routing.sh
@@ -107,6 +132,10 @@ jobs:
       - name: Validate egress Caddyfile guards
         run: |
           bash infra/tests/test_egress_caddyfiles.sh
+
+      - name: Validate web Chromium dependency split
+        run: |
+          bash infra/tests/test_web_chromium_dependency_split.sh
 
       - name: Validate semantic version mapping
         run: |
