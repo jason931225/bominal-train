@@ -98,3 +98,43 @@ async def test_supabase_mode_rejects_cookie_only_auth(client, monkeypatch):
 
     response = await client.get("/api/auth/me", cookies={"bominal_session": cookie})
     assert response.status_code == 401
+
+
+async def test_supabase_existing_user_does_not_mutate_email_from_claims(client, db_session, monkeypatch):
+    email = "stable-email@example.com"
+    await _register_and_login(client, email=email, display_name="StableEmail")
+    user = (await db_session.execute(select(User).where(User.email == email))).scalar_one()
+    user_id = user.id
+    user.supabase_user_id = "supabase-stable-001"
+    await db_session.commit()
+
+    monkeypatch.setattr("app.http.deps.settings.auth_mode", "supabase")
+    monkeypatch.setattr(
+        "app.http.deps.verify_supabase_jwt",
+        lambda _token: {"sub": "supabase-stable-001", "email": "new-email@example.com"},
+    )
+
+    response = await client.get("/api/auth/me", headers={"Authorization": "Bearer stable-token"})
+    assert response.status_code == 200
+
+    db_session.expire_all()
+    refreshed = (await db_session.execute(select(User).where(User.id == user_id))).scalar_one()
+    assert refreshed.email == email
+
+
+async def test_supabase_auto_provision_avoids_display_name_collision(client, db_session, monkeypatch):
+    await _register_and_login(client, email="display-taken@example.com", display_name="DisplayTaken")
+
+    monkeypatch.setattr("app.http.deps.settings.auth_mode", "supabase")
+    monkeypatch.setattr(
+        "app.http.deps.verify_supabase_jwt",
+        lambda _token: {
+            "sub": "supabase-display-001",
+            "email": "new-display-user@example.com",
+            "user_metadata": {"display_name": "DisplayTaken"},
+        },
+    )
+
+    response = await client.get("/api/auth/me", headers={"Authorization": "Bearer display-token"})
+    assert response.status_code == 200
+    assert response.json()["user"]["display_name"] is None

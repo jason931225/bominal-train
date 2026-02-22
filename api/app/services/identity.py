@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
@@ -14,7 +14,7 @@ def _fallback_email_for_sub(supabase_sub: str) -> str:
     return f"supabase-{supabase_sub}@auth.bominal.local"
 
 
-def _display_name_from_claims(claims: dict[str, Any], email: str) -> str:
+def _display_name_from_claims(claims: dict[str, Any], email: str) -> str | None:
     user_meta = claims.get("user_metadata") if isinstance(claims.get("user_metadata"), dict) else {}
     candidates = [
         user_meta.get("display_name"),
@@ -26,7 +26,7 @@ def _display_name_from_claims(claims: dict[str, Any], email: str) -> str:
         text = str(candidate or "").strip()
         if text:
             return text[:255]
-    return "user"
+    return None
 
 
 async def get_or_create_local_user_from_supabase_claims(
@@ -50,11 +50,6 @@ async def get_or_create_local_user_from_supabase_claims(
     )
     existing = (await db.execute(stmt)).scalar_one_or_none()
     if existing is not None:
-        # Keep profile fields in sync opportunistically for non-sensitive attributes.
-        if existing.email != email:
-            existing.email = email
-            await db.commit()
-            await db.refresh(existing)
         return existing
 
     by_email_stmt = (
@@ -74,10 +69,23 @@ async def get_or_create_local_user_from_supabase_claims(
     if role is None:
         raise RuntimeError("Role seed missing")
 
+    display_name = _display_name_from_claims(claims, email)
+    if display_name:
+        existing_display_name = (
+            await db.execute(
+                select(User.id)
+                .where(User.display_name.is_not(None))
+                .where(func.lower(User.display_name) == display_name.lower())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if existing_display_name is not None:
+            display_name = None
+
     user = User(
         email=email,
         password_hash=hash_password(new_session_token()),
-        display_name=_display_name_from_claims(claims, email),
+        display_name=display_name,
         ui_locale="en",
         role_id=role.id,
         supabase_user_id=supabase_sub,
