@@ -1,6 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   env: {
+    APP_VERSION: process.env.APP_VERSION || "0.0.0",
     BUILD_VERSION: process.env.BUILD_VERSION || "dev",
   },
   async redirects() {

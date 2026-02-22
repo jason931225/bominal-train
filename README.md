@@ -29,6 +29,17 @@ bominal is a modular product foundation with:
 - Provider payment egress must use allowlisted domains with TLS verification enabled.
 - Logs, queues, and artifacts must not contain raw cardholder data or raw provider payment payloads.
 
+## Versioning contract
+
+- Human-readable versions are resolved from commit parity via `docs/releases/version-map.json`.
+- Current track remains `0.0.#` (pre-1.0).
+- Validation command:
+
+```bash
+python3 infra/scripts/version_guard.py validate
+python3 infra/scripts/version_guard.py resolve --commit HEAD
+```
+
 ## Bootstrap
 
 From repo root:
@@ -68,7 +79,7 @@ Queue domains:
 - `train:queue`: train tasks + queued email delivery
 - `restaurant:queue`: restaurant worker domain
 
-One-command local verification (starts stack, waits for health, runs backend tests + web typecheck):
+One-command local verification (starts stack, waits for API/web/Mailpit health, runs backend tests + web typecheck):
 
 ```bash
 ./infra/scripts/local-check.sh

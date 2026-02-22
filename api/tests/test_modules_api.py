@@ -3,19 +3,25 @@ from __future__ import annotations
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import select
 
+from app.db.models import User
 from app.modules.restaurant.capabilities import (
     RESTAURANT_CAPABILITIES_COMING_SOON,
     RESTAURANT_CAPABILITIES_EXPOSED,
 )
 
 
-async def _register_and_login(client, *, email: str, display_name: str) -> str:
+async def _register_and_login(client, db_session, *, email: str, display_name: str) -> str:
     register_response = await client.post(
         "/api/auth/register",
         json={"email": email, "password": "SuperSecret123", "display_name": display_name},
     )
     assert register_response.status_code == 201
+
+    user = (await db_session.execute(select(User).where(User.email == email))).scalar_one()
+    user.access_status = "approved"
+    await db_session.commit()
 
     login_response = await client.post(
         "/api/auth/login",
@@ -28,9 +34,10 @@ async def _register_and_login(client, *, email: str, display_name: str) -> str:
 
 
 @pytest.mark.asyncio
-async def test_modules_response_includes_enabled_and_capabilities(client):
+async def test_modules_response_includes_enabled_and_capabilities(client, db_session):
     session_cookie = await _register_and_login(
         client,
+        db_session,
         email=f"module-user-{uuid4().hex[:8]}@example.com",
         display_name=f"Module User {uuid4().hex[:6]}",
     )
@@ -60,9 +67,10 @@ async def test_modules_response_includes_enabled_and_capabilities(client):
 
 
 @pytest.mark.asyncio
-async def test_restaurant_capabilities_are_safe_subset(client):
+async def test_restaurant_capabilities_are_safe_subset(client, db_session):
     session_cookie = await _register_and_login(
         client,
+        db_session,
         email=f"restaurant-module-{uuid4().hex[:8]}@example.com",
         display_name=f"Restaurant Module {uuid4().hex[:6]}",
     )

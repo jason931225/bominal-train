@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -143,6 +143,37 @@ async def _clear_cached_cvv(*, user_id: UUID) -> None:
 
 async def clear_payment_card_cache(*, user_id: UUID) -> None:
     await _clear_cached_cvv(user_id=user_id)
+
+
+async def _delete_redis_keys_matching(*, pattern: str) -> int:
+    deleted_total = 0
+    async with get_redis_pool() as redis:
+        cursor: int = 0
+        while True:
+            cursor, keys = await redis.scan(cursor=cursor, match=pattern, count=500)
+            if keys:
+                deleted_total += int(await redis.delete(*keys))
+            if cursor == 0:
+                break
+    return deleted_total
+
+
+async def purge_all_saved_payment_data(db: AsyncSession) -> dict[str, int]:
+    secret_count_stmt = select(func.count(Secret.id)).where(Secret.kind == SECRET_KIND_PAYMENT_CARD)
+    secret_count = int((await db.execute(secret_count_stmt)).scalar_one() or 0)
+
+    await db.execute(delete(Secret).where(Secret.kind == SECRET_KIND_PAYMENT_CARD))
+    await db.commit()
+
+    redis_deleted_current = await _delete_redis_keys_matching(pattern=f"{PAYMENT_CVV_REDIS_KEY_PREFIX}:*")
+    redis_deleted_legacy = await _delete_redis_keys_matching(pattern=f"{LEGACY_PAYMENT_CVV_REDIS_KEY_PREFIX}:*")
+
+    return {
+        "db_payment_card_secrets_deleted": secret_count,
+        "redis_cvv_keys_deleted_current": redis_deleted_current,
+        "redis_cvv_keys_deleted_legacy": redis_deleted_legacy,
+        "redis_cvv_keys_deleted_total": redis_deleted_current + redis_deleted_legacy,
+    }
 
 
 async def get_payment_card_status(
