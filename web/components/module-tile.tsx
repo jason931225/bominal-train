@@ -32,14 +32,14 @@ function capabilityLabel(capability: string): string {
 }
 
 function providerBadgesForModule(module: BominalModule): ProviderBadge[] {
+  if (module.slug === "train") {
+    return [{ label: "KTX" }, { label: "SRT" }];
+  }
   if (module.capabilities.length > 0) {
     return module.capabilities.map((capability) => ({
       label: capabilityLabel(capability),
       muted: module.coming_soon || !module.enabled,
     }));
-  }
-  if (module.slug === "train") {
-    return [{ label: "KTX" }, { label: "SRT" }];
   }
   if (module.slug === "restaurant") {
     return [{ label: "Catchtable", muted: true }, { label: "Resy", muted: true }, { label: "OpenTable", muted: true }];
@@ -59,6 +59,7 @@ function moduleLabel(locale: Locale, module: BominalModule): string {
 
 export function ModuleTile({ module, locale }: { module: BominalModule; locale: Locale }) {
   const providerBadges = providerBadgesForModule(module);
+  const mobileProviderSummary = providerBadges.map((badge) => badge.label).join(" · ");
 
   return (
     <Link
@@ -73,9 +74,14 @@ export function ModuleTile({ module, locale }: { module: BominalModule; locale: 
           <p className="mt-1 text-sm text-slate-500">
             {module.coming_soon ? t(locale, "modules.comingSoon") : t(locale, "modules.available")}
           </p>
+          {mobileProviderSummary ? (
+            <p className="mt-2 text-xs font-medium tracking-wide text-slate-500 md:hidden">
+              {mobileProviderSummary}
+            </p>
+          ) : null}
         </div>
         {providerBadges.length > 0 ? (
-          <div className="flex flex-wrap justify-end gap-2">
+          <div className="hidden flex-wrap justify-end gap-2 md:flex">
             {providerBadges.map((badge) => (
               <span
                 key={`${module.slug}-${badge.label}`}
@@ -86,7 +92,7 @@ export function ModuleTile({ module, locale }: { module: BominalModule; locale: 
             ))}
           </div>
         ) : (
-          <span className={UI_CHIP_BRAND}>
+          <span className={`hidden md:inline-flex ${UI_CHIP_BRAND}`}>
             {module.slug}
           </span>
         )}

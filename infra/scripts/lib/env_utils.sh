@@ -153,3 +153,35 @@ require_no_env_placeholders() {
   fi
   return 0
 }
+
+resolve_dev_app_version() {
+  local repo_root="$1"
+  local guard_script="$repo_root/infra/scripts/version_guard.py"
+  local resolved=""
+
+  if command -v python3 >/dev/null 2>&1 && [[ -f "$guard_script" ]]; then
+    resolved="$(python3 "$guard_script" resolve --commit HEAD 2>/dev/null || true)"
+    resolved="${resolved#v}"
+    if [[ "$resolved" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+      echo "$resolved"
+      return 0
+    fi
+  fi
+
+  echo "0.0.0"
+  return 0
+}
+
+resolve_dev_build_version() {
+  local repo_root="$1"
+  if command -v git >/dev/null 2>&1; then
+    local short_sha
+    short_sha="$(git -C "$repo_root" rev-parse --short HEAD 2>/dev/null || true)"
+    if [[ -n "$short_sha" ]]; then
+      echo "$short_sha"
+      return 0
+    fi
+  fi
+  echo "dev"
+  return 0
+}

@@ -78,7 +78,15 @@
     "maintenance": "유지관리",
     "accountSettings": "계정 설정",
     "paymentSettings": "결제 설정",
-    "admin": "관리자"
+    "paymentSettingsDisabled": "결제가 활성화될 때까지 결제 설정이 비활성화됩니다.",
+    "admin": "관리자",
+    "taskAttention": "알림",
+    "taskAttentionEmpty": "현재 확인이 필요한 작업이 없습니다.",
+    "taskAttentionSelectMarkRead": "읽음 처리",
+    "taskAttentionConfirm": "확인",
+    "taskAttentionCancel": "취소",
+    "taskAttentionClear": "전체 지우기",
+    "taskAttentionClearConfirm": "모든 작업 알림을 지우시겠습니까?"
   },
   "theme": {
     "label": "테마",
@@ -331,8 +339,14 @@
     },
     "adults": "성인",
     "children": "어린이",
+    "decrementAdults": "성인 인원 감소",
+    "incrementAdults": "성인 인원 증가",
+    "decrementChildren": "어린이 인원 감소",
+    "incrementChildren": "어린이 인원 증가",
     "search": "검색",
     "searching": "검색 중...",
+    "searchSummary": "검색 요약",
+    "editSearch": "검색 수정",
     "selectSchedulesTitle": "시간표 선택 ({date})",
     "table": {
       "status": "상태",
@@ -376,6 +390,7 @@
       "searchFailed": "검색에 실패했습니다.",
       "searchUnreachable": "검색 API에 연결할 수 없습니다.",
       "selectSchedule": "우선순위 작업을 만들 시간표를 최소 1개 선택해 주세요.",
+      "passengerMinimum": "총 인원은 최소 1명이어야 합니다.",
       "createTask": "작업을 생성할 수 없습니다.",
       "taskDetailLoad": "작업 상세를 불러올 수 없습니다.",
       "ticketCancel": "티켓을 취소할 수 없습니다.",
@@ -400,7 +415,14 @@
       "started": "시작",
       "error": "오류"
     },
-    "pollingHint": "진행 중일 때 4초마다 갱신합니다.",
+    "attemptPagination": {
+      "actionsPerPage": "페이지당 시도",
+      "all": "전체",
+      "page": "페이지",
+      "prev": "이전",
+      "next": "다음"
+    },
+    "pollingHint": "진행 중일 때 10초마다 갱신합니다.",
     "confirm": {
       "cancelTask": "진행 중인 작업을 취소할까요?",
       "cancelTicket": "예약 티켓을 취소할까요?",
@@ -422,6 +444,14 @@
     },
     "hint": {
       "paymentSettingsRequired": "결제 설정이 필요합니다"
+    },
+    "sort": {
+      "label": "정렬:",
+      "scheduleProximity": "일정",
+      "ascending": "오름차순",
+      "descending": "내림차순",
+      "scheduleAscending": "일정 (오름차순)",
+      "scheduleDescending": "일정 (내림차순)"
     },
     "label": {
       "completed": "완료:",
@@ -446,7 +476,7 @@
       "seatCount": "좌석 수:",
       "seats": "좌석:"
     },
-    "provider": {
+    "providerErrors": {
       "loginFailed": "{provider} 로그인에 실패했습니다.",
       "verifyFailed": "{provider} 계정 연결을 확인할 수 없습니다.",
       "signOutFailed": "{provider}에서 로그아웃할 수 없습니다."

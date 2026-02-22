@@ -63,7 +63,7 @@ from app.services.wallet import get_payment_card_for_execution
 
 settings = get_settings()
 TASK_VISIBILITY_RETENTION_DAYS = 365
-TICKET_SYNC_MIN_SECONDS = 15
+TICKET_SYNC_MIN_SECONDS = 10
 MANUAL_RETRY_COOLDOWN_SECONDS = 15
 MANUAL_RETRY_LAST_AT_KEY = "manual_retry_last_at"
 NEXT_RUN_AT_KEY = "next_run_at"
@@ -625,6 +625,22 @@ def _ticket_summary_from_artifact(artifact: Artifact | None) -> dict | None:
     }
 
 
+def _is_manual_payment_pending(ticket_summary: dict | None) -> bool:
+    if not ticket_summary:
+        return False
+    ticket_status = str(ticket_summary.get("ticket_status") or "")
+    ticket_paid = ticket_summary.get("ticket_paid")
+    return ticket_status == "awaiting_payment" and ticket_paid is not True
+
+
+def _is_active_for_listing(task: Task, ticket_summary: dict | None) -> bool:
+    if task.state in ACTIVE_TASK_STATES:
+        return True
+    if task.state == "COMPLETED" and _is_manual_payment_pending(ticket_summary):
+        return True
+    return False
+
+
 def task_to_summary(
     task: Task,
     last_attempt_at: datetime | None = None,
@@ -773,7 +789,7 @@ async def search_schedules(
         )
 
     schedules.sort(key=lambda row: row.departure_at)
-    return TrainSearchResponse(schedules=schedules)
+    return TrainSearchResponse(schedules=schedules, provider_errors=provider_errors)
 
 
 async def create_task(db: AsyncSession, *, user: User, payload: TrainTaskCreateRequest) -> TrainTaskCreateResponse:
@@ -940,7 +956,9 @@ def _task_list_stmt(user: User, status_filter: str, *, limit: int) -> Select[tup
     ) >= cutoff
 
     if status_filter == "active":
-        stmt = stmt.where(Task.state.in_(ACTIVE_TASK_STATES))
+        # Include COMPLETED candidates so manual-payment-pending reservations can be
+        # reclassified into active after ticket metadata inspection.
+        stmt = stmt.where(Task.state.in_(ACTIVE_TASK_STATES | {"COMPLETED"}))
     elif status_filter == "completed":
         stmt = stmt.where(Task.state.in_(TERMINAL_TASK_STATES)).where(terminal_visible_expr)
     else:
@@ -952,6 +970,10 @@ def _task_list_stmt(user: User, status_filter: str, *, limit: int) -> Select[tup
         )
 
     bounded_limit = max(1, limit)
+    if status_filter == "active":
+        # Over-fetch so we can filter out non-pending COMPLETED rows without starving
+        # the active list.
+        bounded_limit = bounded_limit * 4
     return stmt.order_by(Task.created_at.desc(), Task.id.desc()).limit(bounded_limit)
 
 
@@ -983,17 +1005,31 @@ async def list_tasks(
     ticket_artifacts = await _latest_ticket_artifact_map(db, [task.id for task in tasks])
 
     should_refresh_completed = refresh_completed and status_filter in {"completed", "all"}
-    if should_refresh_completed and ticket_artifacts:
+    should_refresh_pending_active = status_filter in {"active", "all"}
+    if (should_refresh_completed or should_refresh_pending_active) and ticket_artifacts:
         redis = await get_redis_client()
         limiter = RedisTokenBucketLimiter(redis)
         updated = False
         client_cache: dict[str, object] = {}
         for task in tasks:
-                if task.state not in TERMINAL_TASK_STATES:
-                    continue
-                artifact = ticket_artifacts.get(task.id)
-                if artifact is None:
-                    continue
+            artifact = ticket_artifacts.get(task.id)
+            if artifact is None:
+                continue
+            ticket_summary = _ticket_summary_from_artifact(artifact)
+            if should_refresh_pending_active and _is_manual_payment_pending(ticket_summary):
+                updated = (
+                    await _refresh_ticket_artifact_status(
+                        db,
+                        user=user,
+                        artifact=artifact,
+                        limiter=limiter,
+                        force=False,
+                        client_cache=client_cache,
+                    )
+                    or updated
+                )
+                continue
+            if should_refresh_completed and task.state in TERMINAL_TASK_STATES:
                 updated = (
                     await _refresh_ticket_artifact_status(
                         db,
@@ -1010,12 +1046,25 @@ async def list_tasks(
             await db.commit()
             ticket_artifacts = await _latest_ticket_artifact_map(db, [task.id for task in tasks])
 
+    ticket_summaries: dict[UUID, dict | None] = {
+        task.id: _ticket_summary_from_artifact(ticket_artifacts.get(task.id)) for task in tasks
+    }
+
+    if status_filter == "active":
+        tasks = [task for task in tasks if _is_active_for_listing(task, ticket_summaries.get(task.id))][: max(1, limit)]
+    elif status_filter == "completed":
+        tasks = [
+            task
+            for task in tasks
+            if task.state in TERMINAL_TASK_STATES and not _is_active_for_listing(task, ticket_summaries.get(task.id))
+        ][: max(1, limit)]
+
     return TaskListResponse(
         tasks=[
             task_to_summary(
                 task,
                 latest_attempt=latest_attempts.get(task.id),
-                ticket_summary=_ticket_summary_from_artifact(ticket_artifacts.get(task.id)),
+                ticket_summary=ticket_summaries.get(task.id),
                 now=now,
             )
             for task in tasks
