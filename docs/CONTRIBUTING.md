@@ -147,6 +147,12 @@ Future-proof dependency policy:
 - Deprecation-triggered overhauls are allowed and expected:
   - replace deprecated dependencies with maintained alternatives when direct upgrade is not sufficient.
 
+Current compatibility holds (must be re-evaluated during dependency modernization):
+
+- `redis` is pinned to `5.3.1` because `arq==0.27.0` requires `redis<6`.
+- `vitest` / `@vitest/coverage-v8` remain on `2.1.9` because `4.x` currently fails this repo's enforced coverage gate without broader test/threshold realignment.
+- `eslint` remains on `9.x` because `eslint@10` is currently incompatible with `eslint-config-next@16.1.6` in this stack.
+
 Recommended targeted smoke tests after major changes:
 
 ```bash
