@@ -111,6 +111,11 @@ Provider integration:
 - Factory switching by env:
   - `TRAIN_PROVIDER_MODE`: `mock` | `hybrid` | `real`
   - `TRAIN_PROVIDER_TRANSPORT`: `auto` | `curl_cffi` | `httpx`
+- SRT contract alignment:
+  - Unpaid reservation expiry is determined by `stlFlg != "Y"` and KST comparison `now > iseLmtDt+iseLmtTm`.
+  - Sold-out standby fallback is allowed only when `rsvWaitPsbCd` contains `"9"`.
+  - `reserve_info`/`ticket_info` no-data signals (for example `조회자료가 없습니다.`) are mapped to `reservation_not_found`.
+  - Passenger payload fields are emitted per passenger index (`psgTpCd{n}`, `psgInfoPerPrnb{n}`, seat-attribute keys).
 
 ### Restaurant policy architecture (stage scaffold)
 

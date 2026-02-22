@@ -33,6 +33,8 @@ def user_to_out(user: User) -> UserOut:
         billing_postal_code=user.billing_postal_code,
         birthday=user.birthday,
         role=user.role.name,
+        access_status=user.access_status,
+        access_reviewed_at=user.access_reviewed_at,
         created_at=user.created_at,
     )
 
@@ -142,6 +144,8 @@ async def delete_account_data(db: AsyncSession, *, user: User) -> None:
     user.billing_postal_code = None
     user.birthday = None
     user.email_verified_at = None
+    user.access_status = "rejected"
+    user.access_reviewed_at = now
     user.updated_at = now
 
     await clear_payment_card_cache(user_id=user.id)

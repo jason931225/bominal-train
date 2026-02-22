@@ -79,19 +79,20 @@ async def test_enqueue_restaurant_task_uses_deterministic_job_id(monkeypatch):
     import app.modules.restaurant.queue as restaurant_queue
 
     pool = _FakeQueuePool()
+    task_id = "33333333-3333-3333-3333-333333333333"
 
     async def _fake_get_pool():
         return pool
 
     monkeypatch.setattr(restaurant_queue, "get_restaurant_queue_pool", _fake_get_pool)
 
-    await restaurant_queue.enqueue_restaurant_task("r-1", defer_seconds=1.5)
+    await restaurant_queue.enqueue_restaurant_task(task_id, defer_seconds=1.5)
 
     assert len(pool.calls) == 1
-    assert pool.calls[0]["args"] == ("run_restaurant_task", "r-1")
+    assert pool.calls[0]["args"] == ("run_restaurant_task", task_id)
     kwargs = pool.calls[0]["kwargs"]
     assert isinstance(kwargs, dict)
-    assert kwargs["_job_id"] == "restaurant:r-1"
+    assert kwargs["_job_id"] == f"restaurant:{task_id}"
     assert kwargs["_defer_by"] == 1.5
 
 

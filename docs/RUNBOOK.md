@@ -337,6 +337,24 @@ Actions:
 3. Inspect API logs for provider-specific error codes.
 4. Validate station mapping behavior through `/api/train/stations`.
 
+## 4.1) SRT reservation expired or no longer found
+
+Primary expiry indicator (SRT reservation list payload):
+
+1. `stlFlg == "N"` (unpaid)
+2. `now(KST) > iseLmtDt + iseLmtTm` (payment cutoff passed)
+
+Secondary confirmation indicators:
+
+1. `selectListAtc14016_n.do` no longer returns the `pnrNo` (or `rowCnt: 0`)
+2. `getListAtc14087.do` returns `조회자료가 없습니다.`
+
+Bominal behavior:
+
+1. Ticket sync sets status to `expired` for unpaid cutoff-passed reservations.
+2. Manual pay rejects status `expired` with payment-window-expired response.
+3. Non-auto-pay worker reserve failures with not-found/expiry markers are classified retryable and return to `POLLING`.
+
 ## 5) Migrations drift or fail
 
 Check current revision:

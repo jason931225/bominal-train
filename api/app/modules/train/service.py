@@ -1096,6 +1096,7 @@ async def _refresh_ticket_artifact_status(
         "status": merged_status,
         "paid": snapshot.get("paid", current_data.get("paid")),
         "waiting": snapshot.get("waiting", current_data.get("waiting")),
+        "expired": snapshot.get("expired", current_data.get("expired")),
         "payment_deadline_at": snapshot.get("payment_deadline_at", current_data.get("payment_deadline_at")),
         "seat_count": snapshot.get("seat_count", current_data.get("seat_count")),
         "tickets": snapshot.get("tickets", current_data.get("tickets", [])),
@@ -1301,6 +1302,14 @@ async def pay_task(db: AsyncSession, *, task_id: UUID, user: User) -> TaskAction
         ticket_summary = _ticket_summary_from_artifact(_latest_ticket_artifact_for_task(task))
         return TaskActionResponse(
             task=task_to_summary(task, last_attempt_at=last_attempt_at, ticket_summary=ticket_summary)
+        )
+
+    if ticket_status == "expired":
+        if updated:
+            await db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Reservation payment window has expired. Refresh reservation status and try again.",
         )
 
     if ticket_status not in {"awaiting_payment", "reserved"}:

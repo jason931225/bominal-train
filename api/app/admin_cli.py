@@ -16,6 +16,7 @@ Usage:
     python -m app.admin_cli db vacuum                    # Run VACUUM ANALYZE
     
     python -m app.admin_cli secret check                 # Check encryption status
+    python -m app.admin_cli secret purge-payment --yes   # Purge all saved wallet card/CVV data
 
 Security:
     This CLI runs inside the API container with full database access.
@@ -35,6 +36,7 @@ from sqlalchemy import delete, func, select, text, update
 from app.core.config import get_settings
 from app.db.models import Role, Secret, Session, Task, TaskAttempt, User
 from app.db.session import SessionLocal
+from app.services.wallet import purge_all_saved_payment_data
 
 settings = get_settings()
 
@@ -416,6 +418,22 @@ async def secret_check() -> None:
             print(color("  ✓ All secrets using current KEK version\n", Colors.GREEN))
 
 
+async def secret_purge_payment(*, yes: bool) -> None:
+    """Purge all stored wallet payment-card data and cached CVV keys."""
+    if not yes:
+        print(color("\n  Refusing to purge payment data without --yes confirmation.\n", Colors.YELLOW))
+        return
+
+    async with SessionLocal() as db:
+        summary = await purge_all_saved_payment_data(db)
+
+    print(f"\n{color('Payment Data Purge', Colors.BOLD + Colors.CYAN)}\n")
+    print(f"  Deleted DB payment_card secrets: {summary['db_payment_card_secrets_deleted']}")
+    print(f"  Deleted Redis CVV keys (current): {summary['redis_cvv_keys_deleted_current']}")
+    print(f"  Deleted Redis CVV keys (legacy):  {summary['redis_cvv_keys_deleted_legacy']}")
+    print(f"  Deleted Redis CVV keys (total):   {summary['redis_cvv_keys_deleted_total']}\n")
+
+
 # ============================================================================
 # Main
 # ============================================================================
@@ -468,6 +486,15 @@ def main() -> None:
     secret_sub = secret_parser.add_subparsers(dest="action")
     
     secret_sub.add_parser("check", help="Check encryption status")
+    secret_purge_parser = secret_sub.add_parser(
+        "purge-payment",
+        help="Purge all saved payment card secrets and cached CVV data",
+    )
+    secret_purge_parser.add_argument(
+        "--yes",
+        action="store_true",
+        help="Required confirmation flag to execute irreversible payment-data purge",
+    )
     
     args = parser.parse_args()
     
@@ -509,6 +536,8 @@ def main() -> None:
     elif args.command == "secret":
         if args.action == "check":
             asyncio.run(secret_check())
+        elif args.action == "purge-payment":
+            asyncio.run(secret_purge_payment(yes=args.yes))
         else:
             secret_parser.print_help()
 
