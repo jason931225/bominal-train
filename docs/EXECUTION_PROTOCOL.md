@@ -17,6 +17,30 @@ Before any execution work starts in any session:
 
 No lock acquisition, code edits, or deploy actions are allowed before this prerequisite is complete.
 
+## Docs > Plan > Test gate (mandatory)
+
+Before staging any commit:
+1. Confirm documentation requirements first (docs pointers + policy).
+2. Confirm/refresh the implementation plan for current scope.
+3. Execute tests for the exact touched scope before staging.
+4. Verify 100% automated coverage and test relevance for every staged behavior change before `git add` / commit staging.
+5. Resolve warning debt in touched scope before staging:
+   - runtime warnings
+   - deprecation warnings
+   - npm/package-manager deprecation warnings
+   - toolchain warnings that indicate pending breakage
+   If any warning cannot be removed safely in-scope, record explicit rationale and follow-up owner before staging.
+
+NPM warning policy:
+- `npm warn deprecated` must be treated as actionable.
+- If not directly fixable in-scope (for example transitive upstream dependency), record:
+  - warning text,
+  - dependency chain evidence (`npm ls ... --all`),
+  - owner and target removal date/version.
+- Silent acceptance/suppression of npm warnings is not permitted.
+
+Staging is blocked unless this sequence (`Docs > Plan > Test`) is satisfied.
+
 ## Docs-last prerequisite (mandatory)
 
 Before any completion claim, PR creation, or merge:
@@ -75,6 +99,9 @@ For each notable change in behavior, operations, interfaces, docs governance, or
 - No silent conflict resolution.
 - No completion claims without fresh verification evidence.
 - TDD required for production code changes.
+- 100% automated test coverage is the required quality bar before staging commits.
+- Test relevance review is mandatory before staging: every staged behavior change must be covered by at least one directly relevant test (not just incidental suite pass).
+- Warning hygiene is mandatory before staging: do not carry forward avoidable runtime/deprecation warnings in touched scope.
 - For doc-related ambiguity or exceptions: stop and ask for explicit clarification before continuing.
 - `docs/GUARDRAILS.md` hard constraints override all process defaults.
 

@@ -63,6 +63,18 @@ If touching auth, wallet, or provider credentials:
 
 ## Test and verification
 
+Pre-stage gate (mandatory):
+
+- Follow `Docs > Plan > Test` ordering before staging commits.
+- 100% automated test coverage is required before staging.
+- Verify test relevance before staging:
+  - each staged behavior change must have directly relevant test coverage.
+- Resolve warnings in touched scope before staging:
+  - runtime warnings
+  - deprecation warnings
+  - avoidable tooling warnings
+  If a warning cannot be safely resolved in-scope, document rationale and open a tracked follow-up.
+
 Recommended one-command local verification (starts stack, waits for health, runs tests + typecheck):
 
 ```bash
@@ -86,6 +98,44 @@ Frontend type check:
 ```bash
 (cd web && npx tsc --noEmit)
 ```
+
+Frontend unit tests with coverage gate:
+
+```bash
+(cd web && npm run test:ci)
+```
+
+Web dependency lockfile hygiene (mandatory when `web/package.json` changes):
+
+```bash
+(cd web && npm install)
+```
+
+- Commit `web/package-lock.json` together with `web/package.json`.
+- CI runs `npm ci --prefix web`; out-of-sync lockfiles will fail before tests.
+
+NPM warning handling (mandatory):
+
+- Do not ignore `npm warn deprecated` output.
+- Any npm warning encountered during `npm install`/`npm ci` must be handled before staging by one of:
+  - direct remediation (upgrade/remove the dependency chain causing the warning), or
+  - documented upstream block with:
+    - exact warning text,
+    - source package chain (`npm ls <package> --all`),
+    - owner,
+    - target removal version/date.
+- Suppressing warnings without remediation or explicit tracked ownership is not allowed.
+
+Current tracked npm deprecation warnings (must be revisited):
+
+- `whatwg-encoding@3.1.1` deprecation warning.
+  - Chain: `jsdom -> whatwg-encoding`
+  - Owner: Web Platform
+  - Target removal: next jsdom major/minor upgrade cycle in active sprint.
+- `glob@10.5.0` deprecation warning.
+  - Chain: `@vitest/coverage-v8 -> test-exclude -> glob@10.5.0`
+  - Owner: Web Platform
+  - Target removal: next vitest/@vitest/coverage-v8 upgrade cycle in active sprint.
 
 Recommended targeted smoke tests after major changes:
 
