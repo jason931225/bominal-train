@@ -186,6 +186,96 @@ save_deployment() {
   cd "$REPO_DIR"
 }
 
+# Parse deployment record values without shell execution.
+# We intentionally treat records as plain key/value data and never source them.
+decode_record_value() {
+  local value="$1"
+
+  # Trim surrounding whitespace.
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+
+  # Strip optional wrapping quotes.
+  if [[ "$value" == \"*\" && "$value" == *\" ]]; then
+    value="${value:1:${#value}-2}"
+  elif [[ "$value" == \'*\' && "$value" == *\' ]]; then
+    value="${value:1:${#value}-2}"
+  fi
+
+  # Decode simple backslash-escaped characters produced by printf %q.
+  value="$(printf '%s' "$value" | sed 's/\\\(.\)/\1/g')"
+  printf '%s' "$value"
+}
+
+record_commit=""
+record_timestamp=""
+record_api_image=""
+record_web_image=""
+record_api_digest=""
+record_web_digest=""
+record_deployed_by=""
+record_previous=""
+
+load_deployment_record() {
+  local path="$1"
+  local line key raw
+
+  record_commit=""
+  record_timestamp=""
+  record_api_image=""
+  record_web_image=""
+  record_api_digest=""
+  record_web_digest=""
+  record_deployed_by=""
+  record_previous=""
+
+  [[ -f "$path" ]] || return 1
+
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ -z "${line//[[:space:]]/}" ]] && continue
+    [[ "$line" =~ ^[[:space:]]*# ]] && continue
+    [[ "$line" == *=* ]] || return 1
+
+    key="${line%%=*}"
+    raw="${line#*=}"
+    key="${key//[[:space:]]/}"
+
+    case "$key" in
+      commit)
+        record_commit="$(decode_record_value "$raw")"
+        ;;
+      timestamp)
+        record_timestamp="$(decode_record_value "$raw")"
+        ;;
+      api_image)
+        record_api_image="$(decode_record_value "$raw")"
+        ;;
+      web_image)
+        record_web_image="$(decode_record_value "$raw")"
+        ;;
+      api_digest)
+        record_api_digest="$(decode_record_value "$raw")"
+        ;;
+      web_digest)
+        record_web_digest="$(decode_record_value "$raw")"
+        ;;
+      deployed_by)
+        record_deployed_by="$(decode_record_value "$raw")"
+        ;;
+      previous)
+        record_previous="$(decode_record_value "$raw")"
+        ;;
+      *)
+        # Ignore unknown keys for forward compatibility.
+        ;;
+    esac
+  done <"$path"
+
+  [[ -n "$record_commit" ]] || return 1
+  [[ -n "$record_timestamp" ]] || return 1
+  return 0
+}
+
 # Get previous deployment for rollback
 get_previous_version() {
   if [[ -f "$DEPLOY_HISTORY_DIR/previous" ]]; then
@@ -232,8 +322,8 @@ purge_legacy_records() {
       continue
     fi
 
-    # Malformed: would fail the script's `source` usage (syntax errors / unbound vars / etc).
-    if ! bash -c 'set -euo pipefail; commit=""; timestamp=""; api_digest=""; web_digest=""; deployed_by=""; previous=""; api_image=""; web_image=""; source "$1"' bash "$path" >/dev/null 2>&1; then
+    # Malformed: record cannot be parsed as key/value data.
+    if ! load_deployment_record "$path" >/dev/null 2>&1; then
       to_delete+=("$path")
       continue
     fi
@@ -291,15 +381,11 @@ do_rollback() {
   
   if [[ -n "$prev_record" ]]; then
     log_info "Found previous deployment record: $prev_record"
-    api_digest=""
-    web_digest=""
-    api_image=""
-    web_image=""
-    if source "$DEPLOY_HISTORY_DIR/$prev_record" >/dev/null 2>&1; then
+    if load_deployment_record "$DEPLOY_HISTORY_DIR/$prev_record"; then
       # Prefer immutable digests (deterministic rollback), fall back to commit tags.
-      if [[ -n "${api_digest:-}" && -n "${web_digest:-}" ]]; then
-        export API_IMAGE="$api_digest"
-        export WEB_IMAGE="$web_digest"
+      if [[ -n "${record_api_digest:-}" && -n "${record_web_digest:-}" ]]; then
+        export API_IMAGE="$record_api_digest"
+        export WEB_IMAGE="$record_web_digest"
         log_info "Using previous digests:"
         log_info "  API: $API_IMAGE"
         log_info "  Web: $WEB_IMAGE"
@@ -403,16 +489,16 @@ deploy_services() {
       return 1
     fi
 
-    # Deploy API (backend must be ready before web).
-    log_info "Deploying API service..."
-    if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait --no-deps api; then
-      log_error "Failed to deploy API service"
+    # Deploy API split runtime (backend must be ready before web).
+    log_info "Deploying API services..."
+    if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait --no-deps api-gateway api-train api-restaurant; then
+      log_error "Failed to deploy API services"
       return 1
     fi
 
     # Deploy workers (can run alongside API).
     log_info "Deploying Worker services..."
-    if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait --no-deps worker worker-restaurant; then
+    if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait --no-deps worker-train worker-restaurant; then
       log_error "Failed to deploy worker services"
       return 1
     fi
@@ -434,7 +520,7 @@ deploy_services() {
   fi
 
   log_warn "No running bominal containers detected. Using first-deploy bootstrap path."
-  if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait postgres redis api worker worker-restaurant web caddy; then
+  if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait postgres redis api-gateway api-train api-restaurant worker-train worker-restaurant web caddy; then
     log_error "Failed to deploy services in bootstrap path"
     return 1
   fi
@@ -500,13 +586,8 @@ show_status() {
   log_info "Recent deployments:"
   (ls -t "$DEPLOY_HISTORY_DIR" | grep -E '^[0-9]{8}_[0-9]{6}$' | head -5 | while read -r record; do
     if [[ -f "$DEPLOY_HISTORY_DIR/$record" ]]; then
-      commit=""
-      timestamp=""
-      api_digest=""
-      web_digest=""
-      deployed_by=""
-      if source "$DEPLOY_HISTORY_DIR/$record" >/dev/null 2>&1; then
-        echo "  - $timestamp: $commit (by ${deployed_by:-unknown})"
+      if load_deployment_record "$DEPLOY_HISTORY_DIR/$record"; then
+        echo "  - $record_timestamp: $record_commit (by ${record_deployed_by:-unknown})"
       else
         log_warn "Could not load deployment record: $record"
       fi

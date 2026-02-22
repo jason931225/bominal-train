@@ -130,6 +130,30 @@ docker compose -f infra/docker compose.prod.yml exec api env | rg 'PAYMENT_PROVI
 docker compose -f infra/docker compose.prod.yml logs --since=30m api worker | rg -i 'card_number|cvv|authorization|set-cookie|wrapped_dek|ciphertext'
 ```
 
+Hosted service budget checks (non-CDE Upstash + Supabase free-tier planning):
+
+- Upstash (non-CDE Redis only):
+  - Commands/month: `500000`
+  - Bandwidth/month: `50 GB`
+  - Storage: `256 MB`
+  - Requests/second: `10000`
+- Supabase:
+  - DB size: `0.5 GB`
+  - Egress: `5 GB`
+  - Cached egress: `5 GB`
+  - MAU: `50000` (first-party), `50000` (third-party)
+  - Storage: `1 GB`
+  - Realtime peak connections: `200`
+  - Realtime messages: `2000000`
+  - Edge invocations/month: `500000`
+
+Operational policy:
+
+- Keep CDE Redis on a separate non-Upstash endpoint (`REDIS_URL_CDE`).
+- Keep Upstash traffic for queue/rate-limit/non-sensitive cache only (`REDIS_URL_NON_CDE`).
+- Set warning thresholds at 70% and hard alerts at 85% of each limit.
+- If any hard alert is reached, disable non-critical background jobs and increase polling intervals before quota exhaustion.
+
 Task-list latency benchmark (backend API):
 
 ```bash

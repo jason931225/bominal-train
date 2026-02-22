@@ -54,6 +54,7 @@ async def test_dual_mode_uses_local_role_not_jwt_role_claim(client, db_session, 
     admin_role = (await db_session.execute(select(Role).where(Role.name == "admin"))).scalar_one()
     user.role_id = admin_role.id
     user.supabase_user_id = "supabase-admin-001"
+    user.access_status = "approved"
     await db_session.commit()
 
     monkeypatch.setattr("app.http.deps.settings.auth_mode", "dual")

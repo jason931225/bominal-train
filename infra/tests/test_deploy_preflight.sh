@@ -24,6 +24,10 @@ EOF_ENV
 
 cat >"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF_ENV'
 GCP_PROJECT_ID=bominal
+DATABASE_URL=postgresql+asyncpg://bominal:strong-password@postgres:5432/bominal
+SYNC_DATABASE_URL=postgresql+psycopg://bominal:strong-password@postgres:5432/bominal
+AUTH_MODE=legacy
+EMAIL_PROVIDER=disabled
 INTERNAL_API_KEY=abc123
 MASTER_KEY=base64-secret
 EOF_ENV
@@ -34,6 +38,7 @@ EOF_ENV
 
 cat >"$TMP_DIR/repo/infra/env/prod/caddy.env" <<'EOF_ENV'
 CADDY_SITE_ADDRESS=example.com
+CADDY_ACME_EMAIL=ops@example.com
 EOF_ENV
 
 cat >"$TMP_DIR/repo/docs/deprecations/registry.json" <<'EOF_REGISTRY'
