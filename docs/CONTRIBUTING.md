@@ -164,9 +164,9 @@ Current compatibility holds (must be re-evaluated during dependency modernizatio
 - `redis-py` library hold:
   - Python client `redis` is pinned to `5.3.1` because `arq==0.27.0` requires `redis<6`.
   - This is not a Redis server-version hold; runtime Redis server remains modern (`redis:7-alpine` in local stack).
-- `vitest` / `@vitest/coverage-v8` hold:
-  - remain on `2.1.9` because `4.x` currently fails this repo's enforced coverage gate without broader test/threshold realignment.
-  - exit criteria: validate `vitest` 4 coverage behavior and timing on CI runners, then migrate config/tests in a dedicated PR.
+- `vitest` baseline note (not a hold):
+  - stack is migrated to `vitest` / `@vitest/coverage-v8` `4.x`.
+  - coverage floors are rebaselined to Vitest 4 accounting and must be ratcheted upward in follow-up test-improvement PRs.
 - `eslint` hold:
   - current stable baseline is `eslint` `9.x`; `eslint@10` is currently incompatible with `eslint-config-next@16.1.6` in this stack.
   - exit criteria: upgrade when Next/eslint-config-next support for ESLint 10 is validated in this repo.
