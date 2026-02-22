@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 
 import { useLocale } from "@/components/locale-provider";
 import { clientApiBaseUrl } from "@/lib/api-base";
@@ -49,7 +49,7 @@ export function PaymentSettingsPanel() {
   const [notice, setNotice] = useState<string | null>(null);
   const [form, setForm] = useState<PaymentFormState>(EMPTY_FORM);
 
-  const loadStatus = async () => {
+  const loadStatus = useCallback(async () => {
     setLoading(true);
     try {
       const response = await fetch(`${clientApiBaseUrl}/api/wallet/payment-card`, {
@@ -66,11 +66,11 @@ export function PaymentSettingsPanel() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [t]);
 
   useEffect(() => {
     void loadStatus();
-  }, []);
+  }, [loadStatus]);
 
   const onSave = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();

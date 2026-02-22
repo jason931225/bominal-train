@@ -23,7 +23,8 @@ import type { AuthMeResponse, BominalUser } from "@/lib/types";
  * Multiple calls in the same request reuse the cached result.
  */
 const fetchMe = cache(async (): Promise<BominalUser | null> => {
-  const cookieHeader = cookies().toString();
+  const cookieStore = await cookies();
+  const cookieHeader = cookieStore.toString();
   if (!cookieHeader) {
     return null;
   }

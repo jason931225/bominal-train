@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useLocale } from "@/components/locale-provider";
 import { clientApiBaseUrl } from "@/lib/api-base";
@@ -911,7 +911,7 @@ export function TrainDashboard() {
     await reloadTasks({ forceCompleted: true, refreshCompleted: true });
   };
 
-  const loadCredentialStatus = async () => {
+  const loadCredentialStatus = useCallback(async () => {
     setCredentialLoading(true);
     const abortController = new AbortController();
     const timeoutHandle = window.setTimeout(() => abortController.abort(), CREDENTIAL_STATUS_TIMEOUT_MS);
@@ -954,9 +954,9 @@ export function TrainDashboard() {
       setCredentialStatus((current) => current ?? EMPTY_CREDENTIAL_STATUS);
       setCredentialLoading(false);
     }
-  };
+  }, [t]);
 
-  const loadPaymentCardStatus = async () => {
+  const loadPaymentCardStatus = useCallback(async () => {
     try {
       const response = await fetch(`${clientApiBaseUrl}/api/wallet/payment-card`, {
         credentials: "include",
@@ -970,11 +970,11 @@ export function TrainDashboard() {
     } catch {
       setErrorMessage((current) => current ?? t("train.error.walletStatusLoad"));
     }
-  };
+  }, [t]);
 
   useEffect(() => {
     void loadCredentialStatus();
-  }, []);
+  }, [loadCredentialStatus]);
 
   useEffect(() => {
     if (!TRAIN_AUTO_PAY_FEATURE_ENABLED) {
@@ -982,7 +982,7 @@ export function TrainDashboard() {
       return;
     }
     void loadPaymentCardStatus();
-  }, []);
+  }, [loadPaymentCardStatus]);
 
   useEffect(() => {
     if (!searchUnlocked) {
