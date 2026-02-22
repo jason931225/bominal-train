@@ -327,8 +327,12 @@ do_rollback() {
   current_commit=$(get_current_version)
   
   # Pull and deploy
-  pull_images
-  deploy_services
+  if ! pull_images; then
+    return 1
+  fi
+  if ! deploy_services; then
+    return 1
+  fi
   
   # Update pointers (swap current and previous)
   echo "$prev_commit" > "$DEPLOY_HISTORY_DIR/current"
@@ -368,13 +372,13 @@ pull_images() {
   if ! docker pull "$API_IMAGE"; then
     log_error "Failed to pull API image: $API_IMAGE"
     log_error "Make sure the image exists and you have access"
-    exit 1
+    return 1
   fi
   
   if ! docker pull "$WEB_IMAGE"; then
     log_error "Failed to pull web image: $WEB_IMAGE"
     log_error "Make sure the image exists and you have access"
-    exit 1
+    return 1
   fi
   
   log_ok "Images pulled successfully"
@@ -394,28 +398,46 @@ deploy_services() {
 
     # Deploy database layer first (usually no changes).
     log_info "Ensuring database services are healthy..."
-    "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait postgres redis
+    if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait postgres redis; then
+      log_error "Failed to deploy database services"
+      return 1
+    fi
 
-    # Deploy API domain services first (gateway and private domain APIs).
-    log_info "Deploying API domain services..."
-    "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait --no-deps api-gateway api-train api-restaurant
+    # Deploy API (backend must be ready before web).
+    log_info "Deploying API service..."
+    if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait --no-deps api; then
+      log_error "Failed to deploy API service"
+      return 1
+    fi
 
     # Deploy workers (can run alongside API).
-    log_info "Deploying worker domain services..."
-    "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait --no-deps worker-train worker-restaurant
+    log_info "Deploying Worker services..."
+    if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait --no-deps worker worker-restaurant; then
+      log_error "Failed to deploy worker services"
+      return 1
+    fi
 
     # Deploy web (depends on API being healthy).
     log_info "Deploying Web service..."
-    "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait --no-deps web
+    if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait --no-deps web; then
+      log_error "Failed to deploy web service"
+      return 1
+    fi
 
     # Reload Caddy (if Caddyfile changed, it auto-reloads).
     log_info "Ensuring Caddy is healthy..."
-    "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait caddy
+    if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait caddy; then
+      log_error "Failed to deploy Caddy service"
+      return 1
+    fi
     return 0
   fi
 
   log_warn "No running bominal containers detected. Using first-deploy bootstrap path."
-  "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait postgres redis api-gateway api-train api-restaurant worker-train worker-restaurant web caddy
+  if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait postgres redis api worker worker-restaurant web caddy; then
+    log_error "Failed to deploy services in bootstrap path"
+    return 1
+  fi
 }
 
 # Verify deployment health
@@ -426,32 +448,21 @@ verify_deployment() {
   local retry_delay="${SMOKE_RETRY_DELAY_SECONDS}"
   local attempt=1
   
-  # Check API gateway health
+  # Check API health
   while [[ $attempt -le $max_attempts ]]; do
     if curl -fsS --max-time 5 http://127.0.0.1:8000/health >/dev/null 2>&1; then
-      log_ok "API gateway health check passed"
+      log_ok "API health check passed"
       break
     fi
-    log_warn "Waiting for API gateway... (attempt $attempt/$max_attempts)"
+    log_warn "Waiting for API... (attempt $attempt/$max_attempts)"
     sleep "$retry_delay"
     ((attempt++))
   done
   
   if [[ $attempt -gt $max_attempts ]]; then
-    log_error "API gateway health check failed after $max_attempts attempts"
+    log_error "API health check failed after $max_attempts attempts"
     return 1
   fi
-
-  # Check private domain API health from inside containers.
-  if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" exec -T api-train python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)"; then
-    log_error "api-train health check failed"
-    return 1
-  fi
-  if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" exec -T api-restaurant python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)"; then
-    log_error "api-restaurant health check failed"
-    return 1
-  fi
-  log_ok "Private API health checks passed"
   
   # Check web via Caddy
   attempt=1

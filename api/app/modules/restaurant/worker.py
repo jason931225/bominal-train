@@ -4,7 +4,7 @@ import logging
 from uuid import UUID
 
 from app.core.config import get_settings
-from app.core.crypto.redaction import redact_sensitive
+from app.core.crypto.safe_metadata import validate_safe_metadata
 from app.core.redis import get_redis_client
 from app.core.time import utc_now
 from app.db.models import Task, TaskAttempt
@@ -44,7 +44,7 @@ async def _append_attempt(
             error_code=error_code,
             error_message_safe=error_message_safe,
             duration_ms=0,
-            meta_json_safe=redact_sensitive(meta_json_safe) if meta_json_safe else None,
+            meta_json_safe=validate_safe_metadata(meta_json_safe) if meta_json_safe else None,
             started_at=now,
             finished_at=now,
         )

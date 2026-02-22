@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { z } from "zod";
 
@@ -73,7 +74,6 @@ export function LoginForm() {
       }
 
       router.push(ROUTES.dashboard);
-      router.refresh();
     } catch {
       setFormError(t("auth.apiUnreachable"));
     } finally {
@@ -124,6 +124,12 @@ export function LoginForm() {
         />
         {t("auth.rememberMe")}
       </label>
+
+      <p className="text-right text-sm">
+        <Link href={ROUTES.forgotPassword} className="font-medium text-blossom-600 hover:text-blossom-700">
+          {t("auth.forgotPassword")}
+        </Link>
+      </p>
 
       {formError ? <p className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">{formError}</p> : null}
 

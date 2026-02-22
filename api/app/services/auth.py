@@ -33,6 +33,8 @@ def user_to_out(user: User) -> UserOut:
         billing_postal_code=user.billing_postal_code,
         birthday=user.birthday,
         role=user.role.name,
+        access_status=user.access_status,
+        access_reviewed_at=user.access_reviewed_at,
         created_at=user.created_at,
     )
 
@@ -74,6 +76,16 @@ def request_ip(remote: str | None, forwarded: str | None, cf_connecting_ip: str 
 
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _as_utc(value: datetime) -> datetime:
+    return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+
+
+def should_update_session_activity(*, last_seen_at: datetime, now: datetime, debounce_seconds: int) -> bool:
+    if debounce_seconds <= 0:
+        return True
+    return (_as_utc(now) - _as_utc(last_seen_at)) >= timedelta(seconds=debounce_seconds)
 
 
 def _deleted_email_for_user(user_id: UUID) -> str:
@@ -132,6 +144,8 @@ async def delete_account_data(db: AsyncSession, *, user: User) -> None:
     user.billing_postal_code = None
     user.birthday = None
     user.email_verified_at = None
+    user.access_status = "rejected"
+    user.access_reviewed_at = now
     user.updated_at = now
 
     await clear_payment_card_cache(user_id=user.id)

@@ -12,109 +12,27 @@ Rules:
 
 ## Current Entries
 
-### LOCK-2026-02-21-API-SPLIT-LATENCY-HARDENING
+### LOCK-2026-02-22-HOTFIX-CONSOLIDATION
 - status: RELEASED
 - owner_session: Codex Session
 - scope:
-  - `api/**`
-  - `infra/**`
-  - `docs/**`
-  - `README.md`
+  - `api/app/modules/train/**`
+  - `api/tests/**`
+  - `docs/LOCK.md`
   - `CHANGELOG.md`
-- reason: Implement gateway/domain API split, session/auth/provider latency hardening, and naming-consistent infra/docs updates with verification
-- created_at_utc: 2026-02-21T21:45:00Z
-- released_at_utc: 2026-02-21T21:51:43Z
+- reason: Integrate temporary train hotfix behaviors into main with TDD regressions and cleanup readiness
+- created_at_utc: 2026-02-22T01:05:18Z
+- released_at_utc: 2026-02-22T01:09:50Z
 
-### LOCK-2026-02-18-EMAIL-WORKER-LEGACY-PAYLOAD
-- status: RELEASED
-- owner_session: Codex Session
-- scope:
-  - `api/**`
-  - `docs/**`
-  - `CHANGELOG.md`
-- reason: Diagnose and fix legacy email payload validation failures in deliver_email_job with regression coverage and docs sync
-- created_at_utc: 2026-02-18T14:10:11Z
-- released_at_utc: 2026-02-18T14:15:30Z
-
-### LOCK-2026-02-18-KTX-WAIT-RESERVE-FIX
-- status: RELEASED
-- owner_session: Codex Session
-- scope:
-  - `api/**`
-  - `docs/**`
-  - `CHANGELOG.md`
-- reason: Diagnose and implement KTX wait-reserve candidate selection hotfix with regression coverage and docs/changelog sync
-- created_at_utc: 2026-02-18T13:53:07Z
-- released_at_utc: 2026-02-18T14:02:21Z
-
-### LOCK-2026-02-17-RESY-REFRESH-LOGOUT-STAGE3
-- status: RELEASED
-- owner_session: Codex Session
-- scope:
-  - `api/**`
-  - `docs/**`
-  - `infra/env/prod/api.env.example`
-  - `CHANGELOG.md`
-- reason: Implement Resy auth.refresh and logout contract paths with tests/config/docs synchronization
-- created_at_utc: 2026-02-17T19:17:41Z
-- released_at_utc: 2026-02-17T19:20:54Z
-
-### LOCK-2026-02-17-RESY-STAGE2-ADAPTER
-- status: RELEASED
-- owner_session: Codex Session
-- scope:
-  - `api/**`
-  - `docs/**`
-  - `infra/env/prod/api.env.example`
-  - `CHANGELOG.md`
-- reason: Implement Resy stage-2 adapter operations (profile/search/create/cancel) with tests and docs sync
-- created_at_utc: 2026-02-17T19:07:21Z
-- released_at_utc: 2026-02-17T19:15:29Z
-
-### LOCK-2026-02-17-RESY-THIRDPARTY-CROSSCHECK
+### LOCK-2026-02-22-WAVE1
 - status: RELEASED
 - owner_session: Codex Session
 - scope:
   - `docs/**`
   - `CHANGELOG.md`
-- reason: Cross-check `third_party/resy` endpoint/payload references and synchronize canonical provider docs/plan status
-- created_at_utc: 2026-02-17T18:58:22Z
-- released_at_utc: 2026-02-17T19:05:36Z
-
-### LOCK-2026-02-17-RESY-AUTH-STAGE1
-- status: RELEASED
-- owner_session: Codex Session
-- scope:
-  - `api/**`
-  - `docs/**`
-  - `infra/env/prod/api.env.example`
-  - `CHANGELOG.md`
-- reason: Resy auth.start/auth.complete stage-1 implementation with config/tests/docs updates
-- created_at_utc: 2026-02-17T18:03:07Z
-- released_at_utc: 2026-02-17T18:06:52Z
-
-### LOCK-2026-02-17-OPENTABLE-OTP-RESPONSE-FREEZE
-- status: RELEASED
-- owner_session: Codex Session
-- scope:
-  - `api/**`
-  - `docs/**`
-  - `CHANGELOG.md`
-- reason: OpenTable OTP success/error response schema freeze with adapter normalization and docs/test updates
-- created_at_utc: 2026-02-17T17:59:50Z
-- released_at_utc: 2026-02-17T18:02:29Z
-
-### LOCK-2026-02-17-OPENTABLE-CONFIRMATION-ENRICHMENT
-- status: RELEASED
-- owner_session: Codex Session
-- scope:
-  - `api/**`
-  - `docs/**`
-  - `infra/env/prod/api.env.example`
-  - `CHANGELOG.md`
-- reason: OpenTable create enrichment + safe policy mapping tests/docs follow-up (excluding deferred policy-checkbox doc section)
-- created_at_utc: 2026-02-17T17:49:12Z
-- released_at_utc: 2026-02-17T17:54:09Z
+- reason: Wave 1 stabilization closure verification and evidence updates
+- created_at_utc: 2026-02-22T00:38:25Z
+- released_at_utc: 2026-02-22T00:43:49Z
 
 ### LOCK-2026-02-14-STAGE8
 - status: RELEASED
@@ -201,54 +119,6 @@ Rules:
 - reason: Stage 12 comprehensive perf hardening (frontend tests + benchmark gates + CI/docs)
 - created_at_utc: 2026-02-15T04:24:19Z
 - released_at_utc: 2026-02-15T04:40:39Z
-
-### LOCK-2026-02-17-RESTAURANT-FOUNDATIONS
-- status: RELEASED
-- owner_session: Codex Session
-- scope:
-  - `api/**`
-  - `web/**`
-  - `docs/**`
-  - `infra/tests/**`
-  - `CHANGELOG.md`
-- reason: Restaurant provider contract documentation, adapter readiness, and module implementation foundations
-- created_at_utc: 2026-02-17T15:14:39Z
-- released_at_utc: 2026-02-17T15:26:12Z
-
-### LOCK-2026-02-17-OPENTABLE-ADAPTER-STAGE1
-- status: RELEASED
-- owner_session: Codex Session
-- scope:
-  - `api/**`
-  - `docs/**`
-  - `CHANGELOG.md`
-- reason: OpenTable adapter stage 1 implementation (OTP/auth/search/create/cancel contract paths)
-- created_at_utc: 2026-02-17T15:28:36Z
-- released_at_utc: 2026-02-17T15:34:32Z
-
-### LOCK-2026-02-17-OPENTABLE-CONTRACT-FREEZE
-- status: RELEASED
-- owner_session: Codex Session
-- scope:
-  - `api/**`
-  - `docs/**`
-  - `infra/env/prod/api.env.example`
-  - `CHANGELOG.md`
-- reason: OpenTable search/create contract freeze (operation names and variable schema)
-- created_at_utc: 2026-02-17T15:56:14Z
-- released_at_utc: 2026-02-17T15:58:57Z
-
-### LOCK-2026-02-17-OPENTABLE-SEARCH-HASH
-- status: RELEASED
-- owner_session: Codex Session
-- scope:
-  - `api/**`
-  - `docs/**`
-  - `infra/env/prod/api.env.example`
-  - `CHANGELOG.md`
-- reason: Wire observed OpenTable RestaurantsAvailability + BookDetailsStandardSlotLock contracts and update adapter/docs
-- created_at_utc: 2026-02-17T16:47:45Z
-- released_at_utc: 2026-02-17T17:04:41Z
 
 ## Template (Non-live Example)
 
