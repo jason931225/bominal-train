@@ -254,7 +254,6 @@ export function AccountSettingsPanel({ initialUser }: { initialUser: BominalUser
         return;
       }
       router.push(ROUTES.login);
-      router.refresh();
     } catch {
       setError(t("settings.deleteFailed"));
     } finally {
