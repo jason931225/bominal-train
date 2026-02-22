@@ -100,7 +100,6 @@ export function PasswordResetConfirmForm({
       setNotice(t("auth.passwordResetComplete"));
       setTimeout(() => {
         router.push(`${ROUTES.login}?reset=1`);
-        router.refresh();
       }, 700);
     } catch {
       setFormError(t("auth.apiUnreachable"));

@@ -25,7 +25,6 @@ export function LogoutButton({ variant = "pill" }: LogoutButtonProps) {
         credentials: "include",
       });
       router.push(ROUTES.login);
-      router.refresh();
     } finally {
       setSubmitting(false);
     }
