@@ -61,7 +61,7 @@ async def test_send_test_email_queues_job(client, db_session, monkeypatch):
     assert payload["job_id"] == "job-test-123"
     assert payload["detail"] == "Test email queued"
     assert payload["recipient"] == captured["to"]
-    assert payload["provider"] in {"smtp", "log"}
+    assert payload["provider"] in {"smtp", "log", "resend"}
 
     assert captured["subject"] == "bominal test email"
     assert "test" in captured["tags"]
