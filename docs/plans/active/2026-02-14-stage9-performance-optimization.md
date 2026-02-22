@@ -15,6 +15,23 @@ Reduce end-user latency and server load for train task workflows with backend-fi
   - `users.password_hash`
 - Session/runtime data does not need to be preserved.
 
+## Execution Status (2026-02-15)
+
+- Phase 1 (baseline + RED tests): completed.
+- Phase 2 backend optimization: completed.
+  - Initial bounded list + latest-row summary/index improvements shipped in Stage9 commits.
+  - Stage10 backend follow-up shipped PostgreSQL `DISTINCT ON` latest-row paths with non-Postgres fallback compatibility in `api/app/modules/train/service.py`.
+  - Stage10 additive index migration applied: `api/alembic/versions/20260215_0009_task_list_tail_latency_indexes.py`.
+- Phase 3 frontend optimization: completed.
+  - Train dashboard polling now refreshes active tasks every cycle while completed tasks refresh periodically or on forced triggers (initial load/visibility/action mutations).
+  - Frontend task list updates are key-compared before state commit to reduce unnecessary rerenders.
+- Phase 4 reset workflow: completed (`infra/scripts/reset-local-db.sh` + tests/docs).
+- Stage 12 comprehensive hardening: completed.
+  - Added backend tie-order regression tests for latest-attempt/latest-ticket summary selection determinism.
+  - Added frontend polling behavior unit-test suite with Vitest + Testing Library (`web/components/train/__tests__/train-dashboard.polling.test.tsx`).
+  - Added benchmark compare + hybrid-threshold gate scripts and shell validation coverage (`infra/scripts/benchmark-train-task-list-compare.sh`, `infra/scripts/benchmark-threshold-check.sh`, `infra/tests/test_benchmark_train_task_list_compare.sh`).
+  - Wired web unit tests and benchmark-compare script validation into `.github/workflows/infra-tests.yml`.
+
 ## Scope
 
 - Backend:
