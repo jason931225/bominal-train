@@ -10,26 +10,27 @@ import { getOptionalUser } from "@/lib/server-auth";
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams?: { registered?: string; reset?: string };
+  searchParams?: Promise<{ registered?: string; reset?: string }>;
 }) {
   const user = await getOptionalUser();
   if (user) {
     redirect(ROUTES.dashboard);
   }
   const { t } = await getServerT();
+  const resolvedSearchParams = (await searchParams) ?? {};
 
   return (
     <section className={`mx-auto w-full max-w-md ${UI_CARD_LG}`}>
       <h1 className="font-brand text-4xl font-semibold lowercase leading-none tracking-tight text-blossom-800">bominal</h1>
       <p className={`mt-2 ${UI_BODY_MUTED}`}>{t("auth.loginSubtitle")}</p>
 
-      {searchParams?.registered === "1" ? (
+      {resolvedSearchParams.registered === "1" ? (
         <p className="mt-4 rounded-xl bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
           {t("auth.accountCreatedPleaseSignIn")}
         </p>
       ) : null}
 
-      {searchParams?.reset === "1" ? (
+      {resolvedSearchParams.reset === "1" ? (
         <p className="mt-4 rounded-xl bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
           {t("auth.passwordResetComplete")}
         </p>

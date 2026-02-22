@@ -4,7 +4,7 @@ Thanks for contributing to Bominal.
 
 ## Prerequisites
 
-- Python 3.12+
+- Python 3.14.3+
 - Node.js 20+
 - Postgres + Redis (local services)
 - Git with submodule support
@@ -42,6 +42,12 @@ docker compose -f infra/docker-compose.yml up --build
 - Keep user-facing train times in KST.
 - Use Zod for client-side form validation.
 - Prefer typed API contracts from `web/lib/types.ts`.
+- Keep linting non-interactive in CI/background terminals:
+  - use `web/eslint.config.mjs` with `next/core-web-vitals`;
+  - do not reintroduce `next lint` interactive setup prompts in automation scripts.
+- Next.js 16 migration notes:
+  - use `proxy.ts` (not `middleware.ts`);
+  - `headers()` / `cookies()` APIs are async in server components/helpers (`await headers()`, `await cookies()`).
 - Wordmark (`bominal`) uses `font-brand` + theme-aware color:
   - default: `text-blossom-800`
   - hover: `text-blossom-700`
@@ -130,6 +136,16 @@ Current tracked npm deprecation warnings:
 
 - none (must remain empty in green state).
 - if any warning appears again, add it here with chain/owner/target-removal before staging.
+
+Future-proof dependency policy:
+
+- Prefer latest stable package releases when updating runtime/tooling dependencies.
+- If latest introduces behavior breaks, pin the newest compatible version and record:
+  - incompatibility summary,
+  - blocked package/version,
+  - owner and revisit target date.
+- Deprecation-triggered overhauls are allowed and expected:
+  - replace deprecated dependencies with maintained alternatives when direct upgrade is not sufficient.
 
 Recommended targeted smoke tests after major changes:
 

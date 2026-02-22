@@ -15,7 +15,8 @@ export const dynamic = "force-dynamic";
 
 export default async function MaintenancePage() {
   const user = await requireAdminUser();
-  const locale = localeFromUser(user) ?? localeFromAcceptLanguage(headers().get("accept-language"));
+  const headerStore = await headers();
+  const locale = localeFromUser(user) ?? localeFromAcceptLanguage(headerStore.get("accept-language"));
 
   return (
     <div className="mx-auto max-w-6xl space-y-8">

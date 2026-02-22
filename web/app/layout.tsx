@@ -50,7 +50,8 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const user = await getOptionalUser();
-  const acceptLanguage = headers().get("accept-language");
+  const headerStore = await headers();
+  const acceptLanguage = headerStore.get("accept-language");
   const locale = resolveRequestLocale(localeFromUser(user), acceptLanguage);
   const initialTheme = seasonFromMonth(new Date().getMonth() + 1);
 
