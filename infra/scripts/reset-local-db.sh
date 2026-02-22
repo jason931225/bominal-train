@@ -101,9 +101,18 @@ if ! compose_service_is_running "$COMPOSE_FILE" postgres; then
   "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d postgres
 fi
 
-if [[ "$FRESH_SCHEMA" == "true" ]] && ! compose_service_is_running "$COMPOSE_FILE" api; then
-  log_info "Starting api service (needed for alembic migrations)..."
-  "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d api
+API_SERVICE="$(first_running_compose_service "$COMPOSE_FILE" api-gateway api || true)"
+if [[ -z "$API_SERVICE" ]]; then
+  if "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" config --services 2>/dev/null | grep -Fxq "api-gateway"; then
+    API_SERVICE="api-gateway"
+  else
+    API_SERVICE="api"
+  fi
+fi
+
+if [[ "$FRESH_SCHEMA" == "true" ]] && ! compose_service_is_running "$COMPOSE_FILE" "$API_SERVICE"; then
+  log_info "Starting ${API_SERVICE} service (needed for alembic migrations)..."
+  "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d "$API_SERVICE"
 fi
 
 tmp_dir="$(mktemp -d)"
@@ -169,7 +178,7 @@ GRANT ALL ON SCHEMA public TO public;
 SQL
 
   log_info "Running alembic upgrade head..."
-  "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" exec -T api alembic upgrade head
+  "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" exec -T "$API_SERVICE" alembic upgrade head
 
   if [[ "$PRESERVE_SIGNIN" == "true" ]] && [[ -s "$snapshot_csv" ]]; then
     log_info "Restoring preserved sign-in credentials..."
