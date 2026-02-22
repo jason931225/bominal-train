@@ -3,7 +3,7 @@
 bominal is a modular product foundation with:
 
 - `web/`: Next.js App Router + TypeScript + Tailwind + Zod
-- `api/`: FastAPI + Postgres + Alembic + session auth
+- `api/`: FastAPI + Postgres + Alembic + configurable auth modes (`legacy`/`supabase`/`dual`)
 - `worker`: arq train worker for async Train Tasks + queued email jobs
 - `worker-restaurant`: arq restaurant worker (isolated queue domain scaffold)
 - `redis`: queue + provider rate limiting
@@ -25,8 +25,10 @@ bominal is a modular product foundation with:
 
 - Session cookies must remain `HttpOnly`, `SameSite=Lax`, and `Secure` only in production.
 - Passwords must be hashed with Argon2id; session tokens must be stored hashed.
+- If Supabase auth is enabled, API must verify JWT signature and claims against Supabase JWKS before mapping `sub` to local user role.
 - Payment card payloads are encrypted at rest with envelope encryption (AES-256-GCM DEK + KEK wrapping).
 - CVV may exist only in encrypted Redis cache with bounded TTL and must never be stored in Postgres.
+- CDE Redis for CVV cache (`REDIS_URL_CDE` or fallback `REDIS_URL`) must not be Upstash-hosted; Upstash is allowed only for non-CDE Redis (`REDIS_URL_NON_CDE`).
 - Provider payment egress must use allowlisted domains with TLS verification enabled.
 - Logs, queues, and artifacts must not contain raw cardholder data or raw provider payment payloads.
 
@@ -123,8 +125,23 @@ cp infra/env/prod/web.env.example infra/env/prod/web.env
 cp infra/env/prod/caddy.env.example infra/env/prod/caddy.env
 ```
 
-2) Edit those files and replace every `CHANGE_ME...` value (especially `MASTER_KEY`), and set your public host in `infra/env/prod/caddy.env`.
-   - Keep `infra/env/prod/web.env` `NEXT_PUBLIC_API_BASE_URL` empty so browser auth requests stay same-origin (required for `SameSite=Lax` session cookies).
+Optional:
+- `infra/env/prod/deploy.env` can be created from `infra/env/prod/deploy.env.example` for helper workflows.
+- Canonical `infra/scripts/deploy.sh` does not require `deploy.env`.
+
+2) Edit those files and replace every `CHANGE_ME...` value. Required manual deploy values:
+   - `infra/env/prod/postgres.env`: `POSTGRES_PASSWORD`
+   - `infra/env/prod/api.env`: `GCP_PROJECT_ID`, `INTERNAL_API_KEY`, `MASTER_KEY`, DB password portions of `DATABASE_URL` and `SYNC_DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_JWT_ISSUER`, `RESEND_API_KEY`, and sender-domain placeholder in `EMAIL_FROM_ADDRESS`
+   - `infra/env/prod/web.env`: keep `NEXT_PUBLIC_API_BASE_URL` empty so browser auth requests stay same-origin (required for `SameSite=Lax` session cookies)
+   - `infra/env/prod/caddy.env`: `CADDY_SITE_ADDRESS`, `CADDY_ACME_EMAIL`
+   - Optional, mode-dependent:
+     - `AUTH_MODE=legacy`: Supabase JWT fields can be left empty
+     - `AUTH_MODE=dual`: `SUPABASE_URL`, `SUPABASE_JWT_ISSUER` are still required (and `SUPABASE_JWKS_URL` if overriding default)
+     - `SUPABASE_STORAGE_ENABLED=true`: `SUPABASE_SERVICE_ROLE_KEY`
+     - `EMAIL_PROVIDER=disabled`: Resend credentials may remain unset
+     - `EMAIL_PROVIDER=smtp`: `SMTP_HOST`, `SMTP_PORT`, and SMTP credentials/TLS flags as needed
+
+   Production note: set `DATABASE_URL` / `SYNC_DATABASE_URL` to your managed Postgres endpoint (for example Supabase Postgres). Local dev remains Docker-local Postgres/Redis by default.
 
 3) Deploy (recommended):
 
@@ -183,10 +200,16 @@ Auth uniqueness rules:
 - `email` is unique (case-insensitive)
 - `display_name` is unique (case-insensitive)
 
+Auth modes (`AUTH_MODE`):
+
+- `legacy`: session cookie (`bominal_session`) is required for authenticated routes.
+- `supabase`: API requires `Authorization: Bearer <jwt>`, verifies Supabase JWT (`iss`/`aud`/`exp`), then maps `sub` to local user/role.
+- `dual`: Bearer token is preferred when present; otherwise cookie auth is used.
+
 API access tiers:
 
 - **Public (no login required):** `/api/auth/register`, `/api/auth/login`, `/api/auth/logout`, `/api/auth/request-email-verification`, `/api/auth/verify-email`, `/api/auth/request-password-reset`, `/api/auth/reset-password`
-- **Authenticated session required:** `/api/auth/me`, `/api/auth/account`, `/api/modules`, `/api/train/*`, `/api/wallet/*`, `/api/notifications/*`
+- **Authenticated (`AUTH_MODE` dependent):** `/api/auth/me`, `/api/auth/account`, `/api/modules`, `/api/train/*`, `/api/wallet/*`, `/api/notifications/*`
 - **Internal-only:** `/api/internal/*` with `X-Internal-Api-Key` matching `INTERNAL_API_KEY`
 - **Admin role required:** `/api/admin`
 
@@ -205,7 +228,7 @@ Implemented modules endpoint:
 
 ## Train module API
 
-All endpoints require authenticated session cookie.
+All endpoints require authenticated user context according to `AUTH_MODE`.
 
 - `GET /api/train/stations`
 - `GET /api/train/credentials/status`
@@ -374,8 +397,8 @@ docker compose -f infra/docker compose.prod.yml run --rm api python scripts/chec
 ```
 
 5. **Email configuration**
-   - If email is not in use yet, keep `EMAIL_PROVIDER=disabled` (default in prod template).
-   - Optional: for transactional email later, set `EMAIL_PROVIDER=resend` and configure `RESEND_API_KEY`.
+   - Production template defaults to `EMAIL_PROVIDER=resend`; replace `RESEND_API_KEY` and sender domain placeholders before deploy.
+   - If email is intentionally disabled for an environment, set `EMAIL_PROVIDER=disabled`.
    - Optional: tune Resend HTTP timeout with `RESEND_TIMEOUT_SECONDS` (default `12`).
    - Optional SMTP relay: set `EMAIL_PROVIDER=smtp` and configure `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`.
    - When enabled, set `EMAIL_FROM_ADDRESS` / `EMAIL_FROM_NAME` to your sender identity.
