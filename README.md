@@ -113,6 +113,10 @@ cp infra/env/prod/web.env.example infra/env/prod/web.env
 cp infra/env/prod/caddy.env.example infra/env/prod/caddy.env
 ```
 
+Optional:
+- `infra/env/prod/deploy.env` can be created from `infra/env/prod/deploy.env.example` for helper workflows.
+- Canonical `infra/scripts/deploy.sh` does not require `deploy.env`.
+
 2) Edit those files and replace every `CHANGE_ME...` value. Required manual deploy values:
    - `infra/env/prod/postgres.env`: `POSTGRES_PASSWORD`
    - `infra/env/prod/api.env`: `GCP_PROJECT_ID`, `INTERNAL_API_KEY`, `MASTER_KEY`, DB password portions of `DATABASE_URL` and `SYNC_DATABASE_URL`
