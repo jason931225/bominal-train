@@ -10,7 +10,7 @@ import { UI_BODY_MUTED, UI_CARD_LG, UI_TITLE_LG } from "@/lib/ui";
 export default async function ResetPasswordPage({
   searchParams,
 }: {
-  searchParams?: { email?: string; code?: string };
+  searchParams?: Promise<{ email?: string; code?: string }>;
 }) {
   const user = await getOptionalUser();
   if (user) {
@@ -18,8 +18,9 @@ export default async function ResetPasswordPage({
   }
 
   const { t } = await getServerT();
-  const initialEmail = searchParams?.email ?? "";
-  const initialCode = searchParams?.code ?? "";
+  const resolvedSearchParams = (await searchParams) ?? {};
+  const initialEmail = resolvedSearchParams.email ?? "";
+  const initialCode = resolvedSearchParams.code ?? "";
 
   return (
     <section className={`mx-auto w-full max-w-md ${UI_CARD_LG}`}>

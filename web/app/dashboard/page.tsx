@@ -29,7 +29,8 @@ const FALLBACK_MODULES: BominalModule[] = [
 ];
 
 async function getModules() {
-  const cookieHeader = cookies().toString();
+  const cookieStore = await cookies();
+  const cookieHeader = cookieStore.toString();
   const response = await fetch(`${serverApiBaseUrl}/api/modules`, {
     headers: { cookie: cookieHeader },
     cache: "no-store",
@@ -46,15 +47,17 @@ async function getModules() {
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams?: { denied?: string };
+  searchParams?: Promise<{ denied?: string }>;
 }) {
   const user = await requireUser();
-  const locale = localeFromUser(user) ?? localeFromAcceptLanguage(headers().get("accept-language"));
+  const resolvedSearchParams = (await searchParams) ?? {};
+  const headerStore = await headers();
+  const locale = localeFromUser(user) ?? localeFromAcceptLanguage(headerStore.get("accept-language"));
   const modules = await getModules();
 
   return (
     <section className="space-y-8">
-      {searchParams?.denied === "1" ? (
+      {resolvedSearchParams.denied === "1" ? (
         <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-700">
           {t(locale, "dashboard.denied")}
         </p>

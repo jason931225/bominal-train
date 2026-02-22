@@ -39,6 +39,11 @@ NPM warning policy:
   - owner and target removal date/version.
 - Silent acceptance/suppression of npm warnings is not permitted.
 
+Future-proofing rule:
+- During dependency modernization stages, default target is latest stable runtime + package versions.
+- Targeted overhauls (including dependency replacement) are permitted when a dependency is deprecated or unmaintained.
+- Any deferred upgrade must include an explicit owner and revisit target before staging.
+
 Staging is blocked unless this sequence (`Docs > Plan > Test`) is satisfied.
 
 ## Docs-last prerequisite (mandatory)

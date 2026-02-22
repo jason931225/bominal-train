@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useLocale } from "@/components/locale-provider";
 import { clientApiBaseUrl } from "@/lib/api-base";
@@ -128,7 +128,7 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
     return attempts.slice(start, start + attemptsPageSize);
   }, [attempts, attemptsPage, attemptsPageSize]);
 
-  const loadDetail = async () => {
+  const loadDetail = useCallback(async () => {
     try {
       const response = await fetch(`${clientApiBaseUrl}/api/train/tasks/${taskId}`, {
         credentials: "include",
@@ -152,7 +152,7 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
     } catch {
       setError(t("train.error.taskDetailLoad"));
     }
-  };
+  }, [taskId, t]);
 
   useEffect(() => {
     void loadDetail();
@@ -160,7 +160,7 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
       void loadDetail();
     }, POLL_MS);
     return () => window.clearInterval(interval);
-  }, [taskId]);
+  }, [loadDetail]);
 
   useEffect(() => {
     setAttemptsPage((current) => Math.min(Math.max(1, current), totalAttemptPages));
