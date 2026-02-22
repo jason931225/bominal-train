@@ -8,6 +8,7 @@ bominal is a modular product foundation with:
 - `worker-restaurant`: arq restaurant worker (isolated queue domain scaffold)
 - `redis`: queue + provider rate limiting
 - `third_party/srtgo`: read-only provider behavior reference (submodule)
+- `third_party/catchtable`: read-only provider endpoint reference for restaurant module
 
 ## Documentation pack
 
@@ -159,6 +160,7 @@ docker compose -f infra/docker compose.prod.yml ps
 - `infra/docker compose.yml` (development)
 - `infra/docker compose.prod.yml` (deployment)
 - `third_party/srtgo` (read-only reference)
+- `third_party/catchtable` (read-only reference)
 
 ## Auth + modules
 
@@ -387,6 +389,11 @@ Or run the bundled checker:
 ## Notes on provider implementation
 
 - Source-of-truth reference repo is available at `third_party/srtgo`.
+- CatchTable restaurant endpoint reference files are available at `third_party/catchtable` (read-only):
+  - `third_party/catchtable/reservation.py`
+  - `third_party/catchtable/session.py`
+  - `third_party/catchtable/configs.py`
+  - `third_party/catchtable/main.py`
 - `TRAIN_PROVIDER_MODE` options:
   - `mock`: mock schedules + mock reserve/pay
   - `hybrid`: live schedules first, fallback to mock; mock reserve/pay

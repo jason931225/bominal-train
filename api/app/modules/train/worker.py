@@ -95,10 +95,33 @@ def _seat_preference_order(seat_class: str) -> tuple[str, ...]:
     return ("general",)
 
 
-def _pick_reservable_seat_class(availability: dict[str, bool], seat_class: str) -> str | None:
+def _to_int(value: Any, default: int = 0) -> int:
+    try:
+        return int(str(value))
+    except (TypeError, ValueError):
+        return default
+
+
+def _wait_reserve_supported(schedule: ProviderSchedule) -> bool:
+    metadata = schedule.metadata or {}
+    if schedule.provider == "KTX":
+        return _to_int(metadata.get("wait_reserve_flag"), default=-1) >= 0
+    if schedule.provider == "SRT":
+        return _to_int(metadata.get("reserve_wait_code"), default=-1) >= 0
+    return False
+
+
+def _standby_seat_class(seat_class: str) -> str:
+    return "special" if seat_class in {"special", "special_preferred"} else "general"
+
+
+def _pick_reservable_seat_class(schedule: ProviderSchedule, seat_class: str) -> str | None:
+    availability = schedule.availability or {}
     for candidate in _seat_preference_order(seat_class):
         if bool(availability.get(candidate)):
             return candidate
+    if _wait_reserve_supported(schedule):
+        return _standby_seat_class(seat_class)
     return None
 
 
@@ -587,7 +610,7 @@ async def _provider_search_and_reserve(
 
     for row in ranked_for_provider:
         candidate = schedule_map.get(row["schedule_id"])
-        chosen_seat = _pick_reservable_seat_class(candidate.availability, spec["seat_class"]) if candidate else None
+        chosen_seat = _pick_reservable_seat_class(candidate, spec["seat_class"]) if candidate else None
         if candidate and chosen_seat:
             selected_schedule = candidate
             selected_rank = int(row["rank"])

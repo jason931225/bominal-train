@@ -24,7 +24,11 @@ async def get_queue_pool() -> ArqRedis:
     return _pool
 
 
-async def enqueue_train_task(task_id: str, defer_seconds: float = 0.0) -> None:
+def _result_key(job_id: str) -> str:
+    return f"arq:result:{job_id}"
+
+
+async def enqueue_train_task(task_id: str, defer_seconds: float = 0.0) -> bool:
     # Queue safety contract: task queues only carry task identifiers.
     try:
         UUID(task_id)
@@ -32,8 +36,13 @@ async def enqueue_train_task(task_id: str, defer_seconds: float = 0.0) -> None:
         raise ValueError("train queue payload must contain a valid task UUID only") from exc
 
     pool = await get_queue_pool()
-    job_id = f"train:{task_id}"
     if defer_seconds > 0:
-        await pool.enqueue_job("run_train_task", task_id, _job_id=job_id, _defer_by=defer_seconds)
-    else:
-        await pool.enqueue_job("run_train_task", task_id, _job_id=job_id)
+        # Deferred polling retries must use non-deterministic ids so the current
+        # running job can schedule the next attempt without self-dedup blocking.
+        job = await pool.enqueue_job("run_train_task", task_id, _defer_by=defer_seconds)
+        return job is not None
+
+    job_id = f"train:{task_id}"
+    await pool.delete(_result_key(job_id))
+    job = await pool.enqueue_job("run_train_task", task_id, _job_id=job_id)
+    return job is not None
