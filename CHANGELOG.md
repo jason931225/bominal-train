@@ -86,6 +86,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- [3235c90] Prevented Vitest CI runs from loading Playwright e2e specs by excluding `e2e/**` and `playwright.config.ts` from the unit-test runner (`web/vitest.config.ts`).
 - [8938629] Restored wait-reserve-aware seat-class fallback so waitlist-capable KTX/SRT schedules can proceed when direct seat availability is false (`api/app/modules/train/worker.py`).
 - [59ff9b6] Prevented deferred polling self-dedup lockout and stale deterministic enqueue result reuse by splitting deferred/immediate ARQ enqueue semantics (`api/app/modules/train/queue.py`).
 - [15bf7fc] Prevented rollback pointer swap on rollback-deploy failure by making rollback deploy/pull failures propagate and adding canary-stage regression coverage (`infra/scripts/deploy.sh`, `infra/tests/test_deploy_canary_stages.sh`).
