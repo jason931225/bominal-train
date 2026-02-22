@@ -38,6 +38,17 @@ def test_parses_provider_allowlist_from_csv(monkeypatch) -> None:
     assert settings.payment_provider_allowed_hosts == ["app.srail.or.kr", "smart.letskorail.com"]
 
 
+def test_parses_optional_egress_proxy_urls(monkeypatch) -> None:
+    monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.setenv("TRAIN_PROVIDER_EGRESS_PROXY_URL", " http://egress-train:8080 ")
+    monkeypatch.setenv("RESTAURANT_PROVIDER_EGRESS_PROXY_URL", "")
+
+    settings = Settings(_env_file=None)
+
+    assert settings.train_provider_egress_proxy_url == "http://egress-train:8080"
+    assert settings.restaurant_provider_egress_proxy_url is None
+
+
 def test_dual_mode_allows_legacy_only_configuration(monkeypatch) -> None:
     monkeypatch.setenv("APP_ENV", "development")
     monkeypatch.setenv("AUTH_MODE", "dual")

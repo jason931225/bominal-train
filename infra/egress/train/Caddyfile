@@ -1,0 +1,63 @@
+{
+	admin off
+	auto_https off
+}
+
+:8080 {
+	@health path /health
+	handle @health {
+		respond "ok" 200
+	}
+
+	@method_disallowed {
+		not method GET POST HEAD
+	}
+	respond @method_disallowed "method not allowed" 405
+
+	@srt path /srt/*
+	handle @srt {
+		uri strip_prefix /srt
+		reverse_proxy https://app.srail.or.kr {
+			header_up Host app.srail.or.kr
+			header_up -Proxy
+			header_up -Proxy-Authorization
+			transport http {
+				tls_server_name app.srail.or.kr
+				dial_timeout 3s
+				response_header_timeout 20s
+			}
+		}
+	}
+
+	@korail path /korail/*
+	handle @korail {
+		uri strip_prefix /korail
+		reverse_proxy https://smart.letskorail.com {
+			header_up Host smart.letskorail.com
+			header_up -Proxy
+			header_up -Proxy-Authorization
+			transport http {
+				tls_server_name smart.letskorail.com
+				dial_timeout 3s
+				response_header_timeout 20s
+			}
+		}
+	}
+
+	@netfunnel path /netfunnel/*
+	handle @netfunnel {
+		uri strip_prefix /netfunnel
+		reverse_proxy https://nf.letskorail.com {
+			header_up Host nf.letskorail.com
+			header_up -Proxy
+			header_up -Proxy-Authorization
+			transport http {
+				tls_server_name nf.letskorail.com
+				dial_timeout 3s
+				response_header_timeout 20s
+			}
+		}
+	}
+
+	respond "egress route not allowed" 403
+}

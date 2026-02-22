@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable, Protocol
+from typing import Any, Awaitable, Callable, Mapping, Protocol
 from urllib.parse import urljoin, urlparse
 
 import httpx
@@ -43,6 +43,22 @@ _EXECUTE_URL_TOKENS = (
 _REDIRECT_STATUS_CODES = {301, 302, 303, 307, 308}
 _MAX_REDIRECT_HOPS = 3
 
+_EGRESS_DOMAIN_SET_TRAIN = "train"
+_EGRESS_DOMAIN_SET_RESTAURANT = "restaurant"
+
+_TRAIN_EGRESS_PROXY_PATH_BY_HOST: dict[str, str] = {
+    "app.srail.or.kr": "srt",
+    "smart.letskorail.com": "korail",
+    "nf.letskorail.com": "netfunnel",
+}
+
+_RESTAURANT_EGRESS_PROXY_PATH_BY_HOST: dict[str, str] = {
+    "opentable.com": "opentable",
+    "www.opentable.com": "opentable",
+    "api.resy.com": "resy",
+    "resy.com": "resy",
+}
+
 
 def _normalize_allowed_hosts(hosts: list[str]) -> set[str]:
     return {str(host).strip().lower() for host in hosts if str(host).strip()}
@@ -61,6 +77,56 @@ def _assert_allowed_host(url: str, *, allowed_hosts: set[str]) -> None:
     host = (parsed.hostname or "").lower()
     if not _is_host_allowed(host=host, allowed_hosts=allowed_hosts):
         raise RuntimeError(f"provider egress host is not allowlisted: {host or 'unknown'}")
+
+
+def _resolve_proxy_path_prefix(host: str, *, host_path_map: Mapping[str, str]) -> str | None:
+    host_lower = host.lower().strip()
+    best_match: tuple[int, str] | None = None
+    for mapped_host, mapped_path in host_path_map.items():
+        normalized_host = str(mapped_host).lower().strip()
+        if not normalized_host:
+            continue
+        if host_lower == normalized_host or host_lower.endswith(f".{normalized_host}"):
+            score = len(normalized_host)
+            if best_match is None or score > best_match[0]:
+                best_match = (score, str(mapped_path))
+    return best_match[1] if best_match else None
+
+
+def _rewrite_url_for_egress_proxy(
+    url: str,
+    *,
+    proxy_base_url: str | None,
+    host_path_map: Mapping[str, str],
+) -> str:
+    if not proxy_base_url:
+        return url
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower().strip()
+    if not host:
+        raise RuntimeError("provider egress proxy requires absolute URL host")
+
+    route_prefix = _resolve_proxy_path_prefix(host, host_path_map=host_path_map)
+    if route_prefix is None:
+        raise RuntimeError(f"provider egress proxy route is not configured for host: {host}")
+
+    normalized_prefix = f"/{route_prefix.strip('/')}"
+    path = parsed.path or "/"
+    if not path.startswith("/"):
+        path = f"/{path}"
+    query_suffix = f"?{parsed.query}" if parsed.query else ""
+    return f"{proxy_base_url.rstrip('/')}{normalized_prefix}{path}{query_suffix}"
+
+
+def _resolve_egress_proxy_config(*, settings: Any, domain_set: str) -> tuple[str | None, dict[str, str]]:
+    normalized = domain_set.strip().lower()
+    if normalized == _EGRESS_DOMAIN_SET_TRAIN:
+        proxy_url = str(settings.train_provider_egress_proxy_url or "").strip() or None
+        return proxy_url, dict(_TRAIN_EGRESS_PROXY_PATH_BY_HOST)
+    if normalized == _EGRESS_DOMAIN_SET_RESTAURANT:
+        proxy_url = str(settings.restaurant_provider_egress_proxy_url or "").strip() or None
+        return proxy_url, dict(_RESTAURANT_EGRESS_PROXY_PATH_BY_HOST)
+    return None, {}
 
 
 @dataclass(slots=True)
@@ -310,9 +376,13 @@ class ResilientTransport:
 
 
 class HttpxTransport:
-    def __init__(self) -> None:
+    def __init__(self, *, egress_domain_set: str = _EGRESS_DOMAIN_SET_TRAIN) -> None:
         settings = get_settings()
         self._allowed_hosts = _normalize_allowed_hosts(settings.payment_provider_allowed_hosts)
+        self._egress_proxy_url, self._egress_proxy_path_by_host = _resolve_egress_proxy_config(
+            settings=settings,
+            domain_set=egress_domain_set,
+        )
         self._client = httpx.AsyncClient(
             follow_redirects=False,
             trust_env=settings.payment_transport_trust_env,
@@ -350,9 +420,14 @@ class HttpxTransport:
 
         for _ in range(_MAX_REDIRECT_HOPS + 1):
             _assert_allowed_host(current_url, allowed_hosts=self._allowed_hosts)
+            target_url = _rewrite_url_for_egress_proxy(
+                current_url,
+                proxy_base_url=self._egress_proxy_url,
+                host_path_map=self._egress_proxy_path_by_host,
+            )
             response = await self._client.request(
                 current_method,
-                current_url,
+                target_url,
                 headers=headers,
                 json=current_json,
                 data=current_data,
@@ -406,6 +481,7 @@ class CurlCffiTransport:
         *,
         impersonate: str = "chrome131_android",
         default_headers: dict[str, str] | None = None,
+        egress_domain_set: str = _EGRESS_DOMAIN_SET_TRAIN,
     ) -> None:
         settings = get_settings()
         try:
@@ -415,11 +491,15 @@ class CurlCffiTransport:
 
         self._requests = curl_cffi.requests
         self._allowed_hosts = _normalize_allowed_hosts(settings.payment_provider_allowed_hosts)
+        self._egress_proxy_url, self._egress_proxy_path_by_host = _resolve_egress_proxy_config(
+            settings=settings,
+            domain_set=egress_domain_set,
+        )
         self._impersonate = self._resolve_impersonate(impersonate)
         self._session = self._requests.AsyncSession(impersonate=self._impersonate)
         if default_headers:
             self._session.headers.update(default_headers)
-        self._fallback_transport = HttpxTransport()
+        self._fallback_transport = HttpxTransport(egress_domain_set=egress_domain_set)
 
     def _resolve_impersonate(self, desired: str) -> str:
         browser_type = getattr(self._requests, "BrowserType", None)
@@ -458,11 +538,16 @@ class CurlCffiTransport:
     ) -> TransportResponse:
         resolved_operation = (operation or _DEFAULT_OPERATION).lower()
         _assert_allowed_host(url, allowed_hosts=self._allowed_hosts)
+        target_url = _rewrite_url_for_egress_proxy(
+            url,
+            proxy_base_url=self._egress_proxy_url,
+            host_path_map=self._egress_proxy_path_by_host,
+        )
         curl_timeout = timeout.total if isinstance(timeout, OperationTimeout) else timeout
         try:
             response = await self._session.request(
                 method,
-                url,
+                target_url,
                 headers=headers,
                 json=json_body,
                 data=data,

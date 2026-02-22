@@ -30,6 +30,7 @@ bominal is a modular product foundation with:
 - CVV may exist only in encrypted Redis cache with bounded TTL and must never be stored in Postgres.
 - CDE Redis for CVV cache (`REDIS_URL_CDE` or fallback `REDIS_URL`) must not be Upstash-hosted; Upstash is allowed only for non-CDE Redis (`REDIS_URL_NON_CDE`).
 - Provider payment egress must use allowlisted domains with TLS verification enabled.
+- Optional provider egress gateways (`TRAIN_PROVIDER_EGRESS_PROXY_URL`, `RESTAURANT_PROVIDER_EGRESS_PROXY_URL`) route outbound provider traffic through internal deny-by-default Caddy proxies.
 - Logs, queues, and artifacts must not contain raw cardholder data or raw provider payment payloads.
 
 ## Versioning contract
@@ -73,6 +74,8 @@ Services started by compose:
 - api: `http://localhost:8000`
 - postgres: `localhost:5432`
 - redis: `localhost:6379`
+- egress-train: internal Caddy egress proxy for SRT/KTX/NetFunnel provider routes
+- egress-restaurant: internal Caddy egress proxy for OpenTable/Resy provider routes
 - mailpit (dev inbox): `http://localhost:8025` (SMTP on `localhost:1025`)
 - worker: consumes queued Train Tasks + queued email jobs
 - worker-restaurant: reserved for restaurant queue-domain execution

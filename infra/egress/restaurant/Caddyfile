@@ -1,0 +1,48 @@
+{
+	admin off
+	auto_https off
+}
+
+:8080 {
+	@health path /health
+	handle @health {
+		respond "ok" 200
+	}
+
+	@method_disallowed {
+		not method GET POST HEAD
+	}
+	respond @method_disallowed "method not allowed" 405
+
+	@opentable path /opentable/*
+	handle @opentable {
+		uri strip_prefix /opentable
+		reverse_proxy https://www.opentable.com {
+			header_up Host www.opentable.com
+			header_up -Proxy
+			header_up -Proxy-Authorization
+			transport http {
+				tls_server_name www.opentable.com
+				dial_timeout 3s
+				response_header_timeout 20s
+			}
+		}
+	}
+
+	@resy path /resy/*
+	handle @resy {
+		uri strip_prefix /resy
+		reverse_proxy https://api.resy.com {
+			header_up Host api.resy.com
+			header_up -Proxy
+			header_up -Proxy-Authorization
+			transport http {
+				tls_server_name api.resy.com
+				dial_timeout 3s
+				response_header_timeout 20s
+			}
+		}
+	}
+
+	respond "egress route not allowed" 403
+}

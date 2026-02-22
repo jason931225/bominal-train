@@ -40,6 +40,8 @@ Each service has a health check in `docker-compose.prod.yml`:
 |----------|--------------|--------------|
 | postgres | `pg_isready` | 0s |
 | redis    | `redis-cli ping` | 0s |
+| egress-train | `wget --spider` (port 8080/health) | 10s |
+| egress-restaurant | `wget --spider` (port 8080/health) | 10s |
 | api-gateway | Python urllib (port 8000/health) | 120s |
 | api-train | Python urllib (port 8000/health) | 60s |
 | api-restaurant | Python urllib (port 8000/health) | 60s |
@@ -247,6 +249,7 @@ Optional, mode-dependent values:
 - `SUPABASE_STORAGE_ENABLED=true`: `SUPABASE_SERVICE_ROLE_KEY`
 - `EMAIL_PROVIDER=disabled`: Resend credentials may remain unset
 - `EMAIL_PROVIDER=smtp`: `SMTP_HOST`, `SMTP_PORT`, and SMTP credentials/TLS settings as required
+- `TRAIN_PROVIDER_EGRESS_PROXY_URL` / `RESTAURANT_PROVIDER_EGRESS_PROXY_URL`: set to internal egress gateways when outbound provider traffic must be centralized through path-allowlist proxies
 
 Production note: set `DATABASE_URL` / `SYNC_DATABASE_URL` to your managed Postgres endpoint (for example Supabase Postgres). Local dev defaults remain Docker-local Postgres/Redis.
 

@@ -193,7 +193,7 @@ class OpenTableProviderClient:
         confirmation_operation_name: str = _DEFAULT_CONFIRMATION_OPERATION_NAME,
         confirmation_operation_sha256: str = "",
     ) -> None:
-        self._transport = transport or HttpxTransport()
+        self._transport = transport or HttpxTransport(egress_domain_set="restaurant")
         self._base_url = base_url.rstrip("/")
         self._timeout_seconds = timeout_seconds
         self._auth_start_path = auth_start_path or _DEFAULT_AUTH_START_PATH
