@@ -341,6 +341,11 @@ done
 next_public_api_base_url="$(env_key_value "infra/env/prod/web.env" "NEXT_PUBLIC_API_BASE_URL")"
 require_https_url_or_empty "$next_public_api_base_url" "NEXT_PUBLIC_API_BASE_URL"
 
+next_public_font_base_url="$(env_key_value "infra/env/prod/web.env" "NEXT_PUBLIC_FONT_BASE_URL")"
+if [[ -n "$next_public_font_base_url" ]]; then
+  require_https_url "$next_public_font_base_url" "NEXT_PUBLIC_FONT_BASE_URL"
+fi
+
 echo "==> Checking required Caddy settings"
 required_caddy_keys=(
   "CADDY_SITE_ADDRESS"
