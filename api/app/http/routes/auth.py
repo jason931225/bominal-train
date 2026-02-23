@@ -13,7 +13,14 @@ from sqlalchemy.orm import joinedload
 
 from app.http.deps import auth_rate_limit, get_current_user
 from app.core.config import get_settings
-from app.core.security import hash_password, hash_token, new_session_token, session_expiry, verify_password
+from app.core.security import (
+    hash_password,
+    hash_token,
+    new_session_token,
+    password_needs_rehash,
+    session_expiry,
+    verify_password,
+)
 from app.db.models import PasswordResetToken, Role, Session, User, VerificationToken
 from app.db.session import get_db
 from app.schemas.auth import (
@@ -271,8 +278,14 @@ async def login(
     result = await db.execute(select(User).options(joinedload(User.role)).where(User.email == email))
     user = result.scalar_one_or_none()
 
-    if user is None or not verify_password(payload.password, user.password_hash):
+    if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=INVALID_LOGIN_DETAIL)
+    if not verify_password(payload.password, user.password_hash):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=INVALID_LOGIN_DETAIL)
+
+    # Opportunistic migration: rehash on successful login when policy changed.
+    if password_needs_rehash(user.password_hash):
+        user.password_hash = hash_password(payload.password)
 
     session_token = new_session_token()
     session = Session(
