@@ -9,7 +9,7 @@ Provide a reviewer-friendly stabilization gate view for Wave 1 using objective r
 `bominal` is a modular monorepo with:
 - `web/` (Next.js App Router UI)
 - `api/` (FastAPI backend)
-- `worker` and `worker-restaurant` (arq background execution)
+- `worker` (arq background execution)
 - `postgres` + `redis` infrastructure
 
 Primary user-facing capability is Train task automation. Restaurant and Calendar remain staged behind controlled exposure.

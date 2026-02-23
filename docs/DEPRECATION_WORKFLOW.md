@@ -90,7 +90,7 @@ Optional lifecycle fields:
 
 ### GitHub CI
 
-- Workflow: `.github/workflows/infra-tests.yml`
+- Workflow: `.github/workflows/ci-infra-quality-gates.yml`
 - Gate type: blocking on both `pull_request` and `push` to `main`.
 - Required checks:
   - deprecation policy validation

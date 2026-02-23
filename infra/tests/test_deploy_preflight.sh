@@ -34,6 +34,7 @@ EOF_ENV
 
 cat >"$TMP_DIR/repo/infra/env/prod/web.env" <<'EOF_ENV'
 NEXT_PUBLIC_API_BASE_URL=https://example.com
+API_SERVER_URL=http://api:8000
 EOF_ENV
 
 cat >"$TMP_DIR/repo/infra/env/prod/caddy.env" <<'EOF_ENV'
@@ -135,7 +136,7 @@ fi
     exit 0
   fi
   if [[ "$*" == *"ps --services --filter status=running"* ]]; then
-    printf 'api-gateway\nweb\n'
+    printf 'api\nweb\n'
     exit 0
   fi
   exit 0

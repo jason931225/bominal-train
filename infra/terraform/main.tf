@@ -6,17 +6,6 @@ locals {
 }
 
 # -----------------------------------------------------------------------------
-# Artifact Registry (Docker images)
-# -----------------------------------------------------------------------------
-
-resource "google_artifact_registry_repository" "bominal" {
-  location      = var.region
-  repository_id = var.artifact_repo_id
-  description   = "bominal container images"
-  format        = "DOCKER"
-}
-
-# -----------------------------------------------------------------------------
 # GitHub Actions Workload Identity Federation (OIDC)
 # -----------------------------------------------------------------------------
 
@@ -60,27 +49,6 @@ resource "google_service_account_iam_binding" "github_actions_wif" {
   members = [
     "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.repository/${local.github_repo_full}",
   ]
-}
-
-# Permissions for CI: build + push images to Artifact Registry.
-resource "google_project_iam_member" "github_actions_artifact_writer" {
-  project = var.project_id
-  role    = "roles/artifactregistry.writer"
-  member  = "serviceAccount:${google_service_account.github_actions.email}"
-}
-
-# Permissions for deploy: SSH via OS Login + instance access.
-# NOTE: least-privilege can be tightened further once we standardize the deploy path.
-resource "google_project_iam_member" "github_actions_compute_os_admin" {
-  project = var.project_id
-  role    = "roles/compute.osAdminLogin"
-  member  = "serviceAccount:${google_service_account.github_actions.email}"
-}
-
-resource "google_project_iam_member" "github_actions_compute_instance_admin" {
-  project = var.project_id
-  role    = "roles/compute.instanceAdmin.v1"
-  member  = "serviceAccount:${google_service_account.github_actions.email}"
 }
 
 # -----------------------------------------------------------------------------
@@ -138,4 +106,3 @@ resource "google_compute_instance" "deploy" {
     enable-oslogin = "TRUE"
   }
 }
-

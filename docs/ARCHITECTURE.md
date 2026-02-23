@@ -7,8 +7,7 @@ Bominal is a modular monorepo with three runtime tiers:
 1. **Web** (`web/`): Next.js App Router UI, server-rendered pages + client components
 2. **API** (`api/`): FastAPI REST backend with configurable auth mode (`legacy` | `supabase` | `dual`)
 3. **Workers**:
-   - `api/app/worker_train.py` -> train-task + queued email execution
-   - `api/app/worker_restaurant.py` -> restaurant queue-domain execution scaffold
+   - `api/app/worker.py` -> train-task + queued email execution
 
 Shared infrastructure:
 
@@ -26,20 +25,17 @@ Shared infrastructure:
 
 Queue domain contracts:
 
-- `train:queue` is consumed by `worker-train` (`app.worker_train.WorkerTrainSettings`) for train tasks and queued email delivery jobs.
-- `restaurant:queue` is consumed by `worker-restaurant` (`app.worker_restaurant.WorkerRestaurantSettings`) for restaurant-domain jobs.
+- `train:queue` is consumed by `worker` (`app.worker.WorkerSettings`) for train tasks and queued email delivery jobs.
+- `restaurant:queue` remains reserved for future restaurant-domain execution; no dedicated restaurant worker container is active in the monolithic runtime profile.
 
 ## Runtime topology (Docker Compose)
 
 - `infra/docker-compose.yml` (development): hot reload + bind mounts
 - `infra/docker-compose.prod.yml` (deployment): immutable containers, no dev reload flags
-- API runtime split:
-  - `api-gateway` (public edge API, bound to host `:8000`)
-  - `api-train` (private train-domain API container)
-  - `api-restaurant` (private restaurant-domain API container)
-- Worker runtime split:
-  - `worker-train` consumes `train:queue`
-  - `worker-restaurant` consumes `restaurant:queue`
+- API runtime:
+  - `api` (public FastAPI runtime, bound to host `:8000`)
+- Worker runtime:
+  - `worker` consumes `train:queue`
 - Internal outbound-control runtime:
   - `egress-train` (`infra/egress/train/Caddyfile`)
   - `egress-restaurant` (`infra/egress/restaurant/Caddyfile`)
@@ -47,7 +43,7 @@ Queue domain contracts:
 Main service ports:
 
 - Web: `3000`
-- API gateway: `8000`
+- API: `8000`
 - Postgres: `5432`
 - Redis: `6379`
 - Mailpit UI (dev): `8025`

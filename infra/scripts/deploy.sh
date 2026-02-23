@@ -1,28 +1,26 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Zero-Downtime Deployment Script for bominal (CI/CD Version)
+# Zero-Downtime Deployment Script for bominal (Monolithic Runtime)
 # ==============================================================================
-# This script pulls pre-built images from GHCR and deploys
-# them with zero downtime. Images are built on GitHub Actions runners instead
-# of the e2-micro VM to prevent OOM issues.
 #
 # Usage:
 #   ./deploy.sh              # Deploy latest images
 #   ./deploy.sh <commit>     # Deploy specific commit SHA
-#   ./deploy.sh --rollback   # Rollback to previous deployment
+#   ./deploy.sh --rollback   # Roll back to previous deployment
 #   ./deploy.sh --status     # Show deployment status
 #
 # Environment:
-#   GHCR_NAMESPACE         - GHCR image namespace (default: ghcr.io/jason931225/bominal)
-#   GHCR_USERNAME          - Optional GHCR username for docker login
-#   GHCR_TOKEN             - Optional GHCR token/PAT for docker login
-#   API_IMAGE              - Legacy override for all API/worker images
-#   API_GATEWAY_IMAGE      - Override API gateway image URL
-#   API_TRAIN_IMAGE        - Override API train image URL
-#   API_RESTAURANT_IMAGE   - Override API restaurant image URL
-#   WORKER_TRAIN_IMAGE     - Override train worker image URL
-#   WORKER_RESTAURANT_IMAGE - Override restaurant worker image URL
-#   WEB_IMAGE              - Override web image URL
+#   GHCR_NAMESPACE   - GHCR image namespace (default: ghcr.io/jason931225/bominal)
+#   GHCR_USERNAME    - Optional GHCR username for docker login
+#   GHCR_TOKEN       - Optional GHCR token/PAT for docker login
+#   API_IMAGE        - Override monolithic API image URL
+#   WORKER_IMAGE     - Override worker image URL
+#   WEB_IMAGE        - Override web image URL
+#
+# Backward compatibility:
+#   Older split-runtime env overrides (API_GATEWAY_IMAGE, API_TRAIN_IMAGE,
+#   API_RESTAURANT_IMAGE, WORKER_TRAIN_IMAGE, WORKER_RESTAURANT_IMAGE) are
+#   still accepted and mapped to monolithic API/worker image overrides.
 # ==============================================================================
 set -euo pipefail
 
@@ -41,11 +39,8 @@ DEPLOY_MIN_TOTAL_MEMORY_MB="${DEPLOY_MIN_TOTAL_MEMORY_MB:-900}"
 DEPLOY_MIN_TOTAL_SWAP_MB="${DEPLOY_MIN_TOTAL_SWAP_MB:-900}"
 DEPLOY_LOCK_FALLBACK_DIR=""
 DEPLOY_FAIL_ON_DIRTY_REPO="${DEPLOY_FAIL_ON_DIRTY_REPO:-false}"
-DEPLOY_API_GATEWAY_CHANGED="true"
-DEPLOY_API_TRAIN_CHANGED="true"
-DEPLOY_API_RESTAURANT_CHANGED="true"
-DEPLOY_WORKER_TRAIN_CHANGED="true"
-DEPLOY_WORKER_RESTAURANT_CHANGED="true"
+DEPLOY_API_CHANGED="true"
+DEPLOY_WORKER_CHANGED="true"
 DEPLOY_WEB_CHANGED="true"
 
 # Registry configuration
@@ -75,7 +70,6 @@ acquire_deploy_lock() {
     return 0
   fi
 
-  # Fallback for minimal environments where flock is unavailable.
   DEPLOY_LOCK_FALLBACK_DIR="${DEPLOY_LOCK_FILE}.d"
   if ! mkdir "$DEPLOY_LOCK_FALLBACK_DIR" 2>/dev/null; then
     log_error "Another deployment is already running (lock: $DEPLOY_LOCK_FILE)"
@@ -96,7 +90,6 @@ else
   COMPOSE_CMD=(docker-compose)
 fi
 
-# Create deployment history directory
 mkdir -p "$DEPLOY_HISTORY_DIR"
 
 stack_has_running_containers() {
@@ -137,93 +130,54 @@ image_revision_label() {
   normalize_inspect_value "$(docker inspect "$image_ref" --format='{{index .Config.Labels "org.opencontainers.image.revision"}}' 2>/dev/null || true)"
 }
 
-set_split_images_from_legacy_api_image() {
+set_images_from_legacy_overrides() {
   if [[ -z "${API_IMAGE:-}" ]]; then
-    return 0
+    API_IMAGE="${API_GATEWAY_IMAGE:-${API_TRAIN_IMAGE:-${API_RESTAURANT_IMAGE:-}}}"
   fi
 
-  API_GATEWAY_IMAGE="${API_GATEWAY_IMAGE:-$API_IMAGE}"
-  API_TRAIN_IMAGE="${API_TRAIN_IMAGE:-$API_IMAGE}"
-  API_RESTAURANT_IMAGE="${API_RESTAURANT_IMAGE:-$API_IMAGE}"
-  WORKER_TRAIN_IMAGE="${WORKER_TRAIN_IMAGE:-$API_IMAGE}"
-  WORKER_RESTAURANT_IMAGE="${WORKER_RESTAURANT_IMAGE:-$API_IMAGE}"
+  if [[ -z "${WORKER_IMAGE:-}" ]]; then
+    WORKER_IMAGE="${WORKER_IMAGE:-${WORKER_TRAIN_IMAGE:-${WORKER_RESTAURANT_IMAGE:-${API_IMAGE:-}}}}"
+  fi
 }
 
 calculate_rollout_changes() {
-  local target_api_gateway_id target_api_train_id target_api_restaurant_id
-  local target_worker_train_id target_worker_restaurant_id target_web_id
-  local current_api_gateway_id current_api_train_id current_api_restaurant_id
-  local current_worker_train_id current_worker_restaurant_id current_web_id
+  local target_api_id target_worker_id target_web_id
+  local current_api_id current_worker_id current_web_id
+  local api_running worker_running web_running
 
-  DEPLOY_API_GATEWAY_CHANGED="true"
-  DEPLOY_API_TRAIN_CHANGED="true"
-  DEPLOY_API_RESTAURANT_CHANGED="true"
-  DEPLOY_WORKER_TRAIN_CHANGED="true"
-  DEPLOY_WORKER_RESTAURANT_CHANGED="true"
+  DEPLOY_API_CHANGED="true"
+  DEPLOY_WORKER_CHANGED="true"
   DEPLOY_WEB_CHANGED="true"
 
-  target_api_gateway_id="$(image_id_for_ref "$API_GATEWAY_IMAGE")"
-  target_api_train_id="$(image_id_for_ref "$API_TRAIN_IMAGE")"
-  target_api_restaurant_id="$(image_id_for_ref "$API_RESTAURANT_IMAGE")"
-  target_worker_train_id="$(image_id_for_ref "$WORKER_TRAIN_IMAGE")"
-  target_worker_restaurant_id="$(image_id_for_ref "$WORKER_RESTAURANT_IMAGE")"
+  target_api_id="$(image_id_for_ref "$API_IMAGE")"
+  target_worker_id="$(image_id_for_ref "$WORKER_IMAGE")"
   target_web_id="$(image_id_for_ref "$WEB_IMAGE")"
 
-  current_api_gateway_id="$(container_image_id "bominal-api-gateway")"
-  current_api_train_id="$(container_image_id "bominal-api-train")"
-  current_api_restaurant_id="$(container_image_id "bominal-api-restaurant")"
-  current_worker_train_id="$(container_image_id "bominal-worker-train")"
-  current_worker_restaurant_id="$(container_image_id "bominal-worker-restaurant")"
+  current_api_id="$(container_image_id "bominal-api")"
+  current_worker_id="$(container_image_id "bominal-worker")"
   current_web_id="$(container_image_id "bominal-web")"
 
-  if [[ -n "$target_api_gateway_id" && -n "$current_api_gateway_id" && "$target_api_gateway_id" == "$current_api_gateway_id" ]]; then
-    DEPLOY_API_GATEWAY_CHANGED="false"
+  if [[ -n "$target_api_id" && -n "$current_api_id" && "$target_api_id" == "$current_api_id" ]]; then
+    DEPLOY_API_CHANGED="false"
   fi
-  if [[ -n "$target_api_train_id" && -n "$current_api_train_id" && "$target_api_train_id" == "$current_api_train_id" ]]; then
-    DEPLOY_API_TRAIN_CHANGED="false"
-  fi
-  if [[ -n "$target_api_restaurant_id" && -n "$current_api_restaurant_id" && "$target_api_restaurant_id" == "$current_api_restaurant_id" ]]; then
-    DEPLOY_API_RESTAURANT_CHANGED="false"
-  fi
-  if [[ -n "$target_worker_train_id" && -n "$current_worker_train_id" && "$target_worker_train_id" == "$current_worker_train_id" ]]; then
-    DEPLOY_WORKER_TRAIN_CHANGED="false"
-  fi
-  if [[ -n "$target_worker_restaurant_id" && -n "$current_worker_restaurant_id" && "$target_worker_restaurant_id" == "$current_worker_restaurant_id" ]]; then
-    DEPLOY_WORKER_RESTAURANT_CHANGED="false"
+  if [[ -n "$target_worker_id" && -n "$current_worker_id" && "$target_worker_id" == "$current_worker_id" ]]; then
+    DEPLOY_WORKER_CHANGED="false"
   fi
   if [[ -n "$target_web_id" && -n "$current_web_id" && "$target_web_id" == "$current_web_id" ]]; then
     DEPLOY_WEB_CHANGED="false"
   fi
 
-  # Force rollout for services that are absent/stopped even if image digests match.
-  local api_gateway_running api_train_running api_restaurant_running
-  local worker_train_running worker_restaurant_running web_running
-  api_gateway_running="$(container_running_state "bominal-api-gateway")"
-  api_train_running="$(container_running_state "bominal-api-train")"
-  api_restaurant_running="$(container_running_state "bominal-api-restaurant")"
-  worker_train_running="$(container_running_state "bominal-worker-train")"
-  worker_restaurant_running="$(container_running_state "bominal-worker-restaurant")"
+  api_running="$(container_running_state "bominal-api")"
+  worker_running="$(container_running_state "bominal-worker")"
   web_running="$(container_running_state "bominal-web")"
 
-  if [[ -z "$current_api_gateway_id" || "$api_gateway_running" == "false" ]]; then
-    DEPLOY_API_GATEWAY_CHANGED="true"
-    log_warn "api-gateway container missing or stopped; forcing rollout"
+  if [[ -z "$current_api_id" || "$api_running" == "false" ]]; then
+    DEPLOY_API_CHANGED="true"
+    log_warn "api container missing or stopped; forcing rollout"
   fi
-  if [[ -z "$current_api_train_id" || "$api_train_running" == "false" ]]; then
-    DEPLOY_API_TRAIN_CHANGED="true"
-    log_warn "api-train container missing or stopped; forcing rollout"
-  fi
-  if [[ -z "$current_api_restaurant_id" || "$api_restaurant_running" == "false" ]]; then
-    DEPLOY_API_RESTAURANT_CHANGED="true"
-    log_warn "api-restaurant container missing or stopped; forcing rollout"
-  fi
-  if [[ -z "$current_worker_train_id" || "$worker_train_running" == "false" ]]; then
-    DEPLOY_WORKER_TRAIN_CHANGED="true"
-    log_warn "worker-train container missing or stopped; forcing rollout"
-  fi
-  if [[ -z "$current_worker_restaurant_id" || "$worker_restaurant_running" == "false" ]]; then
-    DEPLOY_WORKER_RESTAURANT_CHANGED="true"
-    log_warn "worker-restaurant container missing or stopped; forcing rollout"
+  if [[ -z "$current_worker_id" || "$worker_running" == "false" ]]; then
+    DEPLOY_WORKER_CHANGED="true"
+    log_warn "worker container missing or stopped; forcing rollout"
   fi
   if [[ -z "$current_web_id" || "$web_running" == "false" ]]; then
     DEPLOY_WEB_CHANGED="true"
@@ -231,11 +185,8 @@ calculate_rollout_changes() {
   fi
 
   log_info "Rollout plan:"
-  log_info "  api-gateway_changed=${DEPLOY_API_GATEWAY_CHANGED}"
-  log_info "  api-train_changed=${DEPLOY_API_TRAIN_CHANGED}"
-  log_info "  api-restaurant_changed=${DEPLOY_API_RESTAURANT_CHANGED}"
-  log_info "  worker-train_changed=${DEPLOY_WORKER_TRAIN_CHANGED}"
-  log_info "  worker-restaurant_changed=${DEPLOY_WORKER_RESTAURANT_CHANGED}"
+  log_info "  api_changed=${DEPLOY_API_CHANGED}"
+  log_info "  worker_changed=${DEPLOY_WORKER_CHANGED}"
   log_info "  web_changed=${DEPLOY_WEB_CHANGED}"
 }
 
@@ -306,7 +257,6 @@ resolve_ghcr_namespace() {
   export GHCR_NAMESPACE
 }
 
-# Get current deployed version
 get_current_version() {
   if [[ -f "$DEPLOY_HISTORY_DIR/current" ]]; then
     local v
@@ -322,95 +272,61 @@ get_current_version() {
   fi
 }
 
-# Save deployment record
 save_deployment() {
   local commit="$1"
-  local api_gateway_digest="${2:-}"
-  local api_train_digest="${3:-}"
-  local api_restaurant_digest="${4:-}"
-  local worker_train_digest="${5:-}"
-  local worker_restaurant_digest="${6:-}"
-  local web_digest="${7:-}"
-  local timestamp
+  local api_digest="${2:-}"
+  local worker_digest="${3:-}"
+  local web_digest="${4:-}"
+  local timestamp prev_commit
+
   timestamp=$(date -u +"%Y%m%d_%H%M%S")
-  
-  # Get previous version before updating
-  local prev_commit
   prev_commit=$(get_current_version)
-  
-  # Save to history with metadata.
-  # Use shell-escaped values so records can be safely `source`'d even if values
-  # contain spaces or quotes (e.g. OS Login usernames, future image refs).
+
   {
     printf 'commit=%q\n' "$commit"
     printf 'timestamp=%q\n' "$timestamp"
-    printf 'api_gateway_image=%q\n' "$API_GATEWAY_IMAGE"
-    printf 'api_train_image=%q\n' "$API_TRAIN_IMAGE"
-    printf 'api_restaurant_image=%q\n' "$API_RESTAURANT_IMAGE"
-    printf 'worker_train_image=%q\n' "$WORKER_TRAIN_IMAGE"
-    printf 'worker_restaurant_image=%q\n' "$WORKER_RESTAURANT_IMAGE"
+    printf 'api_image=%q\n' "$API_IMAGE"
+    printf 'worker_image=%q\n' "$WORKER_IMAGE"
     printf 'web_image=%q\n' "$WEB_IMAGE"
-    printf 'api_gateway_digest=%q\n' "$api_gateway_digest"
-    printf 'api_train_digest=%q\n' "$api_train_digest"
-    printf 'api_restaurant_digest=%q\n' "$api_restaurant_digest"
-    printf 'worker_train_digest=%q\n' "$worker_train_digest"
-    printf 'worker_restaurant_digest=%q\n' "$worker_restaurant_digest"
+    printf 'api_digest=%q\n' "$api_digest"
+    printf 'worker_digest=%q\n' "$worker_digest"
     printf 'web_digest=%q\n' "$web_digest"
-    # Backward-compatibility aliases for older tooling
-    printf 'api_image=%q\n' "$API_GATEWAY_IMAGE"
-    printf 'api_digest=%q\n' "$api_gateway_digest"
     printf 'deployed_by=%q\n' "${USER:-unknown}"
     printf 'previous=%q\n' "$prev_commit"
   } > "$DEPLOY_HISTORY_DIR/$timestamp"
-  
-  # Update current pointer
+
   echo "$commit" > "$DEPLOY_HISTORY_DIR/current"
-  
-  # Update previous pointer
   if [[ "$prev_commit" != "$commit" && "$prev_commit" != "unknown" ]]; then
     echo "$prev_commit" > "$DEPLOY_HISTORY_DIR/previous"
   fi
-  
-  # Cleanup old history (keep last N)
+
   cd "$DEPLOY_HISTORY_DIR"
   ls -t | grep -E '^[0-9]{8}_[0-9]{6}$' | tail -n +$((MAX_HISTORY + 1)) | xargs -r rm -f
   cd "$REPO_DIR"
 }
 
-# Parse deployment record values without shell execution.
-# We intentionally treat records as plain key/value data and never source them.
 decode_record_value() {
   local value="$1"
-
-  # Trim surrounding whitespace.
   value="${value#"${value%%[![:space:]]*}"}"
   value="${value%"${value##*[![:space:]]}"}"
 
-  # Strip optional wrapping quotes.
   if [[ "$value" == \"*\" && "$value" == *\" ]]; then
     value="${value:1:${#value}-2}"
   elif [[ "$value" == \'*\' && "$value" == *\' ]]; then
     value="${value:1:${#value}-2}"
   fi
 
-  # Decode simple backslash-escaped characters produced by printf %q.
   value="$(printf '%s' "$value" | sed 's/\\\(.\)/\1/g')"
   printf '%s' "$value"
 }
 
 record_commit=""
 record_timestamp=""
-record_api_gateway_image=""
-record_api_train_image=""
-record_api_restaurant_image=""
-record_worker_train_image=""
-record_worker_restaurant_image=""
+record_api_image=""
+record_worker_image=""
 record_web_image=""
-record_api_gateway_digest=""
-record_api_train_digest=""
-record_api_restaurant_digest=""
-record_worker_train_digest=""
-record_worker_restaurant_digest=""
+record_api_digest=""
+record_worker_digest=""
 record_web_digest=""
 record_deployed_by=""
 record_previous=""
@@ -421,17 +337,11 @@ load_deployment_record() {
 
   record_commit=""
   record_timestamp=""
-  record_api_gateway_image=""
-  record_api_train_image=""
-  record_api_restaurant_image=""
-  record_worker_train_image=""
-  record_worker_restaurant_image=""
+  record_api_image=""
+  record_worker_image=""
   record_web_image=""
-  record_api_gateway_digest=""
-  record_api_train_digest=""
-  record_api_restaurant_digest=""
-  record_worker_train_digest=""
-  record_worker_restaurant_digest=""
+  record_api_digest=""
+  record_worker_digest=""
   record_web_digest=""
   record_deployed_by=""
   record_previous=""
@@ -448,74 +358,34 @@ load_deployment_record() {
     key="${key//[[:space:]]/}"
 
     case "$key" in
-      commit)
-        record_commit="$(decode_record_value "$raw")"
-        ;;
-      timestamp)
-        record_timestamp="$(decode_record_value "$raw")"
-        ;;
-      api_gateway_image)
-        record_api_gateway_image="$(decode_record_value "$raw")"
-        ;;
-      api_train_image)
-        record_api_train_image="$(decode_record_value "$raw")"
-        ;;
-      api_restaurant_image)
-        record_api_restaurant_image="$(decode_record_value "$raw")"
-        ;;
-      worker_train_image)
-        record_worker_train_image="$(decode_record_value "$raw")"
-        ;;
-      worker_restaurant_image)
-        record_worker_restaurant_image="$(decode_record_value "$raw")"
-        ;;
-      web_image)
-        record_web_image="$(decode_record_value "$raw")"
-        ;;
-      api_gateway_digest)
-        record_api_gateway_digest="$(decode_record_value "$raw")"
-        ;;
-      api_train_digest)
-        record_api_train_digest="$(decode_record_value "$raw")"
-        ;;
-      api_restaurant_digest)
-        record_api_restaurant_digest="$(decode_record_value "$raw")"
-        ;;
-      worker_train_digest)
-        record_worker_train_digest="$(decode_record_value "$raw")"
-        ;;
-      worker_restaurant_digest)
-        record_worker_restaurant_digest="$(decode_record_value "$raw")"
-        ;;
-      web_digest)
-        record_web_digest="$(decode_record_value "$raw")"
-        ;;
-      api_image)
-        # Backward compatibility: monolithic API image record.
+      commit) record_commit="$(decode_record_value "$raw")" ;;
+      timestamp) record_timestamp="$(decode_record_value "$raw")" ;;
+      api_image) record_api_image="$(decode_record_value "$raw")" ;;
+      worker_image) record_worker_image="$(decode_record_value "$raw")" ;;
+      web_image) record_web_image="$(decode_record_value "$raw")" ;;
+      api_digest) record_api_digest="$(decode_record_value "$raw")" ;;
+      worker_digest) record_worker_digest="$(decode_record_value "$raw")" ;;
+      web_digest) record_web_digest="$(decode_record_value "$raw")" ;;
+      deployed_by) record_deployed_by="$(decode_record_value "$raw")" ;;
+      previous) record_previous="$(decode_record_value "$raw")" ;;
+      # Backward compatibility with split-runtime record keys.
+      api_gateway_image|api_train_image|api_restaurant_image)
         raw="$(decode_record_value "$raw")"
-        if [[ -z "$record_api_gateway_image" ]]; then record_api_gateway_image="$raw"; fi
-        if [[ -z "$record_api_train_image" ]]; then record_api_train_image="$raw"; fi
-        if [[ -z "$record_api_restaurant_image" ]]; then record_api_restaurant_image="$raw"; fi
-        if [[ -z "$record_worker_train_image" ]]; then record_worker_train_image="$raw"; fi
-        if [[ -z "$record_worker_restaurant_image" ]]; then record_worker_restaurant_image="$raw"; fi
+        if [[ -z "$record_api_image" && -n "$raw" ]]; then record_api_image="$raw"; fi
         ;;
-      api_digest)
-        # Backward compatibility: monolithic API digest record.
+      worker_train_image|worker_restaurant_image)
         raw="$(decode_record_value "$raw")"
-        if [[ -z "$record_api_gateway_digest" ]]; then record_api_gateway_digest="$raw"; fi
-        if [[ -z "$record_api_train_digest" ]]; then record_api_train_digest="$raw"; fi
-        if [[ -z "$record_api_restaurant_digest" ]]; then record_api_restaurant_digest="$raw"; fi
-        if [[ -z "$record_worker_train_digest" ]]; then record_worker_train_digest="$raw"; fi
-        if [[ -z "$record_worker_restaurant_digest" ]]; then record_worker_restaurant_digest="$raw"; fi
+        if [[ -z "$record_worker_image" && -n "$raw" ]]; then record_worker_image="$raw"; fi
         ;;
-      deployed_by)
-        record_deployed_by="$(decode_record_value "$raw")"
+      api_gateway_digest|api_train_digest|api_restaurant_digest)
+        raw="$(decode_record_value "$raw")"
+        if [[ -z "$record_api_digest" && -n "$raw" ]]; then record_api_digest="$raw"; fi
         ;;
-      previous)
-        record_previous="$(decode_record_value "$raw")"
+      worker_train_digest|worker_restaurant_digest)
+        raw="$(decode_record_value "$raw")"
+        if [[ -z "$record_worker_digest" && -n "$raw" ]]; then record_worker_digest="$raw"; fi
         ;;
       *)
-        # Ignore unknown keys for forward compatibility.
         ;;
     esac
   done <"$path"
@@ -525,7 +395,6 @@ load_deployment_record() {
   return 0
 }
 
-# Get previous deployment for rollback
 get_previous_version() {
   if [[ -f "$DEPLOY_HISTORY_DIR/previous" ]]; then
     local v
@@ -542,11 +411,10 @@ get_previous_version() {
   fi
 }
 
-# Purge legacy/malformed deployment history records.
-# This intentionally does NOT touch `current` / `previous` pointers.
 purge_legacy_records() {
   local dry_run="${1:-false}"
   local backup="${2:-false}"
+  local -a to_delete=()
 
   log_info "Purging legacy/malformed deployment history records in: $DEPLOY_HISTORY_DIR"
 
@@ -555,15 +423,11 @@ purge_legacy_records() {
     return 0
   fi
 
-  local -a to_delete=()
-
-  # Only consider timestamped history record files.
   while IFS= read -r record; do
     [[ -z "$record" ]] && continue
     local path="$DEPLOY_HISTORY_DIR/$record"
     [[ -f "$path" ]] || continue
 
-    # Legacy format: single-line short SHA, not sourceable and not useful for digests.
     local compact
     compact=$(tr -d '[:space:]' <"$path" 2>/dev/null || true)
     if [[ -n "$compact" && "$compact" =~ ^[0-9a-f]{7,40}$ ]] && ! grep -q '=' "$path" 2>/dev/null; then
@@ -571,7 +435,6 @@ purge_legacy_records() {
       continue
     fi
 
-    # Malformed: record cannot be parsed as key/value data.
     if ! load_deployment_record "$path" >/dev/null 2>&1; then
       to_delete+=("$path")
       continue
@@ -613,95 +476,52 @@ purge_legacy_records() {
   log_ok "Purge complete."
 }
 
-# Rollback to previous deployment
 do_rollback() {
-  local prev_commit
-  prev_commit=$(get_previous_version)
+  local prev_commit prev_record current_commit
+  prev_commit="$(get_previous_version)"
   log_warn "Rolling back to previous deployment: $prev_commit"
-  
-  # Load previous deployment metadata if available
-  local prev_record
+
   prev_record=$( (ls -t "$DEPLOY_HISTORY_DIR" | grep -E '^[0-9]{8}_[0-9]{6}$' | while read -r record; do
     if grep -q "commit=$prev_commit" "$DEPLOY_HISTORY_DIR/$record" 2>/dev/null; then
       echo "$record"
       break
     fi
   done) || true)
-  
-  if [[ -n "$prev_record" ]]; then
-    log_info "Found previous deployment record: $prev_record"
-    if load_deployment_record "$DEPLOY_HISTORY_DIR/$prev_record"; then
-      # Prefer immutable digests (deterministic rollback), fall back to commit tags.
-      if [[ -n "${record_api_gateway_digest:-}" &&
-            -n "${record_api_train_digest:-}" &&
-            -n "${record_api_restaurant_digest:-}" &&
-            -n "${record_worker_train_digest:-}" &&
-            -n "${record_worker_restaurant_digest:-}" &&
-            -n "${record_web_digest:-}" ]]; then
-        export API_GATEWAY_IMAGE="$record_api_gateway_digest"
-        export API_TRAIN_IMAGE="$record_api_train_digest"
-        export API_RESTAURANT_IMAGE="$record_api_restaurant_digest"
-        export WORKER_TRAIN_IMAGE="$record_worker_train_digest"
-        export WORKER_RESTAURANT_IMAGE="$record_worker_restaurant_digest"
-        export WEB_IMAGE="$record_web_digest"
-        log_info "Using previous digests:"
-        log_info "  API Gateway: $API_GATEWAY_IMAGE"
-        log_info "  API Train: $API_TRAIN_IMAGE"
-        log_info "  API Restaurant: $API_RESTAURANT_IMAGE"
-        log_info "  Worker Train: $WORKER_TRAIN_IMAGE"
-        log_info "  Worker Restaurant: $WORKER_RESTAURANT_IMAGE"
-        log_info "  Web: $WEB_IMAGE"
-      else
-        log_warn "Deployment record missing digests; falling back to commit tag"
-        resolve_ghcr_namespace
-        export API_GATEWAY_IMAGE="${GHCR_NAMESPACE}/api-gateway:${prev_commit}"
-        export API_TRAIN_IMAGE="${GHCR_NAMESPACE}/api-train:${prev_commit}"
-        export API_RESTAURANT_IMAGE="${GHCR_NAMESPACE}/api-restaurant:${prev_commit}"
-        export WORKER_TRAIN_IMAGE="$API_TRAIN_IMAGE"
-        export WORKER_RESTAURANT_IMAGE="$API_RESTAURANT_IMAGE"
-        export WEB_IMAGE="${GHCR_NAMESPACE}/web:${prev_commit}"
-      fi
+
+  if [[ -n "$prev_record" ]] && load_deployment_record "$DEPLOY_HISTORY_DIR/$prev_record"; then
+    if [[ -n "${record_api_digest:-}" && -n "${record_worker_digest:-}" && -n "${record_web_digest:-}" ]]; then
+      export API_IMAGE="$record_api_digest"
+      export WORKER_IMAGE="$record_worker_digest"
+      export WEB_IMAGE="$record_web_digest"
+      log_info "Using previous image digests:"
+      log_info "  API: $API_IMAGE"
+      log_info "  Worker: $WORKER_IMAGE"
+      log_info "  Web: $WEB_IMAGE"
     else
-      log_warn "Failed to load deployment record; falling back to commit tag"
+      log_warn "Deployment record missing digests; falling back to commit tags"
       resolve_ghcr_namespace
-      export API_GATEWAY_IMAGE="${GHCR_NAMESPACE}/api-gateway:${prev_commit}"
-      export API_TRAIN_IMAGE="${GHCR_NAMESPACE}/api-train:${prev_commit}"
-      export API_RESTAURANT_IMAGE="${GHCR_NAMESPACE}/api-restaurant:${prev_commit}"
-      export WORKER_TRAIN_IMAGE="$API_TRAIN_IMAGE"
-      export WORKER_RESTAURANT_IMAGE="$API_RESTAURANT_IMAGE"
+      export API_IMAGE="${GHCR_NAMESPACE}/api:${prev_commit}"
+      export WORKER_IMAGE="${GHCR_NAMESPACE}/api:${prev_commit}"
       export WEB_IMAGE="${GHCR_NAMESPACE}/web:${prev_commit}"
     fi
   else
-    log_warn "No detailed record found, using commit tag"
+    log_warn "No valid detailed record found; using commit tags"
     resolve_ghcr_namespace
-    export API_GATEWAY_IMAGE="${GHCR_NAMESPACE}/api-gateway:${prev_commit}"
-    export API_TRAIN_IMAGE="${GHCR_NAMESPACE}/api-train:${prev_commit}"
-    export API_RESTAURANT_IMAGE="${GHCR_NAMESPACE}/api-restaurant:${prev_commit}"
-    export WORKER_TRAIN_IMAGE="$API_TRAIN_IMAGE"
-    export WORKER_RESTAURANT_IMAGE="$API_RESTAURANT_IMAGE"
+    export API_IMAGE="${GHCR_NAMESPACE}/api:${prev_commit}"
+    export WORKER_IMAGE="${GHCR_NAMESPACE}/api:${prev_commit}"
     export WEB_IMAGE="${GHCR_NAMESPACE}/web:${prev_commit}"
   fi
-  
-  # Swap current and previous
-  local current_commit
-  current_commit=$(get_current_version)
-  
-  # Pull and deploy
-  if ! pull_images; then
-    return 1
-  fi
-  if ! deploy_services; then
-    return 1
-  fi
-  
-  # Update pointers (swap current and previous)
+
+  current_commit="$(get_current_version)"
+
+  pull_images || return 1
+  deploy_services || return 1
+
   echo "$prev_commit" > "$DEPLOY_HISTORY_DIR/current"
   echo "$current_commit" > "$DEPLOY_HISTORY_DIR/previous"
-  
   log_ok "Rollback complete to $prev_commit"
 }
 
-# Configure Docker authentication for GHCR
 configure_docker_auth() {
   if [[ -n "${GHCR_USERNAME:-}" && -n "${GHCR_TOKEN:-}" ]]; then
     log_info "Logging into GHCR as ${GHCR_USERNAME}..."
@@ -713,31 +533,17 @@ configure_docker_auth() {
     log_ok "GHCR login successful"
     return 0
   fi
-
   log_warn "GHCR_USERNAME/GHCR_TOKEN not set; attempting anonymous image pulls."
 }
 
-# Pull images from GHCR
 pull_images() {
   local image
-  local -a images_to_pull=()
+  local -a images_to_pull=("$API_IMAGE" "$WORKER_IMAGE" "$WEB_IMAGE")
   local seen_images=$'\n'
 
-  images_to_pull=(
-    "$API_GATEWAY_IMAGE"
-    "$API_TRAIN_IMAGE"
-    "$API_RESTAURANT_IMAGE"
-    "$WORKER_TRAIN_IMAGE"
-    "$WORKER_RESTAURANT_IMAGE"
-    "$WEB_IMAGE"
-  )
-
   log_info "Pulling images from GHCR..."
-  log_info "  API Gateway: $API_GATEWAY_IMAGE"
-  log_info "  API Train: $API_TRAIN_IMAGE"
-  log_info "  API Restaurant: $API_RESTAURANT_IMAGE"
-  log_info "  Worker Train: $WORKER_TRAIN_IMAGE"
-  log_info "  Worker Restaurant: $WORKER_RESTAURANT_IMAGE"
+  log_info "  API: $API_IMAGE"
+  log_info "  Worker: $WORKER_IMAGE"
   log_info "  Web: $WEB_IMAGE"
 
   for image in "${images_to_pull[@]}"; do
@@ -752,84 +558,56 @@ pull_images() {
       return 1
     fi
   done
-  
   log_ok "Images pulled successfully"
 }
 
-# Deploy services with zero downtime
 deploy_services() {
   log_info "Deploying with zero-downtime strategy..."
-  
-  # Export image URLs for docker-compose
-  export API_GATEWAY_IMAGE
-  export API_TRAIN_IMAGE
-  export API_RESTAURANT_IMAGE
-  export WORKER_TRAIN_IMAGE
-  export WORKER_RESTAURANT_IMAGE
+
+  export API_IMAGE
+  export WORKER_IMAGE
   export WEB_IMAGE
 
   if stack_has_running_containers; then
     log_info "Running stack detected. Using rolling-update path."
     calculate_rollout_changes
 
-    # Deploy database layer first (usually no changes).
     log_info "Ensuring database services are healthy..."
     if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait postgres redis; then
       log_error "Failed to deploy database services"
       return 1
     fi
 
-    local -a api_services_to_roll=()
-    local -a worker_services_to_roll=()
-
-    if [[ "$DEPLOY_API_GATEWAY_CHANGED" == "true" ]]; then
-      api_services_to_roll+=("api-gateway")
-    fi
-    if [[ "$DEPLOY_API_TRAIN_CHANGED" == "true" ]]; then
-      api_services_to_roll+=("api-train")
-    fi
-    if [[ "$DEPLOY_API_RESTAURANT_CHANGED" == "true" ]]; then
-      api_services_to_roll+=("api-restaurant")
-    fi
-    if [[ "$DEPLOY_WORKER_TRAIN_CHANGED" == "true" ]]; then
-      worker_services_to_roll+=("worker-train")
-    fi
-    if [[ "$DEPLOY_WORKER_RESTAURANT_CHANGED" == "true" ]]; then
-      worker_services_to_roll+=("worker-restaurant")
-    fi
-
-    if [[ ${#api_services_to_roll[@]} -gt 0 ]]; then
-      log_info "Deploying API services: ${api_services_to_roll[*]}"
-      if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait --no-deps "${api_services_to_roll[@]}"; then
-        log_error "Failed to deploy API services (${api_services_to_roll[*]})"
+    if [[ "$DEPLOY_API_CHANGED" == "true" ]]; then
+      log_info "Deploying API service..."
+      if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait --no-deps api; then
+        log_error "Failed to deploy api service"
         return 1
       fi
     else
-      log_info "Skipping API service rollout (images unchanged)."
+      log_info "Skipping API rollout (image unchanged)."
     fi
 
-    if [[ ${#worker_services_to_roll[@]} -gt 0 ]]; then
-      log_info "Deploying Worker services: ${worker_services_to_roll[*]}"
-      if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait --no-deps "${worker_services_to_roll[@]}"; then
-        log_error "Failed to deploy worker services (${worker_services_to_roll[*]})"
+    if [[ "$DEPLOY_WORKER_CHANGED" == "true" ]]; then
+      log_info "Deploying worker service..."
+      if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait --no-deps worker; then
+        log_error "Failed to deploy worker service"
         return 1
       fi
     else
-      log_info "Skipping worker rollout (images unchanged)."
+      log_info "Skipping worker rollout (image unchanged)."
     fi
 
     if [[ "$DEPLOY_WEB_CHANGED" == "true" ]]; then
-      # Deploy web (depends on API being healthy).
-      log_info "Deploying Web service..."
+      log_info "Deploying web service..."
       if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait --no-deps web; then
         log_error "Failed to deploy web service"
         return 1
       fi
     else
-      log_info "Skipping Web rollout (image unchanged)."
+      log_info "Skipping web rollout (image unchanged)."
     fi
 
-    # Reload Caddy (if Caddyfile changed, it auto-reloads).
     log_info "Ensuring Caddy is healthy..."
     if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait caddy; then
       log_error "Failed to deploy Caddy service"
@@ -839,21 +617,18 @@ deploy_services() {
   fi
 
   log_warn "No running bominal containers detected. Using first-deploy bootstrap path."
-  if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait postgres redis api-gateway api-train api-restaurant worker-train worker-restaurant web caddy; then
+  if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait postgres redis api worker web caddy; then
     log_error "Failed to deploy services in bootstrap path"
     return 1
   fi
 }
 
-# Verify deployment health
 verify_deployment() {
   log_info "Verifying deployment health..."
-  
   local max_attempts="${SMOKE_MAX_ATTEMPTS}"
   local retry_delay="${SMOKE_RETRY_DELAY_SECONDS}"
   local attempt=1
-  
-  # Check API health
+
   while [[ $attempt -le $max_attempts ]]; do
     if curl -fsS --max-time 5 http://127.0.0.1:8000/health >/dev/null 2>&1; then
       log_ok "API health check passed"
@@ -863,13 +638,12 @@ verify_deployment() {
     sleep "$retry_delay"
     ((attempt++))
   done
-  
+
   if [[ $attempt -gt $max_attempts ]]; then
     log_error "API health check failed after $max_attempts attempts"
     return 1
   fi
-  
-  # Check web via Caddy
+
   attempt=1
   while [[ $attempt -le $max_attempts ]]; do
     if curl -fsS --max-time 5 -I http://127.0.0.1/ >/dev/null 2>&1; then
@@ -880,16 +654,15 @@ verify_deployment() {
     sleep "$retry_delay"
     ((attempt++))
   done
-  
+
   if [[ $attempt -gt $max_attempts ]]; then
     log_error "Web health check failed after $max_attempts attempts"
     return 1
   fi
-  
+
   log_ok "All health checks passed!"
 }
 
-# Show deployment status
 show_status() {
   log_info "Current deployment status:"
   "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" ps
@@ -914,39 +687,42 @@ show_status() {
   done) || true
 }
 
-# Cleanup old Docker resources
 cleanup_docker() {
   log_info "Cleaning up old Docker resources..."
-  
-  # Remove dangling images
   docker image prune -f >/dev/null 2>&1 || true
-  
-  # Remove old bominal images (keep last 3)
   docker images --format "{{.Repository}}:{{.Tag}}" | grep "bominal" | tail -n +4 | xargs -r docker rmi -f 2>/dev/null || true
-  
   log_ok "Docker cleanup complete"
 }
 
-# Main
 main() {
   local target_commit="${1:-}"
+  local canary_stage=""
 
   acquire_deploy_lock
   check_repo_state
 
-  # Purge legacy/malformed history records (safe maintenance command).
+  # Optional no-op canary flag kept for compatibility with existing runbooks/tests.
+  if [[ "$target_commit" == --canary-stage=* ]]; then
+    canary_stage="${target_commit#--canary-stage=}"
+    shift || true
+    target_commit="${1:-}"
+  elif [[ "$target_commit" == "--canary-stage" ]]; then
+    canary_stage="${2:-}"
+    shift 2 || true
+    target_commit="${1:-}"
+  fi
+  if [[ -n "$canary_stage" ]]; then
+    log_info "Canary stage requested: $canary_stage (compatibility mode; no staged mutation applied)"
+  fi
+
   if [[ "${target_commit:-}" == "--purge-legacy-records" ]]; then
     shift || true
     local dry_run="false"
     local backup="false"
     while [[ $# -gt 0 ]]; do
       case "$1" in
-        --dry-run)
-          dry_run="true"
-          ;;
-        --backup)
-          backup="true"
-          ;;
+        --dry-run) dry_run="true" ;;
+        --backup) backup="true" ;;
         --help|-h|help)
           echo "Usage: $0 --purge-legacy-records [--dry-run] [--backup]"
           exit 0
@@ -961,9 +737,8 @@ main() {
     purge_legacy_records "$dry_run" "$backup"
     exit 0
   fi
-  
-  # Handle special commands
-  case "${target_commit}" in
+
+  case "${target_commit:-}" in
     --rollback|-r)
       run_preflight_checks
       configure_docker_auth
@@ -985,85 +760,54 @@ main() {
       echo "  --rollback     Rollback to previous deployment"
       echo "  --status       Show current deployment status"
       echo "  --purge-legacy-records [--dry-run] [--backup]"
-      echo "               Delete legacy/malformed historical record files (safe; does not touch current/previous)"
+      echo "                 Delete legacy/malformed historical record files (safe; does not touch current/previous)"
       echo ""
       echo "Environment variables:"
       echo "  GHCR_NAMESPACE   GHCR image namespace (default: ghcr.io/jason931225/bominal)"
       echo "  GHCR_USERNAME    Optional GHCR username for docker login"
       echo "  GHCR_TOKEN       Optional GHCR token/PAT for docker login"
-      echo "  API_IMAGE        Legacy override for all API/worker image URLs"
-      echo "  API_GATEWAY_IMAGE Override API gateway image URL"
-      echo "  API_TRAIN_IMAGE  Override API train image URL"
-      echo "  API_RESTAURANT_IMAGE Override API restaurant image URL"
-      echo "  WORKER_TRAIN_IMAGE Override worker-train image URL"
-      echo "  WORKER_RESTAURANT_IMAGE Override worker-restaurant image URL"
+      echo "  API_IMAGE        Override API image URL"
+      echo "  WORKER_IMAGE     Override worker image URL"
       echo "  WEB_IMAGE        Override web image URL"
       echo "  DEPLOY_HISTORY_DIR Override deployment history dir (default: /opt/bominal/deployments)"
       echo "  DEPLOY_FAIL_ON_DIRTY_REPO=true  Block deploy when tracked repo changes are present"
       echo ""
       echo "Examples:"
-      echo "  $0                           # Deploy latest"
-      echo "  $0 abc123                    # Deploy commit abc123"
-      echo "  $0 --rollback                # Rollback to previous"
-      echo "  $0 --purge-legacy-records --dry-run"
+      echo "  $0"
+      echo "  $0 abc123"
+      echo "  $0 --rollback"
       exit 0
       ;;
   esac
-  
+
   run_preflight_checks
-
-  # Configure Docker authentication
   configure_docker_auth
-
   resolve_ghcr_namespace
-  
-  # Get current version for record
-  local prev_version
-  prev_version=$(get_current_version)
-  
-  # If commit specified, use specific image tags
-  if [[ -n "$target_commit" ]]; then
+
+  local prev_version deploy_commit
+  prev_version="$(get_current_version)"
+
+  if [[ -n "${target_commit:-}" ]]; then
     log_info "Deploying specific commit: $target_commit"
-    export API_GATEWAY_IMAGE="${GHCR_NAMESPACE}/api-gateway:${target_commit}"
-    export API_TRAIN_IMAGE="${GHCR_NAMESPACE}/api-train:${target_commit}"
-    export API_RESTAURANT_IMAGE="${GHCR_NAMESPACE}/api-restaurant:${target_commit}"
-    export WORKER_TRAIN_IMAGE="${WORKER_TRAIN_IMAGE:-$API_TRAIN_IMAGE}"
-    export WORKER_RESTAURANT_IMAGE="${WORKER_RESTAURANT_IMAGE:-$API_RESTAURANT_IMAGE}"
+    export API_IMAGE="${GHCR_NAMESPACE}/api:${target_commit}"
+    export WORKER_IMAGE="${GHCR_NAMESPACE}/api:${target_commit}"
     export WEB_IMAGE="${GHCR_NAMESPACE}/web:${target_commit}"
   else
     log_info "Deploying latest images"
-    set_split_images_from_legacy_api_image
-    export API_GATEWAY_IMAGE="${API_GATEWAY_IMAGE:-${GHCR_NAMESPACE}/api-gateway:latest}"
-    export API_TRAIN_IMAGE="${API_TRAIN_IMAGE:-${GHCR_NAMESPACE}/api-train:latest}"
-    export API_RESTAURANT_IMAGE="${API_RESTAURANT_IMAGE:-${GHCR_NAMESPACE}/api-restaurant:latest}"
-    export WORKER_TRAIN_IMAGE="${WORKER_TRAIN_IMAGE:-$API_TRAIN_IMAGE}"
-    export WORKER_RESTAURANT_IMAGE="${WORKER_RESTAURANT_IMAGE:-$API_RESTAURANT_IMAGE}"
+    set_images_from_legacy_overrides
+    export API_IMAGE="${API_IMAGE:-${GHCR_NAMESPACE}/api:latest}"
+    export WORKER_IMAGE="${WORKER_IMAGE:-$API_IMAGE}"
     export WEB_IMAGE="${WEB_IMAGE:-${GHCR_NAMESPACE}/web:latest}"
   fi
-  
-  # Pull and deploy
+
   pull_images
 
-  # Get the commit SHA from the images we're deploying.
-  # On split-image rollouts, unchanged services may still carry older revisions,
-  # so we prefer target_commit, otherwise use the single unique image revision
-  # label when available, and fall back to repo HEAD if revisions differ.
-  local deploy_commit
-  if [[ -n "$target_commit" ]]; then
+  if [[ -n "${target_commit:-}" ]]; then
     deploy_commit="$target_commit"
   else
     local -a revisions=()
-    local revision image
-    local seen_revisions=$'\n'
-    local repo_head=""
-
-    for image in \
-      "$API_GATEWAY_IMAGE" \
-      "$API_TRAIN_IMAGE" \
-      "$API_RESTAURANT_IMAGE" \
-      "$WORKER_TRAIN_IMAGE" \
-      "$WORKER_RESTAURANT_IMAGE" \
-      "$WEB_IMAGE"; do
+    local revision image repo_head="" seen_revisions=$'\n'
+    for image in "$API_IMAGE" "$WORKER_IMAGE" "$WEB_IMAGE"; do
       revision="$(image_revision_label "$image")"
       if [[ -z "$revision" || "$revision" == "<no value>" ]]; then
         continue
@@ -1086,7 +830,7 @@ main() {
       else
         deploy_commit="${revisions[0]}"
       fi
-      log_warn "Detected mixed image revisions in split rollout; recording deploy commit as $deploy_commit"
+      log_warn "Detected mixed image revisions; recording deploy commit as $deploy_commit"
     elif [[ -n "$repo_head" ]]; then
       deploy_commit="$repo_head"
       log_warn "Image revision labels missing; using repository HEAD for deployment record: $deploy_commit"
@@ -1098,54 +842,27 @@ main() {
   fi
 
   log_info "Deploying commit: $deploy_commit"
-  log_info "  API Gateway: $API_GATEWAY_IMAGE"
-  log_info "  API Train: $API_TRAIN_IMAGE"
-  log_info "  API Restaurant: $API_RESTAURANT_IMAGE"
-  log_info "  Worker Train: $WORKER_TRAIN_IMAGE"
-  log_info "  Worker Restaurant: $WORKER_RESTAURANT_IMAGE"
+  log_info "  API: $API_IMAGE"
+  log_info "  Worker: $WORKER_IMAGE"
   log_info "  Web: $WEB_IMAGE"
-  
-  # Check if already deployed
+
   if [[ "$deploy_commit" == "$prev_version" ]]; then
     log_warn "Commit $deploy_commit is already deployed. Deploying anyway..."
   fi
-  
-  # Resolve immutable repo digests after pull (used for deterministic rollback)
-  local api_gateway_digest api_train_digest api_restaurant_digest
-  local worker_train_digest worker_restaurant_digest web_digest
-  api_gateway_digest=$(docker inspect "$API_GATEWAY_IMAGE" --format='{{if .RepoDigests}}{{index .RepoDigests 0}}{{end}}' 2>/dev/null || true)
-  api_train_digest=$(docker inspect "$API_TRAIN_IMAGE" --format='{{if .RepoDigests}}{{index .RepoDigests 0}}{{end}}' 2>/dev/null || true)
-  api_restaurant_digest=$(docker inspect "$API_RESTAURANT_IMAGE" --format='{{if .RepoDigests}}{{index .RepoDigests 0}}{{end}}' 2>/dev/null || true)
-  worker_train_digest=$(docker inspect "$WORKER_TRAIN_IMAGE" --format='{{if .RepoDigests}}{{index .RepoDigests 0}}{{end}}' 2>/dev/null || true)
-  worker_restaurant_digest=$(docker inspect "$WORKER_RESTAURANT_IMAGE" --format='{{if .RepoDigests}}{{index .RepoDigests 0}}{{end}}' 2>/dev/null || true)
+
+  local api_digest worker_digest web_digest
+  api_digest=$(docker inspect "$API_IMAGE" --format='{{if .RepoDigests}}{{index .RepoDigests 0}}{{end}}' 2>/dev/null || true)
+  worker_digest=$(docker inspect "$WORKER_IMAGE" --format='{{if .RepoDigests}}{{index .RepoDigests 0}}{{end}}' 2>/dev/null || true)
   web_digest=$(docker inspect "$WEB_IMAGE" --format='{{if .RepoDigests}}{{index .RepoDigests 0}}{{end}}' 2>/dev/null || true)
 
-  if [[ "$api_gateway_digest" == "<no value>" ]]; then api_gateway_digest=""; fi
-  if [[ "$api_train_digest" == "<no value>" ]]; then api_train_digest=""; fi
-  if [[ "$api_restaurant_digest" == "<no value>" ]]; then api_restaurant_digest=""; fi
-  if [[ "$worker_train_digest" == "<no value>" ]]; then worker_train_digest=""; fi
-  if [[ "$worker_restaurant_digest" == "<no value>" ]]; then worker_restaurant_digest=""; fi
-  if [[ "$web_digest" == "<no value>" ]]; then web_digest=""; fi
+  if [[ "$api_digest" == "<no value>" || "$api_digest" != *@sha256:* ]]; then api_digest=""; fi
+  if [[ "$worker_digest" == "<no value>" || "$worker_digest" != *@sha256:* ]]; then worker_digest=""; fi
+  if [[ "$web_digest" == "<no value>" || "$web_digest" != *@sha256:* ]]; then web_digest=""; fi
 
-  if [[ -n "$api_gateway_digest" && "$api_gateway_digest" != *@sha256:* ]]; then api_gateway_digest=""; fi
-  if [[ -n "$api_train_digest" && "$api_train_digest" != *@sha256:* ]]; then api_train_digest=""; fi
-  if [[ -n "$api_restaurant_digest" && "$api_restaurant_digest" != *@sha256:* ]]; then api_restaurant_digest=""; fi
-  if [[ -n "$worker_train_digest" && "$worker_train_digest" != *@sha256:* ]]; then worker_train_digest=""; fi
-  if [[ -n "$worker_restaurant_digest" && "$worker_restaurant_digest" != *@sha256:* ]]; then worker_restaurant_digest=""; fi
-  if [[ -n "$web_digest" && "$web_digest" != *@sha256:* ]]; then web_digest=""; fi
-
-  if [[ -n "$api_gateway_digest" &&
-        -n "$api_train_digest" &&
-        -n "$api_restaurant_digest" &&
-        -n "$worker_train_digest" &&
-        -n "$worker_restaurant_digest" &&
-        -n "$web_digest" ]]; then
+  if [[ -n "$api_digest" && -n "$worker_digest" && -n "$web_digest" ]]; then
     log_info "Resolved image digests for rollback:"
-    log_info "  API Gateway: $api_gateway_digest"
-    log_info "  API Train: $api_train_digest"
-    log_info "  API Restaurant: $api_restaurant_digest"
-    log_info "  Worker Train: $worker_train_digest"
-    log_info "  Worker Restaurant: $worker_restaurant_digest"
+    log_info "  API: $api_digest"
+    log_info "  Worker: $worker_digest"
     log_info "  Web: $web_digest"
   else
     log_warn "Could not resolve one or more repo digests; rollback may fall back to commit tags"
@@ -1153,16 +870,8 @@ main() {
 
   deploy_services
 
-  # Verify
   if verify_deployment; then
-    save_deployment \
-      "$deploy_commit" \
-      "$api_gateway_digest" \
-      "$api_train_digest" \
-      "$api_restaurant_digest" \
-      "$worker_train_digest" \
-      "$worker_restaurant_digest" \
-      "$web_digest"
+    save_deployment "$deploy_commit" "$api_digest" "$worker_digest" "$web_digest"
     cleanup_docker
     log_ok "Deployment of $deploy_commit complete!"
     show_status

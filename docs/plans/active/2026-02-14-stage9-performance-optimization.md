@@ -30,7 +30,7 @@ Reduce end-user latency and server load for train task workflows with backend-fi
   - Added backend tie-order regression tests for latest-attempt/latest-ticket summary selection determinism.
   - Added frontend polling behavior unit-test suite with Vitest + Testing Library (`web/components/train/__tests__/train-dashboard.polling.test.tsx`).
   - Added benchmark compare + hybrid-threshold gate scripts and shell validation coverage (`infra/scripts/benchmark-train-task-list-compare.sh`, `infra/scripts/benchmark-threshold-check.sh`, `infra/tests/test_benchmark_train_task_list_compare.sh`).
-  - Wired web unit tests and benchmark-compare script validation into `.github/workflows/infra-tests.yml`.
+  - Wired web unit tests and benchmark-compare script validation into `.github/workflows/ci-infra-quality-gates.yml`.
 
 ## Scope
 

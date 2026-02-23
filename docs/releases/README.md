@@ -33,7 +33,7 @@ Invalid bump transitions are rejected by CI.
 
 - Validation script: `infra/scripts/version_guard.py`
 - CI test: `infra/tests/test_versioning.sh`
-- Infra workflow gate: `.github/workflows/infra-tests.yml`
+- Infra workflow gate: `.github/workflows/ci-infra-quality-gates.yml`
 
 ## Usage
 

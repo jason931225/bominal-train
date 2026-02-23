@@ -5,7 +5,7 @@ variable "project_id" {
 
 variable "region" {
   type        = string
-  description = "GCP region for Artifact Registry + regional resources (e.g. us-central1)."
+  description = "GCP region for regional resources (e.g. us-central1)."
   default     = "us-central1"
 }
 
@@ -25,12 +25,6 @@ variable "github_repo" {
   description = "GitHub repository name (for Workload Identity Federation)."
 }
 
-variable "artifact_repo_id" {
-  type        = string
-  description = "Artifact Registry repository id for docker images."
-  default     = "bominal"
-}
-
 variable "deploy_instance_name" {
   type        = string
   description = "Compute Engine instance name."
@@ -42,4 +36,3 @@ variable "enable_vm" {
   description = "Whether to manage the deploy VM + firewall via Terraform."
   default     = false
 }
-

@@ -5,7 +5,6 @@ bominal is a modular product foundation with:
 - `web/`: Next.js App Router + TypeScript + Tailwind + Zod
 - `api/`: FastAPI + Postgres + Alembic + configurable auth modes (`legacy`/`supabase`/`dual`)
 - `worker`: arq train worker for async Train Tasks + queued email jobs
-- `worker-restaurant`: arq restaurant worker (isolated queue domain scaffold)
 - `redis`: queue + provider rate limiting
 - `third_party/srtgo`: read-only provider behavior reference (submodule)
 - `third_party/catchtable`: read-only provider endpoint reference for restaurant module
@@ -59,13 +58,13 @@ Development compose uses hot-reload, bind mounts, and env files under `infra/env
 If your machine supports Docker Compose v2 plugin:
 
 ```bash
-docker compose -f infra/docker compose.yml up --build
+docker compose -f infra/docker-compose.yml up --build
 ```
 
 If your machine uses Docker Compose v1 binary:
 
 ```bash
-docker compose -f infra/docker compose.yml up --build
+docker compose -f infra/docker-compose.yml up --build
 ```
 
 Services started by compose:
@@ -78,7 +77,7 @@ Services started by compose:
 - egress-restaurant: internal Caddy egress proxy for OpenTable/Resy provider routes
 - mailpit (dev inbox): `http://localhost:8025` (SMTP on `localhost:1025`)
 - worker: consumes queued Train Tasks + queued email jobs
-- worker-restaurant: reserved for restaurant queue-domain execution
+- restaurant queue is reserved for future worker expansion
 
 Queue domains:
 
@@ -106,14 +105,14 @@ docker compose -f infra/docker-compose.yml --profile e2e run --rm --build web-e2
 If you pull new backend migrations while containers are already running, restart API/workers once:
 
 ```bash
-docker compose -f infra/docker compose.yml restart api worker worker-restaurant
+docker compose -f infra/docker-compose.yml restart api worker
 # or (Compose v1):
-docker compose -f infra/docker compose.yml restart api worker worker-restaurant
+docker compose -f infra/docker-compose.yml restart api worker
 ```
 
 ## Production (manual bootstrap)
 
-Production compose is separated in `infra/docker compose.prod.yml` (no bind mounts, no dev reload flags).
+Production compose is separated in `infra/docker-compose.prod.yml` (no bind mounts, no dev reload flags).
 
 For production deployments, prefer the zero-downtime procedure in `docs/DEPLOYMENT.md`
 (script: `infra/scripts/deploy.sh`). The steps below cover initial
@@ -143,7 +142,7 @@ Optional:
    - `infra/env/prod/api.env`: `INTERNAL_API_KEY`, `MASTER_KEY`, DB password portions of `DATABASE_URL` and `SYNC_DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_JWT_ISSUER`, `RESEND_API_KEY`, sender-domain placeholder in `EMAIL_FROM_ADDRESS`, plus passkey origin settings (`PASSKEY_RP_ID`, `PASSKEY_ORIGIN`)
   - `infra/env/prod/web.env`:
     - keep `NEXT_PUBLIC_API_BASE_URL` empty so browser auth requests stay same-origin (required for `SameSite=Lax` session cookies)
-    - set `API_SERVER_URL=http://api-gateway:8000` for server-side Next.js fetches in split API runtime
+    - set `API_SERVER_URL=http://api:8000` for server-side Next.js fetches in monolithic API runtime
    - Optional in `infra/env/prod/web.env`: `NEXT_PUBLIC_FONT_BASE_URL` (HTTPS only). If set, host these files at that base path: `NotoSansKR-Regular.woff2`, `NotoSerifKR-Regular.woff2`, `NotoSerifKR-SemiBold.woff2`, `NotoSerifKR-Bold.woff2`, `DynaPuff-SemiBold.woff2`
    - `infra/env/prod/caddy.env`: `CADDY_SITE_ADDRESS`, `CADDY_ACME_EMAIL`
    - `infra/env/prod/deploy.env` (optional helper): `GHCR_USERNAME` + `GHCR_TOKEN` if GHCR packages are private
@@ -166,13 +165,13 @@ If you intentionally need a manual bring-up (not recommended for routine deploys
 use `--wait` when available:
 
 ```bash
-docker compose -f infra/docker compose.prod.yml up -d --wait
+docker compose -f infra/docker-compose.prod.yml up -d --wait
 ```
 
 or (Compose v1):
 
 ```bash
-docker compose -f infra/docker compose.prod.yml up -d
+docker compose -f infra/docker-compose.prod.yml up -d
 ```
 
 4) Verify health:
@@ -181,15 +180,15 @@ docker compose -f infra/docker compose.prod.yml up -d
 curl -sS http://localhost:8000/health
 curl -sS http://localhost:3000
 curl -sS -I http://localhost
-docker compose -f infra/docker compose.prod.yml ps
+docker compose -f infra/docker-compose.prod.yml ps
 ```
 
 ## Layout
 
 - `web/`
 - `api/`
-- `infra/docker compose.yml` (development)
-- `infra/docker compose.prod.yml` (deployment)
+- `infra/docker-compose.yml` (development)
+- `infra/docker-compose.prod.yml` (deployment)
 - `third_party/srtgo` (read-only reference)
 - `third_party/catchtable` (read-only reference)
 
@@ -301,7 +300,7 @@ Internal API:
 - Idempotent active-task creation by `(user_id, module, idempotency_key)`
 - Payment idempotency: worker checks existing payment artifact before pay retry
 - Redis token bucket rate limiter applied to provider outbound calls
-- ARQ queue domains are explicit: `train:queue` (worker) and `restaurant:queue` (worker-restaurant)
+- ARQ queue domains are explicit: `train:queue` (worker) and reserved `restaurant:queue` (not consumed in the monolithic runtime profile)
 
 ## Manual verification (Train)
 
@@ -321,7 +320,7 @@ Internal API:
 Check DB task rows:
 
 ```bash
-docker compose -f infra/docker compose.yml exec postgres \
+docker compose -f infra/docker-compose.yml exec postgres \
   psql -U bominal -d bominal \
   -c "select id, state, deadline_at, created_at from tasks order by created_at desc limit 20;"
 ```
@@ -329,7 +328,7 @@ docker compose -f infra/docker compose.yml exec postgres \
 Check attempts:
 
 ```bash
-docker compose -f infra/docker compose.yml exec postgres \
+docker compose -f infra/docker-compose.yml exec postgres \
   psql -U bominal -d bominal \
   -c "select task_id, action, provider, ok, retryable, started_at from task_attempts order by started_at desc limit 30;"
 ```
@@ -362,13 +361,13 @@ Backend tests include:
 Run tests:
 
 ```bash
-docker compose -f infra/docker compose.yml exec api pytest -q
+docker compose -f infra/docker-compose.yml exec api pytest -q
 ```
 
 Frontend type-check:
 
 ```bash
-docker compose -f infra/docker compose.yml exec web npx tsc --noEmit
+docker compose -f infra/docker-compose.yml exec web npx tsc --noEmit
 ```
 
 ## Pre-deploy final check
@@ -384,14 +383,14 @@ Run this checklist before first deployment:
 2. **Compose validity**
 
 ```bash
-docker compose -f infra/docker compose.prod.yml config >/tmp/bominal-prod-compose.txt
+docker compose -f infra/docker-compose.prod.yml config >/tmp/bominal-prod-compose.txt
 ```
 
 3. **App checks in dev (recommended before prod push)**
 
 ```bash
-docker compose -f infra/docker compose.yml exec api pytest -q
-docker compose -f infra/docker compose.yml exec web npx tsc --noEmit
+docker compose -f infra/docker-compose.yml exec api pytest -q
+docker compose -f infra/docker-compose.yml exec web npx tsc --noEmit
 ```
 
 4. **Smoke test after prod up**
@@ -400,13 +399,13 @@ docker compose -f infra/docker compose.yml exec web npx tsc --noEmit
 curl -sS http://localhost:8000/health
 curl -sS -I http://localhost:3000
 curl -sS -I http://localhost
-docker compose -f infra/docker compose.prod.yml logs --tail=100 caddy api worker worker-restaurant web
+docker compose -f infra/docker-compose.prod.yml logs --tail=100 caddy api worker web
 ```
 
 Duplicate display name pre-migration check (optional manual run):
 
 ```bash
-docker compose -f infra/docker compose.prod.yml run --rm api python scripts/check_duplicate_display_names.py
+docker compose -f infra/docker-compose.prod.yml run --rm api python scripts/check_duplicate_display_names.py
 ```
 
 5. **Email configuration**
