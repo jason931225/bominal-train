@@ -39,6 +39,19 @@ function fakeRegistrationCredential() {
   };
 }
 
+function fakeRegistrationCredentialWithoutTransports() {
+  return {
+    id: "cred-2",
+    rawId: Uint8Array.from([9, 8, 7]).buffer,
+    type: "public-key",
+    response: {
+      attestationObject: Uint8Array.from([6, 5]).buffer,
+      clientDataJSON: Uint8Array.from([4, 3]).buffer,
+    },
+    getClientExtensionResults: () => ({ appid: true }),
+  };
+}
+
 function fakeAuthenticationCredential() {
   return {
     id: "cred-1",
@@ -51,6 +64,21 @@ function fakeAuthenticationCredential() {
       userHandle: null,
     },
     getClientExtensionResults: () => ({}),
+  };
+}
+
+function fakeAuthenticationCredentialWithUserHandle() {
+  return {
+    id: "cred-2",
+    rawId: Uint8Array.from([3, 2, 1]).buffer,
+    type: "public-key",
+    response: {
+      authenticatorData: Uint8Array.from([9]).buffer,
+      clientDataJSON: Uint8Array.from([8]).buffer,
+      signature: Uint8Array.from([7]).buffer,
+      userHandle: Uint8Array.from([6]).buffer,
+    },
+    getClientExtensionResults: () => ({ uv: true }),
   };
 }
 
@@ -120,6 +148,31 @@ describe("passkey helpers", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it("registers with excludeCredentials and no transports function", async () => {
+    installPasskeySupport();
+    setNavigatorCredentials({
+      create: vi.fn().mockResolvedValue(fakeRegistrationCredentialWithoutTransports()),
+    });
+
+    installFetchMock([
+      new Response(
+        JSON.stringify({
+          challenge_id: "c2",
+          public_key: {
+            challenge: "AQID",
+            user: { id: "AQID" },
+            excludeCredentials: [{ id: "AQID", type: "public-key" }],
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+      new Response(JSON.stringify({ id: "pk2" }), { status: 200, headers: { "Content-Type": "application/json" } }),
+    ]);
+
+    const result = await registerPasskeyFromSession("http://api");
+    expect(result).toEqual({ ok: true });
+  });
+
   it("handles passkey registration failures", async () => {
     installPasskeySupport();
     setNavigatorCredentials({ create: vi.fn().mockResolvedValue(null) });
@@ -177,6 +230,30 @@ describe("passkey helpers", () => {
     expect(result.ok).toBe(true);
   });
 
+  it("signs in with passkey when assertion includes userHandle", async () => {
+    installPasskeySupport();
+    setNavigatorCredentials({
+      get: vi.fn().mockResolvedValue(fakeAuthenticationCredentialWithUserHandle()),
+    });
+
+    installFetchMock([
+      new Response(
+        JSON.stringify({
+          challenge_id: "auth-2",
+          public_key: {
+            challenge: "AQID",
+            allowCredentials: [{ id: "AQID", type: "public-key" }],
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+      new Response(JSON.stringify({ user: { id: "u2" } }), { status: 200, headers: { "Content-Type": "application/json" } }),
+    ]);
+
+    const result = await signInWithPasskey("http://api", { email: "user2@example.com", rememberMe: false });
+    expect(result).toEqual({ ok: true });
+  });
+
   it("handles passkey sign-in failures", async () => {
     installPasskeySupport();
     setNavigatorCredentials({ get: vi.fn().mockResolvedValue(null) });
@@ -208,6 +285,29 @@ describe("passkey helpers", () => {
     result = await signInWithPasskey("http://api", { email: "user@example.com", rememberMe: false });
     expect(result.ok).toBe(false);
     expect(result.error).toContain("bad verify");
+  });
+
+  it("uses fallback error messages for malformed JSON error payloads", async () => {
+    installPasskeySupport();
+    setNavigatorCredentials({});
+
+    installFetchMock([
+      new Response("not-json", { status: 500, headers: { "Content-Type": "application/json" } }),
+    ]);
+    const registerResult = await registerPasskeyFromSession("http://api");
+    expect(registerResult).toEqual({
+      ok: false,
+      error: "Could not start passkey setup.",
+    });
+
+    installFetchMock([
+      new Response("still-not-json", { status: 400, headers: { "Content-Type": "application/json" } }),
+    ]);
+    const signInResult = await signInWithPasskey("http://api", { email: "user@example.com", rememberMe: false });
+    expect(signInResult).toEqual({
+      ok: false,
+      error: "Could not start passkey sign in.",
+    });
   });
 
   it("loads and removes passkeys from session", async () => {
