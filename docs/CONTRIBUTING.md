@@ -34,6 +34,9 @@ docker compose -f infra/docker-compose.yml up --build
 - Do not edit `third_party/srtgo` or `third_party/catchtable` (read-only references).
 - Keep API handlers thin; move orchestration/business logic into service/worker layers.
 - Favor additive migrations and backward-safe schema evolution.
+- Use workflow naming conventions for GitHub Actions:
+  - CI workflows: `.github/workflows/ci-*.yml` and `name: CI - ...`
+  - CD workflows: `.github/workflows/cd-*.yml` and `name: CD - ...`
 - For restaurant/train provider onboarding, follow `docs/playbooks/restaurant-provider-adapter-workflow.md` and update `docs/provider-research/*` first.
 
 ## 2) Frontend (Next.js + TS + Tailwind)
@@ -93,7 +96,7 @@ Recommended one-command local verification (starts stack, waits for health, runs
 ./infra/scripts/local-check.sh
 ```
 
-- `local-check.sh` now hard-fails before test execution if `worker-train` or `worker-restaurant` is not running the expected worker settings process.
+- `local-check.sh` now hard-fails before test execution if `worker` is not running the expected worker settings process.
 
 Optional cleanup after checks:
 
@@ -195,7 +198,7 @@ Current compatibility holds (must be re-evaluated during dependency modernizatio
 
 - `redis-py` library hold:
   - Python client `redis` is pinned to `5.3.1` because `arq==0.27.0` requires `redis<6`.
-  - This is not a Redis server-version hold; runtime Redis server remains modern (`redis:7-alpine` in local stack).
+  - This is not a Redis server-version hold; runtime Redis server remains modern (`redis:8.6-alpine` in local stack).
 - `vitest` baseline note (not a hold):
   - stack is migrated to `vitest` / `@vitest/coverage-v8` `4.x`.
   - coverage floors are rebaselined to Vitest 4 accounting and must be ratcheted upward in follow-up test-improvement PRs.

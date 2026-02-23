@@ -105,7 +105,7 @@ class _SessionFactory:
 
 
 def test_get_container_status_success_and_fallback(monkeypatch):
-    payload = json.dumps({"Name": "api-gateway", "State": "running", "Health": "healthy"})
+    payload = json.dumps({"Name": "api", "State": "running", "Health": "healthy"})
     calls = {"n": 0}
 
     def _run(*_args, **_kwargs):  # noqa: ANN002, ANN003
@@ -117,7 +117,7 @@ def test_get_container_status_success_and_fallback(monkeypatch):
     monkeypatch.setattr(monitor.subprocess, "run", _run)
     parsed = monitor.get_container_status()
     assert len(parsed) == 1
-    assert parsed[0]["Name"] == "api-gateway"
+    assert parsed[0]["Name"] == "api"
 
 
 def test_get_container_status_handles_subprocess_errors(monkeypatch):
@@ -235,8 +235,8 @@ def test_printer_branches_for_nonempty_inputs(capsys):
     now = datetime.now(timezone.utc)
     monitor.print_containers(
         [
-            {"Name": "api-gateway", "State": "running", "Health": "healthy"},
-            {"Service": "worker-train", "State": "starting", "Health": "unhealthy"},
+            {"Name": "api", "State": "running", "Health": "healthy"},
+            {"Service": "worker", "State": "starting", "Health": "unhealthy"},
             {"Name": "redis", "State": "exited", "Health": ""},
             {"Name": "mailpit", "State": "created", "Health": ""},
         ]
@@ -280,7 +280,7 @@ def test_printer_branches_for_nonempty_inputs(capsys):
         ]
     )
     output = capsys.readouterr().out
-    assert "api-gateway" in output
+    assert "api" in output
     assert "Rate Limiters" in output
     assert "Attempts:" in output
     assert "FAILED(H)" in output

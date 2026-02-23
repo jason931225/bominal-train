@@ -70,7 +70,7 @@ This plan captures earlier Stage10 findings for traceability:
 ### Workstream 1: Prevent unnecessary web builds
 
 Files:
-- `.github/workflows/build-push.yml`
+- `.github/workflows/ci-build-publish-images.yml`
 
 Changes:
 - Add change-detection gate (`paths-filter` or equivalent) and skip `build-web` when `web/**` and web build inputs are unchanged.
@@ -83,7 +83,7 @@ Acceptance:
 ### Workstream 2: Reduce Docker cache export overhead
 
 Files:
-- `.github/workflows/build-push.yml`
+- `.github/workflows/ci-build-publish-images.yml`
 
 Changes:
 - Change web build cache policy from `cache-to: type=gha,mode=max` to lower-overhead mode (`mode=min`) or disable export where net-negative.

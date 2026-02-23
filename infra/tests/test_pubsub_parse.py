@@ -32,7 +32,8 @@ class TestPubSubParse(unittest.TestCase):
                         "attributes": {
                             "mode": "latest",
                             "commit": "abc 123",
-                            "api_gateway_image": "ghcr.io/example/api-gateway:abc123",
+                            "api_image": "ghcr.io/example/api:abc123",
+                            "worker_image": "ghcr.io/example/api:abc123",
                         }
                     },
                 }
@@ -46,12 +47,14 @@ class TestPubSubParse(unittest.TestCase):
                 "ACK_ID=ack-1",
                 "DEPLOY_MODE=latest",
                 "DEPLOY_COMMIT='abc 123'",
-                "DEPLOY_API_GATEWAY_IMAGE=ghcr.io/example/api-gateway:abc123",
+                "DEPLOY_API_IMAGE=ghcr.io/example/api:abc123",
+                "DEPLOY_WORKER_IMAGE=ghcr.io/example/api:abc123",
+                "DEPLOY_WEB_IMAGE=''",
+                "DEPLOY_API_GATEWAY_IMAGE=ghcr.io/example/api:abc123",
                 "DEPLOY_API_TRAIN_IMAGE=''",
                 "DEPLOY_API_RESTAURANT_IMAGE=''",
-                "DEPLOY_WORKER_TRAIN_IMAGE=''",
+                "DEPLOY_WORKER_TRAIN_IMAGE=ghcr.io/example/api:abc123",
                 "DEPLOY_WORKER_RESTAURANT_IMAGE=''",
-                "DEPLOY_WEB_IMAGE=''",
             ],
         )
 
@@ -72,12 +75,14 @@ class TestPubSubParse(unittest.TestCase):
                 "ACK_ID=ack-2",
                 "DEPLOY_MODE=latest",
                 "DEPLOY_COMMIT=''",
+                "DEPLOY_API_IMAGE=''",
+                "DEPLOY_WORKER_IMAGE=''",
+                "DEPLOY_WEB_IMAGE=''",
                 "DEPLOY_API_GATEWAY_IMAGE=''",
                 "DEPLOY_API_TRAIN_IMAGE=''",
                 "DEPLOY_API_RESTAURANT_IMAGE=''",
                 "DEPLOY_WORKER_TRAIN_IMAGE=''",
                 "DEPLOY_WORKER_RESTAURANT_IMAGE=''",
-                "DEPLOY_WEB_IMAGE=''",
             ],
         )
 
@@ -89,11 +94,13 @@ class TestPubSubParse(unittest.TestCase):
                 "ACK_ID=''",
                 "DEPLOY_MODE=latest",
                 "DEPLOY_COMMIT=''",
+                "DEPLOY_API_IMAGE=''",
+                "DEPLOY_WORKER_IMAGE=''",
+                "DEPLOY_WEB_IMAGE=''",
                 "DEPLOY_API_GATEWAY_IMAGE=''",
                 "DEPLOY_API_TRAIN_IMAGE=''",
                 "DEPLOY_API_RESTAURANT_IMAGE=''",
                 "DEPLOY_WORKER_TRAIN_IMAGE=''",
                 "DEPLOY_WORKER_RESTAURANT_IMAGE=''",
-                "DEPLOY_WEB_IMAGE=''",
             ],
         )
