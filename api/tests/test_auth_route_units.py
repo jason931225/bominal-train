@@ -460,6 +460,35 @@ async def test_register_login_session_optional_logout_and_update_account(db_sess
 
 
 @pytest.mark.asyncio
+async def test_login_rehashes_password_when_policy_changes(db_session, monkeypatch):
+    role_user = (await db_session.execute(select(Role).where(Role.name == "user"))).scalar_one()
+    email = f"rehash-{uuid4().hex[:8]}@example.com"
+    user = User(
+        email=email,
+        password_hash=hash_password("SuperSecret123"),
+        display_name=f"Rehash-{uuid4().hex[:6]}",
+        role_id=role_user.id,
+        ui_locale="en",
+    )
+    db_session.add(user)
+    await db_session.commit()
+
+    old_hash = user.password_hash
+    monkeypatch.setattr(auth_routes, "password_needs_rehash", lambda _hash: True)
+
+    response = await auth_routes.login(
+        payload=LoginRequest(email=email, password="SuperSecret123", remember_me=False),
+        request=_request_for_login(),
+        db=db_session,
+    )
+    assert response.status_code == 200
+
+    await db_session.refresh(user)
+    assert user.password_hash != old_hash
+    assert verify_password("SuperSecret123", user.password_hash)
+
+
+@pytest.mark.asyncio
 async def test_register_duplicate_display_name_and_update_integrity_delete_paths(db_session, monkeypatch):
     async def _enqueue_ok(_payload, defer_seconds: float = 0.0):  # noqa: ANN001
         return "job-id"
