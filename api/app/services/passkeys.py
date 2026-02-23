@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import inspect
 import json
 from datetime import timedelta
 from typing import Any
@@ -36,12 +37,13 @@ def _load_webauthn_runtime() -> Any:
             verify_authentication_response,
             verify_registration_response,
         )
-        from webauthn.helpers.structs import (  # type: ignore[import-not-found]
-            PublicKeyCredentialDescriptor,
-            UserVerificationRequirement,
-        )
+        from webauthn.helpers import structs as webauthn_structs  # type: ignore[import-not-found]
     except Exception as exc:  # pragma: no cover - dependency availability varies by runtime image
         raise PasskeyRuntimeError("Passkey runtime is unavailable") from exc
+
+    PublicKeyCredentialDescriptor = webauthn_structs.PublicKeyCredentialDescriptor
+    UserVerificationRequirement = webauthn_structs.UserVerificationRequirement
+    AuthenticatorSelectionCriteria = getattr(webauthn_structs, "AuthenticatorSelectionCriteria", None)
 
     return {
         "base64url_to_bytes": base64url_to_bytes,
@@ -52,6 +54,7 @@ def _load_webauthn_runtime() -> Any:
         "verify_registration_response": verify_registration_response,
         "PublicKeyCredentialDescriptor": PublicKeyCredentialDescriptor,
         "UserVerificationRequirement": UserVerificationRequirement,
+        "AuthenticatorSelectionCriteria": AuthenticatorSelectionCriteria,
     }
 
 
@@ -135,6 +138,18 @@ def _descriptor(runtime: dict[str, Any], credential_id_b64url: str):
     return descriptor_cls(id=_challenge_bytes(runtime, credential_id_b64url), type="public-key")
 
 
+def _call_with_supported_kwargs(fn: Any, **kwargs: Any) -> Any:
+    """Call third-party helpers defensively across runtime signature changes."""
+    try:
+        params = inspect.signature(fn).parameters
+    except (TypeError, ValueError):
+        return fn(**kwargs)
+    if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()):
+        return fn(**kwargs)
+    filtered = {k: v for k, v in kwargs.items() if k in params}
+    return fn(**filtered)
+
+
 async def _create_challenge(
     db: AsyncSession,
     *,
@@ -190,16 +205,24 @@ async def begin_passkey_registration(
 ) -> tuple[UUID, dict[str, Any]]:
     runtime = _load_webauthn_runtime()
     existing_credentials = await list_passkeys(db, user_id=user.id)
-    options = runtime["generate_registration_options"](
-        rp_id=_effective_passkey_rp_id(),
-        rp_name=settings.app_name,
-        user_id=str(user.id).encode("utf-8"),
-        user_name=user.email,
-        user_display_name=user.display_name or user.email,
-        timeout=max(settings.passkey_timeout_ms, 1),
-        user_verification=runtime["UserVerificationRequirement"].PREFERRED,
-        exclude_credentials=[_descriptor(runtime, item.credential_id) for item in existing_credentials],
-    )
+    registration_kwargs: dict[str, Any] = {
+        "rp_id": _effective_passkey_rp_id(),
+        "rp_name": settings.app_name,
+        "user_id": str(user.id).encode("utf-8"),
+        "user_name": user.email,
+        "user_display_name": user.display_name or user.email,
+        "timeout": max(settings.passkey_timeout_ms, 1),
+        "exclude_credentials": [_descriptor(runtime, item.credential_id) for item in existing_credentials],
+    }
+    uv_preferred = runtime["UserVerificationRequirement"].PREFERRED
+    authenticator_selection_cls = runtime.get("AuthenticatorSelectionCriteria")
+    if authenticator_selection_cls is not None:
+        registration_kwargs["authenticator_selection"] = authenticator_selection_cls(user_verification=uv_preferred)
+    else:
+        # Older `webauthn` releases accepted this directly.
+        registration_kwargs["user_verification"] = uv_preferred
+
+    options = _call_with_supported_kwargs(runtime["generate_registration_options"], **registration_kwargs)
     public_key = json.loads(runtime["options_to_json"](options))
     challenge_b64url = str(public_key.get("challenge") or "").strip()
     if not challenge_b64url:
