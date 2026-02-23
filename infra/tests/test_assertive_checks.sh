@@ -46,6 +46,16 @@ it("ok", () => {
 EOF
 node "$WEB_CHECK" "$TMP_DIR/web" >/dev/null
 
+mkdir -p "$TMP_DIR/web/node_modules/some_pkg"
+cat >"$TMP_DIR/web/node_modules/some_pkg/ignored.test.ts" <<'EOF'
+import { it } from "vitest";
+it("ignored because dependency path", () => {
+  const x = 1 + 1;
+  void x;
+});
+EOF
+node "$WEB_CHECK" "$TMP_DIR/web" >/dev/null
+
 cat >"$TMP_DIR/web/components/__tests__/fail.test.ts" <<'EOF'
 import { it } from "vitest";
 it("missing expect", () => {

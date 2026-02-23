@@ -144,7 +144,7 @@ npm run --prefix web test:mutation
 ```
 
 - `check_assertive_tests.py` fails when a Python `test_*` function has no assertive signal (`assert`, `pytest.raises`, `assert*` calls).
-- `check_assertive_tests_web.mjs` fails when a web `it()/test()` block lacks `expect(...)`/`assert(...)`.
+- `check_assertive_tests_web.mjs` fails when a web `it()/test()` block lacks `expect(...)`/`assert(...)` in repo-owned tests (dependency/build paths like `node_modules` and `.next` are excluded).
 - Both assertive-check scripts also fail vacuous assertions (for example `assert True`, `expect(true).toBe(true)`); only meaningful behavior assertions count.
 - API mutation gate runs deterministic mutation-smoke checks on high-risk crypto invariants (`redaction.py`, `envelope.py`) and fails if any injected mutant survives.
 - Web mutation gate runs deterministic mutation-smoke checks against high-risk UI/dataflow behavior and fails if any injected mutant survives.

@@ -37,6 +37,9 @@ Deploy script guardrails:
 - Uses image-aware rolling updates on running stacks (skip unchanged per-service image groups: api-gateway/api-train/api-restaurant/worker-train/worker-restaurant/web).
 - Auto rollback on smoke failure is enabled by default (`AUTO_ROLLBACK_ON_SMOKE_FAILURE=true`).
 - Logs tracked working-tree dirty state before deploy; set `DEPLOY_FAIL_ON_DIRTY_REPO=true` to hard-fail on dirty tracked files.
+- GitHub deploy workflow guardrails:
+  - deploy request is published only after `Infra Tests` success and matching-commit `Build and Push Images` success;
+  - post-deploy CI verification checks production `/health` (`db=true`, `redis=true`) and production web endpoint HTTP `200`/`3xx`.
 
 Compatibility notice:
 - `infra/docker-compose.deploy.yml.deprecated` is deprecated and removed from active operator workflow.
