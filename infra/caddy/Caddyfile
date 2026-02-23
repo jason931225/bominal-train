@@ -21,6 +21,17 @@ bominal.com {
 		-Server
 	}
 
+	# Module-split routing: train/restaurant run in isolated API services.
+	@api_train path /api/train /api/train/*
+	handle @api_train {
+		reverse_proxy api-train:8000
+	}
+
+	@api_restaurant path /api/restaurant /api/restaurant/*
+	handle @api_restaurant {
+		reverse_proxy api-restaurant:8000
+	}
+
 	@api path /api /api/* /docs /docs/* /openapi.json /redoc /health /healthz
 	handle @api {
 		reverse_proxy api-gateway:8000
