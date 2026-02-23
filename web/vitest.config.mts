@@ -24,7 +24,7 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       reporter: ["text", "json-summary", "lcov"],
-      all: false,
+      all: true,
       exclude: [
         "**/*.test.{ts,tsx}",
         "**/__tests__/**",
@@ -32,13 +32,11 @@ export default defineConfig({
         "messages/**",
         "**/*.d.ts",
       ],
-      // Vitest 4 coverage accounting is stricter than v2 in this repo.
-      // Rebaseline floors to the measured Vitest 4 baseline and ratchet upward over time.
       thresholds: {
-        lines: 52,
-        statements: 50,
-        functions: 49,
-        branches: 42,
+        lines: 100,
+        statements: 100,
+        functions: 100,
+        branches: 100,
       },
     },
   },

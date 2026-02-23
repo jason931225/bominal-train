@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import builtins
 import sys
 from dataclasses import dataclass, field
 from types import ModuleType, SimpleNamespace
@@ -178,6 +179,20 @@ def _install_fake_curl_module(
     monkeypatch.setitem(sys.modules, "curl_cffi", curl_module)
     monkeypatch.setitem(sys.modules, "curl_cffi.requests", requests_module)
     return captured
+
+
+def test_curl_transport_requires_optional_dependency(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_settings(monkeypatch, allowed_hosts=("app.srail.or.kr",), trust_env=False)
+    original_import = builtins.__import__
+
+    def _blocked_import(name: str, *args: Any, **kwargs: Any):  # noqa: ANN401
+        if name.startswith("curl_cffi"):
+            raise ImportError("missing curl_cffi")
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", _blocked_import)
+    with pytest.raises(RuntimeError, match="curl_cffi is not installed"):
+        CurlCffiTransport(impersonate="chrome131_android")
 
 
 def test_host_allowlist_helpers_cover_exact_subdomain_and_invalid_cases():

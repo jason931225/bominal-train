@@ -25,7 +25,7 @@ function capabilityLabel(capability: string): string {
     return known;
   }
 
-  const tail = capability.split(".").pop() ?? capability;
+  const tail = capability.split(".").pop() || capability;
   return tail
     .replace(/[_-]+/g, " ")
     .replace(/\b\w/g, (char) => char.toUpperCase());
