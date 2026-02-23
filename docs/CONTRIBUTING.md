@@ -132,6 +132,21 @@ Coverage ignore policy (mandatory):
   - explicit justification in review notes for why deterministic test coverage is not feasible in-scope.
 - Do not add coverage-ignore annotations for convenience.
 
+Assertiveness and mutation gates (mandatory):
+
+```bash
+python3 infra/scripts/check_assertive_tests.py api/tests
+node infra/scripts/check_assertive_tests_web.mjs web
+bash infra/scripts/run_mutation_api.sh
+npm run --prefix web test:mutation
+```
+
+- `check_assertive_tests.py` fails when a Python `test_*` function has no assertive signal (`assert`, `pytest.raises`, `assert*` calls).
+- `check_assertive_tests_web.mjs` fails when a web `it()/test()` block lacks `expect(...)`/`assert(...)`.
+- Both assertive-check scripts also fail vacuous assertions (for example `assert True`, `expect(true).toBe(true)`); only meaningful behavior assertions count.
+- API mutation gate runs deterministic mutation-smoke checks on high-risk crypto invariants (`redaction.py`, `envelope.py`) and fails if any injected mutant survives.
+- Web mutation gate runs deterministic mutation-smoke checks against high-risk UI/dataflow behavior and fails if any injected mutant survives.
+
 Frontend E2E tests (containerized, Chromium-enabled profile):
 
 ```bash

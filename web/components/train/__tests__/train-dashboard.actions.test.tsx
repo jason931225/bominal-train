@@ -1198,6 +1198,7 @@ describe("TrainDashboard action flows", () => {
       }),
     );
     await flushAsyncEffects();
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/api/train/stations"))).toBe(true);
   }, 20_000);
 
   it("keeps station selects disabled when station payload is empty", async () => {
