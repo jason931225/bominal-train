@@ -39,16 +39,16 @@ function fakeRegistrationCredential() {
   };
 }
 
-function fakeRegistrationCredentialWithoutTransports() {
+function fakeRegistrationCredentialWithViews() {
   return {
-    id: "cred-2",
-    rawId: Uint8Array.from([9, 8, 7]).buffer,
+    id: "cred-3",
+    rawId: Uint8Array.from([7, 7, 7]),
     type: "public-key",
     response: {
-      attestationObject: Uint8Array.from([6, 5]).buffer,
-      clientDataJSON: Uint8Array.from([4, 3]).buffer,
+      attestationObject: Uint8Array.from([1, 2]),
+      clientDataJSON: Uint8Array.from([3, 4]),
     },
-    getClientExtensionResults: () => ({ appid: true }),
+    getClientExtensionResults: () => ({}),
   };
 }
 
@@ -67,18 +67,18 @@ function fakeAuthenticationCredential() {
   };
 }
 
-function fakeAuthenticationCredentialWithUserHandle() {
+function fakeAuthenticationCredentialWithViews() {
   return {
-    id: "cred-2",
-    rawId: Uint8Array.from([3, 2, 1]).buffer,
+    id: "cred-3",
+    rawId: Uint8Array.from([4, 4, 4]),
     type: "public-key",
     response: {
-      authenticatorData: Uint8Array.from([9]).buffer,
-      clientDataJSON: Uint8Array.from([8]).buffer,
-      signature: Uint8Array.from([7]).buffer,
-      userHandle: Uint8Array.from([6]).buffer,
+      authenticatorData: Uint8Array.from([2]),
+      clientDataJSON: Uint8Array.from([3]),
+      signature: Uint8Array.from([4]),
+      userHandle: Uint8Array.from([5]),
     },
-    getClientExtensionResults: () => ({ uv: true }),
+    getClientExtensionResults: () => ({}),
   };
 }
 
@@ -151,7 +151,7 @@ describe("passkey helpers", () => {
   it("registers with excludeCredentials and no transports function", async () => {
     installPasskeySupport();
     setNavigatorCredentials({
-      create: vi.fn().mockResolvedValue(fakeRegistrationCredentialWithoutTransports()),
+      create: vi.fn().mockResolvedValue(fakeRegistrationCredentialWithViews()),
     });
 
     installFetchMock([
@@ -171,6 +171,47 @@ describe("passkey helpers", () => {
 
     const result = await registerPasskeyFromSession("http://api");
     expect(result).toEqual({ ok: true });
+  });
+
+  it("normalizes minimal passkey option payloads for register/sign-in", async () => {
+    installPasskeySupport();
+    const createMock = vi.fn().mockResolvedValue(null);
+    const getMock = vi.fn().mockResolvedValue(null);
+    setNavigatorCredentials({
+      create: createMock,
+      get: getMock,
+    });
+
+    installFetchMock([
+      new Response(JSON.stringify({ challenge_id: "c3", public_key: {} }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    ]);
+    const registerResult = await registerPasskeyFromSession("http://api");
+    expect(registerResult).toEqual({ ok: false, error: "Passkey setup was cancelled." });
+    expect(createMock).toHaveBeenCalledTimes(1);
+    const registerArgs = createMock.mock.calls[0]?.[0] as {
+      publicKey: { challenge: Uint8Array; user: { id: Uint8Array }; excludeCredentials: unknown[] };
+    };
+    expect(registerArgs.publicKey.challenge).toBeInstanceOf(Uint8Array);
+    expect(registerArgs.publicKey.user.id).toBeInstanceOf(Uint8Array);
+    expect(Array.isArray(registerArgs.publicKey.excludeCredentials)).toBe(true);
+
+    installFetchMock([
+      new Response(JSON.stringify({ challenge_id: "a3", public_key: {} }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    ]);
+    const signInResult = await signInWithPasskey("http://api", { email: "user@example.com", rememberMe: false });
+    expect(signInResult).toEqual({ ok: false, error: "Passkey sign in was cancelled." });
+    expect(getMock).toHaveBeenCalledTimes(1);
+    const signInArgs = getMock.mock.calls[0]?.[0] as {
+      publicKey: { challenge: Uint8Array; allowCredentials: unknown[] };
+    };
+    expect(signInArgs.publicKey.challenge).toBeInstanceOf(Uint8Array);
+    expect(Array.isArray(signInArgs.publicKey.allowCredentials)).toBe(true);
   });
 
   it("handles passkey registration failures", async () => {
@@ -233,7 +274,7 @@ describe("passkey helpers", () => {
   it("signs in with passkey when assertion includes userHandle", async () => {
     installPasskeySupport();
     setNavigatorCredentials({
-      get: vi.fn().mockResolvedValue(fakeAuthenticationCredentialWithUserHandle()),
+      get: vi.fn().mockResolvedValue(fakeAuthenticationCredentialWithViews()),
     });
 
     installFetchMock([
@@ -336,5 +377,16 @@ describe("passkey helpers", () => {
 
     installFetchMock([new Response("remove failed", { status: 400, headers: { "Content-Type": "text/plain" } })]);
     await expect(removePasskeyFromSession("http://api", "pk-1")).rejects.toThrow("remove failed");
+  });
+
+  it("uses fallback list/remove error messages when content type is missing", async () => {
+    installPasskeySupport();
+    setNavigatorCredentials({});
+
+    installFetchMock([new Response("", { status: 500 })]);
+    await expect(listPasskeysFromSession("http://api")).rejects.toThrow("Could not load passkeys.");
+
+    installFetchMock([new Response("", { status: 500 })]);
+    await expect(removePasskeyFromSession("http://api", "pk-2")).rejects.toThrow("Could not remove passkey.");
   });
 });
