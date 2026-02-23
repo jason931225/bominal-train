@@ -122,6 +122,9 @@ if [[ "${1:-}" == "inspect" ]]; then
         exit 0
         ;;
       bominal-worker-train)
+        if [[ "${SIM_WORKER_TRAIN_PRESENT:-1}" == "0" ]]; then
+          exit 0
+        fi
         if [[ "${SIM_WORKER_TRAIN_CHANGED:-0}" == "1" ]]; then
           echo "sha256:api-train-old"
         else
@@ -178,8 +181,9 @@ run_case() {
   local worker_train_changed="$4"
   local worker_restaurant_changed="$5"
   local web_changed="$6"
-  local calls_file="$7"
-  local out_file="$8"
+  local worker_train_present="${7:-1}"
+  local calls_file="$8"
+  local out_file="$9"
 
   PATH="$TMP_DIR/bin:$PATH" \
     REPO_DIR="$ROOT_DIR" \
@@ -193,6 +197,7 @@ run_case() {
     SIM_WORKER_TRAIN_CHANGED="$worker_train_changed" \
     SIM_WORKER_RESTAURANT_CHANGED="$worker_restaurant_changed" \
     SIM_WEB_CHANGED="$web_changed" \
+    SIM_WORKER_TRAIN_PRESENT="$worker_train_present" \
     GCP_PROJECT_ID="bominal" \
     SMOKE_MAX_ATTEMPTS=1 \
     SMOKE_RETRY_DELAY_SECONDS=0 \
@@ -203,9 +208,12 @@ UNCHANGED_CALLS="$TMP_DIR/unchanged.calls"
 UNCHANGED_OUT="$TMP_DIR/unchanged.out"
 TRAIN_ONLY_CALLS="$TMP_DIR/train-only.calls"
 TRAIN_ONLY_OUT="$TMP_DIR/train-only.out"
+MISSING_WORKER_CALLS="$TMP_DIR/missing-worker.calls"
+MISSING_WORKER_OUT="$TMP_DIR/missing-worker.out"
 
-run_case 0 0 0 0 0 0 "$UNCHANGED_CALLS" "$UNCHANGED_OUT"
-run_case 0 1 0 1 0 0 "$TRAIN_ONLY_CALLS" "$TRAIN_ONLY_OUT"
+run_case 0 0 0 0 0 0 1 "$UNCHANGED_CALLS" "$UNCHANGED_OUT"
+run_case 0 1 0 1 0 0 1 "$TRAIN_ONLY_CALLS" "$TRAIN_ONLY_OUT"
+run_case 0 0 0 0 0 0 0 "$MISSING_WORKER_CALLS" "$MISSING_WORKER_OUT"
 
 if ! rg -q "up -d --wait postgres redis$" "$UNCHANGED_CALLS"; then
   echo "FAIL: unchanged-image case did not run base db/redis stage" >&2
@@ -234,6 +242,18 @@ fi
 if rg -q "up -d --wait --no-deps api-gateway|up -d --wait --no-deps api-restaurant|up -d --wait --no-deps worker-restaurant|up -d --wait --no-deps web" "$TRAIN_ONLY_CALLS"; then
   echo "FAIL: train-only case rolled unrelated services" >&2
   cat "$TRAIN_ONLY_CALLS" >&2
+  exit 1
+fi
+
+if ! rg -q "up -d --wait --no-deps worker-train" "$MISSING_WORKER_CALLS"; then
+  echo "FAIL: missing-worker case did not force worker-train rollout" >&2
+  cat "$MISSING_WORKER_CALLS" >&2
+  exit 1
+fi
+
+if rg -q "up -d --wait --no-deps api-gateway|up -d --wait --no-deps api-train|up -d --wait --no-deps api-restaurant|up -d --wait --no-deps worker-restaurant|up -d --wait --no-deps web" "$MISSING_WORKER_CALLS"; then
+  echo "FAIL: missing-worker case rolled unrelated services" >&2
+  cat "$MISSING_WORKER_CALLS" >&2
   exit 1
 fi
 
