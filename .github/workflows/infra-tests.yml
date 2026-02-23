@@ -73,6 +73,24 @@ jobs:
         run: |
           npm run --prefix web test:ci
 
+      - name: Assertive test checks (API + web)
+        run: |
+          python3 infra/scripts/check_assertive_tests.py api/tests
+          node infra/scripts/check_assertive_tests_web.mjs web
+
+      - name: Install API test dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install -r api/requirements.txt
+
+      - name: Run API mutation gate
+        run: |
+          bash infra/scripts/run_mutation_api.sh
+
+      - name: Run web mutation smoke gate
+        run: |
+          npm run --prefix web test:mutation
+
       - name: Validate docs pointer library
         run: |
           bash infra/tests/test_docs_pointers.sh
@@ -140,3 +158,7 @@ jobs:
       - name: Validate semantic version mapping
         run: |
           bash infra/tests/test_versioning.sh
+
+      - name: Validate assertive-check scripts
+        run: |
+          bash infra/tests/test_assertive_checks.sh
