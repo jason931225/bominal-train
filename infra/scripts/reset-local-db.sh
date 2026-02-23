@@ -101,13 +101,9 @@ if ! compose_service_is_running "$COMPOSE_FILE" postgres; then
   "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d postgres
 fi
 
-API_SERVICE="$(first_running_compose_service "$COMPOSE_FILE" api-gateway api || true)"
+API_SERVICE="$(first_running_compose_service "$COMPOSE_FILE" api || true)"
 if [[ -z "$API_SERVICE" ]]; then
-  if "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" config --services 2>/dev/null | grep -Fxq "api-gateway"; then
-    API_SERVICE="api-gateway"
-  else
-    API_SERVICE="api"
-  fi
+  API_SERVICE="api"
 fi
 
 if [[ "$FRESH_SCHEMA" == "true" ]] && ! compose_service_is_running "$COMPOSE_FILE" "$API_SERVICE"; then
