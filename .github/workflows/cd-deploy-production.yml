@@ -1,15 +1,15 @@
-name: Deploy to Production
+name: CD - Deploy Production
 
 on:
   workflow_run:
-    workflows: ["Infra Tests"]
+    workflows: ["CI - Infra Quality Gates"]
     types: [completed]
     branches: [main]
 
   workflow_dispatch:
 
 concurrency:
-  group: deploy-production
+  group: cd-deploy-production
   cancel-in-progress: false
 
 permissions:
@@ -34,7 +34,7 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       (
         github.event_name == 'workflow_run' &&
-        github.event.workflow_run.name == 'Infra Tests' &&
+        github.event.workflow_run.name == 'CI - Infra Quality Gates' &&
         github.event.workflow_run.conclusion == 'success'
       )
     runs-on: ubuntu-latest
@@ -51,7 +51,7 @@ jobs:
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const targetSha = context.payload.workflow_run?.head_sha || context.sha;
-            const requiredWorkflows = ["Infra Tests", "Build and Push Images"];
+            const requiredWorkflows = ["CI - Infra Quality Gates", "CI - Build and Publish Images"];
             const maxAttempts = 40;
             const sleepMs = 15000;
 
@@ -109,17 +109,13 @@ jobs:
 
             core.info(`Prerequisite workflows succeeded for ${targetSha}; deploy gate passed.`);
 
-            const buildRun = selected.get("Build and Push Images");
+            const buildRun = selected.get("CI - Build and Publish Images");
             const workflowJobs = {
-              "Build API Gateway Image": "api_gateway_changed",
-              "Build API Train Image": "api_train_changed",
-              "Build API Restaurant Image": "api_restaurant_changed",
+              "Build API Image": "api_changed",
               "Build Web Image": "web_changed",
             };
             const changed = {
-              api_gateway_changed: false,
-              api_train_changed: false,
-              api_restaurant_changed: false,
+              api_changed: false,
               web_changed: false,
             };
 
@@ -144,9 +140,7 @@ jobs:
 
             core.setOutput("target_sha", targetSha);
             core.setOutput("build_run_id", String(buildRun.id));
-            core.setOutput("api_gateway_changed", String(changed.api_gateway_changed));
-            core.setOutput("api_train_changed", String(changed.api_train_changed));
-            core.setOutput("api_restaurant_changed", String(changed.api_restaurant_changed));
+            core.setOutput("api_changed", String(changed.api_changed));
             core.setOutput("web_changed", String(changed.web_changed));
 
       - name: Validate deprecation gates
@@ -176,23 +170,13 @@ jobs:
           mode="latest"
           ghcr_namespace="${{ env.GHCR_NAMESPACE }}"
 
-          api_gateway_image=""
-          api_train_image=""
-          api_restaurant_image=""
-          worker_train_image=""
-          worker_restaurant_image=""
+          api_image=""
+          worker_image=""
           web_image=""
 
-          if [[ "${{ steps.prereq.outputs.api_gateway_changed }}" == "true" ]]; then
-            api_gateway_image="${ghcr_namespace}/api-gateway:${commit}"
-          fi
-          if [[ "${{ steps.prereq.outputs.api_train_changed }}" == "true" ]]; then
-            api_train_image="${ghcr_namespace}/api-train:${commit}"
-            worker_train_image="${ghcr_namespace}/api-train:${commit}"
-          fi
-          if [[ "${{ steps.prereq.outputs.api_restaurant_changed }}" == "true" ]]; then
-            api_restaurant_image="${ghcr_namespace}/api-restaurant:${commit}"
-            worker_restaurant_image="${ghcr_namespace}/api-restaurant:${commit}"
+          if [[ "${{ steps.prereq.outputs.api_changed }}" == "true" ]]; then
+            api_image="${ghcr_namespace}/api:${commit}"
+            worker_image="${ghcr_namespace}/api:${commit}"
           fi
           if [[ "${{ steps.prereq.outputs.web_changed }}" == "true" ]]; then
             web_image="${ghcr_namespace}/web:${commit}"
@@ -201,19 +185,13 @@ jobs:
           echo "Deploy request:"
           echo "  mode:   $mode"
           echo "  commit: $commit"
-          echo "  api_gateway_image: ${api_gateway_image:-<latest>}"
-          echo "  api_train_image: ${api_train_image:-<latest>}"
-          echo "  api_restaurant_image: ${api_restaurant_image:-<latest>}"
-          echo "  worker_train_image: ${worker_train_image:-<latest>}"
-          echo "  worker_restaurant_image: ${worker_restaurant_image:-<latest>}"
+          echo "  api_image: ${api_image:-<latest>}"
+          echo "  worker_image: ${worker_image:-<latest>}"
           echo "  web_image: ${web_image:-<latest>}"
 
           export DEPLOY_COMMIT="$commit"
-          export DEPLOY_API_GATEWAY_IMAGE="$api_gateway_image"
-          export DEPLOY_API_TRAIN_IMAGE="$api_train_image"
-          export DEPLOY_API_RESTAURANT_IMAGE="$api_restaurant_image"
-          export DEPLOY_WORKER_TRAIN_IMAGE="$worker_train_image"
-          export DEPLOY_WORKER_RESTAURANT_IMAGE="$worker_restaurant_image"
+          export DEPLOY_API_IMAGE="$api_image"
+          export DEPLOY_WORKER_IMAGE="$worker_image"
           export DEPLOY_WEB_IMAGE="$web_image"
 
           # Publish without a preflight `topics describe` to keep least privilege
@@ -226,11 +204,8 @@ jobs:
               "action": "deploy",
               "mode": "latest",
               "commit": os.environ.get("DEPLOY_COMMIT", ""),
-              "api_gateway_image": os.environ.get("DEPLOY_API_GATEWAY_IMAGE", ""),
-              "api_train_image": os.environ.get("DEPLOY_API_TRAIN_IMAGE", ""),
-              "api_restaurant_image": os.environ.get("DEPLOY_API_RESTAURANT_IMAGE", ""),
-              "worker_train_image": os.environ.get("DEPLOY_WORKER_TRAIN_IMAGE", ""),
-              "worker_restaurant_image": os.environ.get("DEPLOY_WORKER_RESTAURANT_IMAGE", ""),
+              "api_image": os.environ.get("DEPLOY_API_IMAGE", ""),
+              "worker_image": os.environ.get("DEPLOY_WORKER_IMAGE", ""),
               "web_image": os.environ.get("DEPLOY_WEB_IMAGE", ""),
               "actor": os.environ.get("GITHUB_ACTOR", ""),
               "event": os.environ.get("GITHUB_EVENT_NAME", ""),
@@ -247,11 +222,8 @@ jobs:
             --attribute="app=bominal" \
             --attribute="mode=latest" \
             --attribute="commit=$commit" \
-            --attribute="api_gateway_image=$api_gateway_image" \
-            --attribute="api_train_image=$api_train_image" \
-            --attribute="api_restaurant_image=$api_restaurant_image" \
-            --attribute="worker_train_image=$worker_train_image" \
-            --attribute="worker_restaurant_image=$worker_restaurant_image" \
+            --attribute="api_image=$api_image" \
+            --attribute="worker_image=$worker_image" \
             --attribute="web_image=$web_image" \
             --attribute="run_id=${{ github.run_id }}" \
             --attribute="run_attempt=${{ github.run_attempt }}"

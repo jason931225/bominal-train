@@ -1,14 +1,39 @@
-FROM python:3.14.3-slim
+# syntax=docker/dockerfile:1.7
+FROM python:3.14.3-slim AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PYTHONPATH=/app
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+WORKDIR /build
+
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+COPY requirements-prod.txt .
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --upgrade pip \
+    && pip install -r requirements-prod.txt
+
+FROM python:3.14.3-slim AS runner
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PATH="/opt/venv/bin:$PATH"
 
 WORKDIR /app
 
-COPY requirements-prod.txt .
-RUN pip install --no-cache-dir -r requirements-prod.txt
+RUN groupadd --gid 10001 bominal \
+    && useradd --uid 10001 --gid bominal --home-dir /home/bominal --create-home --shell /usr/sbin/nologin bominal
 
-COPY . .
+COPY --from=builder /opt/venv /opt/venv
+COPY --chown=bominal:bominal app ./app
+COPY --chown=bominal:bominal alembic ./alembic
+COPY --chown=bominal:bominal scripts ./scripts
+COPY --chown=bominal:bominal alembic.ini ./alembic.ini
+
+USER bominal
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

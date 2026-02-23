@@ -1,4 +1,4 @@
-name: Infra Tests
+name: CI - Infra Quality Gates
 
 on:
   push:
@@ -9,7 +9,7 @@ on:
       - "infra/**"
       - "docs/**"
       - "AGENTS.md"
-      - ".github/workflows/infra-tests.yml"
+      - ".github/workflows/**"
   pull_request:
     paths:
       - "api/**"
@@ -17,7 +17,11 @@ on:
       - "infra/**"
       - "docs/**"
       - "AGENTS.md"
-      - ".github/workflows/infra-tests.yml"
+      - ".github/workflows/**"
+
+concurrency:
+  group: ci-infra-quality-gates-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read

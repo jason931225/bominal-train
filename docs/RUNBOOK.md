@@ -35,11 +35,12 @@ Deploy script guardrails:
 - Runs strict preflight checks before pull/deploy (env + compose + memory/swap threshold).
 - Enforces deprecation registry gate for production-scoped removals/deadlines.
 - Chooses bootstrap-safe first deploy path when no stack is running.
-- Uses image-aware rolling updates on running stacks (skip unchanged per-service image groups: api-gateway/api-train/api-restaurant/worker-train/worker-restaurant/web).
+- Uses image-aware rolling updates on running stacks (skip unchanged per-service image groups: api/worker/web).
 - Auto rollback on smoke failure is enabled by default (`AUTO_ROLLBACK_ON_SMOKE_FAILURE=true`).
 - Logs tracked working-tree dirty state before deploy; set `DEPLOY_FAIL_ON_DIRTY_REPO=true` to hard-fail on dirty tracked files.
 - GitHub deploy workflow guardrails:
-  - deploy request is published only after same-commit `Infra Tests` and `Build and Push Images` both succeed (including manual dispatches);
+  - deploy request is published only after same-commit `CI - Infra Quality Gates` and `CI - Build and Publish Images` both succeed (including manual dispatches);
+  - image publish is blocked when Trivy reports `HIGH` or `CRITICAL` vulnerabilities on pushed images;
   - deploy payload pins changed services to commit-tagged GHCR images and leaves unchanged services on latest baseline;
   - post-deploy CI verification checks production `/health` (`db=true`, `redis=true`) and production web endpoint HTTP `200`/`3xx`.
 - VM deploy agent guardrail:
@@ -60,7 +61,7 @@ Check VM stack:
 
 ```bash
 docker compose -f infra/docker-compose.prod.yml ps
-docker compose -f infra/docker-compose.prod.yml logs -f caddy api-gateway api-train api-restaurant worker-train worker-restaurant web
+docker compose -f infra/docker-compose.prod.yml logs -f caddy api worker web
 ```
 
 ### Docker (local simulation)
@@ -124,31 +125,31 @@ Container status/logs:
 
 ```bash
 docker compose -f infra/docker-compose.yml ps
-docker compose -f infra/docker-compose.yml logs -f api-gateway api-train api-restaurant worker-train worker-restaurant web
+docker compose -f infra/docker-compose.yml logs -f api worker web
 ```
 
 Production status/logs:
 
 ```bash
 docker compose -f infra/docker-compose.prod.yml ps
-docker compose -f infra/docker-compose.prod.yml logs -f caddy api-gateway api-train api-restaurant worker-train worker-restaurant web
+docker compose -f infra/docker-compose.prod.yml logs -f caddy api worker web
 ```
 
 Security checks for payment/CDE runtime:
 
 ```bash
 # Confirm Redis split config (non-CDE vs CDE) in API runtime.
-docker compose -f infra/docker-compose.prod.yml exec api-gateway env | rg 'REDIS_URL(_NON_CDE|_CDE)?'
+docker compose -f infra/docker-compose.prod.yml exec api env | rg 'REDIS_URL(_NON_CDE|_CDE)?'
 
 # Confirm effective CDE Redis endpoint is not Upstash-hosted.
-docker compose -f infra/docker-compose.prod.yml exec api-gateway python -c "from app.core.config import get_settings,is_upstash_redis_url; s=get_settings(); print('resolved_redis_url_cde=', s.resolved_redis_url_cde); assert not is_upstash_redis_url(s.resolved_redis_url_cde)"
+docker compose -f infra/docker-compose.prod.yml exec api python -c "from app.core.config import get_settings,is_upstash_redis_url; s=get_settings(); print('resolved_redis_url_cde=', s.resolved_redis_url_cde); assert not is_upstash_redis_url(s.resolved_redis_url_cde)"
 
 # Confirm Redis persistence is disabled for CDE runtime.
 docker compose -f infra/docker-compose.prod.yml exec redis redis-cli CONFIG GET save
 docker compose -f infra/docker-compose.prod.yml exec redis redis-cli CONFIG GET appendonly
 
 # Validate provider egress allowlist and timeout envs are set.
-docker compose -f infra/docker-compose.prod.yml exec api-gateway env | rg 'PAYMENT_PROVIDER_ALLOWED_HOSTS|TRAIN_PROVIDER_TIMEOUT_|PAYMENT_TRANSPORT_TRUST_ENV|PROVIDER_EGRESS_PROXY_URL'
+docker compose -f infra/docker-compose.prod.yml exec api env | rg 'PAYMENT_PROVIDER_ALLOWED_HOSTS|TRAIN_PROVIDER_TIMEOUT_|PAYMENT_TRANSPORT_TRUST_ENV|PROVIDER_EGRESS_PROXY_URL'
 
 # Confirm egress gateways are healthy and deny unknown routes by default.
 docker compose -f infra/docker-compose.prod.yml exec egress-train wget --spider -q http://127.0.0.1:8080/health
@@ -156,7 +157,7 @@ docker compose -f infra/docker-compose.prod.yml exec egress-restaurant wget --sp
 docker compose -f infra/docker-compose.prod.yml exec egress-train wget -qO- --server-response http://127.0.0.1:8080/not-allowed 2>&1 | rg '403'
 
 # Confirm payment logs do not include request/response payload bodies.
-docker compose -f infra/docker-compose.prod.yml logs --since=30m api-gateway api-train worker-train | rg -i 'card_number|cvv|authorization|set-cookie|wrapped_dek|ciphertext'
+docker compose -f infra/docker-compose.prod.yml logs --since=30m api worker | rg -i 'card_number|cvv|authorization|set-cookie|wrapped_dek|ciphertext'
 ```
 
 Hosted service budget checks (non-CDE Upstash + Supabase free-tier planning):
@@ -197,7 +198,7 @@ infra/scripts/benchmark-train-task-list.sh \
 If running from a containerized shell where API is on the compose network:
 
 ```bash
-infra/scripts/benchmark-train-task-list.sh --base-url http://api-gateway:8000
+infra/scripts/benchmark-train-task-list.sh --base-url http://api:8000
 ```
 
 Hybrid benchmark gate check (relative improvement + absolute SLO ceilings):
@@ -303,7 +304,7 @@ Notes:
 Checklist:
 
 1. `docker compose -f infra/docker-compose.prod.yml ps`
-2. `docker compose -f infra/docker-compose.prod.yml logs --tail=200 caddy api-gateway api-train api-restaurant worker-train worker-restaurant web`
+2. `docker compose -f infra/docker-compose.prod.yml logs --tail=200 caddy api worker web`
 3. Verify env files exist:
    - `infra/env/prod/postgres.env`
    - `infra/env/prod/api.env`
@@ -333,7 +334,7 @@ sudo -u bominal /opt/bominal/repo/infra/scripts/quick-restart.sh
 This starts containers in the correct order using existing images. For a specific service only:
 
 ```bash
-sudo -u bominal /opt/bominal/repo/infra/scripts/quick-restart.sh api-gateway
+sudo -u bominal /opt/bominal/repo/infra/scripts/quick-restart.sh api
 ```
 
 Verify after restart:
@@ -397,7 +398,7 @@ Rapid audit checklist:
 3. Check for non-free resources:
    - extra VMs/disks/snapshots
    - unused reserved external IPs
-   - Artifact Registry/GCR storage growth
+   - unexpected Pub/Sub/IAP/egress traffic spikes
    - managed services not covered by free tier
 
 Hard-stop operations used in incident response:
@@ -407,24 +408,19 @@ Hard-stop operations used in incident response:
 gcloud secrets list --project "$GCP_PROJECT_ID"
 gcloud secrets delete <secret-name> --project "$GCP_PROJECT_ID" --quiet
 gcloud services disable secretmanager.googleapis.com --project "$GCP_PROJECT_ID" --quiet
-
-# Artifact Registry hard stop
-gcloud artifacts repositories list --project "$GCP_PROJECT_ID" --location us-central1
-gcloud artifacts repositories delete <repo-name> --project "$GCP_PROJECT_ID" --location us-central1 --quiet
-gcloud services disable artifactregistry.googleapis.com --project "$GCP_PROJECT_ID" --quiet
 ```
 
 Post-action validation:
 
 ```bash
 gcloud services list --enabled --project "$GCP_PROJECT_ID" \
-  --filter='name:secretmanager.googleapis.com OR name:artifactregistry.googleapis.com'
+  --filter='name:secretmanager.googleapis.com'
 ```
 
 Impact notes:
 
 1. Disabling Secret Manager breaks any runtime/bootstrap path that reads secrets from Secret Manager.
-2. Disabling Artifact Registry breaks image push/pull and deploy paths until registry/image source is migrated (for example GHCR).
+2. Container image publish/pull is GHCR-backed; review GHCR package retention and pull frequency for registry-side cost control.
 3. If immediate cost stop is required and source is still unclear, disable project billing as a final emergency step.
 
 ## 1) Web route fails to load (`Cannot find module './901.js'`)
@@ -451,7 +447,7 @@ Checklist:
 Recovery:
 
 ```bash
-docker compose -f infra/docker-compose.yml restart worker-train
+docker compose -f infra/docker-compose.yml restart worker
 ```
 
 Worker startup automatically re-enqueues recoverable tasks from DB.
@@ -499,19 +495,19 @@ Bominal behavior:
 Check current revision:
 
 ```bash
-docker compose -f infra/docker-compose.yml exec api-gateway alembic current
+docker compose -f infra/docker-compose.yml exec api alembic current
 ```
 
 Bring to head:
 
 ```bash
-docker compose -f infra/docker-compose.yml exec api-gateway alembic upgrade head
+docker compose -f infra/docker-compose.yml exec api alembic upgrade head
 ```
 
 If stack already running after pulling migrations:
 
 ```bash
-docker compose -f infra/docker-compose.yml restart api-gateway api-train api-restaurant worker-train worker-restaurant
+docker compose -f infra/docker-compose.yml restart api worker
 ```
 
 ## 6) API crash loop on startup (ImportError)
@@ -523,8 +519,8 @@ Checklist:
 1. Inspect API logs:
 
 ```bash
-docker compose -f infra/docker-compose.prod.yml logs --tail=200 api-gateway
-# Or: sudo -u bominal docker logs --tail=200 bominal-api-gateway
+docker compose -f infra/docker-compose.prod.yml logs --tail=200 api
+# Or: sudo -u bominal docker logs --tail=200 bominal-api
 ```
 
 2. If you see an import error like:
@@ -589,7 +585,7 @@ Recovery:
 3. Restart worker domains after config changes:
 
 ```bash
-docker compose -f infra/docker-compose.yml restart worker-train worker-restaurant
+docker compose -f infra/docker-compose.yml restart worker
 ```
 
 ## Task/ticket lifecycle support playbook
