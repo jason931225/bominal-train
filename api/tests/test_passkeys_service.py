@@ -5,6 +5,7 @@ import json
 import sys
 import types
 from datetime import datetime, timezone
+from enum import Enum
 from types import SimpleNamespace
 from uuid import UUID, uuid4
 
@@ -31,6 +32,10 @@ class _UserVerificationRequirement:
 class _AuthenticatorSelectionCriteria:
     def __init__(self, *, user_verification: str):
         self.user_verification = user_verification
+
+
+class _PublicKeyCredentialType(Enum):
+    PUBLIC_KEY = "public-key"
 
 
 async def _create_user(db_session: AsyncSession, *, email: str) -> User:
@@ -126,6 +131,29 @@ def test_call_with_supported_kwargs_branches(monkeypatch: pytest.MonkeyPatch) ->
 
     monkeypatch.setattr(passkeys.inspect, "signature", lambda _fn: (_ for _ in ()).throw(TypeError("no-signature")))
     assert passkeys._call_with_supported_kwargs(fallback_fn, keep=11) == 11
+
+
+def test_descriptor_prefers_enum_type_when_available() -> None:
+    runtime = {
+        "PublicKeyCredentialDescriptor": _Descriptor,
+        "PublicKeyCredentialType": _PublicKeyCredentialType,
+        "base64url_to_bytes": lambda value: passkeys._b64url_decode(value),
+    }
+
+    descriptor = passkeys._descriptor(runtime, passkeys._bytes_to_b64url(b"cred"))
+    assert isinstance(descriptor, _Descriptor)
+    assert descriptor.id == b"cred"
+    assert descriptor.type is _PublicKeyCredentialType.PUBLIC_KEY
+
+    # Fallback branch: runtime without enum should still emit legacy string type.
+    descriptor_fallback = passkeys._descriptor(
+        {
+            "PublicKeyCredentialDescriptor": _Descriptor,
+            "base64url_to_bytes": lambda value: passkeys._b64url_decode(value),
+        },
+        passkeys._bytes_to_b64url(b"legacy"),
+    )
+    assert descriptor_fallback.type == "public-key"
 
 
 def test_ensure_passkeys_enabled_branches(monkeypatch: pytest.MonkeyPatch) -> None:
