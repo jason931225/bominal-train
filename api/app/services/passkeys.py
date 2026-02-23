@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import inspect
 import json
+import secrets
 from datetime import timedelta
 from typing import Any
 from uuid import UUID
@@ -21,6 +22,8 @@ settings = get_settings()
 PASSKEY_CHALLENGE_TTL_SECONDS = 300
 PASSKEY_PURPOSE_REGISTER = "passkey_register"
 PASSKEY_PURPOSE_AUTH = "passkey_auth"
+PASSKEY_PURPOSE_STEP_UP = "passkey_step_up"
+PASSKEY_STEP_UP_TTL_SECONDS = 300
 
 
 class PasskeyRuntimeError(RuntimeError):
@@ -202,6 +205,47 @@ async def _consume_challenge(
     if challenge is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired passkey challenge")
     return challenge
+
+
+async def issue_passkey_step_up_token(db: AsyncSession, *, user_id: UUID) -> str:
+    token = secrets.token_urlsafe(32)
+    challenge = AuthChallenge(
+        user_id=user_id,
+        email=None,
+        purpose=PASSKEY_PURPOSE_STEP_UP,
+        challenge_hash=hash_token(token),
+        challenge_b64url="[step-up-redacted]",
+        expires_at=utc_now() + timedelta(seconds=PASSKEY_STEP_UP_TTL_SECONDS),
+    )
+    db.add(challenge)
+    await db.commit()
+    return token
+
+
+async def consume_passkey_step_up_token(
+    db: AsyncSession,
+    *,
+    user_id: UUID,
+    token: str,
+) -> bool:
+    token_raw = token.strip()
+    if not token_raw:
+        return False
+    now = utc_now()
+    challenge = (
+        await db.execute(
+            select(AuthChallenge)
+            .where(AuthChallenge.user_id == user_id)
+            .where(AuthChallenge.purpose == PASSKEY_PURPOSE_STEP_UP)
+            .where(AuthChallenge.challenge_hash == hash_token(token_raw))
+            .where(AuthChallenge.used_at.is_(None))
+            .where(AuthChallenge.expires_at > now)
+        )
+    ).scalar_one_or_none()
+    if challenge is None:
+        return False
+    challenge.used_at = now
+    return True
 
 
 async def begin_passkey_registration(

@@ -75,6 +75,10 @@ class PasswordResetConfirmRequest(BaseModel):
     new_password: str = Field(min_length=8, max_length=128)
 
 
+class PasswordVerifyRequest(BaseModel):
+    current_password: str = Field(min_length=8, max_length=128)
+
+
 class EmailChangeConfirmRequest(BaseModel):
     email: EmailStr
     code: str = Field(min_length=4, max_length=32)
@@ -95,6 +99,7 @@ class AccountUpdateRequest(BaseModel):
     birthday: date | None = None
     new_password: str | None = Field(default=None, min_length=8, max_length=128)
     current_password: str | None = Field(default=None, min_length=8, max_length=128)
+    passkey_step_up_token: str | None = Field(default=None, min_length=16, max_length=256)
 
 
 class PasskeyCredentialOut(BaseModel):
@@ -131,3 +136,12 @@ class PasskeyAuthenticationVerifyRequest(BaseModel):
     challenge_id: UUID
     credential: dict[str, Any]
     remember_me: bool = False
+
+
+class PasskeyStepUpVerifyRequest(BaseModel):
+    challenge_id: UUID
+    credential: dict[str, Any]
+
+
+class PasskeyStepUpVerifyResponse(BaseModel):
+    step_up_token: str

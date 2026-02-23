@@ -4,7 +4,7 @@ import builtins
 import json
 import sys
 import types
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from types import SimpleNamespace
 from uuid import UUID, uuid4
@@ -240,6 +240,46 @@ async def test_challenge_create_consume_list_and_delete(db_session: AsyncSession
 
     assert await passkeys.delete_passkey(db_session, user_id=user.id, passkey_id=UUID(int=0)) is False
     assert await passkeys.delete_passkey(db_session, user_id=user.id, passkey_id=listed[0].id) is True
+
+
+@pytest.mark.asyncio
+async def test_issue_and_consume_passkey_step_up_token(db_session: AsyncSession) -> None:
+    user = await _create_user(db_session, email=f"step-up-{uuid4().hex[:8]}@example.com")
+
+    token = await passkeys.issue_passkey_step_up_token(db_session, user_id=user.id)
+    assert isinstance(token, str)
+    assert len(token) > 20
+
+    step_up_row = (
+        await db_session.execute(
+            select(AuthChallenge)
+            .where(AuthChallenge.user_id == user.id)
+            .where(AuthChallenge.purpose == passkeys.PASSKEY_PURPOSE_STEP_UP)
+        )
+    ).scalar_one()
+    assert step_up_row.challenge_b64url == "[step-up-redacted]"
+
+    assert await passkeys.consume_passkey_step_up_token(db_session, user_id=user.id, token="") is False
+    assert await passkeys.consume_passkey_step_up_token(db_session, user_id=user.id, token="wrong-token") is False
+    assert await passkeys.consume_passkey_step_up_token(db_session, user_id=user.id, token=token) is True
+    assert step_up_row.used_at is not None
+
+    await db_session.commit()
+    assert await passkeys.consume_passkey_step_up_token(db_session, user_id=user.id, token=token) is False
+
+    expired_token = await passkeys.issue_passkey_step_up_token(db_session, user_id=user.id)
+    expired_row = (
+        await db_session.execute(
+            select(AuthChallenge)
+            .where(AuthChallenge.user_id == user.id)
+            .where(AuthChallenge.purpose == passkeys.PASSKEY_PURPOSE_STEP_UP)
+            .where(AuthChallenge.challenge_hash == hash_token(expired_token))
+        )
+    ).scalar_one()
+    expired_row.expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+    await db_session.commit()
+
+    assert await passkeys.consume_passkey_step_up_token(db_session, user_id=user.id, token=expired_token) is False
 
 
 @pytest.mark.asyncio

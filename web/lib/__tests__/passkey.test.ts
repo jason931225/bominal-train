@@ -6,6 +6,7 @@ import {
   registerPasskeyFromSession,
   removePasskeyFromSession,
   signInWithPasskey,
+  verifyPasskeyStepUpFromSession,
 } from "@/lib/passkey";
 
 const originalPublicKeyCredential = globalThis.PublicKeyCredential;
@@ -124,6 +125,10 @@ describe("passkey helpers", () => {
       error: "Passkeys are not supported on this device.",
     });
     await expect(signInWithPasskey("http://api", { email: "user@example.com", rememberMe: false })).resolves.toEqual({
+      ok: false,
+      error: "Passkeys are not supported on this device.",
+    });
+    await expect(verifyPasskeyStepUpFromSession("http://api")).resolves.toEqual({
       ok: false,
       error: "Passkeys are not supported on this device.",
     });
@@ -466,6 +471,79 @@ describe("passkey helpers", () => {
     result = await signInWithPasskey("http://api", { email: "user@example.com", rememberMe: false });
     expect(result.ok).toBe(false);
     expect(result.error).toContain("bad verify");
+  });
+
+  it("verifies passkey step-up from authenticated session", async () => {
+    installPasskeySupport();
+    setNavigatorCredentials({
+      get: vi.fn().mockResolvedValue(fakeAuthenticationCredential()),
+    });
+
+    installFetchMock([
+      new Response(
+        JSON.stringify({
+          challenge_id: "step-up-1",
+          public_key: {
+            challenge: "AQID",
+            allowCredentials: [{ id: "AQID", type: "public-key" }],
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+      new Response(JSON.stringify({ step_up_token: "token-123" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    ]);
+
+    await expect(verifyPasskeyStepUpFromSession("http://api")).resolves.toEqual({
+      ok: true,
+      stepUpToken: "token-123",
+    });
+  });
+
+  it("handles passkey step-up failures", async () => {
+    installPasskeySupport();
+    setNavigatorCredentials({ get: vi.fn().mockResolvedValue(null) });
+
+    installFetchMock([
+      new Response(JSON.stringify({ detail: "no passkey available" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      }),
+    ]);
+    let result = await verifyPasskeyStepUpFromSession("http://api");
+    expect(result).toEqual({ ok: false, error: "no passkey available" });
+
+    installFetchMock([
+      new Response(
+        JSON.stringify({ challenge_id: "step-up-2", public_key: { challenge: "AQID", allowCredentials: [] } }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    ]);
+    result = await verifyPasskeyStepUpFromSession("http://api");
+    expect(result).toEqual({ ok: false, error: "Passkey verification was cancelled." });
+
+    setNavigatorCredentials({ get: vi.fn().mockResolvedValue(fakeAuthenticationCredential()) });
+    installFetchMock([
+      new Response(
+        JSON.stringify({ challenge_id: "step-up-3", public_key: { challenge: "AQID", allowCredentials: [] } }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+      new Response("verify failed", { status: 500, headers: { "Content-Type": "text/plain" } }),
+    ]);
+    result = await verifyPasskeyStepUpFromSession("http://api");
+    expect(result).toEqual({ ok: false, error: "verify failed" });
+
+    installFetchMock([
+      new Response(
+        JSON.stringify({ challenge_id: "step-up-4", public_key: { challenge: "AQID", allowCredentials: [] } }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+      new Response(JSON.stringify({}), { status: 200, headers: { "Content-Type": "application/json" } }),
+    ]);
+    result = await verifyPasskeyStepUpFromSession("http://api");
+    expect(result).toEqual({ ok: false, error: "Passkey verification failed." });
   });
 
   it("uses fallback error messages for malformed JSON error payloads", async () => {

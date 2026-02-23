@@ -34,11 +34,14 @@ from app.schemas.auth import (
     MessageResponse,
     PasskeyAuthenticationOptionsRequest,
     PasskeyAuthenticationOptionsResponse,
+    PasskeyStepUpVerifyRequest,
+    PasskeyStepUpVerifyResponse,
     PasskeyAuthenticationVerifyRequest,
     PasskeyCredentialListResponse,
     PasskeyCredentialOut,
     PasskeyRegistrationOptionsResponse,
     PasskeyRegistrationVerifyRequest,
+    PasswordVerifyRequest,
     PasswordResetConfirmRequest,
     PasswordResetRequest,
     RegisterRequest,
@@ -50,8 +53,10 @@ from app.services.passkeys import (
     begin_passkey_registration,
     complete_passkey_authentication,
     complete_passkey_registration,
+    consume_passkey_step_up_token,
     delete_passkey,
     ensure_passkeys_enabled,
+    issue_passkey_step_up_token,
     list_passkeys,
 )
 from app.services.auth import (
@@ -514,10 +519,19 @@ async def update_account(
 
     sensitive_update = requested_email_change_to is not None or "password_hash" in updates
     if sensitive_update:
-        if not payload.current_password or not verify_password(payload.current_password, current_user.password_hash):
+        has_valid_password = bool(payload.current_password) and verify_password(
+            payload.current_password or "",
+            current_user.password_hash,
+        )
+        has_valid_step_up = bool(payload.passkey_step_up_token) and await consume_passkey_step_up_token(
+            db,
+            user_id=current_user.id,
+            token=payload.passkey_step_up_token or "",
+        )
+        if not (has_valid_password or has_valid_step_up):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Current password is required and must be valid",
+                detail="Current password is required and must be valid, or verify with passkey",
             )
 
     for key, value in updates.items():
@@ -558,6 +572,16 @@ async def update_account(
 
     await db.refresh(current_user)
     return AuthResponse(user=user_to_out(current_user), notice=notice, pending_email_change_to=requested_email_change_to)
+
+
+@user_router.post("/account/verify-password", response_model=MessageResponse, dependencies=[Depends(auth_rate_limit)])
+async def verify_current_password(
+    payload: PasswordVerifyRequest,
+    current_user: User = Depends(get_current_user),
+) -> MessageResponse:
+    if not verify_password(payload.current_password, current_user.password_hash):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Current password is invalid")
+    return MessageResponse(message="Password verified")
 
 
 @user_router.post("/account/email-change/confirm", response_model=AuthResponse, dependencies=[Depends(auth_rate_limit)])
@@ -634,6 +658,34 @@ async def passkey_register_verify(
         credential=payload.credential,
     )
     return PasskeyCredentialOut(id=credential.id, created_at=credential.created_at, last_used_at=credential.last_used_at)
+
+
+@user_router.post("/passkeys/step-up/options", response_model=PasskeyAuthenticationOptionsResponse)
+async def passkey_step_up_options(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> PasskeyAuthenticationOptionsResponse:
+    ensure_passkeys_enabled()
+    challenge_id, public_key = await begin_passkey_authentication(db, email=current_user.email, user=current_user)
+    return PasskeyAuthenticationOptionsResponse(challenge_id=challenge_id, public_key=public_key)
+
+
+@user_router.post("/passkeys/step-up/verify", response_model=PasskeyStepUpVerifyResponse)
+async def passkey_step_up_verify(
+    payload: PasskeyStepUpVerifyRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> PasskeyStepUpVerifyResponse:
+    ensure_passkeys_enabled()
+    await complete_passkey_authentication(
+        db,
+        email=current_user.email,
+        user=current_user,
+        challenge_id=payload.challenge_id,
+        credential=payload.credential,
+    )
+    token = await issue_passkey_step_up_token(db, user_id=current_user.id)
+    return PasskeyStepUpVerifyResponse(step_up_token=token)
 
 
 @user_router.delete("/passkeys/{passkey_id}", response_model=MessageResponse)
