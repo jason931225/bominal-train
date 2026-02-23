@@ -30,6 +30,15 @@ export function LoginForm() {
   const [submitting, setSubmitting] = useState(false);
   const [passkeySubmitting, setPasskeySubmitting] = useState(false);
 
+  const navigateAfterAuth = () => {
+    if (typeof window !== "undefined") {
+      // Root layout is persistent in App Router; full navigation refreshes top-nav auth state.
+      window.location.assign(ROUTES.dashboard);
+      return;
+    }
+    router.push(ROUTES.dashboard);
+  };
+
   const onPasskeySignIn = async () => {
     setFieldErrors({});
     setFormError(null);
@@ -48,7 +57,7 @@ export function LoginForm() {
         setFormError(result.error ?? t("auth.passkeySignInFailed"));
         return;
       }
-      router.push(ROUTES.dashboard);
+      navigateAfterAuth();
     } catch {
       setFormError(t("auth.passkeySignInFailed"));
     } finally {
@@ -101,7 +110,7 @@ export function LoginForm() {
         return;
       }
 
-      router.push(ROUTES.dashboard);
+      navigateAfterAuth();
     } catch {
       setFormError(t("auth.apiUnreachable"));
     } finally {

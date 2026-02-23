@@ -32,6 +32,15 @@ export function RegisterForm() {
 
   const canSubmit = useMemo(() => !submitting, [submitting]);
 
+  const navigateAfterAuth = () => {
+    if (typeof window !== "undefined") {
+      // Full navigation ensures persistent root layout re-resolves authenticated user state.
+      window.location.assign(ROUTES.dashboard);
+      return;
+    }
+    router.push(ROUTES.dashboard);
+  };
+
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setFieldErrors({});
@@ -105,7 +114,7 @@ export function RegisterForm() {
       if (!passkeyResult.ok) {
         setFormError(passkeyResult.error ?? t("auth.passkeySetupFailed"));
       }
-      router.push(ROUTES.dashboard);
+      navigateAfterAuth();
     } catch {
       setFormError(t("auth.apiUnreachable"));
     } finally {
