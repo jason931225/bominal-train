@@ -140,10 +140,11 @@ Optional:
 
 2) Edit those files and replace every `CHANGE_ME...` value. Required manual deploy values:
    - `infra/env/prod/postgres.env`: `POSTGRES_PASSWORD`
-   - `infra/env/prod/api.env`: `GCP_PROJECT_ID`, `INTERNAL_API_KEY`, `MASTER_KEY`, DB password portions of `DATABASE_URL` and `SYNC_DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_JWT_ISSUER`, `RESEND_API_KEY`, and sender-domain placeholder in `EMAIL_FROM_ADDRESS`
+   - `infra/env/prod/api.env`: `INTERNAL_API_KEY`, `MASTER_KEY`, DB password portions of `DATABASE_URL` and `SYNC_DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_JWT_ISSUER`, `RESEND_API_KEY`, and sender-domain placeholder in `EMAIL_FROM_ADDRESS`
    - `infra/env/prod/web.env`: keep `NEXT_PUBLIC_API_BASE_URL` empty so browser auth requests stay same-origin (required for `SameSite=Lax` session cookies)
    - Optional in `infra/env/prod/web.env`: `NEXT_PUBLIC_FONT_BASE_URL` (HTTPS only). If set, host these files at that base path: `NotoSansKR-Regular.woff2`, `NotoSerifKR-Regular.woff2`, `NotoSerifKR-SemiBold.woff2`, `NotoSerifKR-Bold.woff2`, `DynaPuff-SemiBold.woff2`
    - `infra/env/prod/caddy.env`: `CADDY_SITE_ADDRESS`, `CADDY_ACME_EMAIL`
+   - `infra/env/prod/deploy.env` (optional helper): `GHCR_USERNAME` + `GHCR_TOKEN` if GHCR packages are private
    - Optional, mode-dependent:
      - `AUTH_MODE=legacy`: Supabase JWT fields can be left empty
      - `AUTH_MODE=dual`: `SUPABASE_URL`, `SUPABASE_JWT_ISSUER` are still required (and `SUPABASE_JWKS_URL` if overriding default)

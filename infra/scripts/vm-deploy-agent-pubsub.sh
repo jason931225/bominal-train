@@ -35,6 +35,17 @@ require_env() {
   fi
 }
 
+is_truthy() {
+  case "${1:-}" in
+    true|1|yes)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 main() {
   require_cmd gcloud
   require_cmd git
@@ -45,7 +56,9 @@ main() {
   require_env DEPLOY_SUBSCRIPTION
 
   local repo_dir="${REPO_DIR:-/opt/bominal/repo}"
-  local deploy_script="${DEPLOY_SCRIPT:-$repo_dir/infra/scripts/deploy.sh}"
+  local canonical_deploy_script="$repo_dir/infra/scripts/deploy.sh"
+  local deploy_script="${DEPLOY_SCRIPT:-$canonical_deploy_script}"
+  local allow_noncanonical_deploy_script="${ALLOW_NONCANONICAL_DEPLOY_SCRIPT:-false}"
   local gcp_region="${GCP_REGION:-us-central1}"
   local sleep_seconds="${SLEEP_SECONDS:-5}"
   local lock_file="${LOCK_FILE:-/tmp/bominal-deploy.lock}"
@@ -59,6 +72,13 @@ main() {
 
   if [[ ! -d "$repo_dir" ]]; then
     die "Repo directory not found: $repo_dir"
+  fi
+
+  if [[ "$deploy_script" == *"deploy-zero-downtime.sh"* || "$deploy_script" == *"deploy.prod.sh"* ]]; then
+    die "Refusing deprecated deploy script path: $deploy_script (required: $canonical_deploy_script)"
+  fi
+  if [[ "$deploy_script" != "$canonical_deploy_script" ]] && ! is_truthy "$allow_noncanonical_deploy_script"; then
+    die "Non-canonical DEPLOY_SCRIPT is blocked: $deploy_script (required: $canonical_deploy_script; set ALLOW_NONCANONICAL_DEPLOY_SCRIPT=true for test-only overrides)"
   fi
 
   if [[ ! -f "$deploy_script" ]]; then

@@ -108,7 +108,8 @@ runs `infra/scripts/deploy.sh` locally.
 CI-triggered deploys are **latest-only** (the message includes the triggering commit SHA for audit, but the VM deploys `:latest` images).
 Deploy gating in CI:
 - Deploy workflow is triggered from successful `Infra Tests` completion on `main`.
-- Before publish, CI blocks deploy unless `Build and Push Images` for the same commit also completed with `success`.
+- Manual dispatches are also gated against prerequisite workflow status for the selected commit.
+- Before publish, CI blocks deploy unless **both** `Infra Tests` and `Build and Push Images` for the same commit completed with `success`.
 - After publish, CI runs a post-deploy verification gate:
   - production API health must report `db=true` and `redis=true`;
   - production web endpoint must return `200` or `3xx`.
@@ -155,12 +156,21 @@ GCP_REGION=us-central1
 DEPLOY_SUBSCRIPTION=bominal-deploy-requests-vm
 REPO_DIR=/opt/bominal/repo
 DEPLOY_SCRIPT=/opt/bominal/repo/infra/scripts/deploy.sh
+GHCR_NAMESPACE=ghcr.io/jason931225/bominal
+# Optional for private GHCR packages:
+# GHCR_USERNAME=CHANGE_ME_GHCR_USERNAME
+# GHCR_TOKEN=CHANGE_ME_GHCR_TOKEN
 EOF
 
 sudo systemctl daemon-reload
 sudo systemctl enable --now bominal-deploy-agent
 sudo journalctl -u bominal-deploy-agent -f
 ```
+
+Safety note:
+- Deploy agent is fail-closed for deprecated/non-canonical script paths.
+- `DEPLOY_SCRIPT` must be `/opt/bominal/repo/infra/scripts/deploy.sh`.
+- Legacy values like `deploy-zero-downtime.sh` are rejected and deployment messages are not ACKed on failure.
 
 **Remote Deploy** (from local machine):
 
@@ -254,9 +264,10 @@ Optional:
 
 Replace all `CHANGE_ME...` values. Required manual deploy values:
 - `infra/env/prod/postgres.env`: `POSTGRES_PASSWORD`
-- `infra/env/prod/api.env`: `GCP_PROJECT_ID`, `INTERNAL_API_KEY`, `MASTER_KEY`, DB password portions of `DATABASE_URL` and `SYNC_DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_JWT_ISSUER`, `RESEND_API_KEY`, and sender-domain placeholder in `EMAIL_FROM_ADDRESS`
+- `infra/env/prod/api.env`: `INTERNAL_API_KEY`, `MASTER_KEY`, DB password portions of `DATABASE_URL` and `SYNC_DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_JWT_ISSUER`, `RESEND_API_KEY`, and sender-domain placeholder in `EMAIL_FROM_ADDRESS`
 - `infra/env/prod/web.env`: `NEXT_PUBLIC_API_BASE_URL`
 - `infra/env/prod/caddy.env`: `CADDY_SITE_ADDRESS`, `CADDY_ACME_EMAIL`
+- `infra/env/prod/deploy.env` (optional helper): set `GHCR_USERNAME` + `GHCR_TOKEN` when GHCR packages are private
 
 Optional, mode-dependent values:
 - `AUTH_MODE=legacy`: Supabase JWT fields can be left empty
@@ -347,7 +358,7 @@ for f in infra/env/prod/*.example; do cp "$f" "${f%.example}"; done
 
 Edit each file and replace all `CHANGE_ME` values:
 - `infra/env/prod/postgres.env` - database credentials
-- `infra/env/prod/api.env` - GCP_PROJECT_ID, MASTER_KEY, INTERNAL_API_KEY, DATABASE_URL, SUPABASE_URL, SUPABASE_JWT_ISSUER, RESEND_API_KEY, EMAIL_FROM_ADDRESS sender domain
+- `infra/env/prod/api.env` - MASTER_KEY, INTERNAL_API_KEY, DATABASE_URL, SUPABASE_URL, SUPABASE_JWT_ISSUER, RESEND_API_KEY, EMAIL_FROM_ADDRESS sender domain
 - `infra/env/prod/web.env` - keep `NEXT_PUBLIC_API_BASE_URL` empty for same-origin browser API calls
 - `infra/env/prod/caddy.env` - CADDY_SITE_ADDRESS, CADDY_ACME_EMAIL
 
@@ -369,7 +380,7 @@ bash infra/scripts/deploy.sh
 
 This will:
 1. Acquire deploy lock and run preflight gate
-2. Pull pre-built API/Web images from Artifact Registry
+2. Pull pre-built API/Web images from GHCR
 3. Choose first-deploy bootstrap path or rolling-update path automatically
 4. Run smoke checks, then optionally auto-rollback if smoke verification fails
 
