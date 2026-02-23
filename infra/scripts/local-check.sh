@@ -108,6 +108,36 @@ if [[ "$mailpit_code" != "200" && "$mailpit_code" != "302" && "$mailpit_code" !=
   exit 1
 fi
 
+check_worker_service() {
+  local service="$1"
+  local expected_settings="$2"
+
+  echo "→ Checking worker service: $service..."
+  for _ in $(seq 1 30); do
+    local container_id
+    container_id="$("${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" ps -q "$service" 2>/dev/null || true)"
+    if [[ -n "$container_id" ]]; then
+      local running_state health_state
+      running_state="$(docker inspect -f '{{.State.Running}}' "$container_id" 2>/dev/null || true)"
+      health_state="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$container_id" 2>/dev/null || true)"
+      if [[ "$running_state" == "true" ]] && [[ "$health_state" == "healthy" || "$health_state" == "none" ]]; then
+        if "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" exec -T "$service" python -c "import os,sys; needle=sys.argv[1]; found=any(needle in open(f'/proc/{p}/cmdline','rb').read().decode('utf-8','ignore') for p in os.listdir('/proc') if p.isdigit() and os.path.exists(f'/proc/{p}/cmdline')); raise SystemExit(0 if found else 1)" "$expected_settings" >/dev/null 2>&1; then
+          echo "  OK"
+          return 0
+        fi
+      fi
+    fi
+    sleep 1
+  done
+
+  echo "  FAILED: $service is not healthy with expected process '$expected_settings'"
+  print_logs
+  exit 1
+}
+
+check_worker_service "worker-train" "app.worker_train.WorkerTrainSettings"
+check_worker_service "worker-restaurant" "app.worker_restaurant.WorkerRestaurantSettings"
+
 echo "→ Running backend tests (api-gateway: pytest -q)..."
 if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" exec -T api-gateway pytest -q; then
   echo "  FAILED: backend tests"

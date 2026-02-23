@@ -167,7 +167,7 @@ services:
     container_name: bominal-worker-train
     working_dir: /app
     command: >
-      sh -c "arq app.worker_train.WorkerTrainSettings"
+      sh -c "python -m app.worker_entrypoint app.worker_train.WorkerTrainSettings"
     env_file:
       - ./env/prod/api.env
     deploy:
@@ -175,7 +175,7 @@ services:
         limits:
           memory: 256M
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import os; exit(0 if any('arq' in open(f'/proc/{p}/cmdline').read() for p in os.listdir('/proc') if p.isdigit() and os.path.exists(f'/proc/{p}/cmdline')) else 1)\""]
+      test: ["CMD-SHELL", "python -c \"import os; needle='app.worker_train.WorkerTrainSettings'; exit(0 if any(needle in open(f'/proc/{p}/cmdline','rb').read().decode('utf-8','ignore') for p in os.listdir('/proc') if p.isdigit() and os.path.exists(f'/proc/{p}/cmdline')) else 1)\""]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -197,7 +197,7 @@ services:
     container_name: bominal-worker-restaurant
     working_dir: /app
     command: >
-      sh -c "arq app.worker_restaurant.WorkerRestaurantSettings"
+      sh -c "python -m app.worker_entrypoint app.worker_restaurant.WorkerRestaurantSettings"
     env_file:
       - ./env/prod/api.env
     deploy:
@@ -205,7 +205,7 @@ services:
         limits:
           memory: 128M
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import os; exit(0 if any('arq' in open(f'/proc/{p}/cmdline').read() for p in os.listdir('/proc') if p.isdigit() and os.path.exists(f'/proc/{p}/cmdline')) else 1)\""]
+      test: ["CMD-SHELL", "python -c \"import os; needle='app.worker_restaurant.WorkerRestaurantSettings'; exit(0 if any(needle in open(f'/proc/{p}/cmdline','rb').read().decode('utf-8','ignore') for p in os.listdir('/proc') if p.isdigit() and os.path.exists(f'/proc/{p}/cmdline')) else 1)\""]
       interval: 30s
       timeout: 10s
       retries: 3
