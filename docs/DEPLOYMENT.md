@@ -47,8 +47,8 @@ Each service has a health check in `docker-compose.prod.yml`:
 | api-gateway | Python urllib (port 8000/health) | 120s |
 | api-train | Python urllib (port 8000/health) | 60s |
 | api-restaurant | Python urllib (port 8000/health) | 60s |
-| worker-train | Python proc check for arq | 15s |
-| worker-restaurant | Python proc check for arq | 15s |
+| worker-train | Python proc check for `app.worker_train.WorkerTrainSettings` | 15s |
+| worker-restaurant | Python proc check for `app.worker_restaurant.WorkerRestaurantSettings` | 15s |
 | web      | `wget --spider` (port 3000) | 60s |
 | caddy    | `wget` (admin API port 2019) | 30s |
 

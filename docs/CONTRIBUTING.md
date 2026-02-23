@@ -93,6 +93,8 @@ Recommended one-command local verification (starts stack, waits for health, runs
 ./infra/scripts/local-check.sh
 ```
 
+- `local-check.sh` now hard-fails before test execution if `worker-train` or `worker-restaurant` is not running the expected worker settings process.
+
 Optional cleanup after checks:
 
 ```bash
