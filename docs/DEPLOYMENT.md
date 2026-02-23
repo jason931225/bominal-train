@@ -106,6 +106,12 @@ The VM runs a pull-based deploy agent (systemd) that consumes the request and
 runs `infra/scripts/deploy.sh` locally.
 
 CI-triggered deploys are **latest-only** (the message includes the triggering commit SHA for audit, but the VM deploys `:latest` images).
+Deploy gating in CI:
+- Deploy workflow is triggered from successful `Infra Tests` completion on `main`.
+- Before publish, CI blocks deploy unless `Build and Push Images` for the same commit also completed with `success`.
+- After publish, CI runs a post-deploy verification gate:
+  - production API health must report `db=true` and `redis=true`;
+  - production web endpoint must return `200` or `3xx`.
 
 One-time GCP setup:
 
