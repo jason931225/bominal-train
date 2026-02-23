@@ -7,7 +7,7 @@
 #
 # Usage:
 #   ./quick-restart.sh           # Restart all containers
-#   ./quick-restart.sh api-gateway # Restart specific service
+#   ./quick-restart.sh api # Restart specific service
 #   ./quick-restart.sh --status  # Show container status only
 #
 # When to use:
@@ -83,13 +83,9 @@ restart_all() {
   log_info "Starting database services..."
   "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait postgres redis
   
-  # Start API domain services
-  log_info "Starting API domain services..."
-  "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait --no-deps api-gateway api-train api-restaurant
-
-  # Start workers
-  log_info "Starting worker domain services..."
-  "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait --no-deps worker-train worker-restaurant
+  # Start API + worker services
+  log_info "Starting API and worker services..."
+  "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait --no-deps api worker
   
   # Start web
   log_info "Starting Web service..."
@@ -151,14 +147,13 @@ main() {
       echo ""
       echo "Commands:"
       echo "  (no args)    Restart all containers in order"
-      echo "  <service>    Restart specific service (api-gateway, api-train, api-restaurant, web, worker-train, worker-restaurant, etc.)"
+      echo "  <service>    Restart specific service (api, worker, web, caddy, etc.)"
       echo "  --status     Show current container status"
       echo ""
       echo "Examples:"
       echo "  $0           # Restart everything after VM reboot"
-      echo "  $0 api-gateway       # Restart gateway API container"
-      echo "  $0 worker-train      # Restart train worker container"
-      echo "  $0 worker-restaurant  # Restart restaurant worker container"
+      echo "  $0 api       # Restart API container"
+      echo "  $0 worker    # Restart worker container"
       exit 0
       ;;
     "")

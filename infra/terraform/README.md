@@ -2,8 +2,8 @@
 
 This folder is an IaC baseline for the GCP pieces used by `bominal`:
 
-- Artifact Registry (Docker images)
 - GitHub Actions Workload Identity Federation (OIDC) + service account
+- Minimal GitHub Actions IAM for deploy publish workflow
 - Optional: single VM target (e2-micro) + firewall + static IP
 
 ## Quick Start
@@ -32,4 +32,3 @@ terraform apply \
 
 - If resources already exist (likely), import them before `apply` to avoid conflicts.
 - `enable_vm` is `false` by default to prevent accidental VM creation.
-

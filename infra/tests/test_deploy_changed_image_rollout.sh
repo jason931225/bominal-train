@@ -45,7 +45,7 @@ fi
 
 if [[ "${1:-}" == "compose" ]]; then
   if [[ "$*" == *"ps --services --filter status=running"* ]]; then
-    printf 'api-gateway\nweb\n'
+    printf 'api\nweb\n'
     exit 0
   fi
   exit 0
@@ -56,87 +56,43 @@ if [[ "${1:-}" == "pull" ]]; then
 fi
 
 if [[ "${1:-}" == "inspect" ]]; then
-  # deploy commit label lookup
   if [[ "$*" == *"org.opencontainers.image.revision"* ]]; then
-    if [[ "$2" == *"/api-train:"* ]]; then
-      echo "traincommit"
-    else
-      echo "deadbeef"
-    fi
+    echo "deadbeef"
     exit 0
   fi
 
-  # rollback digest lookup
   if [[ "$*" == *".RepoDigests"* ]]; then
     echo "${2}@sha256:aaaaaaaa"
     exit 0
   fi
 
-  # target image IDs
   if [[ "$*" == *"--format={{.Id}}"* ]]; then
     case "${2:-}" in
-      */api-gateway:*)
-        echo "sha256:api-gateway-new"
-        ;;
-      */api-train:*)
-        echo "sha256:api-train-new"
-        ;;
-      */api-restaurant:*)
-        echo "sha256:api-restaurant-new"
-        ;;
-      */web:*)
-        echo "sha256:web-new"
-        ;;
-      *)
-        echo "sha256:unknown-new"
-        ;;
+      */api:*) echo "sha256:api-new" ;;
+      */web:*) echo "sha256:web-new" ;;
+      *) echo "sha256:unknown-new" ;;
     esac
     exit 0
   fi
 
-  # running container image IDs
   if [[ "$*" == *"--format={{.Image}}"* ]]; then
     case "${2:-}" in
-      bominal-api-gateway)
-        if [[ "${SIM_API_GATEWAY_CHANGED:-0}" == "1" ]]; then
-          echo "sha256:api-gateway-old"
+      bominal-api)
+        if [[ "${SIM_API_CHANGED:-0}" == "1" ]]; then
+          echo "sha256:api-old"
         else
-          echo "sha256:api-gateway-new"
+          echo "sha256:api-new"
         fi
         exit 0
         ;;
-      bominal-api-train)
-        if [[ "${SIM_API_TRAIN_CHANGED:-0}" == "1" ]]; then
-          echo "sha256:api-train-old"
-        else
-          echo "sha256:api-train-new"
-        fi
-        exit 0
-        ;;
-      bominal-api-restaurant)
-        if [[ "${SIM_API_RESTAURANT_CHANGED:-0}" == "1" ]]; then
-          echo "sha256:api-restaurant-old"
-        else
-          echo "sha256:api-restaurant-new"
-        fi
-        exit 0
-        ;;
-      bominal-worker-train)
-        if [[ "${SIM_WORKER_TRAIN_PRESENT:-1}" == "0" ]]; then
+      bominal-worker)
+        if [[ "${SIM_WORKER_PRESENT:-1}" == "0" ]]; then
           exit 0
         fi
-        if [[ "${SIM_WORKER_TRAIN_CHANGED:-0}" == "1" ]]; then
-          echo "sha256:api-train-old"
+        if [[ "${SIM_WORKER_CHANGED:-0}" == "1" ]]; then
+          echo "sha256:api-old"
         else
-          echo "sha256:api-train-new"
-        fi
-        exit 0
-        ;;
-      bominal-worker-restaurant)
-        if [[ "${SIM_WORKER_RESTAURANT_CHANGED:-0}" == "1" ]]; then
-          echo "sha256:api-restaurant-old"
-        else
-          echo "sha256:api-restaurant-new"
+          echo "sha256:api-new"
         fi
         exit 0
         ;;
@@ -152,6 +108,22 @@ if [[ "${1:-}" == "inspect" ]]; then
         exit 0
         ;;
     esac
+  fi
+
+  if [[ "$*" == *"--format={{.State.Running}}"* ]]; then
+    case "${2:-}" in
+      bominal-worker)
+        if [[ "${SIM_WORKER_PRESENT:-1}" == "0" ]]; then
+          echo "false"
+        else
+          echo "true"
+        fi
+        ;;
+      *)
+        echo "true"
+        ;;
+    esac
+    exit 0
   fi
 
   exit 0
@@ -175,29 +147,23 @@ DOCKER
 chmod +x "$TMP_DIR/bin/docker"
 
 run_case() {
-  local api_gateway_changed="$1"
-  local api_train_changed="$2"
-  local api_restaurant_changed="$3"
-  local worker_train_changed="$4"
-  local worker_restaurant_changed="$5"
-  local web_changed="$6"
-  local worker_train_present="${7:-1}"
-  local calls_file="$8"
-  local out_file="$9"
+  local api_changed="$1"
+  local worker_changed="$2"
+  local web_changed="$3"
+  local worker_present="${4:-1}"
+  local calls_file="$5"
+  local out_file="$6"
 
   PATH="$TMP_DIR/bin:$PATH" \
     REPO_DIR="$ROOT_DIR" \
-    DEPLOY_HISTORY_DIR="$TMP_DIR/history-$api_gateway_changed-$api_train_changed-$api_restaurant_changed-$worker_train_changed-$worker_restaurant_changed-$web_changed" \
-    DEPLOY_LOCK_FILE="$TMP_DIR/lock-$api_gateway_changed-$api_train_changed-$api_restaurant_changed-$worker_train_changed-$worker_restaurant_changed-$web_changed" \
+    DEPLOY_HISTORY_DIR="$TMP_DIR/history-$api_changed-$worker_changed-$web_changed-$worker_present" \
+    DEPLOY_LOCK_FILE="$TMP_DIR/lock-$api_changed-$worker_changed-$web_changed-$worker_present" \
     PREDEPLOY_CHECK_SCRIPT="$TMP_DIR/bin/predeploy-check.sh" \
     DOCKER_CALLS_FILE="$calls_file" \
-    SIM_API_GATEWAY_CHANGED="$api_gateway_changed" \
-    SIM_API_TRAIN_CHANGED="$api_train_changed" \
-    SIM_API_RESTAURANT_CHANGED="$api_restaurant_changed" \
-    SIM_WORKER_TRAIN_CHANGED="$worker_train_changed" \
-    SIM_WORKER_RESTAURANT_CHANGED="$worker_restaurant_changed" \
+    SIM_API_CHANGED="$api_changed" \
+    SIM_WORKER_CHANGED="$worker_changed" \
     SIM_WEB_CHANGED="$web_changed" \
-    SIM_WORKER_TRAIN_PRESENT="$worker_train_present" \
+    SIM_WORKER_PRESENT="$worker_present" \
     GCP_PROJECT_ID="bominal" \
     SMOKE_MAX_ATTEMPTS=1 \
     SMOKE_RETRY_DELAY_SECONDS=0 \
@@ -206,14 +172,14 @@ run_case() {
 
 UNCHANGED_CALLS="$TMP_DIR/unchanged.calls"
 UNCHANGED_OUT="$TMP_DIR/unchanged.out"
-TRAIN_ONLY_CALLS="$TMP_DIR/train-only.calls"
-TRAIN_ONLY_OUT="$TMP_DIR/train-only.out"
+API_ONLY_CALLS="$TMP_DIR/api-only.calls"
+API_ONLY_OUT="$TMP_DIR/api-only.out"
 MISSING_WORKER_CALLS="$TMP_DIR/missing-worker.calls"
 MISSING_WORKER_OUT="$TMP_DIR/missing-worker.out"
 
-run_case 0 0 0 0 0 0 1 "$UNCHANGED_CALLS" "$UNCHANGED_OUT"
-run_case 0 1 0 1 0 0 1 "$TRAIN_ONLY_CALLS" "$TRAIN_ONLY_OUT"
-run_case 0 0 0 0 0 0 0 "$MISSING_WORKER_CALLS" "$MISSING_WORKER_OUT"
+run_case 0 0 0 1 "$UNCHANGED_CALLS" "$UNCHANGED_OUT"
+run_case 1 0 0 1 "$API_ONLY_CALLS" "$API_ONLY_OUT"
+run_case 0 0 0 0 "$MISSING_WORKER_CALLS" "$MISSING_WORKER_OUT"
 
 if ! rg -q "up -d --wait postgres redis$" "$UNCHANGED_CALLS"; then
   echo "FAIL: unchanged-image case did not run base db/redis stage" >&2
@@ -221,37 +187,31 @@ if ! rg -q "up -d --wait postgres redis$" "$UNCHANGED_CALLS"; then
   exit 1
 fi
 
-if rg -q "up -d --wait --no-deps api-gateway|up -d --wait --no-deps api-train|up -d --wait --no-deps api-restaurant|up -d --wait --no-deps worker-train|up -d --wait --no-deps worker-restaurant|up -d --wait --no-deps web" "$UNCHANGED_CALLS"; then
+if rg -q "up -d --wait --no-deps api|up -d --wait --no-deps worker|up -d --wait --no-deps web" "$UNCHANGED_CALLS"; then
   echo "FAIL: unchanged-image case unexpectedly rolled services" >&2
   cat "$UNCHANGED_CALLS" >&2
   exit 1
 fi
 
-if ! rg -q "up -d --wait --no-deps api-train" "$TRAIN_ONLY_CALLS"; then
-  echo "FAIL: train-only case did not roll api-train service" >&2
-  cat "$TRAIN_ONLY_CALLS" >&2
+if ! rg -q "up -d --wait --no-deps api" "$API_ONLY_CALLS"; then
+  echo "FAIL: api-only case did not roll api service" >&2
+  cat "$API_ONLY_CALLS" >&2
   exit 1
 fi
 
-if ! rg -q "up -d --wait --no-deps worker-train" "$TRAIN_ONLY_CALLS"; then
-  echo "FAIL: train-only case did not roll worker-train service" >&2
-  cat "$TRAIN_ONLY_CALLS" >&2
+if rg -q "up -d --wait --no-deps worker|up -d --wait --no-deps web" "$API_ONLY_CALLS"; then
+  echo "FAIL: api-only case rolled unrelated services" >&2
+  cat "$API_ONLY_CALLS" >&2
   exit 1
 fi
 
-if rg -q "up -d --wait --no-deps api-gateway|up -d --wait --no-deps api-restaurant|up -d --wait --no-deps worker-restaurant|up -d --wait --no-deps web" "$TRAIN_ONLY_CALLS"; then
-  echo "FAIL: train-only case rolled unrelated services" >&2
-  cat "$TRAIN_ONLY_CALLS" >&2
-  exit 1
-fi
-
-if ! rg -q "up -d --wait --no-deps worker-train" "$MISSING_WORKER_CALLS"; then
-  echo "FAIL: missing-worker case did not force worker-train rollout" >&2
+if ! rg -q "up -d --wait --no-deps worker" "$MISSING_WORKER_CALLS"; then
+  echo "FAIL: missing-worker case did not force worker rollout" >&2
   cat "$MISSING_WORKER_CALLS" >&2
   exit 1
 fi
 
-if rg -q "up -d --wait --no-deps api-gateway|up -d --wait --no-deps api-train|up -d --wait --no-deps api-restaurant|up -d --wait --no-deps worker-restaurant|up -d --wait --no-deps web" "$MISSING_WORKER_CALLS"; then
+if rg -q "up -d --wait --no-deps api|up -d --wait --no-deps web" "$MISSING_WORKER_CALLS"; then
   echo "FAIL: missing-worker case rolled unrelated services" >&2
   cat "$MISSING_WORKER_CALLS" >&2
   exit 1

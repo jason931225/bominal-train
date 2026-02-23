@@ -13,8 +13,8 @@ if python3 -c "import pytest" >/dev/null 2>&1; then
 fi
 
 if command -v docker >/dev/null 2>&1; then
-  echo "→ Local Python deps missing; using api-gateway container for mutation smoke."
-  docker compose -f "$ROOT_DIR/infra/docker-compose.yml" exec -T api-gateway python /app/scripts/mutation_smoke.py
+  echo "→ Local Python deps missing; using api container for mutation smoke."
+  docker compose -f "$ROOT_DIR/infra/docker-compose.yml" exec -T api python /app/scripts/mutation_smoke.py
   exit $?
 fi
 
