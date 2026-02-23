@@ -74,6 +74,14 @@ For each incident/update:
 
 - Test first for behavior changes (TDD for production code).
 - Run narrow tests for touched areas, then required baseline suite.
+- Enforce `Docs > Plan > Test` ordering before staging commits.
+- 100% automated test coverage is required before staging commits.
+- Perform a test relevance check before staging:
+  - map each staged behavior change to specific test cases;
+  - add/update tests if coverage is only incidental or indirect.
+- Perform warning hygiene before staging:
+  - remove runtime and deprecation warnings in touched scope where feasible;
+  - if warnings remain, record reason + owner + follow-up issue/plan entry.
 - For docs/protocol changes, run docs validation scripts:
   - `infra/tests/test_docs_pointers.sh`
   - `infra/tests/test_execution_ledgers.sh`

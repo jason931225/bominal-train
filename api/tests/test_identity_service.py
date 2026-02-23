@@ -36,6 +36,7 @@ def test_display_name_and_fallback_helpers() -> None:
     )
     assert identity._display_name_from_claims({"name": "FromClaim"}, "a@example.com") == "FromClaim"
     assert identity._display_name_from_claims({}, "fallback@example.com") == "fallback"
+    assert identity._display_name_from_claims({"user_metadata": {"display_name": "   "}, "name": "   "}, "") is None
 
 
 @pytest.mark.asyncio

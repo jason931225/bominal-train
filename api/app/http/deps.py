@@ -8,6 +8,7 @@ from sqlalchemy.orm import joinedload
 
 from app.core.config import get_settings
 from app.core.rate_limit import rate_limiter
+from app.core.internal_identity import InternalIdentityError, verify_internal_service_token
 from app.core.security import hash_token
 from app.core.supabase_jwt import SupabaseJWTError, verify_supabase_jwt
 from app.db.models import Session, User
@@ -147,16 +148,28 @@ async def get_current_admin(user: User = Depends(get_current_approved_user)) -> 
 
 async def require_internal_access(
     internal_api_key: str | None = Header(default=None, alias="X-Internal-Api-Key"),
+    internal_service_token: str | None = Header(default=None, alias="X-Internal-Service-Token"),
 ) -> None:
-    configured_key = settings.internal_api_key
-    if not configured_key:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Internal API access is not configured",
-        )
+    api_key = internal_api_key if isinstance(internal_api_key, str) else None
+    service_token = internal_service_token if isinstance(internal_service_token, str) else None
 
-    if not internal_api_key or not hmac.compare_digest(internal_api_key, configured_key):
-        raise _forbidden("Internal API access denied")
+    if service_token:
+        try:
+            verify_internal_service_token(service_token, expected_audience="internal-api")
+        except InternalIdentityError as exc:
+            raise _forbidden("Internal API access denied") from exc
+        return
+
+    configured_key = settings.internal_api_key
+    if configured_key:
+        if not api_key or not hmac.compare_digest(api_key, configured_key):
+            raise _forbidden("Internal API access denied")
+        return
+
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="Internal API access is not configured",
+    )
 
 
 def require_role(role_name: str):

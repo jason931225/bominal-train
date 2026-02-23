@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.services import email_template
 from app.services.email_template import Block, format_completion_summary, render_email
 
 
@@ -97,3 +98,71 @@ def test_format_completion_summary_uses_canonical_field_order():
         "Successfully completed reservation for train on 2026-02-11 14:05 - "
         "SRT345 2026-02-11 for 2 people."
     )
+
+
+def test_render_email_covers_kv_bullets_divider_and_helper_paths():
+    rendered = render_email(
+        subject="Status for {{ user.name }}",
+        preheader="Details",
+        theme="autumn",
+        context={
+            "user": {"name": "Casey"},
+            "cta": {"url": "https://www.bominal.com/details"},
+            "summary": {"status": "Done"},
+        },
+        blocks=[
+            Block(type="paragraph", data={"text": "Line one"}),
+            Block(
+                type="cta",
+                data={
+                    "label": "Open",
+                    "url": {"$ref": "cta.url"},
+                    "helper_text": "Link expires soon.",
+                },
+            ),
+            Block(
+                type="kv",
+                data={
+                    "rows": [
+                        {"k": "Task", "v": "Train"},
+                        {"k": "Status", "v": {"$ref": "summary.status"}},
+                    ]
+                },
+            ),
+            Block(type="bullets", data={"items": ["First", "Second"]}),
+            Block(type="divider", data={}),
+            Block(type="mono", data={"text": "trace-id: abc-123"}),
+        ],
+        footer_support_url=None,
+    )
+
+    assert rendered.subject == "Status for Casey"
+    assert "Link expires soon." in rendered.text
+    assert "Task: Train" in rendered.text
+    assert "- First" in rendered.text
+    assert "------------------------" in rendered.text
+    assert "Need help?" in rendered.text
+    assert "trace-id: abc-123" in rendered.html
+
+
+def test_resolve_with_context_handles_missing_refs_defaults_and_lists():
+    assert email_template._lookup_pointer({"a": {"b": "c"}}, "a.b") == "c"
+    assert email_template._lookup_pointer({"a": {"b": "c"}}, "a.x") is None
+
+    resolved_missing_default = email_template._resolve_with_context(
+        {"$ref": "missing.path", "default": "fallback"},
+        {},
+    )
+    assert resolved_missing_default == "fallback"
+
+    resolved_list = email_template._resolve_with_context(
+        [
+            "Hello {{ user.name }}",
+            {"$ref": "summary.status"},
+        ],
+        {
+            "user": {"name": "Avery"},
+            "summary": {"status": "ok"},
+        },
+    )
+    assert resolved_list == ["Hello Avery", "ok"]

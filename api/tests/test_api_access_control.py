@@ -4,6 +4,7 @@ import pytest
 from sqlalchemy import select
 from starlette.requests import Request
 
+from app.core.internal_identity import InternalIdentityError
 from app.db.models import Role, User
 
 
@@ -97,6 +98,32 @@ async def test_internal_route_returns_503_when_not_configured(client, monkeypatc
 
     response = await client.get("/api/internal/health", headers={"X-Internal-Api-Key": "ignored"})
     assert response.status_code == 503
+
+
+@pytest.mark.asyncio
+async def test_internal_route_accepts_internal_service_token(client, monkeypatch):
+    monkeypatch.setattr("app.http.deps.verify_internal_service_token", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr("app.http.deps.settings.internal_api_key", None)
+
+    response = await client.get(
+        "/api/internal/health",
+        headers={"X-Internal-Service-Token": "token"},
+    )
+    assert response.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_internal_route_rejects_invalid_internal_service_token(client, monkeypatch):
+    def _raise(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        raise InternalIdentityError("bad token")
+
+    monkeypatch.setattr("app.http.deps.verify_internal_service_token", _raise)
+
+    response = await client.get(
+        "/api/internal/health",
+        headers={"X-Internal-Service-Token": "token"},
+    )
+    assert response.status_code == 403
 
 
 def _build_request_for_rate_limit(

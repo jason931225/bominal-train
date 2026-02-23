@@ -98,7 +98,9 @@ Module contract:
 
 - Public routes: register/login/logout/password-reset and email-verification request endpoints.
 - Authenticated routes: account profile routes, modules, train, wallet, notifications.
-- Internal-only routes: `/api/internal/*` guarded by `X-Internal-Api-Key` against `INTERNAL_API_KEY`.
+- Internal-only routes: `/api/internal/*` guarded by either:
+  - `X-Internal-Api-Key` against `INTERNAL_API_KEY`, or
+  - `X-Internal-Service-Token` (short-lived HMAC token, audience `internal-api`).
 - Admin routes: `/api/admin/*` guarded by role check (`admin`).
 
 ### Train module architecture

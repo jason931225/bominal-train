@@ -1,6 +1,8 @@
 import os
-from pathlib import Path
 from contextlib import asynccontextmanager
+from pathlib import Path
+from typing import Any
+from typing import Mapping
 
 import fakeredis.aioredis
 import pytest_asyncio
@@ -16,6 +18,41 @@ get_settings.cache_clear()
 from app.db.models import Base, Role
 from app.db.session import get_db
 from app.main import app
+
+
+def _format_cookie_header(cookies: Any) -> str:
+    if isinstance(cookies, Mapping):
+        items = cookies.items()
+    else:
+        try:
+            items = dict(cookies).items()
+        except Exception:
+            items = []
+    return "; ".join(f"{key}={value}" for key, value in items)
+
+
+class CompatAsyncClient(AsyncClient):
+    """httpx client shim for tests.
+
+    httpx is deprecating per-request `cookies=`. Tests still use that call style heavily,
+    so this shim converts request cookies into a `cookie` header without mutating client state.
+    """
+
+    async def request(  # noqa: D401
+        self,
+        method: str,
+        url: str,
+        *,
+        cookies: Any | None = None,
+        headers: Mapping[str, str] | None = None,
+        **kwargs: Any,
+    ):
+        resolved_headers = dict(headers or {})
+        if cookies is not None and not any(key.lower() == "cookie" for key in resolved_headers):
+            cookie_header = _format_cookie_header(cookies)
+            if cookie_header:
+                resolved_headers["cookie"] = cookie_header
+        return await super().request(method, url, headers=resolved_headers, **kwargs)
 
 
 @pytest_asyncio.fixture
@@ -56,7 +93,7 @@ async def client(db_session_factory):
 
     app.dependency_overrides[get_db] = override_get_db
 
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as async_client:
+    async with CompatAsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as async_client:
         yield async_client
 
     app.dependency_overrides.clear()

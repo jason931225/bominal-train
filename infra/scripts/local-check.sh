@@ -40,7 +40,7 @@ cleanup() {
   if [[ "$DOWN_AFTER" == "true" ]]; then
     echo ""
     echo "→ Stopping stack (--down)..."
-    "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" down >/dev/null 2>&1 || true
+    "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" down --remove-orphans >/dev/null 2>&1 || true
   fi
 }
 trap cleanup EXIT
@@ -53,7 +53,7 @@ fi
 echo "=== bominal local check ==="
 echo "→ Using APP_VERSION=$APP_VERSION BUILD_VERSION=$BUILD_VERSION"
 echo "→ Starting Docker Compose services..."
-"${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --build
+"${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --build --remove-orphans
 
 echo "→ Waiting for API health (http://localhost:8000/health)..."
 api_body=""
