@@ -2,7 +2,7 @@
 # ==============================================================================
 # Zero-Downtime Deployment Script for bominal (CI/CD Version)
 # ==============================================================================
-# This script pulls pre-built images from Google Artifact Registry and deploys
+# This script pulls pre-built images from GHCR and deploys
 # them with zero downtime. Images are built on GitHub Actions runners instead
 # of the e2-micro VM to prevent OOM issues.
 #
@@ -13,7 +13,9 @@
 #   ./deploy.sh --status     # Show deployment status
 #
 # Environment:
-#   GCP_PROJECT_ID         - Google Cloud project ID (required)
+#   GHCR_NAMESPACE         - GHCR image namespace (default: ghcr.io/jason931225/bominal)
+#   GHCR_USERNAME          - Optional GHCR username for docker login
+#   GHCR_TOKEN             - Optional GHCR token/PAT for docker login
 #   API_IMAGE              - Legacy override for all API/worker images
 #   API_GATEWAY_IMAGE      - Override API gateway image URL
 #   API_TRAIN_IMAGE        - Override API train image URL
@@ -46,9 +48,8 @@ DEPLOY_WORKER_TRAIN_CHANGED="true"
 DEPLOY_WORKER_RESTAURANT_CHANGED="true"
 DEPLOY_WEB_CHANGED="true"
 
-# Google Cloud configuration
-GCP_REGION="${GCP_REGION:-us-central1}"
-REGISTRY="${REGISTRY:-${GCP_REGION}-docker.pkg.dev}"
+# Registry configuration
+GHCR_NAMESPACE="${GHCR_NAMESPACE:-ghcr.io/jason931225/bominal}"
 
 # Colors for output
 RED='\033[0;31m'
@@ -246,23 +247,23 @@ run_preflight_checks() {
   log_ok "Preflight checks passed"
 }
 
-require_gcp_project_id() {
-  if [[ -n "${GCP_PROJECT_ID:-}" ]]; then
-    export GCP_PROJECT_ID
+resolve_ghcr_namespace() {
+  if [[ -n "${GHCR_NAMESPACE:-}" ]]; then
+    export GHCR_NAMESPACE
     return 0
   fi
 
   if [[ -f "infra/env/prod/api.env" ]]; then
-    # Try to extract from env file
-    GCP_PROJECT_ID=$(grep -E '^GCP_PROJECT_ID=' infra/env/prod/api.env | cut -d'=' -f2- | tr -d '"' || echo "")
+    GHCR_NAMESPACE="$(grep -E '^GHCR_NAMESPACE=' infra/env/prod/api.env | cut -d'=' -f2- | tr -d '"' || echo "")"
   fi
 
-  if [[ -z "${GCP_PROJECT_ID:-}" ]]; then
-    log_error "GCP_PROJECT_ID not set. Please set it in your environment or infra/env/prod/api.env"
+  GHCR_NAMESPACE="${GHCR_NAMESPACE:-ghcr.io/jason931225/bominal}"
+  if [[ "$GHCR_NAMESPACE" != ghcr.io/* ]]; then
+    log_error "GHCR_NAMESPACE must start with ghcr.io/ (got: $GHCR_NAMESPACE)"
     exit 1
   fi
 
-  export GCP_PROJECT_ID
+  export GHCR_NAMESPACE
 }
 
 # Get current deployed version
@@ -612,33 +613,33 @@ do_rollback() {
         log_info "  Web: $WEB_IMAGE"
       else
         log_warn "Deployment record missing digests; falling back to commit tag"
-        require_gcp_project_id
-        export API_GATEWAY_IMAGE="${REGISTRY}/${GCP_PROJECT_ID}/bominal/api-gateway:${prev_commit}"
-        export API_TRAIN_IMAGE="${REGISTRY}/${GCP_PROJECT_ID}/bominal/api-train:${prev_commit}"
-        export API_RESTAURANT_IMAGE="${REGISTRY}/${GCP_PROJECT_ID}/bominal/api-restaurant:${prev_commit}"
+        resolve_ghcr_namespace
+        export API_GATEWAY_IMAGE="${GHCR_NAMESPACE}/api-gateway:${prev_commit}"
+        export API_TRAIN_IMAGE="${GHCR_NAMESPACE}/api-train:${prev_commit}"
+        export API_RESTAURANT_IMAGE="${GHCR_NAMESPACE}/api-restaurant:${prev_commit}"
         export WORKER_TRAIN_IMAGE="$API_TRAIN_IMAGE"
         export WORKER_RESTAURANT_IMAGE="$API_RESTAURANT_IMAGE"
-        export WEB_IMAGE="${REGISTRY}/${GCP_PROJECT_ID}/bominal/web:${prev_commit}"
+        export WEB_IMAGE="${GHCR_NAMESPACE}/web:${prev_commit}"
       fi
     else
       log_warn "Failed to load deployment record; falling back to commit tag"
-      require_gcp_project_id
-      export API_GATEWAY_IMAGE="${REGISTRY}/${GCP_PROJECT_ID}/bominal/api-gateway:${prev_commit}"
-      export API_TRAIN_IMAGE="${REGISTRY}/${GCP_PROJECT_ID}/bominal/api-train:${prev_commit}"
-      export API_RESTAURANT_IMAGE="${REGISTRY}/${GCP_PROJECT_ID}/bominal/api-restaurant:${prev_commit}"
+      resolve_ghcr_namespace
+      export API_GATEWAY_IMAGE="${GHCR_NAMESPACE}/api-gateway:${prev_commit}"
+      export API_TRAIN_IMAGE="${GHCR_NAMESPACE}/api-train:${prev_commit}"
+      export API_RESTAURANT_IMAGE="${GHCR_NAMESPACE}/api-restaurant:${prev_commit}"
       export WORKER_TRAIN_IMAGE="$API_TRAIN_IMAGE"
       export WORKER_RESTAURANT_IMAGE="$API_RESTAURANT_IMAGE"
-      export WEB_IMAGE="${REGISTRY}/${GCP_PROJECT_ID}/bominal/web:${prev_commit}"
+      export WEB_IMAGE="${GHCR_NAMESPACE}/web:${prev_commit}"
     fi
   else
     log_warn "No detailed record found, using commit tag"
-    require_gcp_project_id
-    export API_GATEWAY_IMAGE="${REGISTRY}/${GCP_PROJECT_ID}/bominal/api-gateway:${prev_commit}"
-    export API_TRAIN_IMAGE="${REGISTRY}/${GCP_PROJECT_ID}/bominal/api-train:${prev_commit}"
-    export API_RESTAURANT_IMAGE="${REGISTRY}/${GCP_PROJECT_ID}/bominal/api-restaurant:${prev_commit}"
+    resolve_ghcr_namespace
+    export API_GATEWAY_IMAGE="${GHCR_NAMESPACE}/api-gateway:${prev_commit}"
+    export API_TRAIN_IMAGE="${GHCR_NAMESPACE}/api-train:${prev_commit}"
+    export API_RESTAURANT_IMAGE="${GHCR_NAMESPACE}/api-restaurant:${prev_commit}"
     export WORKER_TRAIN_IMAGE="$API_TRAIN_IMAGE"
     export WORKER_RESTAURANT_IMAGE="$API_RESTAURANT_IMAGE"
-    export WEB_IMAGE="${REGISTRY}/${GCP_PROJECT_ID}/bominal/web:${prev_commit}"
+    export WEB_IMAGE="${GHCR_NAMESPACE}/web:${prev_commit}"
   fi
   
   # Swap current and previous
@@ -660,28 +661,23 @@ do_rollback() {
   log_ok "Rollback complete to $prev_commit"
 }
 
-# Configure Docker authentication for Artifact Registry
+# Configure Docker authentication for GHCR
 configure_docker_auth() {
-  log_info "Configuring Docker authentication for Artifact Registry..."
-  
-  # Check if gcloud is available
-  if ! command -v gcloud &> /dev/null; then
-    log_error "gcloud CLI not found. Please install it:"
-    log_error "  https://cloud.google.com/sdk/docs/install"
-    exit 1
+  if [[ -n "${GHCR_USERNAME:-}" && -n "${GHCR_TOKEN:-}" ]]; then
+    log_info "Logging into GHCR as ${GHCR_USERNAME}..."
+    if ! printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin >/dev/null 2>&1; then
+      log_error "GHCR login failed for GHCR_USERNAME=${GHCR_USERNAME}"
+      log_error "Fix GHCR credentials or unset GHCR_USERNAME/GHCR_TOKEN for anonymous pulls."
+      exit 1
+    fi
+    log_ok "GHCR login successful"
+    return 0
   fi
-  
-  # Configure Docker credential helper
-  if ! gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet 2>/dev/null; then
-    log_warn "Could not configure docker authentication automatically"
-    log_warn "You may need to run: gcloud auth login"
-    log_warn "Or use a service account key"
-  else
-    log_ok "Docker authentication configured"
-  fi
+
+  log_warn "GHCR_USERNAME/GHCR_TOKEN not set; attempting anonymous image pulls."
 }
 
-# Pull images from Artifact Registry
+# Pull images from GHCR
 pull_images() {
   local image
   local -a images_to_pull=()
@@ -696,7 +692,7 @@ pull_images() {
     "$WEB_IMAGE"
   )
 
-  log_info "Pulling images from Artifact Registry..."
+  log_info "Pulling images from GHCR..."
   log_info "  API Gateway: $API_GATEWAY_IMAGE"
   log_info "  API Train: $API_TRAIN_IMAGE"
   log_info "  API Restaurant: $API_RESTAURANT_IMAGE"
@@ -731,7 +727,6 @@ deploy_services() {
   export WORKER_TRAIN_IMAGE
   export WORKER_RESTAURANT_IMAGE
   export WEB_IMAGE
-  export GCP_PROJECT_ID
 
   if stack_has_running_containers; then
     log_info "Running stack detected. Using rolling-update path."
@@ -953,7 +948,9 @@ main() {
       echo "               Delete legacy/malformed historical record files (safe; does not touch current/previous)"
       echo ""
       echo "Environment variables:"
-      echo "  GCP_PROJECT_ID   Google Cloud project ID (required)"
+      echo "  GHCR_NAMESPACE   GHCR image namespace (default: ghcr.io/jason931225/bominal)"
+      echo "  GHCR_USERNAME    Optional GHCR username for docker login"
+      echo "  GHCR_TOKEN       Optional GHCR token/PAT for docker login"
       echo "  API_IMAGE        Legacy override for all API/worker image URLs"
       echo "  API_GATEWAY_IMAGE Override API gateway image URL"
       echo "  API_TRAIN_IMAGE  Override API train image URL"
@@ -978,7 +975,7 @@ main() {
   # Configure Docker authentication
   configure_docker_auth
 
-  require_gcp_project_id
+  resolve_ghcr_namespace
   
   # Get current version for record
   local prev_version
@@ -987,21 +984,21 @@ main() {
   # If commit specified, use specific image tags
   if [[ -n "$target_commit" ]]; then
     log_info "Deploying specific commit: $target_commit"
-    export API_GATEWAY_IMAGE="${REGISTRY}/${GCP_PROJECT_ID}/bominal/api-gateway:${target_commit}"
-    export API_TRAIN_IMAGE="${REGISTRY}/${GCP_PROJECT_ID}/bominal/api-train:${target_commit}"
-    export API_RESTAURANT_IMAGE="${REGISTRY}/${GCP_PROJECT_ID}/bominal/api-restaurant:${target_commit}"
+    export API_GATEWAY_IMAGE="${GHCR_NAMESPACE}/api-gateway:${target_commit}"
+    export API_TRAIN_IMAGE="${GHCR_NAMESPACE}/api-train:${target_commit}"
+    export API_RESTAURANT_IMAGE="${GHCR_NAMESPACE}/api-restaurant:${target_commit}"
     export WORKER_TRAIN_IMAGE="${WORKER_TRAIN_IMAGE:-$API_TRAIN_IMAGE}"
     export WORKER_RESTAURANT_IMAGE="${WORKER_RESTAURANT_IMAGE:-$API_RESTAURANT_IMAGE}"
-    export WEB_IMAGE="${REGISTRY}/${GCP_PROJECT_ID}/bominal/web:${target_commit}"
+    export WEB_IMAGE="${GHCR_NAMESPACE}/web:${target_commit}"
   else
     log_info "Deploying latest images"
     set_split_images_from_legacy_api_image
-    export API_GATEWAY_IMAGE="${API_GATEWAY_IMAGE:-${REGISTRY}/${GCP_PROJECT_ID}/bominal/api-gateway:latest}"
-    export API_TRAIN_IMAGE="${API_TRAIN_IMAGE:-${REGISTRY}/${GCP_PROJECT_ID}/bominal/api-train:latest}"
-    export API_RESTAURANT_IMAGE="${API_RESTAURANT_IMAGE:-${REGISTRY}/${GCP_PROJECT_ID}/bominal/api-restaurant:latest}"
+    export API_GATEWAY_IMAGE="${API_GATEWAY_IMAGE:-${GHCR_NAMESPACE}/api-gateway:latest}"
+    export API_TRAIN_IMAGE="${API_TRAIN_IMAGE:-${GHCR_NAMESPACE}/api-train:latest}"
+    export API_RESTAURANT_IMAGE="${API_RESTAURANT_IMAGE:-${GHCR_NAMESPACE}/api-restaurant:latest}"
     export WORKER_TRAIN_IMAGE="${WORKER_TRAIN_IMAGE:-$API_TRAIN_IMAGE}"
     export WORKER_RESTAURANT_IMAGE="${WORKER_RESTAURANT_IMAGE:-$API_RESTAURANT_IMAGE}"
-    export WEB_IMAGE="${WEB_IMAGE:-${REGISTRY}/${GCP_PROJECT_ID}/bominal/web:latest}"
+    export WEB_IMAGE="${WEB_IMAGE:-${GHCR_NAMESPACE}/web:latest}"
   fi
   
   # Pull and deploy

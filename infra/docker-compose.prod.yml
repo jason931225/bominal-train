@@ -67,8 +67,8 @@ services:
     restart: unless-stopped
 
   api-gateway:
-    # Pull pre-built image from Artifact Registry instead of building
-    image: ${API_GATEWAY_IMAGE:-us-central1-docker.pkg.dev/${GCP_PROJECT_ID:-bominal}/bominal/api-gateway:latest}
+    # Pull pre-built image from GHCR instead of building
+    image: ${API_GATEWAY_IMAGE:-${GHCR_NAMESPACE:-ghcr.io/jason931225/bominal}/api-gateway:latest}
     container_name: bominal-api-gateway
     working_dir: /app
     command: >
@@ -102,8 +102,8 @@ services:
     restart: unless-stopped
 
   api-train:
-    # Pull pre-built image from Artifact Registry instead of building
-    image: ${API_TRAIN_IMAGE:-us-central1-docker.pkg.dev/${GCP_PROJECT_ID:-bominal}/bominal/api-train:latest}
+    # Pull pre-built image from GHCR instead of building
+    image: ${API_TRAIN_IMAGE:-${GHCR_NAMESPACE:-ghcr.io/jason931225/bominal}/api-train:latest}
     container_name: bominal-api-train
     working_dir: /app
     command: >
@@ -132,8 +132,8 @@ services:
     restart: unless-stopped
 
   api-restaurant:
-    # Pull pre-built image from Artifact Registry instead of building
-    image: ${API_RESTAURANT_IMAGE:-us-central1-docker.pkg.dev/${GCP_PROJECT_ID:-bominal}/bominal/api-restaurant:latest}
+    # Pull pre-built image from GHCR instead of building
+    image: ${API_RESTAURANT_IMAGE:-${GHCR_NAMESPACE:-ghcr.io/jason931225/bominal}/api-restaurant:latest}
     container_name: bominal-api-restaurant
     working_dir: /app
     command: >
@@ -162,8 +162,8 @@ services:
     restart: unless-stopped
 
   worker-train:
-    # Pull pre-built image from Artifact Registry instead of building
-    image: ${WORKER_TRAIN_IMAGE:-us-central1-docker.pkg.dev/${GCP_PROJECT_ID:-bominal}/bominal/api-train:latest}
+    # Pull pre-built image from GHCR instead of building
+    image: ${WORKER_TRAIN_IMAGE:-${GHCR_NAMESPACE:-ghcr.io/jason931225/bominal}/api-train:latest}
     container_name: bominal-worker-train
     working_dir: /app
     command: >
@@ -192,8 +192,8 @@ services:
     restart: unless-stopped
 
   worker-restaurant:
-    # Pull pre-built image from Artifact Registry instead of building
-    image: ${WORKER_RESTAURANT_IMAGE:-us-central1-docker.pkg.dev/${GCP_PROJECT_ID:-bominal}/bominal/api-restaurant:latest}
+    # Pull pre-built image from GHCR instead of building
+    image: ${WORKER_RESTAURANT_IMAGE:-${GHCR_NAMESPACE:-ghcr.io/jason931225/bominal}/api-restaurant:latest}
     container_name: bominal-worker-restaurant
     working_dir: /app
     command: >
@@ -222,8 +222,8 @@ services:
     restart: unless-stopped
 
   web:
-    # Pull pre-built image from Artifact Registry instead of building
-    image: ${WEB_IMAGE:-us-central1-docker.pkg.dev/${GCP_PROJECT_ID:-bominal}/bominal/web:latest}
+    # Pull pre-built image from GHCR instead of building
+    image: ${WEB_IMAGE:-${GHCR_NAMESPACE:-ghcr.io/jason931225/bominal}/web:latest}
     container_name: bominal-web
     env_file:
       - ./env/prod/web.env

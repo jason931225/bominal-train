@@ -2,7 +2,7 @@ name: Deploy to Production
 
 on:
   workflow_run:
-    workflows: ["Build and Push Images", "Infra Tests"]
+    workflows: ["Infra Tests"]
     types: [completed]
     branches: [main]
 
@@ -37,21 +37,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Gate on successful image build for same commit
-        if: github.event_name == 'workflow_run'
+      - name: Gate on successful Infra + image build workflows for same commit
         uses: actions/github-script@v7
         with:
           script: |
             const owner = context.repo.owner;
             const repo = context.repo.repo;
-            const targetSha = context.payload.workflow_run.head_sha;
-            const targetWorkflow = "Build and Push Images";
+            const targetSha = context.payload.workflow_run?.head_sha || context.sha;
+            const requiredWorkflows = ["Infra Tests", "Build and Push Images"];
             const maxAttempts = 40;
             const sleepMs = 15000;
 
             const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+            const selected = new Map();
 
-            let matchedRun = null;
             for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
               const { data } = await github.rest.actions.listWorkflowRunsForRepo({
                 owner,
@@ -60,40 +59,48 @@ jobs:
                 per_page: 100,
               });
 
-              matchedRun = data.workflow_runs.find((run) => run.name === targetWorkflow) || null;
-              if (matchedRun && matchedRun.status === "completed") {
+              for (const workflowName of requiredWorkflows) {
+                const run = data.workflow_runs.find((item) => item.name === workflowName) || null;
+                if (run) {
+                  selected.set(workflowName, run);
+                }
+              }
+
+              const allCompleted = requiredWorkflows.every((workflowName) => {
+                const run = selected.get(workflowName);
+                return run && run.status === "completed";
+              });
+              if (allCompleted) {
                 break;
               }
+
               core.info(
-                `Waiting for '${targetWorkflow}' run on ${targetSha} (attempt ${attempt}/${maxAttempts})...`
+                `Waiting for prerequisite workflows on ${targetSha} (attempt ${attempt}/${maxAttempts})...`
               );
               await sleep(sleepMs);
             }
 
-            if (!matchedRun) {
-              core.setFailed(
-                `No '${targetWorkflow}' run found for commit ${targetSha}.`
-              );
-              return;
+            for (const workflowName of requiredWorkflows) {
+              const run = selected.get(workflowName);
+              if (!run) {
+                core.setFailed(`No '${workflowName}' run found for commit ${targetSha}. Deploy blocked.`);
+                return;
+              }
+              if (run.status !== "completed") {
+                core.setFailed(
+                  `'${workflowName}' for ${targetSha} did not complete in time (status=${run.status}). Deploy blocked.`
+                );
+                return;
+              }
+              if (run.conclusion !== "success") {
+                core.setFailed(
+                  `'${workflowName}' for ${targetSha} concluded with '${run.conclusion}'. Deploy blocked.`
+                );
+                return;
+              }
             }
 
-            if (matchedRun.status !== "completed") {
-              core.setFailed(
-                `'${targetWorkflow}' for ${targetSha} did not complete in time (status=${matchedRun.status}).`
-              );
-              return;
-            }
-
-            if (matchedRun.conclusion !== "success") {
-              core.setFailed(
-                `'${targetWorkflow}' for ${targetSha} concluded with '${matchedRun.conclusion}', deploy blocked.`
-              );
-              return;
-            }
-
-            core.info(
-              `'${targetWorkflow}' succeeded for ${targetSha}; deploy gate passed.`
-            );
+            core.info(`Prerequisite workflows succeeded for ${targetSha}; deploy gate passed.`);
 
       - name: Validate deprecation gates
         shell: bash

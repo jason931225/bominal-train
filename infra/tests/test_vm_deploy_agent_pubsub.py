@@ -105,6 +105,7 @@ class TestVmDeployAgentPubSub(unittest.TestCase):
             env["DEPLOY_SUBSCRIPTION"] = "sub1"
             env["REPO_DIR"] = str(tdir / "repo")
             env["DEPLOY_SCRIPT"] = str(deploy_script)
+            env["ALLOW_NONCANONICAL_DEPLOY_SCRIPT"] = "true"
             env["LOCK_FILE"] = str(tdir / "lockfile")
             env["SLEEP_SECONDS"] = "0"
             env["DEPLOY_AGENT_ONCE"] = "1"
@@ -135,3 +136,45 @@ class TestVmDeployAgentPubSub(unittest.TestCase):
             self.assertIn("pubsub subscriptions pull sub1", calls)
             self.assertIn("pubsub subscriptions modify-ack-deadline sub1", calls)
             self.assertIn("pubsub subscriptions ack sub1", calls)
+
+    def test_rejects_deprecated_deploy_script_path(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            tdir = Path(td)
+            bindir = tdir / "bin"
+            bindir.mkdir(parents=True, exist_ok=True)
+
+            _write_exe(
+                bindir / "gcloud",
+                "#!/usr/bin/env bash\nset -euo pipefail\nexit 0\n",
+            )
+            _write_exe(
+                bindir / "git",
+                "#!/usr/bin/env bash\nset -euo pipefail\nexit 0\n",
+            )
+            _write_exe(
+                bindir / "flock",
+                "#!/usr/bin/env bash\nset -euo pipefail\nexit 0\n",
+            )
+
+            repo_dir = tdir / "repo"
+            repo_dir.mkdir(parents=True, exist_ok=True)
+
+            env = os.environ.copy()
+            env["PATH"] = f"{bindir}{os.pathsep}{env.get('PATH','')}"
+            env["GCP_PROJECT_ID"] = "bominal"
+            env["DEPLOY_SUBSCRIPTION"] = "sub1"
+            env["REPO_DIR"] = str(repo_dir)
+            env["DEPLOY_SCRIPT"] = str(repo_dir / "infra/scripts/deploy-zero-downtime.sh")
+            env["DEPLOY_AGENT_ONCE"] = "1"
+
+            result = subprocess.run(
+                ["bash", str(AGENT_PATH)],
+                env=env,
+                text=True,
+                capture_output=True,
+                timeout=10,
+                check=False,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("Refusing deprecated deploy script path", result.stdout)

@@ -27,7 +27,8 @@ bominal-deploy --rollback
 # Or: sudo -u bominal /opt/bominal/repo/infra/scripts/deploy.sh --rollback
 ```
 
-Note: `deploy.sh` pulls pre-built images (there is no `--skip-build` flag).
+Note: `deploy.sh` pulls pre-built GHCR images (there is no `--skip-build` flag).
+If GHCR packages are private, provide `GHCR_USERNAME` + `GHCR_TOKEN` in the deploy agent env.
 
 Deploy script guardrails:
 - Enforces single-run deploy lock (`DEPLOY_LOCK_FILE`, default `/tmp/bominal-deploy.lock`).
@@ -38,8 +39,10 @@ Deploy script guardrails:
 - Auto rollback on smoke failure is enabled by default (`AUTO_ROLLBACK_ON_SMOKE_FAILURE=true`).
 - Logs tracked working-tree dirty state before deploy; set `DEPLOY_FAIL_ON_DIRTY_REPO=true` to hard-fail on dirty tracked files.
 - GitHub deploy workflow guardrails:
-  - deploy request is published only after `Infra Tests` success and matching-commit `Build and Push Images` success;
+  - deploy request is published only after same-commit `Infra Tests` and `Build and Push Images` both succeed (including manual dispatches);
   - post-deploy CI verification checks production `/health` (`db=true`, `redis=true`) and production web endpoint HTTP `200`/`3xx`.
+- VM deploy agent guardrail:
+  - `DEPLOY_SCRIPT` must point to canonical `infra/scripts/deploy.sh`; deprecated script paths are rejected fail-closed.
 
 Compatibility notice:
 - `infra/docker-compose.deploy.yml.deprecated` is deprecated and removed from active operator workflow.
