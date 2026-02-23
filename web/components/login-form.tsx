@@ -7,7 +7,7 @@ import { z } from "zod";
 
 import { useLocale } from "@/components/locale-provider";
 import { clientApiBaseUrl } from "@/lib/api-base";
-import { signInWithPasskey } from "@/lib/passkey";
+import { isPasskeySupported, signInWithPasskey } from "@/lib/passkey";
 import { ROUTES } from "@/lib/routes";
 import { UI_BUTTON_PRIMARY, UI_FIELD } from "@/lib/ui";
 
@@ -20,6 +20,7 @@ type LoginFormData = {
 export function LoginForm() {
   const router = useRouter();
   const { t } = useLocale();
+  const [step, setStep] = useState<"email" | "password">("email");
   const [form, setForm] = useState<LoginFormData>({
     email: "",
     password: "",
@@ -27,49 +28,74 @@ export function LoginForm() {
   });
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<keyof LoginFormData, string>>>({});
   const [formError, setFormError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [passkeySubmitting, setPasskeySubmitting] = useState(false);
+  const [continueSubmitting, setContinueSubmitting] = useState(false);
+  const [signInSubmitting, setSignInSubmitting] = useState(false);
+  const showingPassword = step === "password";
 
   const navigateAfterAuth = () => {
     if (typeof window !== "undefined") {
       // Root layout is persistent in App Router; full navigation refreshes top-nav auth state.
-      window.location.assign(ROUTES.dashboard);
+      try {
+        window.location.assign(ROUTES.dashboard);
+      } catch {
+        // jsdom/limited runtimes may not implement navigation methods.
+        router.push(ROUTES.dashboard);
+      }
       return;
     }
     router.push(ROUTES.dashboard);
   };
 
-  const onPasskeySignIn = async () => {
+  const expectedPasskeyFallback = (message: string | undefined): boolean => {
+    if (!message) return true;
+    const normalized = message.toLowerCase();
+    return (
+      normalized.includes("no passkey registered") ||
+      normalized.includes("cancel") ||
+      normalized.includes("not supported") ||
+      normalized.includes("security check failed")
+    );
+  };
+
+  const onContinue = async () => {
     setFieldErrors({});
     setFormError(null);
-    if (!form.email.trim()) {
-      setFieldErrors({ email: t("auth.invalidEmail") });
+    const emailSchema = z.string().email(t("auth.invalidEmail"));
+    const parsed = emailSchema.safeParse(form.email.trim());
+    if (!parsed.success) {
+      setFieldErrors({ email: parsed.error.issues[0]?.message ?? t("auth.invalidEmail") });
       return;
     }
 
-    setPasskeySubmitting(true);
+    const normalizedEmail = parsed.data.toLowerCase();
+    setContinueSubmitting(true);
     try {
-      const result = await signInWithPasskey(clientApiBaseUrl, {
-        email: form.email.trim().toLowerCase(),
-        rememberMe: form.remember_me,
-      });
-      if (!result.ok) {
-        setFormError(result.error ?? t("auth.passkeySignInFailed"));
+      if (!isPasskeySupported()) {
+        setStep("password");
         return;
       }
-      navigateAfterAuth();
+      const result = await signInWithPasskey(clientApiBaseUrl, {
+        email: normalizedEmail,
+        rememberMe: form.remember_me,
+      });
+      if (result.ok) {
+        navigateAfterAuth();
+        return;
+      }
+
+      if (!expectedPasskeyFallback(result.error)) {
+        setFormError(result.error ?? t("auth.passkeySignInFailed"));
+      }
+      setStep("password");
     } catch {
       setFormError(t("auth.passkeySignInFailed"));
+      setStep("password");
     } finally {
-      setPasskeySubmitting(false);
+      setContinueSubmitting(false);
     }
   };
 
-  const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setFieldErrors({});
-    setFormError(null);
-
+  const onPasswordSignIn = async () => {
     const loginSchema = z.object({
       email: z.string().email(t("auth.invalidEmail")),
       password: z.string().min(8, t("auth.passwordMin")),
@@ -95,7 +121,7 @@ export function LoginForm() {
       return;
     }
 
-    setSubmitting(true);
+    setSignInSubmitting(true);
     try {
       const response = await fetch(`${clientApiBaseUrl}/api/auth/login`, {
         method: "POST",
@@ -114,8 +140,21 @@ export function LoginForm() {
     } catch {
       setFormError(t("auth.apiUnreachable"));
     } finally {
-      setSubmitting(false);
+      setSignInSubmitting(false);
     }
+  };
+
+  const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setFieldErrors({});
+    setFormError(null);
+
+    if (showingPassword) {
+      await onPasswordSignIn();
+      return;
+    }
+
+    await onContinue();
   };
 
   return (
@@ -128,7 +167,13 @@ export function LoginForm() {
           id="email"
           type="email"
           value={form.email}
-          onChange={(event) => setForm((prev) => ({ ...prev, email: event.target.value }))}
+          onChange={(event) => {
+            const nextEmail = event.target.value;
+            setForm((prev) => ({ ...prev, email: nextEmail, ...(step === "password" ? { password: "" } : {}) }));
+            if (step === "password") {
+              setStep("email");
+            }
+          }}
           className={UI_FIELD}
           autoComplete="email"
           required
@@ -136,21 +181,23 @@ export function LoginForm() {
         {fieldErrors.email ? <p className="mt-1 text-xs text-rose-600">{fieldErrors.email}</p> : null}
       </div>
 
-      <div>
-        <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor="password">
-          {t("auth.password")}
-        </label>
-        <input
-          id="password"
-          type="password"
-          value={form.password}
-          onChange={(event) => setForm((prev) => ({ ...prev, password: event.target.value }))}
-          className={UI_FIELD}
-          autoComplete="current-password"
-          required
-        />
-        {fieldErrors.password ? <p className="mt-1 text-xs text-rose-600">{fieldErrors.password}</p> : null}
-      </div>
+      {showingPassword ? (
+        <div>
+          <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor="password">
+            {t("auth.password")}
+          </label>
+          <input
+            id="password"
+            type="password"
+            value={form.password}
+            onChange={(event) => setForm((prev) => ({ ...prev, password: event.target.value }))}
+            className={UI_FIELD}
+            autoComplete="current-password"
+            required
+          />
+          {fieldErrors.password ? <p className="mt-1 text-xs text-rose-600">{fieldErrors.password}</p> : null}
+        </div>
+      ) : null}
 
       <label className="flex items-center gap-2 text-sm text-slate-600">
         <input
@@ -162,29 +209,28 @@ export function LoginForm() {
         {t("auth.rememberMe")}
       </label>
 
-      <p className="text-right text-sm">
-        <Link href={ROUTES.forgotPassword} className="font-medium text-blossom-600 hover:text-blossom-700">
-          {t("auth.forgotPassword")}
-        </Link>
-      </p>
+      {showingPassword ? (
+        <p className="text-right text-sm">
+          <Link href={ROUTES.forgotPassword} className="font-medium text-blossom-600 hover:text-blossom-700">
+            {t("auth.forgotPassword")}
+          </Link>
+        </p>
+      ) : null}
 
       {formError ? <p className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">{formError}</p> : null}
 
       <button
         type="submit"
-        disabled={submitting || passkeySubmitting}
+        disabled={continueSubmitting || signInSubmitting}
         className={`w-full ${UI_BUTTON_PRIMARY}`}
       >
-        {submitting ? t("auth.signingIn") : t("auth.signIn")}
-      </button>
-
-      <button
-        type="button"
-        disabled={submitting || passkeySubmitting}
-        onClick={onPasskeySignIn}
-        className="w-full rounded-full border border-blossom-200 bg-white px-4 py-2 text-sm font-medium text-blossom-700 transition hover:bg-blossom-50 focus:outline-none focus:ring-2 focus:ring-blossom-200 disabled:cursor-not-allowed disabled:opacity-60"
-      >
-        {passkeySubmitting ? t("auth.signingInWithPasskey") : t("auth.signInWithPasskey")}
+        {showingPassword
+          ? signInSubmitting
+            ? t("auth.signingIn")
+            : t("auth.signIn")
+          : continueSubmitting
+            ? t("auth.continuing")
+            : t("auth.continue")}
       </button>
     </form>
   );

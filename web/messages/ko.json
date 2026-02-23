@@ -20,6 +20,8 @@
     "created": "생성"
   },
   "auth": {
+    "continue": "계속",
+    "continuing": "계속 진행 중...",
     "signIn": "로그인",
     "signingIn": "로그인 중...",
     "signOut": "로그아웃",
@@ -137,7 +139,7 @@
   "settings": {
     "kicker": "설정",
     "accountTitle": "계정 설정",
-    "accountBody": "프로필 정보를 업데이트하세요. 이메일 또는 비밀번호를 변경할 때만 현재 비밀번호가 필요합니다.",
+    "accountBody": "프로필 정보를 업데이트하세요. 민감한 변경은 패스키 우선 검증 후 현재 비밀번호로 대체 검증합니다.",
     "noChanges": "저장할 변경 사항이 없습니다.",
     "passwordConfirmMismatch": "새 비밀번호 확인이 일치하지 않습니다.",
     "currentPasswordRequiredSensitive": "이메일 또는 비밀번호 변경을 적용하려면 현재 비밀번호가 필요합니다.",
@@ -194,6 +196,9 @@
     "passkeyCreatedAt": "생성됨: {date}",
     "passkeyLastUsedAt": "마지막 사용: {date}",
     "passkeyNeverUsed": "마지막 사용: 없음",
+    "sensitiveAuthTitle": "계속하려면 확인이 필요합니다",
+    "sensitiveAuthBody": "패스키 검증을 사용할 수 없습니다. 계속하려면 현재 비밀번호를 입력하세요.",
+    "sensitiveAuthConfirm": "확인",
     "dangerZone": "주의",
     "dangerBody": "계정을 삭제하면 저장된 프로필 데이터가 제거됩니다. 진행 중인 작업이 있다면 먼저 완료되어야 합니다.",
     "passwordConfirmRequired": "비밀번호 변경 시 필요",
