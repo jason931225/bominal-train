@@ -26,7 +26,7 @@ The deployment uses Docker Compose health checks and the `--wait` flag:
 2. **Deploy Phase** - Script branches by runtime state:
    - first deploy (no running stack): bootstrap-safe full `up -d --wait`
    - running stack: image-aware rolling updates with `--no-deps` per service
-     - roll only changed services across: `api-gateway`, `api-train`, `api-restaurant`, `worker-train`, `worker-restaurant`, `web`
+     - roll only changed services across: `api`, `worker`, `web`
      - unchanged services are skipped to reduce restart churn and blast radius
 3. **Verify Phase** - External health checks confirm the deployment:
    - Docker starts the new container
@@ -44,11 +44,8 @@ Each service has a health check in `docker-compose.prod.yml`:
 | redis    | `redis-cli ping` | 0s |
 | egress-train | `wget --spider` (port 8080/health) | 10s |
 | egress-restaurant | `wget --spider` (port 8080/health) | 10s |
-| api-gateway | Python urllib (port 8000/health) | 120s |
-| api-train | Python urllib (port 8000/health) | 60s |
-| api-restaurant | Python urllib (port 8000/health) | 60s |
-| worker-train | Python proc check for `app.worker_train.WorkerTrainSettings` | 15s |
-| worker-restaurant | Python proc check for `app.worker_restaurant.WorkerRestaurantSettings` | 15s |
+| api | Python urllib (port 8000/health) | 120s |
+| worker | Python proc check for `app.worker.WorkerSettings` | 15s |
 | web      | `wget --spider` (port 3000) | 60s |
 | caddy    | `wget` (admin API port 2019) | 30s |
 
@@ -73,8 +70,8 @@ sudo -u bominal /opt/bominal/repo/infra/scripts/deploy.sh --status
 ```
 
 Optional image override envs (for controlled/manual rollouts):
-- Legacy override: `API_IMAGE` (applies to all API/worker services)
-- Split overrides: `API_GATEWAY_IMAGE`, `API_TRAIN_IMAGE`, `API_RESTAURANT_IMAGE`, `WORKER_TRAIN_IMAGE`, `WORKER_RESTAURANT_IMAGE`, `WEB_IMAGE`
+- `API_IMAGE`, `WORKER_IMAGE`, `WEB_IMAGE`
+- Backward-compatible split overrides are still accepted but should be removed from operator automation.
 
 ### Deploy Script Safety Controls
 
@@ -107,7 +104,7 @@ runs `infra/scripts/deploy.sh` locally.
 
 CI-triggered deploys use a **latest baseline with per-service commit-tag overrides**:
 - changed services are pinned to `ghcr.io/...:<commit_sha>`;
-- unchanged services stay on `:latest` to avoid missing-image failures in split-image builds.
+- unchanged services stay on `:latest`.
 Canonical workflow files:
 - `.github/workflows/ci-infra-quality-gates.yml`
 - `.github/workflows/ci-build-publish-images.yml`
@@ -116,6 +113,7 @@ Deploy gating in CI:
 - Deploy workflow is triggered from successful `CI - Infra Quality Gates` completion on `main`.
 - Manual dispatches are also gated against prerequisite workflow status for the selected commit.
 - Before publish, CI blocks deploy unless **both** `CI - Infra Quality Gates` and `CI - Build and Publish Images` for the same commit completed with `success`.
+- Image publish job is fail-closed on Trivy scan findings (`HIGH` / `CRITICAL`) and emits SBOM/provenance attestations.
 - After publish, CI runs a post-deploy verification gate:
   - production API health must report `db=true` and `redis=true`;
   - production web endpoint must return `200` or `3xx`.
@@ -211,7 +209,7 @@ cat /opt/bominal/deployments/previous
 
 # Checkout and redeploy
 sudo -u bominal git checkout <commit>
-sudo docker compose -f infra/docker-compose.prod.yml build api-gateway web
+sudo docker compose -f infra/docker-compose.prod.yml build api web
 sudo docker compose -f infra/docker-compose.prod.yml up -d --wait
 ```
 
@@ -221,15 +219,15 @@ If a migration was applied and needs reverting:
 
 ```bash
 # 1. Check current migration state
-sudo docker compose -f infra/docker-compose.prod.yml exec api-gateway alembic current
+sudo docker compose -f infra/docker-compose.prod.yml exec api alembic current
 
 # 2. Downgrade to specific revision
-sudo docker compose -f infra/docker-compose.prod.yml exec api-gateway alembic downgrade <revision>
+sudo docker compose -f infra/docker-compose.prod.yml exec api alembic downgrade <revision>
 
 # 3. Checkout old code and redeploy
 sudo -u bominal git checkout <commit>
-sudo docker compose -f infra/docker-compose.prod.yml build api-gateway
-sudo docker compose -f infra/docker-compose.prod.yml up -d --wait api-gateway api-train api-restaurant worker-train worker-restaurant
+sudo docker compose -f infra/docker-compose.prod.yml build api
+sudo docker compose -f infra/docker-compose.prod.yml up -d --wait api worker
 ```
 
 ### Version Tracking
@@ -271,7 +269,7 @@ Optional:
 Replace all `CHANGE_ME...` values. Required manual deploy values:
 - `infra/env/prod/postgres.env`: `POSTGRES_PASSWORD`
 - `infra/env/prod/api.env`: `INTERNAL_API_KEY`, `MASTER_KEY`, DB password portions of `DATABASE_URL` and `SYNC_DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_JWT_ISSUER`, `RESEND_API_KEY`, sender-domain placeholder in `EMAIL_FROM_ADDRESS`, plus passkey origin settings (`PASSKEY_RP_ID`, `PASSKEY_ORIGIN`)
-- `infra/env/prod/web.env`: `NEXT_PUBLIC_API_BASE_URL`, `API_SERVER_URL` (`http://api-gateway:8000` for split API runtime)
+- `infra/env/prod/web.env`: `NEXT_PUBLIC_API_BASE_URL`, `API_SERVER_URL` (`http://api:8000` for monolithic API runtime)
 - `infra/env/prod/caddy.env`: `CADDY_SITE_ADDRESS`, `CADDY_ACME_EMAIL`
 - `infra/env/prod/deploy.env` (optional helper): set `GHCR_USERNAME` + `GHCR_TOKEN` when GHCR packages are private
 
@@ -284,7 +282,7 @@ Production URL scheme enforcement (predeploy gate):
 - `CORS_ORIGINS` entries must be `https://`.
 - `RESEND_API_BASE_URL` must be `https://` when set.
 - `NEXT_PUBLIC_API_BASE_URL` may be empty (recommended same-origin) or must be `https://` if set.
-- `API_SERVER_URL` must be an absolute `http(s)://` URL and must not use legacy `http://api:8000` (use `http://api-gateway:8000`).
+- `API_SERVER_URL` must be an absolute `http(s)://` URL and must not use legacy `http://api-gateway:8000` (use `http://api:8000`).
 - `SUPABASE_STORAGE_ENABLED=true`: `SUPABASE_SERVICE_ROLE_KEY`
 - `EMAIL_PROVIDER=disabled`: Resend credentials may remain unset
 - `EMAIL_PROVIDER=smtp`: `SMTP_HOST`, `SMTP_PORT`, and SMTP credentials/TLS settings as required
@@ -319,7 +317,7 @@ Deprecation gate behavior:
 Optional manual pre-migration duplicate check:
 
 ```bash
-docker compose -f infra/docker-compose.prod.yml run --rm api-gateway python scripts/check_duplicate_display_names.py
+docker compose -f infra/docker-compose.prod.yml run --rm api python scripts/check_duplicate_display_names.py
 ```
 
 ### 4) Initial Deploy
@@ -336,7 +334,9 @@ The e2-micro has 1GB RAM and 0.25 vCPU. Key optimizations:
 
 - **Swap**: 1GB swap file created by `vm-docker-bootstrap.sh`
 - **Memory limits**: All containers have memory caps to prevent OOM
-- **Pre-built images**: `Dockerfile.prod` builds during `docker compose build`, not at runtime
+- **Pre-built images**: deployment pulls GHCR images; no image build happens on the VM during normal deploy
+- **Container hardening**: production images run as non-root users; web image uses Next.js standalone runtime to reduce size/startup overhead
+- **Build efficiency**: production Dockerfiles use BuildKit cache mounts for `pip`/`npm` dependency install layers, and web uses `npm ci --prefer-offline --no-audit --no-fund` on the cached npm store
 
 ### 1) One-time VM bootstrap
 
@@ -430,7 +430,7 @@ curl -sI https://www.bominal.com/
 
 ```bash
 # Follow logs during deployment
-sudo docker compose -f infra/docker-compose.prod.yml logs -f --tail=50 api-gateway api-train api-restaurant web
+sudo docker compose -f infra/docker-compose.prod.yml logs -f --tail=50 api worker web
 ```
 
 ---
@@ -443,17 +443,17 @@ If deployment hangs waiting for a container to become healthy:
 
 1. Check container logs:
    ```bash
-   docker logs bominal-api-gateway --tail=100
+   docker logs bominal-api --tail=100
    ```
 
 2. Check what's failing:
    ```bash
-   docker inspect bominal-api-gateway --format='{{json .State.Health}}'
+   docker inspect bominal-api --format='{{json .State.Health}}'
    ```
 
 3. Force restart if needed:
    ```bash
-   docker compose -f infra/docker-compose.prod.yml restart api-gateway
+   docker compose -f infra/docker-compose.prod.yml restart api
    ```
 
 ### Container Starts but Unhealthy
@@ -465,7 +465,7 @@ Common causes:
 
 Check logs:
 ```bash
-docker logs bominal-api-gateway 2>&1 | tail -50
+docker logs bominal-api 2>&1 | tail -50
 docker logs bominal-web 2>&1 | tail -50
 ```
 
@@ -521,8 +521,8 @@ Firewall rules:
 Current Caddy setup is single-host path routing:
 
 - `www.bominal.com` -> web (`3000`) for UI routes
-- `www.bominal.com/api/*` -> api-gateway (`8000`)
-- `www.bominal.com/health` and `/healthz` -> api-gateway health endpoints
+- `www.bominal.com/api/*` -> api (`8000`)
+- `www.bominal.com/health` and `/healthz` -> api health endpoints
 - `bominal.com` -> redirects to `www.bominal.com`
 
 Configure domain + ACME contact in `infra/env/prod/caddy.env`:
@@ -575,7 +575,7 @@ sudo -u bominal /opt/bominal/repo/infra/scripts/deploy.sh --rollback
 cd /opt/bominal/repo
 cat /opt/bominal/deployments/previous  # Get previous commit
 sudo -u bominal git checkout <commit>
-sudo docker compose -f infra/docker-compose.prod.yml build api-gateway web
+sudo docker compose -f infra/docker-compose.prod.yml build api web
 sudo docker compose -f infra/docker-compose.prod.yml up -d --wait
 ```
 
