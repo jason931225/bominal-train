@@ -11,9 +11,21 @@ try {
   // Fallback parser path is used when TypeScript is unavailable in current runtime.
 }
 
+const IGNORED_DIR_NAMES = new Set([
+  "node_modules",
+  ".next",
+  "coverage",
+  "dist",
+  "build",
+  ".git",
+]);
+
 function walk(dirPath) {
   const files = [];
   for (const entry of fs.readdirSync(dirPath, { withFileTypes: true })) {
+    if (entry.isDirectory() && IGNORED_DIR_NAMES.has(entry.name)) {
+      continue;
+    }
     const fullPath = path.join(dirPath, entry.name);
     if (entry.isDirectory()) {
       files.push(...walk(fullPath));
@@ -225,7 +237,12 @@ function checkFile(filePath) {
 
 function main() {
   const root = process.argv[2] ?? "web";
-  const candidates = walk(root).filter((filePath) => /\.test\.(ts|tsx)$/.test(filePath));
+  const candidates = walk(root).filter(
+    (filePath) =>
+      /\.test\.(ts|tsx)$/.test(filePath) &&
+      !filePath.includes(`${path.sep}node_modules${path.sep}`) &&
+      !filePath.includes(`${path.sep}.next${path.sep}`),
+  );
   const violations = [];
   for (const filePath of candidates) {
     violations.push(...checkFile(filePath));

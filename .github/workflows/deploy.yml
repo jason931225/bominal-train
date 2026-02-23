@@ -2,18 +2,21 @@ name: Deploy to Production
 
 on:
   workflow_run:
-    workflows: ["Build and Push Images"]
+    workflows: ["Build and Push Images", "Infra Tests"]
     types: [completed]
     branches: [main]
 
   workflow_dispatch:
 
 permissions:
+  actions: read
   contents: read
   id-token: write
 
 env:
   DEPLOY_PUBSUB_TOPIC: bominal-deploy-requests
+  PROD_HEALTHCHECK_URL: https://www.bominal.com/health
+  PROD_WEB_URL: https://www.bominal.com/
 
   GCP_PROJECT_ID: bominal
   GCP_REGION: us-central1
@@ -24,11 +27,73 @@ jobs:
   deploy:
     if: |
       github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+      (
+        github.event_name == 'workflow_run' &&
+        github.event.workflow_run.name == 'Infra Tests' &&
+        github.event.workflow_run.conclusion == 'success'
+      )
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Gate on successful image build for same commit
+        if: github.event_name == 'workflow_run'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const targetSha = context.payload.workflow_run.head_sha;
+            const targetWorkflow = "Build and Push Images";
+            const maxAttempts = 40;
+            const sleepMs = 15000;
+
+            const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+            let matchedRun = null;
+            for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+              const { data } = await github.rest.actions.listWorkflowRunsForRepo({
+                owner,
+                repo,
+                head_sha: targetSha,
+                per_page: 100,
+              });
+
+              matchedRun = data.workflow_runs.find((run) => run.name === targetWorkflow) || null;
+              if (matchedRun && matchedRun.status === "completed") {
+                break;
+              }
+              core.info(
+                `Waiting for '${targetWorkflow}' run on ${targetSha} (attempt ${attempt}/${maxAttempts})...`
+              );
+              await sleep(sleepMs);
+            }
+
+            if (!matchedRun) {
+              core.setFailed(
+                `No '${targetWorkflow}' run found for commit ${targetSha}.`
+              );
+              return;
+            }
+
+            if (matchedRun.status !== "completed") {
+              core.setFailed(
+                `'${targetWorkflow}' for ${targetSha} did not complete in time (status=${matchedRun.status}).`
+              );
+              return;
+            }
+
+            if (matchedRun.conclusion !== "success") {
+              core.setFailed(
+                `'${targetWorkflow}' for ${targetSha} concluded with '${matchedRun.conclusion}', deploy blocked.`
+              );
+              return;
+            }
+
+            core.info(
+              `'${targetWorkflow}' succeeded for ${targetSha}; deploy gate passed.`
+            );
 
       - name: Validate deprecation gates
         shell: bash
@@ -92,3 +157,45 @@ jobs:
             --attribute="commit=$commit" \
             --attribute="run_id=${{ github.run_id }}" \
             --attribute="run_attempt=${{ github.run_attempt }}"
+
+  post-deploy-verify:
+    needs: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Verify production API health after deploy request
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ok=false
+          for attempt in $(seq 1 36); do
+            body="$(curl -fsS --max-time 10 "${{ env.PROD_HEALTHCHECK_URL }}" 2>/dev/null || true)"
+            if [[ -n "$body" ]] \
+              && echo "$body" | grep -Eq '"db"[[:space:]]*:[[:space:]]*true' \
+              && echo "$body" | grep -Eq '"redis"[[:space:]]*:[[:space:]]*true'; then
+              ok=true
+              echo "Health gate passed on attempt ${attempt}."
+              break
+            fi
+            echo "Waiting for healthy production API (${attempt}/36)..."
+            sleep 10
+          done
+
+          if [[ "$ok" != "true" ]]; then
+            echo "Post-deploy verification failed: API health did not report db=true and redis=true."
+            exit 1
+          fi
+
+      - name: Verify production web endpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "${{ env.PROD_WEB_URL }}" || true)"
+          case "$code" in
+            200|301|302|307|308) echo "Web gate passed (HTTP $code)." ;;
+            *)
+              echo "Post-deploy verification failed: web endpoint returned HTTP ${code:-<empty>}."
+              exit 1
+              ;;
+          esac
