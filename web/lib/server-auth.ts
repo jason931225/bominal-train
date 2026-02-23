@@ -18,6 +18,18 @@ import { serverApiBaseUrl } from "@/lib/api-base";
 import { ROUTES } from "@/lib/routes";
 import type { AuthMeResponse, BominalUser } from "@/lib/types";
 
+const SERVER_AUTH_FETCH_TIMEOUT_MS = 3000;
+
+async function fetchWithTimeout(input: string, init: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), SERVER_AUTH_FETCH_TIMEOUT_MS);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 /**
  * Fetch current user from API with request-level caching.
  * Multiple calls in the same request reuse the cached result.
@@ -31,7 +43,7 @@ const fetchMe = cache(async (): Promise<BominalUser | null> => {
 
   let response: Response;
   try {
-    response = await fetch(`${serverApiBaseUrl}/api/auth/me`, {
+    response = await fetchWithTimeout(`${serverApiBaseUrl}/api/auth/me`, {
       method: "GET",
       headers: {
         cookie: cookieHeader,
@@ -39,7 +51,7 @@ const fetchMe = cache(async (): Promise<BominalUser | null> => {
       cache: "no-store",
     });
   } catch {
-    // Auth backend may be unavailable during startup; treat as unauthenticated.
+    // Auth backend may be unavailable/slow during startup; treat as unauthenticated.
     return null;
   }
 

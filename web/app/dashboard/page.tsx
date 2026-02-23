@@ -28,20 +28,34 @@ const FALLBACK_MODULES: BominalModule[] = [
   { slug: "calendar", name: "Calendar", coming_soon: true, enabled: false, capabilities: [] },
 ];
 
+const DASHBOARD_MODULE_FETCH_TIMEOUT_MS = 3000;
+
+async function fetchWithTimeout(input: string, init: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), DASHBOARD_MODULE_FETCH_TIMEOUT_MS);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 async function getModules() {
   const cookieStore = await cookies();
   const cookieHeader = cookieStore.toString();
-  const response = await fetch(`${serverApiBaseUrl}/api/modules`, {
-    headers: { cookie: cookieHeader },
-    cache: "no-store",
-  });
-
-  if (!response.ok) {
+  try {
+    const response = await fetchWithTimeout(`${serverApiBaseUrl}/api/modules`, {
+      headers: { cookie: cookieHeader },
+      cache: "no-store",
+    });
+    if (!response.ok) {
+      return FALLBACK_MODULES;
+    }
+    const data = (await response.json()) as ModulesResponse;
+    return data.modules;
+  } catch {
     return FALLBACK_MODULES;
   }
-
-  const data = (await response.json()) as ModulesResponse;
-  return data.modules;
 }
 
 export default async function DashboardPage({

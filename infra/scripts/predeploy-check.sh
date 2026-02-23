@@ -332,6 +332,7 @@ done
 echo "==> Checking required Web settings"
 required_web_keys=(
   "NEXT_PUBLIC_API_BASE_URL"
+  "API_SERVER_URL"
 )
 for key in "${required_web_keys[@]}"; do
   require_env_key_nonempty "infra/env/prod/web.env" "$key"
@@ -343,6 +344,16 @@ require_https_url_or_empty "$next_public_api_base_url" "NEXT_PUBLIC_API_BASE_URL
 next_public_font_base_url="$(env_key_value "infra/env/prod/web.env" "NEXT_PUBLIC_FONT_BASE_URL")"
 if [[ -n "$next_public_font_base_url" ]]; then
   require_https_url "$next_public_font_base_url" "NEXT_PUBLIC_FONT_BASE_URL"
+fi
+
+api_server_url="$(env_key_value "infra/env/prod/web.env" "API_SERVER_URL")"
+if ! [[ "$api_server_url" =~ ^https?:// ]]; then
+  log_error "API_SERVER_URL must be an absolute http(s) URL in infra/env/prod/web.env"
+  exit 1
+fi
+if [[ "$api_server_url" =~ ^https?://api([:/]|$) ]]; then
+  log_error "API_SERVER_URL=http://api:8000 is legacy and invalid for split API runtime; use http://api-gateway:8000"
+  exit 1
 fi
 
 echo "==> Checking required Caddy settings"
