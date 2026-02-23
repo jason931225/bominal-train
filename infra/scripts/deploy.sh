@@ -127,6 +127,11 @@ container_image_id() {
   normalize_inspect_value "$(docker inspect "$container_name" --format='{{.Image}}' 2>/dev/null || true)"
 }
 
+container_running_state() {
+  local container_name="$1"
+  normalize_inspect_value "$(docker inspect "$container_name" --format='{{.State.Running}}' 2>/dev/null || true)"
+}
+
 image_revision_label() {
   local image_ref="$1"
   normalize_inspect_value "$(docker inspect "$image_ref" --format='{{index .Config.Labels "org.opencontainers.image.revision"}}' 2>/dev/null || true)"
@@ -188,6 +193,41 @@ calculate_rollout_changes() {
   fi
   if [[ -n "$target_web_id" && -n "$current_web_id" && "$target_web_id" == "$current_web_id" ]]; then
     DEPLOY_WEB_CHANGED="false"
+  fi
+
+  # Force rollout for services that are absent/stopped even if image digests match.
+  local api_gateway_running api_train_running api_restaurant_running
+  local worker_train_running worker_restaurant_running web_running
+  api_gateway_running="$(container_running_state "bominal-api-gateway")"
+  api_train_running="$(container_running_state "bominal-api-train")"
+  api_restaurant_running="$(container_running_state "bominal-api-restaurant")"
+  worker_train_running="$(container_running_state "bominal-worker-train")"
+  worker_restaurant_running="$(container_running_state "bominal-worker-restaurant")"
+  web_running="$(container_running_state "bominal-web")"
+
+  if [[ -z "$current_api_gateway_id" || "$api_gateway_running" == "false" ]]; then
+    DEPLOY_API_GATEWAY_CHANGED="true"
+    log_warn "api-gateway container missing or stopped; forcing rollout"
+  fi
+  if [[ -z "$current_api_train_id" || "$api_train_running" == "false" ]]; then
+    DEPLOY_API_TRAIN_CHANGED="true"
+    log_warn "api-train container missing or stopped; forcing rollout"
+  fi
+  if [[ -z "$current_api_restaurant_id" || "$api_restaurant_running" == "false" ]]; then
+    DEPLOY_API_RESTAURANT_CHANGED="true"
+    log_warn "api-restaurant container missing or stopped; forcing rollout"
+  fi
+  if [[ -z "$current_worker_train_id" || "$worker_train_running" == "false" ]]; then
+    DEPLOY_WORKER_TRAIN_CHANGED="true"
+    log_warn "worker-train container missing or stopped; forcing rollout"
+  fi
+  if [[ -z "$current_worker_restaurant_id" || "$worker_restaurant_running" == "false" ]]; then
+    DEPLOY_WORKER_RESTAURANT_CHANGED="true"
+    log_warn "worker-restaurant container missing or stopped; forcing rollout"
+  fi
+  if [[ -z "$current_web_id" || "$web_running" == "false" ]]; then
+    DEPLOY_WEB_CHANGED="true"
+    log_warn "web container missing or stopped; forcing rollout"
   fi
 
   log_info "Rollout plan:"
