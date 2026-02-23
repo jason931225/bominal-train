@@ -251,7 +251,6 @@ done
 
 echo "==> Checking required API/deploy settings"
 required_api_keys=(
-  "GCP_PROJECT_ID"
   "DATABASE_URL"
   "SYNC_DATABASE_URL"
   "AUTH_MODE"

@@ -64,16 +64,13 @@ jobs:
             sudo -n systemctl enable --now docker || true
             sudo -n systemctl start docker || true
 
-            echo "=== system-wide Artifact Registry docker cred helper ==="
+            echo "=== docker config sanity (GHCR pull path) ==="
             sudo -n mkdir -p /etc/docker
-            sudo -n tee /etc/docker/config.json >/dev/null <<'EOF'
-            {
-              "credHelpers": {
-                "us-central1-docker.pkg.dev": "gcloud"
-              }
-            }
-            EOF
-            sudo -n systemctl restart docker || sudo -n service docker restart || true
+            if [[ -f /etc/docker/config.json ]]; then
+              sudo -n cat /etc/docker/config.json || true
+            else
+              echo "{}" | sudo -n tee /etc/docker/config.json >/dev/null
+            fi
 
             echo "=== allow current OS Login user to use docker ==="
             # This makes future sessions able to use docker without sudo.
