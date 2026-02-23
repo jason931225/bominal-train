@@ -383,6 +383,50 @@ PREDEPLOY_ALLOW_DEPRECATION_BYPASS=true \
   bash infra/scripts/predeploy-check.sh --skip-smoke-tests
 ```
 
+## 0.3) Emergency cost-stop actions (GCP)
+
+Use this only when you need to stop unexpected spend quickly and can accept temporary service disruption.
+
+Rapid audit checklist:
+
+1. Open Billing Reports and group by SKU to identify active charge sources.
+2. Confirm Compute Engine free-tier profile:
+   - one `e2-micro` VM only
+   - zone in `us-central1`, `us-east1`, or `us-west1`
+   - standard persistent disk within free allocation
+3. Check for non-free resources:
+   - extra VMs/disks/snapshots
+   - unused reserved external IPs
+   - Artifact Registry/GCR storage growth
+   - managed services not covered by free tier
+
+Hard-stop operations used in incident response:
+
+```bash
+# Secret Manager hard stop
+gcloud secrets list --project "$GCP_PROJECT_ID"
+gcloud secrets delete <secret-name> --project "$GCP_PROJECT_ID" --quiet
+gcloud services disable secretmanager.googleapis.com --project "$GCP_PROJECT_ID" --quiet
+
+# Artifact Registry hard stop
+gcloud artifacts repositories list --project "$GCP_PROJECT_ID" --location us-central1
+gcloud artifacts repositories delete <repo-name> --project "$GCP_PROJECT_ID" --location us-central1 --quiet
+gcloud services disable artifactregistry.googleapis.com --project "$GCP_PROJECT_ID" --quiet
+```
+
+Post-action validation:
+
+```bash
+gcloud services list --enabled --project "$GCP_PROJECT_ID" \
+  --filter='name:secretmanager.googleapis.com OR name:artifactregistry.googleapis.com'
+```
+
+Impact notes:
+
+1. Disabling Secret Manager breaks any runtime/bootstrap path that reads secrets from Secret Manager.
+2. Disabling Artifact Registry breaks image push/pull and deploy paths until registry/image source is migrated (for example GHCR).
+3. If immediate cost stop is required and source is still unclear, disable project billing as a final emergency step.
+
 ## 1) Web route fails to load (`Cannot find module './901.js'`)
 
 Cause: stale/corrupt Next build cache.
