@@ -147,6 +147,11 @@ Worker provider-search retry delay model:
   - `raw = mu(t) * G`, `delay = clamp(raw, 0.1, M)`.
   - Unclamped expectation remains `E[raw] = mu(t)`.
 
+Worker bootstrap compatibility:
+
+- Worker containers run via `python -m app.worker_entrypoint <settings-class>`.
+- The entrypoint creates an explicit event loop before invoking ARQ worker settings, which is required for Python 3.14+ runtime compatibility.
+
 Provider integration:
 
 - Interface in `api/app/modules/train/providers/base.py`
