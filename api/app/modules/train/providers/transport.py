@@ -486,7 +486,7 @@ class CurlCffiTransport:
         settings = get_settings()
         try:
             import curl_cffi.requests  # type: ignore
-        except Exception as exc:  # pragma: no cover - optional dependency
+        except Exception as exc:
             raise RuntimeError("curl_cffi is not installed") from exc
 
         self._requests = curl_cffi.requests
@@ -593,7 +593,7 @@ class CurlCffiTransport:
             return fallback
 
     async def close(self) -> None:
-        try:  # pragma: no cover - best effort cleanup
+        try:
             await self._session.close()
         except Exception:
             pass

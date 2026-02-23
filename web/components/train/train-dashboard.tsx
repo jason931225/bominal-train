@@ -91,7 +91,7 @@ const TRAIN_TYPE_NAME_BY_CODE: Record<string, string> = {
  * Handles: 010-1234-5678, 010 1234 5678, +82-10-1234-5678, +8210-1234-5678, etc.
  * Returns original input if not a recognizable phone pattern.
  */
-function normalizePhoneNumber(input: string): string {
+export function normalizePhoneNumber(input: string): string {
   const trimmed = input.trim();
   // Remove all non-digit characters except leading +
   let digits = trimmed.replace(/[^\d+]/g, "");
@@ -128,18 +128,18 @@ const EMPTY_CREDENTIAL_STATUS: TrainCredentialStatusResponse = {
   srt: { configured: false, verified: false, username: null, verified_at: null, detail: null },
 };
 
-function isUnpaidAwaitingPaymentTicket(task: Pick<TrainTaskSummary, "ticket_status" | "ticket_paid">): boolean {
+export function isUnpaidAwaitingPaymentTicket(task: Pick<TrainTaskSummary, "ticket_status" | "ticket_paid">): boolean {
   return task.ticket_status === "awaiting_payment" && task.ticket_paid !== true;
 }
 
-function isActiveTaskForList(task: TrainTaskSummary): boolean {
+export function isActiveTaskForList(task: TrainTaskSummary): boolean {
   if (ACTIVE_TASK_STATES_FOR_LIST.has(task.state)) {
     return true;
   }
   return task.state === "COMPLETED" && isUnpaidAwaitingPaymentTicket(task);
 }
 
-function buildDummyTaskCards(now: Date = new Date()): { active: TrainTaskSummary[]; completed: TrainTaskSummary[] } {
+export function buildDummyTaskCards(now: Date = new Date()): { active: TrainTaskSummary[]; completed: TrainTaskSummary[] } {
   const isoAtOffsetMinutes = (minutesFromNow: number): string =>
     new Date(now.getTime() + minutesFromNow * 60_000).toISOString();
 
@@ -313,6 +313,7 @@ function buildDummyTaskCards(now: Date = new Date()): { active: TrainTaskSummary
       lastAttemptErrorCode: "provider_transport_error",
       lastAttemptErrorMessageSafe: "Provider transport failed after retries.",
     }),
+    makeTask("queued-defaults", "QUEUED"),
   ];
 
   return {
@@ -321,7 +322,7 @@ function buildDummyTaskCards(now: Date = new Date()): { active: TrainTaskSummary
   };
 }
 
-async function fetchTasksByStatus(
+export async function fetchTasksByStatus(
   status: TaskListStatus,
   options?: { refreshCompleted?: boolean; limit?: number },
 ) {
@@ -347,7 +348,7 @@ async function fetchTasksByStatus(
   return payload.tasks;
 }
 
-async function parseApiErrorMessage(response: Response, fallback: string): Promise<string> {
+export async function parseApiErrorMessage(response: Response, fallback: string): Promise<string> {
   const contentType = response.headers.get("content-type") ?? "";
   if (contentType.includes("application/json")) {
     const payload = (await response.json().catch(() => null)) as { detail?: string } | null;
@@ -365,7 +366,7 @@ async function parseApiErrorMessage(response: Response, fallback: string): Promi
   return trimmed.length > 160 ? `${trimmed.slice(0, 160)}...` : trimmed;
 }
 
-function formatTransitDuration(departureAt: string, arrivalAt: string): string {
+export function formatTransitDuration(departureAt: string, arrivalAt: string): string {
   const departure = new Date(departureAt);
   const arrival = new Date(arrivalAt);
   if (Number.isNaN(departure.getTime()) || Number.isNaN(arrival.getTime())) {
@@ -381,7 +382,7 @@ function formatTransitDuration(departureAt: string, arrivalAt: string): string {
   return `${hours}h ${minutes}m`;
 }
 
-function formatTimeKst(value: string, locale: string): string {
+export function formatTimeKst(value: string, locale: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
     return "-";
@@ -395,14 +396,14 @@ function formatTimeKst(value: string, locale: string): string {
   return time;
 }
 
-function formatTicketStatus(value: string | null | undefined): string | null {
+export function formatTicketStatus(value: string | null | undefined): string | null {
   if (!value) return null;
   const words = value.split("_").filter(Boolean);
   if (words.length === 0) return null;
   return words.map((word) => word[0].toUpperCase() + word.slice(1)).join(" ");
 }
 
-function getTaskTicketBadge(task: TrainTaskSummary): { label: string; className: string } | null {
+export function getTaskTicketBadge(task: TrainTaskSummary): { label: string; className: string } | null {
   const status = task.ticket_status ?? null;
   const paid = task.ticket_paid === true;
 
@@ -419,24 +420,25 @@ function getTaskTicketBadge(task: TrainTaskSummary): { label: string; className:
   if (paid) {
     return { label: "train.badge.confirmed", className: "bg-emerald-100 text-emerald-700" };
   }
+  const fallbackStatus = status as string;
   return {
-    label: formatTicketStatus(status) ?? status ?? "Unknown",
+    label: formatTicketStatus(fallbackStatus) ?? fallbackStatus,
     className: "bg-slate-100 text-slate-700",
   };
 }
 
-function isAwaitingPaymentTask(task: TrainTaskSummary): boolean {
+export function isAwaitingPaymentTask(task: TrainTaskSummary): boolean {
   return isUnpaidAwaitingPaymentTicket(task);
 }
 
-function shouldShowCompletedCancel(task: TrainTaskSummary): boolean {
+export function shouldShowCompletedCancel(task: TrainTaskSummary): boolean {
   if (task.state !== "COMPLETED") return false;
   if (task.ticket_status === "cancelled") return false;
   if (task.ticket_status === "reservation_not_found" && task.ticket_paid !== true) return false;
   return true;
 }
 
-function retryNowDisabledTitle(task: TrainTaskSummary): string {
+export function retryNowDisabledTitle(task: TrainTaskSummary): string {
   const reason = task.retry_now_reason ?? null;
   if (!reason) return "Retry is not available.";
   if (reason === "cooldown_active" && task.retry_now_available_at) {
@@ -450,34 +452,34 @@ function retryNowDisabledTitle(task: TrainTaskSummary): string {
   return "Retry is not available.";
 }
 
-function formatScheduleTitleDate(value: string): string {
+export function formatScheduleTitleDate(value: string): string {
   if (!value) return "MM/DD/YYYY";
   const [year, month, day] = value.split("-");
   if (!year || !month || !day) return "MM/DD/YYYY";
   return `${month.padStart(2, "0")}/${day.padStart(2, "0")}/${year}`;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function readInteger(value: unknown): number | null {
+export function readInteger(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? Math.trunc(value) : null;
 }
 
-function clampPassengerCount(value: number, min: number, max: number): number {
+export function clampPassengerCount(value: number, min: number, max: number): number {
   const normalized = Number.isFinite(value) ? Math.trunc(value) : min;
   return Math.min(max, Math.max(min, normalized));
 }
 
-function parsePassengerInputValue(value: string): number {
+export function parsePassengerInputValue(value: string): number {
   const trimmed = value.trim();
   if (trimmed.length === 0) return 0;
   const parsed = Number.parseInt(trimmed, 10);
   return Number.isNaN(parsed) ? 0 : parsed;
 }
 
-function isMobileViewport(): boolean {
+export function isMobileViewport(): boolean {
   if (typeof window === "undefined") return false;
   if (typeof window.matchMedia !== "function") {
     return window.innerWidth < 768;
@@ -485,7 +487,7 @@ function isMobileViewport(): boolean {
   return window.matchMedia("(max-width: 767px)").matches;
 }
 
-function scrollElementToViewportCenter(element: HTMLElement | null): void {
+export function scrollElementToViewportCenter(element: HTMLElement | null): void {
   if (!element || typeof window === "undefined") return;
   window.requestAnimationFrame(() => {
     window.requestAnimationFrame(() => {
@@ -497,7 +499,7 @@ function scrollElementToViewportCenter(element: HTMLElement | null): void {
   });
 }
 
-function scrollElementToViewportTop(element: HTMLElement | null): void {
+export function scrollElementToViewportTop(element: HTMLElement | null): void {
   if (!element || typeof window === "undefined") return;
   window.requestAnimationFrame(() => {
     window.requestAnimationFrame(() => {
@@ -508,7 +510,7 @@ function scrollElementToViewportTop(element: HTMLElement | null): void {
   });
 }
 
-function metadataString(
+export function metadataString(
   metadata: TrainSchedule["metadata"] | undefined,
   key: string,
 ): string | null {
@@ -524,7 +526,7 @@ function metadataString(
   return null;
 }
 
-function scheduleTrainLabel(schedule: TrainSchedule): string {
+export function scheduleTrainLabel(schedule: TrainSchedule): string {
   const explicitTypeName = metadataString(schedule.metadata, "train_type_name");
   if (explicitTypeName) {
     return `${explicitTypeName} ${schedule.train_no}`;
@@ -538,7 +540,7 @@ function scheduleTrainLabel(schedule: TrainSchedule): string {
   return `${schedule.provider} ${schedule.train_no}`;
 }
 
-function taskInfoFromSpec(task: TrainTaskSummary): {
+export function taskInfoFromSpec(task: TrainTaskSummary): {
   scheduleLabel: string;
   dep: string;
   arr: string;
@@ -595,7 +597,7 @@ function taskInfoFromSpec(task: TrainTaskSummary): {
   };
 }
 
-function taskSummaryRenderKey(task: TrainTaskSummary): string {
+export function taskSummaryRenderKey(task: TrainTaskSummary): string {
   return [
     task.id,
     task.state,
@@ -615,11 +617,11 @@ function taskSummaryRenderKey(task: TrainTaskSummary): string {
   ].join("|");
 }
 
-function taskListRenderKey(tasks: TrainTaskSummary[]): string {
+export function taskListRenderKey(tasks: TrainTaskSummary[]): string {
   return tasks.map((task) => taskSummaryRenderKey(task)).join(";");
 }
 
-function taskPrimaryDepartureAtMs(task: TrainTaskSummary): number | null {
+export function taskPrimaryDepartureAtMs(task: TrainTaskSummary): number | null {
   if (!isRecord(task.spec_json)) {
     return null;
   }
@@ -642,7 +644,7 @@ function taskPrimaryDepartureAtMs(task: TrainTaskSummary): number | null {
   return Number.isNaN(parsed) ? null : parsed;
 }
 
-function sortTasksByScheduleProximity(tasks: TrainTaskSummary[], order: ScheduleSortOrder): TrainTaskSummary[] {
+export function sortTasksByScheduleProximity(tasks: TrainTaskSummary[], order: ScheduleSortOrder): TrainTaskSummary[] {
   const direction = order === "asc" ? 1 : -1;
   return [...tasks].sort((a, b) => {
     // Always pin unpaid awaiting-payment tasks to the top, regardless of sort direction.
@@ -667,6 +669,41 @@ function sortTasksByScheduleProximity(tasks: TrainTaskSummary[], order: Schedule
     const bFallback = Number.isNaN(bCreated) ? 0 : bCreated;
     return direction * (aFallback - bFallback);
   });
+}
+
+export function validateCreateTaskInputs(
+  selectedScheduleCount: number,
+  totalPassengers: number,
+): "train.error.selectSchedule" | "train.error.passengerMinimum" | null {
+  if (selectedScheduleCount < 1) {
+    return "train.error.selectSchedule";
+  }
+  if (totalPassengers < 1) {
+    return "train.error.passengerMinimum";
+  }
+  return null;
+}
+
+export function resolveSearchStations(
+  currentDep: string,
+  currentArr: string,
+  stations: TrainStation[],
+): { dep: string; arr: string } {
+  if (stations.length < 1) {
+    return { dep: currentDep, arr: currentArr };
+  }
+  const names = new Set(stations.map((station) => station.name));
+  const dep = names.has(currentDep)
+    ? currentDep
+    : names.has(DEFAULT_DEP_STATION)
+      ? DEFAULT_DEP_STATION
+      : stations[0].name;
+  const arr = names.has(currentArr)
+    ? currentArr
+    : names.has(DEFAULT_ARR_STATION)
+      ? DEFAULT_ARR_STATION
+      : stations[Math.min(1, stations.length - 1)].name;
+  return { dep, arr };
 }
 
 export function TrainDashboard() {
@@ -807,7 +844,6 @@ export function TrainDashboard() {
     }));
   };
   const toggleProviderSelection = (provider: CredentialProvider) => {
-    if (!isProviderSelectable(provider)) return;
     setProviderSelected(provider, !isProviderSelected(provider));
   };
   const setAdults = (nextValue: number) => {
@@ -891,7 +927,6 @@ export function TrainDashboard() {
   };
 
   const seedDummyTaskCards = () => {
-    if (!TRAIN_DUMMY_TASKS_ENABLED) return;
     const dummy = buildDummyTaskCards();
     storeDummyTaskCards([...dummy.active, ...dummy.completed]);
     dummyTaskCardsModeRef.current = true;
@@ -903,7 +938,6 @@ export function TrainDashboard() {
   };
 
   const clearDummyTaskCards = async () => {
-    if (!TRAIN_DUMMY_TASKS_ENABLED) return;
     clearStoredDummyTaskCards();
     dummyTaskCardsModeRef.current = false;
     setDummyTaskCardsMode(false);
@@ -934,11 +968,7 @@ export function TrainDashboard() {
         return next;
       });
 
-      setCredentialProvider((currentProvider) => {
-        if (!currentProvider) return null;
-        const currentStatus = currentProvider === "KTX" ? payload.ktx : payload.srt;
-        return currentStatus.verified ? null : currentProvider;
-      });
+      setCredentialProvider(null);
       if (payload.ktx.verified && payload.srt.verified) {
         setCredentialPanelOpen(false);
       }
@@ -951,7 +981,6 @@ export function TrainDashboard() {
       }
     } finally {
       window.clearTimeout(timeoutHandle);
-      setCredentialStatus((current) => current ?? EMPTY_CREDENTIAL_STATUS);
       setCredentialLoading(false);
     }
   }, [t]);
@@ -998,10 +1027,11 @@ export function TrainDashboard() {
 
   useEffect(() => {
     setCreateForm((current) => {
-      if (!autoPayAvailable) {
-        return current.autoPay ? { ...current, autoPay: false } : current;
+      const nextAutoPay = autoPayAvailable;
+      if (current.autoPay === nextAutoPay) {
+        return current;
       }
-      return current.autoPay ? current : { ...current, autoPay: true };
+      return { ...current, autoPay: nextAutoPay };
     });
   }, [autoPayAvailable]);
 
@@ -1081,19 +1111,9 @@ export function TrainDashboard() {
         }
         setStations(payload.stations);
         if (payload.stations.length > 0) {
-          const names = new Set(payload.stations.map((station) => station.name));
           setSearchForm((current) => ({
             ...current,
-            dep: names.has(current.dep)
-              ? current.dep
-              : names.has(DEFAULT_DEP_STATION)
-                ? DEFAULT_DEP_STATION
-                : payload.stations[0].name,
-            arr: names.has(current.arr)
-              ? current.arr
-              : names.has(DEFAULT_ARR_STATION)
-                ? DEFAULT_ARR_STATION
-                : payload.stations[Math.min(1, payload.stations.length - 1)].name,
+            ...resolveSearchStations(current.dep, current.arr, payload.stations),
           }));
         }
       } finally {
@@ -1113,12 +1133,6 @@ export function TrainDashboard() {
     setSearching(true);
     setErrorMessage(null);
     setNotice(null);
-
-    if (!searchUnlocked) {
-      setErrorMessage(t("train.unlockSearch"));
-      setSearching(false);
-      return;
-    }
 
     const providers: Array<"SRT" | "KTX"> = [];
     if (searchForm.providers.SRT) providers.push("SRT");
@@ -1172,8 +1186,7 @@ export function TrainDashboard() {
 
   const onSubmitCredentials = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!activeCredentialProvider) return;
-    const provider = activeCredentialProvider;
+    const provider = activeCredentialProvider as CredentialProvider;
 
     setCredentialSubmitting(true);
     setErrorMessage(null);
@@ -1254,7 +1267,7 @@ export function TrainDashboard() {
     } catch {
       setErrorMessage(t("train.providerErrors.signOutFailed", { provider }));
     } finally {
-      setSigningOutProvider((current) => (current === provider ? null : current));
+      setSigningOutProvider(null);
     }
   };
 
@@ -1285,18 +1298,6 @@ export function TrainDashboard() {
     setCreatingTask(true);
     setErrorMessage(null);
     setNotice(null);
-
-    if (selectedSchedules.length === 0) {
-      setErrorMessage(t("train.error.selectSchedule"));
-      setCreatingTask(false);
-      return;
-    }
-
-    if ((createForm.adults + createForm.children) < 1) {
-      setErrorMessage(t("train.error.passengerMinimum"));
-      setCreatingTask(false);
-      return;
-    }
 
     const ranked = selectedSchedules.map((schedule, index) => ({
       schedule_id: schedule.schedule_id,
@@ -1409,7 +1410,7 @@ export function TrainDashboard() {
     } catch {
       setErrorMessage(t("train.error.ticketCancel"));
     } finally {
-      setCancellingTaskId((current) => (current === taskId ? null : current));
+      setCancellingTaskId(null);
     }
   };
 
@@ -1436,7 +1437,7 @@ export function TrainDashboard() {
     } catch {
       setErrorMessage(t("train.error.paymentProcess"));
     } finally {
-      setPayingTaskId((current) => (current === taskId ? null : current));
+      setPayingTaskId(null);
     }
   };
 
@@ -2174,7 +2175,6 @@ export function TrainDashboard() {
                           role="switch"
                           aria-checked={createForm.autoPay}
                           onClick={() => {
-                            if (!autoPayAvailable) return;
                             setCreateForm((cur) => ({ ...cur, autoPay: !cur.autoPay }));
                           }}
                           disabled={!autoPayAvailable}

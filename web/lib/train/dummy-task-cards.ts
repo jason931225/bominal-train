@@ -38,21 +38,23 @@ export function readDummyTaskCards(): TrainTaskSummary[] {
 }
 
 export function storeDummyTaskCards(tasks: TrainTaskSummary[]): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(TRAIN_DUMMY_TASKS_STORAGE_KEY, JSON.stringify(tasks));
-  } catch {
-    // Best-effort only.
+  if (typeof window !== "undefined") {
+    try {
+      window.localStorage.setItem(TRAIN_DUMMY_TASKS_STORAGE_KEY, JSON.stringify(tasks));
+    } catch {
+      // Best-effort only.
+    }
   }
   emitDummyTaskCardsChanged();
 }
 
 export function clearStoredDummyTaskCards(): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.removeItem(TRAIN_DUMMY_TASKS_STORAGE_KEY);
-  } catch {
-    // Best-effort only.
+  if (typeof window !== "undefined") {
+    try {
+      window.localStorage.removeItem(TRAIN_DUMMY_TASKS_STORAGE_KEY);
+    } catch {
+      // Best-effort only.
+    }
   }
   emitDummyTaskCardsChanged();
 }

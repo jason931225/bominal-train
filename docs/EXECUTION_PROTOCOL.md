@@ -24,7 +24,10 @@ Before staging any commit:
 2. Confirm/refresh the implementation plan for current scope.
 3. Execute tests for the exact touched scope before staging.
 4. Verify 100% automated coverage and test relevance for every staged behavior change before `git add` / commit staging.
-5. Resolve warning debt in touched scope before staging:
+5. Treat coverage-ignore annotations as exception-only:
+   - `c8 ignore`, `pragma: no cover`, and similar directives require inline rationale and explicit review justification.
+   - If deterministic in-repo tests can cover the branch, add tests instead of introducing ignores.
+6. Resolve warning debt in touched scope before staging:
    - runtime warnings
    - deprecation warnings
    - npm/package-manager deprecation warnings

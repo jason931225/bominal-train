@@ -113,7 +113,7 @@ async def _send_resend(payload: EmailJobPayload) -> EmailSendResult:
     try:
         async with httpx.AsyncClient(timeout=timeout_seconds) as client:
             response = await client.post(endpoint, headers=headers, json=_resend_payload(payload))
-    except httpx.HTTPError as exc:  # pragma: no cover - network failures are environment-dependent
+    except httpx.HTTPError as exc:
         raise EmailDeliveryError(f"Resend delivery failed: {type(exc).__name__}") from exc
 
     if response.status_code >= 400:
@@ -204,7 +204,7 @@ async def send_email(payload: EmailJobPayload) -> EmailSendResult:
 
     try:
         await asyncio.to_thread(_send_smtp_sync, message)
-    except Exception as exc:  # pragma: no cover - network failures are environment-dependent
+    except Exception as exc:
         raise EmailDeliveryError(f"SMTP delivery failed: {type(exc).__name__}") from exc
 
     logger.info(
