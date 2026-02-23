@@ -17,6 +17,15 @@ export function LogoutButton({ variant = "pill" }: LogoutButtonProps) {
   const [submitting, setSubmitting] = useState(false);
   const { t } = useLocale();
 
+  const navigateAfterLogout = () => {
+    if (typeof window !== "undefined") {
+      // Force layout/user state reset after session teardown.
+      window.location.assign(ROUTES.login);
+      return;
+    }
+    router.push(ROUTES.login);
+  };
+
   const handleLogout = async () => {
     setSubmitting(true);
     try {
@@ -24,7 +33,7 @@ export function LogoutButton({ variant = "pill" }: LogoutButtonProps) {
         method: "POST",
         credentials: "include",
       });
-      router.push(ROUTES.login);
+      navigateAfterLogout();
     } finally {
       setSubmitting(false);
     }
