@@ -28,6 +28,11 @@ class _UserVerificationRequirement:
     PREFERRED = "preferred"
 
 
+class _AuthenticatorSelectionCriteria:
+    def __init__(self, *, user_verification: str):
+        self.user_verification = user_verification
+
+
 async def _create_user(db_session: AsyncSession, *, email: str) -> User:
     role_user = (await db_session.execute(select(Role).where(Role.name == "user"))).scalar_one()
     user = User(
@@ -51,11 +56,15 @@ def test_load_webauthn_runtime_success_with_stubbed_modules(monkeypatch: pytest.
     webauthn_module.verify_authentication_response = lambda **kwargs: kwargs
     webauthn_module.verify_registration_response = lambda **kwargs: kwargs
 
+    helpers_module = types.ModuleType("webauthn.helpers")
     structs_module = types.ModuleType("webauthn.helpers.structs")
     structs_module.PublicKeyCredentialDescriptor = _Descriptor
     structs_module.UserVerificationRequirement = _UserVerificationRequirement
+    structs_module.AuthenticatorSelectionCriteria = _AuthenticatorSelectionCriteria
+    helpers_module.structs = structs_module
 
     monkeypatch.setitem(sys.modules, "webauthn", webauthn_module)
+    monkeypatch.setitem(sys.modules, "webauthn.helpers", helpers_module)
     monkeypatch.setitem(sys.modules, "webauthn.helpers.structs", structs_module)
 
     runtime = passkeys._load_webauthn_runtime()
@@ -100,6 +109,23 @@ def test_encoding_and_rp_origin_helpers(monkeypatch: pytest.MonkeyPatch) -> None
     monkeypatch.setattr(passkeys.settings, "passkey_origin", "", raising=False)
     monkeypatch.setattr(passkeys.settings, "app_public_base_url", "https://www.bominal.com/", raising=False)
     assert passkeys._effective_passkey_origin() == "https://www.bominal.com"
+
+
+def test_call_with_supported_kwargs_branches(monkeypatch: pytest.MonkeyPatch) -> None:
+    def strict_fn(*, keep: int) -> int:
+        return keep
+
+    def kwargs_fn(**kwargs: int) -> int:
+        return kwargs["keep"] + kwargs["extra"]
+
+    def fallback_fn(**kwargs: int) -> int:
+        return kwargs["keep"]
+
+    assert passkeys._call_with_supported_kwargs(strict_fn, keep=7, drop=99) == 7
+    assert passkeys._call_with_supported_kwargs(kwargs_fn, keep=2, extra=3) == 5
+
+    monkeypatch.setattr(passkeys.inspect, "signature", lambda _fn: (_ for _ in ()).throw(TypeError("no-signature")))
+    assert passkeys._call_with_supported_kwargs(fallback_fn, keep=11) == 11
 
 
 def test_ensure_passkeys_enabled_branches(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -207,14 +233,36 @@ async def test_begin_registration_success_and_missing_challenge(
 
     captured: dict[str, object] = {}
 
-    def _generate_registration_options(**kwargs):
-        captured.update(kwargs)
-        return {"challenge": "challenge-register", "rp": {"name": kwargs["rp_name"]}}
+    def _generate_registration_options(
+        *,
+        rp_id: str,
+        rp_name: str,
+        user_name: str,
+        user_id: bytes | None = None,
+        user_display_name: str | None = None,
+        timeout: int = 60000,
+        exclude_credentials: list[object] | None = None,
+        authenticator_selection: object | None = None,
+    ) -> dict[str, object]:
+        captured.update(
+            {
+                "rp_id": rp_id,
+                "rp_name": rp_name,
+                "user_name": user_name,
+                "user_id": user_id,
+                "user_display_name": user_display_name,
+                "timeout": timeout,
+                "exclude_credentials": exclude_credentials or [],
+                "authenticator_selection": authenticator_selection,
+            }
+        )
+        return {"challenge": "challenge-register", "rp": {"name": rp_name}}
 
     runtime = {
         "generate_registration_options": _generate_registration_options,
         "options_to_json": lambda options: json.dumps(options),
         "UserVerificationRequirement": _UserVerificationRequirement,
+        "AuthenticatorSelectionCriteria": _AuthenticatorSelectionCriteria,
         "PublicKeyCredentialDescriptor": _Descriptor,
         "base64url_to_bytes": lambda value: passkeys._b64url_decode(value),
     }
@@ -231,6 +279,9 @@ async def test_begin_registration_success_and_missing_challenge(
     descriptor = captured["exclude_credentials"][0]
     assert isinstance(descriptor, _Descriptor)
     assert descriptor.type == "public-key"
+    selection = captured["authenticator_selection"]
+    assert isinstance(selection, _AuthenticatorSelectionCriteria)
+    assert selection.user_verification == _UserVerificationRequirement.PREFERRED
 
     challenge_row = (
         await db_session.execute(select(AuthChallenge).where(AuthChallenge.id == challenge_id))
@@ -244,6 +295,48 @@ async def test_begin_registration_success_and_missing_challenge(
     with pytest.raises(HTTPException) as missing_challenge:
         await passkeys.begin_passkey_registration(db_session, user=user)
     assert missing_challenge.value.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
+
+    # Legacy runtime branch: no AuthenticatorSelectionCriteria available.
+    captured_legacy: dict[str, object] = {}
+
+    def _generate_registration_options_legacy(
+        *,
+        rp_id: str,
+        rp_name: str,
+        user_name: str,
+        user_id: bytes | None = None,
+        user_display_name: str | None = None,
+        timeout: int = 60000,
+        exclude_credentials: list[object] | None = None,
+        user_verification: str = "preferred",
+    ) -> dict[str, object]:
+        captured_legacy.update(
+            {
+                "rp_id": rp_id,
+                "rp_name": rp_name,
+                "user_name": user_name,
+                "user_id": user_id,
+                "user_display_name": user_display_name,
+                "timeout": timeout,
+                "exclude_credentials": exclude_credentials or [],
+                "user_verification": user_verification,
+            }
+        )
+        return {"challenge": "challenge-register-legacy", "rp": {"name": rp_name}}
+
+    runtime_legacy = {
+        "generate_registration_options": _generate_registration_options_legacy,
+        "options_to_json": lambda options: json.dumps(options),
+        "UserVerificationRequirement": _UserVerificationRequirement,
+        "AuthenticatorSelectionCriteria": None,
+        "PublicKeyCredentialDescriptor": _Descriptor,
+        "base64url_to_bytes": lambda value: passkeys._b64url_decode(value),
+    }
+    monkeypatch.setattr(passkeys, "_load_webauthn_runtime", lambda: runtime_legacy)
+    legacy_challenge_id, legacy_public_key = await passkeys.begin_passkey_registration(db_session, user=user)
+    assert isinstance(legacy_challenge_id, UUID)
+    assert legacy_public_key["challenge"] == "challenge-register-legacy"
+    assert captured_legacy["user_verification"] == _UserVerificationRequirement.PREFERRED
 
 
 @pytest.mark.asyncio
