@@ -42,6 +42,7 @@ def _load_webauthn_runtime() -> Any:
         raise PasskeyRuntimeError("Passkey runtime is unavailable") from exc
 
     PublicKeyCredentialDescriptor = webauthn_structs.PublicKeyCredentialDescriptor
+    PublicKeyCredentialType = getattr(webauthn_structs, "PublicKeyCredentialType", None)
     UserVerificationRequirement = webauthn_structs.UserVerificationRequirement
     AuthenticatorSelectionCriteria = getattr(webauthn_structs, "AuthenticatorSelectionCriteria", None)
 
@@ -53,6 +54,7 @@ def _load_webauthn_runtime() -> Any:
         "verify_authentication_response": verify_authentication_response,
         "verify_registration_response": verify_registration_response,
         "PublicKeyCredentialDescriptor": PublicKeyCredentialDescriptor,
+        "PublicKeyCredentialType": PublicKeyCredentialType,
         "UserVerificationRequirement": UserVerificationRequirement,
         "AuthenticatorSelectionCriteria": AuthenticatorSelectionCriteria,
     }
@@ -135,7 +137,11 @@ async def delete_passkey(db: AsyncSession, *, user_id: UUID, passkey_id: UUID) -
 
 def _descriptor(runtime: dict[str, Any], credential_id_b64url: str):
     descriptor_cls = runtime["PublicKeyCredentialDescriptor"]
-    return descriptor_cls(id=_challenge_bytes(runtime, credential_id_b64url), type="public-key")
+    credential_type: Any = "public-key"
+    credential_type_enum = runtime.get("PublicKeyCredentialType")
+    if credential_type_enum is not None:
+        credential_type = getattr(credential_type_enum, "PUBLIC_KEY", credential_type)
+    return descriptor_cls(id=_challenge_bytes(runtime, credential_id_b64url), type=credential_type)
 
 
 def _call_with_supported_kwargs(fn: Any, **kwargs: Any) -> Any:
