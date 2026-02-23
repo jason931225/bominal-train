@@ -3,6 +3,7 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 from urllib.parse import urlencode
+from uuid import UUID
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse
@@ -26,16 +27,33 @@ from app.db.session import get_db
 from app.schemas.auth import (
     AccountUpdateRequest,
     AuthResponse,
+    EmailChangeConfirmRequest,
     EmailVerificationConfirmRequest,
     EmailVerificationRequest,
     LoginRequest,
     MessageResponse,
+    PasskeyAuthenticationOptionsRequest,
+    PasskeyAuthenticationOptionsResponse,
+    PasskeyAuthenticationVerifyRequest,
+    PasskeyCredentialListResponse,
+    PasskeyCredentialOut,
+    PasskeyRegistrationOptionsResponse,
+    PasskeyRegistrationVerifyRequest,
     PasswordResetConfirmRequest,
     PasswordResetRequest,
     RegisterRequest,
 )
 from app.schemas.notification import EmailTemplateBlock, EmailTemplateJobPayload
 from app.services.email_queue import enqueue_template_email
+from app.services.passkeys import (
+    begin_passkey_authentication,
+    begin_passkey_registration,
+    complete_passkey_authentication,
+    complete_passkey_registration,
+    delete_passkey,
+    ensure_passkeys_enabled,
+    list_passkeys,
+)
 from app.services.auth import (
     clear_session_cookie,
     delete_account_data,
@@ -53,6 +71,8 @@ logger = logging.getLogger(__name__)
 INVALID_LOGIN_DETAIL = "Invalid email or password"
 EMAIL_OTP_TTL_MINUTES = 10
 PASSWORD_RESET_OTP_TTL_MINUTES = 15
+VERIFICATION_PURPOSE_EMAIL = "email_verify"
+VERIFICATION_PURPOSE_EMAIL_CHANGE = "email_change"
 
 
 def _new_otp_code() -> str:
@@ -72,12 +92,19 @@ def _public_base_url() -> str:
     return settings.app_public_base_url.rstrip("/")
 
 
-async def _issue_verification_token(db: AsyncSession, *, user_id) -> tuple[str, datetime]:
+async def _issue_verification_token(
+    db: AsyncSession,
+    *,
+    user_id,
+    purpose: str = VERIFICATION_PURPOSE_EMAIL,
+    target_email: str | None = None,
+) -> tuple[str, datetime]:
     now = utc_now()
     active_tokens = (
         await db.execute(
             select(VerificationToken)
             .where(VerificationToken.user_id == user_id)
+            .where(VerificationToken.purpose == purpose)
             .where(VerificationToken.used_at.is_(None))
             .where(VerificationToken.expires_at > now)
         )
@@ -91,6 +118,8 @@ async def _issue_verification_token(db: AsyncSession, *, user_id) -> tuple[str, 
         VerificationToken(
             user_id=user_id,
             token_hash=hash_token(code),
+            purpose=purpose,
+            target_email=target_email,
             expires_at=expires_at,
         )
     )
@@ -206,6 +235,46 @@ def _password_reset_template_payload(*, email: str, code: str) -> EmailTemplateJ
     )
 
 
+def _email_change_template_payload(*, email: str, code: str) -> EmailTemplateJobPayload:
+    verify_query = urlencode({"email": email, "code": code, "email_change": "1"})
+    verify_url = f"{_public_base_url()}/settings/account?{verify_query}"
+    return EmailTemplateJobPayload(
+        to_email=email,
+        subject="Confirm your new email for bominal",
+        preheader="Use the button or OTP to complete your email change.",
+        theme="spring",
+        blocks=[
+            EmailTemplateBlock(
+                type="hero",
+                data={"title": "Confirm your new email", "subtitle": "Email updates take effect only after verification."},
+            ),
+            EmailTemplateBlock(
+                type="cta",
+                data={
+                    "label": "Confirm email change",
+                    "url": {"$ref": "verify.url"},
+                    "helper_text": "Link expires in {{ verify.ttl_minutes }} minutes.",
+                },
+            ),
+            EmailTemplateBlock(
+                type="otp",
+                data={
+                    "code": {"$ref": "verify.code"},
+                    "ttl_minutes": {"$ref": "verify.ttl_minutes"},
+                    "label": "Email change code",
+                },
+            ),
+            EmailTemplateBlock(
+                type="paragraph",
+                data={"text": "If you did not request this change, ignore this email and keep your current address."},
+            ),
+        ],
+        context={"verify": {"url": verify_url, "code": code, "ttl_minutes": EMAIL_OTP_TTL_MINUTES}},
+        tags=["account", "email-change"],
+        metadata={"kind": "email_change_verify"},
+    )
+
+
 @public_router.post(
     "/register",
     response_model=AuthResponse,
@@ -253,7 +322,11 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
     created_user = user_result.scalar_one()
 
     try:
-        code, _ = await _issue_verification_token(db, user_id=created_user.id)
+        code, _ = await _issue_verification_token(
+            db,
+            user_id=created_user.id,
+            purpose=VERIFICATION_PURPOSE_EMAIL,
+        )
         await enqueue_template_email(
             _verification_template_payload(
                 email=created_user.email,
@@ -352,6 +425,7 @@ async def update_account(
 ) -> AuthResponse:
     provided = payload.model_fields_set
     updates: dict[str, object] = {}
+    requested_email_change_to: str | None = None
 
     def normalize_optional(value: str | None) -> str | None:
         return (value or "").strip() or None
@@ -365,7 +439,7 @@ async def update_account(
             existing_user = existing.scalar_one_or_none()
             if existing_user is not None and existing_user.id != current_user.id:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
-            updates["email"] = normalized_email
+            requested_email_change_to = normalized_email
 
     if "display_name" in provided:
         display_name = normalize_optional(payload.display_name)
@@ -435,10 +509,10 @@ async def update_account(
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="New password cannot be empty")
         updates["password_hash"] = hash_password(payload.new_password)
 
-    if not updates:
+    if not updates and requested_email_change_to is None:
         return AuthResponse(user=user_to_out(current_user))
 
-    sensitive_update = any(key in updates for key in ("email", "password_hash"))
+    sensitive_update = requested_email_change_to is not None or "password_hash" in updates
     if sensitive_update:
         if not payload.current_password or not verify_password(payload.current_password, current_user.password_hash):
             raise HTTPException(
@@ -449,13 +523,130 @@ async def update_account(
     for key, value in updates.items():
         setattr(current_user, key, value)
 
+    notice: str | None = None
     try:
         await db.commit()
     except IntegrityError as exc:
         await db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_integrity_conflict_detail(exc)) from exc
+
+    if requested_email_change_to is not None:
+        try:
+            code, _ = await _issue_verification_token(
+                db,
+                user_id=current_user.id,
+                purpose=VERIFICATION_PURPOSE_EMAIL_CHANGE,
+                target_email=requested_email_change_to,
+            )
+            await enqueue_template_email(
+                _email_change_template_payload(
+                    email=requested_email_change_to,
+                    code=code,
+                )
+            )
+            notice = "Email change requested. Verify the new address to apply it."
+        except Exception as exc:
+            logger.warning(
+                "Failed to queue email-change verification for user %s: %s",
+                current_user.id,
+                type(exc).__name__,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Could not send email verification for address change",
+            ) from exc
+
     await db.refresh(current_user)
-    return AuthResponse(user=user_to_out(current_user))
+    return AuthResponse(user=user_to_out(current_user), notice=notice, pending_email_change_to=requested_email_change_to)
+
+
+@user_router.post("/account/email-change/confirm", response_model=AuthResponse, dependencies=[Depends(auth_rate_limit)])
+async def confirm_email_change(
+    payload: EmailChangeConfirmRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> AuthResponse:
+    requested_email = payload.email.lower()
+    token_hash = hash_token(payload.code)
+    now = utc_now()
+    token = (
+        await db.execute(
+            select(VerificationToken)
+            .where(VerificationToken.user_id == current_user.id)
+            .where(VerificationToken.purpose == VERIFICATION_PURPOSE_EMAIL_CHANGE)
+            .where(VerificationToken.target_email == requested_email)
+            .where(VerificationToken.token_hash == token_hash)
+            .where(VerificationToken.used_at.is_(None))
+            .where(VerificationToken.expires_at > now)
+        )
+    ).scalar_one_or_none()
+    if token is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired verification code")
+
+    existing = (await db.execute(select(User).where(User.email == requested_email))).scalar_one_or_none()
+    if existing is not None and existing.id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
+
+    token.used_at = now
+    current_user.email = requested_email
+    current_user.email_verified_at = now
+    await db.commit()
+    await db.refresh(current_user)
+    return AuthResponse(user=user_to_out(current_user), notice="Email address updated")
+
+
+@user_router.get("/passkeys", response_model=PasskeyCredentialListResponse)
+async def get_passkeys(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> PasskeyCredentialListResponse:
+    ensure_passkeys_enabled()
+    credentials = await list_passkeys(db, user_id=current_user.id)
+    return PasskeyCredentialListResponse(
+        credentials=[
+            PasskeyCredentialOut(id=item.id, created_at=item.created_at, last_used_at=item.last_used_at)
+            for item in credentials
+        ]
+    )
+
+
+@user_router.post("/passkeys/register/options", response_model=PasskeyRegistrationOptionsResponse)
+async def passkey_register_options(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> PasskeyRegistrationOptionsResponse:
+    ensure_passkeys_enabled()
+    challenge_id, public_key = await begin_passkey_registration(db, user=current_user)
+    return PasskeyRegistrationOptionsResponse(challenge_id=challenge_id, public_key=public_key)
+
+
+@user_router.post("/passkeys/register/verify", response_model=PasskeyCredentialOut)
+async def passkey_register_verify(
+    payload: PasskeyRegistrationVerifyRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> PasskeyCredentialOut:
+    ensure_passkeys_enabled()
+    credential = await complete_passkey_registration(
+        db,
+        user=current_user,
+        challenge_id=payload.challenge_id,
+        credential=payload.credential,
+    )
+    return PasskeyCredentialOut(id=credential.id, created_at=credential.created_at, last_used_at=credential.last_used_at)
+
+
+@user_router.delete("/passkeys/{passkey_id}", response_model=MessageResponse)
+async def remove_passkey(
+    passkey_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> MessageResponse:
+    ensure_passkeys_enabled()
+    deleted = await delete_passkey(db, user_id=current_user.id, passkey_id=passkey_id)
+    if not deleted:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Passkey not found")
+    return MessageResponse(message="Passkey removed")
 
 
 @user_router.delete("/account", response_model=MessageResponse, dependencies=[Depends(auth_rate_limit)])
@@ -483,7 +674,11 @@ async def request_email_verification(
         return MessageResponse(message="If eligible, a verification email has been sent")
 
     try:
-        code, _ = await _issue_verification_token(db, user_id=user.id)
+        code, _ = await _issue_verification_token(
+            db,
+            user_id=user.id,
+            purpose=VERIFICATION_PURPOSE_EMAIL,
+        )
         await enqueue_template_email(
             _verification_template_payload(
                 email=user.email,
@@ -514,6 +709,7 @@ async def verify_email(
             select(VerificationToken)
             .where(VerificationToken.user_id == user.id)
             .where(VerificationToken.token_hash == token_hash)
+            .where(VerificationToken.purpose == VERIFICATION_PURPOSE_EMAIL)
             .where(VerificationToken.used_at.is_(None))
             .where(VerificationToken.expires_at > now)
         )
@@ -577,3 +773,62 @@ async def reset_password(
     user.password_hash = hash_password(payload.new_password)
     await db.commit()
     return MessageResponse(message="Password reset complete")
+
+
+@public_router.post("/passkeys/auth/options", response_model=PasskeyAuthenticationOptionsResponse)
+async def passkey_auth_options(
+    payload: PasskeyAuthenticationOptionsRequest,
+    db: AsyncSession = Depends(get_db),
+) -> PasskeyAuthenticationOptionsResponse:
+    ensure_passkeys_enabled()
+    email = payload.email.lower()
+    user = (
+        await db.execute(select(User).options(joinedload(User.role)).where(User.email == email))
+    ).scalar_one_or_none()
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No passkey registered for this account")
+    challenge_id, public_key = await begin_passkey_authentication(db, email=email, user=user)
+    return PasskeyAuthenticationOptionsResponse(challenge_id=challenge_id, public_key=public_key)
+
+
+@public_router.post("/passkeys/auth/verify", response_model=AuthResponse, dependencies=[Depends(auth_rate_limit)])
+async def passkey_auth_verify(
+    payload: PasskeyAuthenticationVerifyRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    ensure_passkeys_enabled()
+    email = payload.email.lower()
+    user = (
+        await db.execute(select(User).options(joinedload(User.role)).where(User.email == email))
+    ).scalar_one_or_none()
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Passkey authentication failed")
+
+    await complete_passkey_authentication(
+        db,
+        email=email,
+        user=user,
+        challenge_id=payload.challenge_id,
+        credential=payload.credential,
+    )
+
+    session_token = new_session_token()
+    session = Session(
+        user_id=user.id,
+        token_hash=hash_token(session_token),
+        expires_at=session_expiry(payload.remember_me),
+        last_seen_at=datetime.now(timezone.utc),
+        user_agent=request.headers.get("user-agent"),
+        ip_address=request_ip(
+            request.client.host if request.client else None,
+            request.headers.get("x-forwarded-for"),
+            request.headers.get("cf-connecting-ip"),
+        ),
+    )
+    db.add(session)
+    await db.commit()
+
+    response = JSONResponse(content=AuthResponse(user=user_to_out(user)).model_dump(mode="json"))
+    set_session_cookie(response, session_token, payload.remember_me)
+    return response

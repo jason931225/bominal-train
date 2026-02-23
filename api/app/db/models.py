@@ -88,6 +88,14 @@ class VerificationToken(Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
     token_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    purpose: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        default="email_verify",
+        server_default=text("'email_verify'"),
+        index=True,
+    )
+    target_email: Mapped[str | None] = mapped_column(String(320), nullable=True, index=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
@@ -100,6 +108,36 @@ class PasswordResetToken(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
     token_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+
+class PasskeyCredential(Base):
+    __tablename__ = "passkey_credentials"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    credential_id: Mapped[str] = mapped_column(String(512), nullable=False, unique=True, index=True)
+    public_key: Mapped[str] = mapped_column(Text, nullable=False)
+    sign_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("0"))
+    transports: Mapped[list[str] | None] = mapped_column(JSON_TYPE, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False
+    )
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class AuthChallenge(Base):
+    __tablename__ = "auth_challenges"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    email: Mapped[str | None] = mapped_column(String(320), nullable=True, index=True)
+    purpose: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    challenge_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    challenge_b64url: Mapped[str] = mapped_column(String(512), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
 

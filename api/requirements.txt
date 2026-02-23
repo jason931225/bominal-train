@@ -19,3 +19,4 @@ cryptography==46.0.5
 fakeredis==2.34.0
 curl-cffi==0.14.0
 PyJWT[crypto]==2.11.0
+webauthn>=2.0.0,<3.0.0

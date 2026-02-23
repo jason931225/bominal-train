@@ -7,6 +7,7 @@ import { z } from "zod";
 
 import { useLocale } from "@/components/locale-provider";
 import { clientApiBaseUrl } from "@/lib/api-base";
+import { signInWithPasskey } from "@/lib/passkey";
 import { ROUTES } from "@/lib/routes";
 import { UI_BUTTON_PRIMARY, UI_FIELD } from "@/lib/ui";
 
@@ -27,6 +28,33 @@ export function LoginForm() {
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<keyof LoginFormData, string>>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [passkeySubmitting, setPasskeySubmitting] = useState(false);
+
+  const onPasskeySignIn = async () => {
+    setFieldErrors({});
+    setFormError(null);
+    if (!form.email.trim()) {
+      setFieldErrors({ email: t("auth.invalidEmail") });
+      return;
+    }
+
+    setPasskeySubmitting(true);
+    try {
+      const result = await signInWithPasskey(clientApiBaseUrl, {
+        email: form.email.trim().toLowerCase(),
+        rememberMe: form.remember_me,
+      });
+      if (!result.ok) {
+        setFormError(result.error ?? t("auth.passkeySignInFailed"));
+        return;
+      }
+      router.push(ROUTES.dashboard);
+    } catch {
+      setFormError(t("auth.passkeySignInFailed"));
+    } finally {
+      setPasskeySubmitting(false);
+    }
+  };
 
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -135,10 +163,19 @@ export function LoginForm() {
 
       <button
         type="submit"
-        disabled={submitting}
+        disabled={submitting || passkeySubmitting}
         className={`w-full ${UI_BUTTON_PRIMARY}`}
       >
         {submitting ? t("auth.signingIn") : t("auth.signIn")}
+      </button>
+
+      <button
+        type="button"
+        disabled={submitting || passkeySubmitting}
+        onClick={onPasskeySignIn}
+        className="w-full rounded-full border border-blossom-200 bg-white px-4 py-2 text-sm font-medium text-blossom-700 transition hover:bg-blossom-50 focus:outline-none focus:ring-2 focus:ring-blossom-200 disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {passkeySubmitting ? t("auth.signingInWithPasskey") : t("auth.signInWithPasskey")}
       </button>
     </form>
   );

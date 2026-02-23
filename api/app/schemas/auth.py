@@ -1,8 +1,8 @@
 from datetime import date, datetime
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
-from typing import Literal
 
 
 class RegisterRequest(BaseModel):
@@ -48,6 +48,8 @@ class UserOut(BaseModel):
 
 class AuthResponse(BaseModel):
     user: UserOut
+    notice: str | None = None
+    pending_email_change_to: EmailStr | None = None
 
 
 class MessageResponse(BaseModel):
@@ -73,6 +75,11 @@ class PasswordResetConfirmRequest(BaseModel):
     new_password: str = Field(min_length=8, max_length=128)
 
 
+class EmailChangeConfirmRequest(BaseModel):
+    email: EmailStr
+    code: str = Field(min_length=4, max_length=32)
+
+
 class AccountUpdateRequest(BaseModel):
     email: EmailStr | None = None
     display_name: str | None = Field(default=None, max_length=255)
@@ -88,3 +95,39 @@ class AccountUpdateRequest(BaseModel):
     birthday: date | None = None
     new_password: str | None = Field(default=None, min_length=8, max_length=128)
     current_password: str | None = Field(default=None, min_length=8, max_length=128)
+
+
+class PasskeyCredentialOut(BaseModel):
+    id: UUID
+    created_at: datetime
+    last_used_at: datetime | None
+
+
+class PasskeyCredentialListResponse(BaseModel):
+    credentials: list[PasskeyCredentialOut]
+
+
+class PasskeyRegistrationOptionsResponse(BaseModel):
+    challenge_id: UUID
+    public_key: dict[str, Any]
+
+
+class PasskeyRegistrationVerifyRequest(BaseModel):
+    challenge_id: UUID
+    credential: dict[str, Any]
+
+
+class PasskeyAuthenticationOptionsRequest(BaseModel):
+    email: EmailStr
+
+
+class PasskeyAuthenticationOptionsResponse(BaseModel):
+    challenge_id: UUID
+    public_key: dict[str, Any]
+
+
+class PasskeyAuthenticationVerifyRequest(BaseModel):
+    email: EmailStr
+    challenge_id: UUID
+    credential: dict[str, Any]
+    remember_me: bool = False

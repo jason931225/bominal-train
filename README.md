@@ -140,7 +140,7 @@ Optional:
 
 2) Edit those files and replace every `CHANGE_ME...` value. Required manual deploy values:
    - `infra/env/prod/postgres.env`: `POSTGRES_PASSWORD`
-   - `infra/env/prod/api.env`: `INTERNAL_API_KEY`, `MASTER_KEY`, DB password portions of `DATABASE_URL` and `SYNC_DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_JWT_ISSUER`, `RESEND_API_KEY`, and sender-domain placeholder in `EMAIL_FROM_ADDRESS`
+   - `infra/env/prod/api.env`: `INTERNAL_API_KEY`, `MASTER_KEY`, DB password portions of `DATABASE_URL` and `SYNC_DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_JWT_ISSUER`, `RESEND_API_KEY`, sender-domain placeholder in `EMAIL_FROM_ADDRESS`, plus passkey origin settings (`PASSKEY_RP_ID`, `PASSKEY_ORIGIN`)
   - `infra/env/prod/web.env`:
     - keep `NEXT_PUBLIC_API_BASE_URL` empty so browser auth requests stay same-origin (required for `SameSite=Lax` session cookies)
     - set `API_SERVER_URL=http://api-gateway:8000` for server-side Next.js fetches in split API runtime
@@ -416,6 +416,9 @@ docker compose -f infra/docker compose.prod.yml run --rm api python scripts/chec
    - Optional SMTP relay: set `EMAIL_PROVIDER=smtp` and configure `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`.
    - When enabled, set `EMAIL_FROM_ADDRESS` / `EMAIL_FROM_NAME` to your sender identity.
    - Set `APP_PUBLIC_BASE_URL` so verification/reset links in emails point to the correct environment URL.
+   - Keep passkey origin settings aligned with the public URL:
+     - `PASSKEY_RP_ID` should match the relying-party domain (for example `www.bominal.com`)
+     - `PASSKEY_ORIGIN` must be the exact HTTPS origin served to browsers.
 
 Or run the bundled checker:
 

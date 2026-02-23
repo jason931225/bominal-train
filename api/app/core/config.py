@@ -108,6 +108,10 @@ class Settings(BaseSettings):
     supabase_storage_bucket: str = Field(default="artifacts-safe", alias="SUPABASE_STORAGE_BUCKET")
     supabase_service_role_key: str | None = Field(default=None, alias="SUPABASE_SERVICE_ROLE_KEY")
     supabase_storage_enabled: bool = Field(default=False, alias="SUPABASE_STORAGE_ENABLED")
+    passkey_enabled: bool = Field(default=True, alias="PASSKEY_ENABLED")
+    passkey_rp_id: str | None = Field(default=None, alias="PASSKEY_RP_ID")
+    passkey_origin: str | None = Field(default=None, alias="PASSKEY_ORIGIN")
+    passkey_timeout_ms: int = Field(default=60000, alias="PASSKEY_TIMEOUT_MS")
 
     train_provider_mode: str = Field(default="mock", alias="TRAIN_PROVIDER_MODE")
     train_provider_transport: str = Field(default="auto", alias="TRAIN_PROVIDER_TRANSPORT")
@@ -368,6 +372,13 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "SUPABASE_URL and SUPABASE_JWT_ISSUER must be set together when AUTH_MODE=dual"
                 )
+        if self.passkey_timeout_ms < 1:
+            raise ValueError("PASSKEY_TIMEOUT_MS must be >= 1")
+        if self.passkey_enabled:
+            if not (self.passkey_rp_id or self.app_public_base_url):
+                raise ValueError("PASSKEY_RP_ID or APP_PUBLIC_BASE_URL must be set when PASSKEY_ENABLED=true")
+            if self.app_env.lower() == "production" and not (self.passkey_origin or self.app_public_base_url):
+                raise ValueError("PASSKEY_ORIGIN or APP_PUBLIC_BASE_URL must be set when PASSKEY_ENABLED=true")
         if self.supabase_storage_enabled and not self.supabase_service_role_key:
             raise ValueError("SUPABASE_SERVICE_ROLE_KEY is required when SUPABASE_STORAGE_ENABLED=true")
         if self.payment_cvv_ttl_min_seconds < 1:

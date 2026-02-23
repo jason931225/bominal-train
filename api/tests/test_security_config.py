@@ -153,3 +153,32 @@ def test_rejects_non_positive_kek_retirement_window(monkeypatch) -> None:
     monkeypatch.setenv("KEK_RETIREMENT_WINDOW_DAYS", "0")
     with pytest.raises(ValueError):
         Settings(_env_file=None)
+
+
+def test_rejects_non_positive_passkey_timeout(monkeypatch) -> None:
+    monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.setenv("PASSKEY_TIMEOUT_MS", "0")
+    with pytest.raises(ValueError, match="PASSKEY_TIMEOUT_MS must be >= 1"):
+        Settings(_env_file=None)
+
+
+def test_requires_rp_or_public_base_when_passkeys_enabled(monkeypatch) -> None:
+    monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.setenv("PASSKEY_ENABLED", "true")
+    monkeypatch.setenv("PASSKEY_RP_ID", "")
+    monkeypatch.setenv("APP_PUBLIC_BASE_URL", "")
+    with pytest.raises(ValueError, match="PASSKEY_RP_ID or APP_PUBLIC_BASE_URL"):
+        Settings(_env_file=None)
+
+
+def test_requires_origin_or_public_base_for_passkeys_in_production(monkeypatch) -> None:
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("MASTER_KEY", _VALID_MASTER_KEY)
+    monkeypatch.setenv("INTERNAL_API_KEY", "internal-key")
+    monkeypatch.setenv("PAYMENT_PROVIDER_ALLOWED_HOSTS", "app.srail.or.kr")
+    monkeypatch.setenv("PASSKEY_ENABLED", "true")
+    monkeypatch.setenv("PASSKEY_RP_ID", "www.bominal.com")
+    monkeypatch.setenv("APP_PUBLIC_BASE_URL", "")
+    monkeypatch.setenv("PASSKEY_ORIGIN", "")
+    with pytest.raises(ValueError, match="PASSKEY_ORIGIN or APP_PUBLIC_BASE_URL"):
+        Settings(_env_file=None)

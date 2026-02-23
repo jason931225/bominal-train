@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi import HTTPException, Request, Response
@@ -16,11 +16,15 @@ from app.db.models import PasswordResetToken, Role, Session, User, VerificationT
 from app.http.routes import auth as auth_routes
 from app.schemas.auth import (
     AccountUpdateRequest,
+    EmailChangeConfirmRequest,
     EmailVerificationConfirmRequest,
     EmailVerificationRequest,
     LoginRequest,
     PasswordResetConfirmRequest,
     PasswordResetRequest,
+    PasskeyAuthenticationOptionsRequest,
+    PasskeyAuthenticationVerifyRequest,
+    PasskeyRegistrationVerifyRequest,
     RegisterRequest,
 )
 
@@ -249,7 +253,10 @@ async def test_issue_tokens_and_verification_reset_flows(db_session, monkeypatch
 
 @pytest.mark.asyncio
 async def test_register_login_session_optional_logout_and_update_account(db_session, monkeypatch):
+    captured_templates: list[object] = []
+
     async def _enqueue_ok(_payload, defer_seconds: float = 0.0):  # noqa: ANN001
+        captured_templates.append(_payload)
         return "job-id"
 
     monkeypatch.setattr(auth_routes, "enqueue_template_email", _enqueue_ok)
@@ -436,15 +443,18 @@ async def test_register_login_session_optional_logout_and_update_account(db_sess
     )
     assert updated_non_sensitive.user.phone_number == "01099998888"
 
+    previous_email = current_user.email
+    target_email = f"changed-{uuid4().hex[:8]}@example.com"
     updated_sensitive = await auth_routes.update_account(
         payload=AccountUpdateRequest(
-            email=f"changed-{uuid4().hex[:8]}@example.com",
+            email=target_email,
             current_password="SuperSecret123",
         ),
         current_user=current_user,
         db=db_session,
     )
-    assert updated_sensitive.user.email.startswith("changed-")
+    assert updated_sensitive.user.email == previous_email
+    assert updated_sensitive.pending_email_change_to == target_email
 
     updated_password = await auth_routes.update_account(
         payload=AccountUpdateRequest(
@@ -454,9 +464,18 @@ async def test_register_login_session_optional_logout_and_update_account(db_sess
         current_user=current_user,
         db=db_session,
     )
-    assert updated_password.user.email.startswith("changed-")
+    assert updated_password.user.email == previous_email
     await db_session.refresh(current_user)
     assert verify_password("BrandNewSecret123", current_user.password_hash)
+    assert captured_templates
+    code = str(captured_templates[-1].context["verify"]["code"])  # type: ignore[index]
+
+    confirmed = await auth_routes.confirm_email_change(
+        payload=EmailChangeConfirmRequest(email=target_email, code=code),
+        current_user=current_user,
+        db=db_session,
+    )
+    assert confirmed.user.email == target_email
 
 
 @pytest.mark.asyncio
@@ -536,8 +555,7 @@ async def test_register_duplicate_display_name_and_update_integrity_delete_paths
         with pytest.raises(HTTPException) as update_integrity:
             await auth_routes.update_account(
                 payload=AccountUpdateRequest(
-                    email=f"changed-{uuid4().hex[:8]}@example.com",
-                    current_password="SuperSecret123",
+                    display_name=f"renamed-{uuid4().hex[:6]}",
                 ),
                 current_user=current_user,
                 db=db_session,
@@ -556,3 +574,207 @@ async def test_register_duplicate_display_name_and_update_integrity_delete_paths
     deleted = await auth_routes.delete_account(response=response, current_user=current_user, db=db_session)
     assert "account deleted" in deleted.message.lower()
     assert calls == ["called"]
+
+
+@pytest.mark.asyncio
+async def test_passkey_route_units_with_mocked_service(db_session, monkeypatch):
+    role_user = (await db_session.execute(select(Role).where(Role.name == "user"))).scalar_one()
+    email = f"passkey-{uuid4().hex[:8]}@example.com"
+    user = User(
+        email=email,
+        password_hash=hash_password("SuperSecret123"),
+        display_name=f"Passkey-{uuid4().hex[:6]}",
+        role_id=role_user.id,
+        ui_locale="en",
+    )
+    db_session.add(user)
+    await db_session.commit()
+    user = await _load_user_with_role(db_session, email=email)
+
+    monkeypatch.setattr(auth_routes, "ensure_passkeys_enabled", lambda: None)
+
+    created_at = datetime.now(timezone.utc)
+    passkey_id = uuid4()
+
+    async def _list_passkeys(db, *, user_id):  # noqa: ANN001
+        assert user_id == user.id
+        return [SimpleNamespace(id=passkey_id, created_at=created_at, last_used_at=None)]
+
+    async def _begin_registration(db, *, user):  # noqa: ANN001
+        return uuid4(), {"challenge": "abc", "user": {"id": "AQID"}}
+
+    async def _complete_registration(db, *, user, challenge_id, credential):  # noqa: ANN001
+        assert credential == {"id": "cred-1"}
+        return SimpleNamespace(id=passkey_id, created_at=created_at, last_used_at=None)
+
+    async def _delete_passkey(db, *, user_id, passkey_id):  # noqa: ANN001
+        return str(passkey_id) == "00000000-0000-0000-0000-000000000001"
+
+    async def _begin_authentication(db, *, email, user):  # noqa: ANN001
+        return uuid4(), {"challenge": "xyz", "allowCredentials": []}
+
+    async def _complete_authentication(db, *, email, user, challenge_id, credential):  # noqa: ANN001
+        assert credential == {"id": "cred-1"}
+        return None
+
+    monkeypatch.setattr(auth_routes, "list_passkeys", _list_passkeys)
+    monkeypatch.setattr(auth_routes, "begin_passkey_registration", _begin_registration)
+    monkeypatch.setattr(auth_routes, "complete_passkey_registration", _complete_registration)
+    monkeypatch.setattr(auth_routes, "delete_passkey", _delete_passkey)
+    monkeypatch.setattr(auth_routes, "begin_passkey_authentication", _begin_authentication)
+    monkeypatch.setattr(auth_routes, "complete_passkey_authentication", _complete_authentication)
+
+    listed = await auth_routes.get_passkeys(current_user=user, db=db_session)
+    assert len(listed.credentials) == 1
+    assert listed.credentials[0].id == passkey_id
+
+    options = await auth_routes.passkey_register_options(current_user=user, db=db_session)
+    assert "challenge" in options.public_key
+
+    verified = await auth_routes.passkey_register_verify(
+        payload=PasskeyRegistrationVerifyRequest(challenge_id=options.challenge_id, credential={"id": "cred-1"}),
+        current_user=user,
+        db=db_session,
+    )
+    assert verified.id == passkey_id
+
+    with pytest.raises(HTTPException) as missing:
+        await auth_routes.remove_passkey(
+            passkey_id=uuid4(),
+            current_user=user,
+            db=db_session,
+        )
+    assert missing.value.status_code == 404
+
+    removed = await auth_routes.remove_passkey(
+        passkey_id=UUID("00000000-0000-0000-0000-000000000001"),
+        current_user=user,
+        db=db_session,
+    )
+    assert "removed" in removed.message.lower()
+
+    auth_options = await auth_routes.passkey_auth_options(
+        payload=PasskeyAuthenticationOptionsRequest(email=email),
+        db=db_session,
+    )
+    assert "challenge" in auth_options.public_key
+
+    auth_response = await auth_routes.passkey_auth_verify(
+        payload=PasskeyAuthenticationVerifyRequest(
+            email=email,
+            challenge_id=auth_options.challenge_id,
+            credential={"id": "cred-1"},
+            remember_me=False,
+        ),
+        request=_request_for_login(),
+        db=db_session,
+    )
+    assert auth_response.status_code == 200
+    assert "set-cookie" in auth_response.headers
+
+
+@pytest.mark.asyncio
+async def test_update_account_email_change_enqueue_failure_returns_500(db_session, monkeypatch):
+    role_user = (await db_session.execute(select(Role).where(Role.name == "user"))).scalar_one()
+    email = f"email-change-fail-{uuid4().hex[:8]}@example.com"
+    user = User(
+        email=email,
+        password_hash=hash_password("SuperSecret123"),
+        display_name=f"EmailFail-{uuid4().hex[:6]}",
+        role_id=role_user.id,
+        ui_locale="en",
+    )
+    db_session.add(user)
+    await db_session.commit()
+    user = await _load_user_with_role(db_session, email=email)
+
+    async def _enqueue_fail(_payload, defer_seconds: float = 0.0):  # noqa: ANN001
+        raise RuntimeError("email queue down")
+
+    monkeypatch.setattr(auth_routes, "enqueue_template_email", _enqueue_fail)
+
+    with pytest.raises(HTTPException) as enqueue_error:
+        await auth_routes.update_account(
+            payload=AccountUpdateRequest(
+                email=f"new-{uuid4().hex[:8]}@example.com",
+                current_password="SuperSecret123",
+            ),
+            current_user=user,
+            db=db_session,
+        )
+    assert enqueue_error.value.status_code == 500
+    assert "Could not send email verification for address change" in str(enqueue_error.value.detail)
+
+
+@pytest.mark.asyncio
+async def test_confirm_email_change_rejects_invalid_and_duplicate_target_email(db_session):
+    role_user = (await db_session.execute(select(Role).where(Role.name == "user"))).scalar_one()
+    user = User(
+        email=f"confirm-src-{uuid4().hex[:8]}@example.com",
+        password_hash=hash_password("SuperSecret123"),
+        display_name=f"ConfirmSrc-{uuid4().hex[:6]}",
+        role_id=role_user.id,
+        ui_locale="en",
+    )
+    other_user = User(
+        email=f"confirm-dst-{uuid4().hex[:8]}@example.com",
+        password_hash=hash_password("SuperSecret123"),
+        display_name=f"ConfirmDst-{uuid4().hex[:6]}",
+        role_id=role_user.id,
+        ui_locale="en",
+    )
+    db_session.add_all([user, other_user])
+    await db_session.commit()
+    user = await _load_user_with_role(db_session, email=user.email)
+
+    with pytest.raises(HTTPException) as invalid_code:
+        await auth_routes.confirm_email_change(
+            payload=EmailChangeConfirmRequest(email=f"new-{uuid4().hex[:8]}@example.com", code="000000"),
+            current_user=user,
+            db=db_session,
+        )
+    assert invalid_code.value.status_code == 400
+    assert "Invalid or expired verification code" in str(invalid_code.value.detail)
+
+    duplicate_target = other_user.email
+    code, _ = await auth_routes._issue_verification_token(  # noqa: SLF001
+        db_session,
+        user_id=user.id,
+        purpose=auth_routes.VERIFICATION_PURPOSE_EMAIL_CHANGE,
+        target_email=duplicate_target,
+    )
+    with pytest.raises(HTTPException) as duplicate_email:
+        await auth_routes.confirm_email_change(
+            payload=EmailChangeConfirmRequest(email=duplicate_target, code=code),
+            current_user=user,
+            db=db_session,
+        )
+    assert duplicate_email.value.status_code == 400
+    assert "Email already registered" in str(duplicate_email.value.detail)
+
+
+@pytest.mark.asyncio
+async def test_passkey_auth_routes_reject_unknown_email(db_session, monkeypatch):
+    monkeypatch.setattr(auth_routes, "ensure_passkeys_enabled", lambda: None)
+
+    with pytest.raises(HTTPException) as options_error:
+        await auth_routes.passkey_auth_options(
+            payload=PasskeyAuthenticationOptionsRequest(email=f"missing-{uuid4().hex[:8]}@example.com"),
+            db=db_session,
+        )
+    assert options_error.value.status_code == 400
+    assert "No passkey registered for this account" in str(options_error.value.detail)
+
+    with pytest.raises(HTTPException) as verify_error:
+        await auth_routes.passkey_auth_verify(
+            payload=PasskeyAuthenticationVerifyRequest(
+                email=f"missing-{uuid4().hex[:8]}@example.com",
+                challenge_id=uuid4(),
+                credential={"id": "cred-1"},
+                remember_me=False,
+            ),
+            request=_request_for_login(),
+            db=db_session,
+        )
+    assert verify_error.value.status_code == 400
+    assert "Passkey authentication failed" in str(verify_error.value.detail)

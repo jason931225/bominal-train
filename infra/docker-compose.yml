@@ -1,13 +1,16 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     container_name: bominal-postgres
     env_file:
       - ./env/dev/postgres.env
+    environment:
+      # Keep legacy volume layout compatibility when upgrading to postgres:18+.
+      PGDATA: /var/lib/postgresql/data
     ports:
       - "5432:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - pgdata_dev:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U bominal -d bominal"]
       interval: 5s
@@ -15,7 +18,7 @@ services:
       retries: 8
 
   redis:
-    image: redis:7-alpine
+    image: redis:8.6-alpine
     container_name: bominal-redis
     command: ["redis-server", "--save", "", "--appendonly", "no"]
     ports:
@@ -246,6 +249,6 @@ services:
       - api-gateway
 
 volumes:
-  pgdata:
+  pgdata_dev:
   web_node_modules:
   web_e2e_node_modules:
