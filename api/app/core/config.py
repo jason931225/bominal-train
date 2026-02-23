@@ -76,9 +76,10 @@ class Settings(BaseSettings):
     session_days_remember: int = Field(default=90, alias="SESSION_DAYS_REMEMBER")
     session_activity_debounce_seconds: int = Field(default=60, alias="SESSION_ACTIVITY_DEBOUNCE_SECONDS", ge=0)
     access_approval_required: bool = Field(default=True, alias="ACCESS_APPROVAL_REQUIRED")
-    password_hash_time_cost: int = Field(default=3, alias="PASSWORD_HASH_TIME_COST")
-    password_hash_memory_cost_kib: int = Field(default=65536, alias="PASSWORD_HASH_MEMORY_COST_KIB")
-    password_hash_parallelism: int = Field(default=4, alias="PASSWORD_HASH_PARALLELISM")
+    # e2-micro-safe Argon2id defaults; override in env for larger instances.
+    password_hash_time_cost: int = Field(default=2, alias="PASSWORD_HASH_TIME_COST")
+    password_hash_memory_cost_kib: int = Field(default=16384, alias="PASSWORD_HASH_MEMORY_COST_KIB")
+    password_hash_parallelism: int = Field(default=1, alias="PASSWORD_HASH_PARALLELISM")
 
     rate_limit_window_seconds: int = Field(default=60, alias="RATE_LIMIT_WINDOW_SECONDS")
     rate_limit_max_requests: int = Field(default=20, alias="RATE_LIMIT_MAX_REQUESTS")
