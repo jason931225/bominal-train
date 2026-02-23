@@ -183,10 +183,16 @@ describe("passkey helpers", () => {
     });
 
     installFetchMock([
-      new Response(JSON.stringify({ challenge_id: "c3", public_key: {} }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }),
+      new Response(
+        JSON.stringify({
+          challenge_id: "c3",
+          public_key: { excludeCredentials: [{ type: "public-key" }] },
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
     ]);
     const registerResult = await registerPasskeyFromSession("http://api");
     expect(registerResult).toEqual({ ok: false, error: "Passkey setup was cancelled." });
@@ -197,12 +203,21 @@ describe("passkey helpers", () => {
     expect(registerArgs.publicKey.challenge).toBeInstanceOf(Uint8Array);
     expect(registerArgs.publicKey.user.id).toBeInstanceOf(Uint8Array);
     expect(Array.isArray(registerArgs.publicKey.excludeCredentials)).toBe(true);
+    const firstExcluded = registerArgs.publicKey.excludeCredentials[0] as { id: Uint8Array };
+    expect(firstExcluded.id).toBeInstanceOf(Uint8Array);
+    expect(firstExcluded.id.length).toBe(0);
 
     installFetchMock([
-      new Response(JSON.stringify({ challenge_id: "a3", public_key: {} }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }),
+      new Response(
+        JSON.stringify({
+          challenge_id: "a3",
+          public_key: { allowCredentials: [{ type: "public-key" }] },
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
     ]);
     const signInResult = await signInWithPasskey("http://api", { email: "user@example.com", rememberMe: false });
     expect(signInResult).toEqual({ ok: false, error: "Passkey sign in was cancelled." });
@@ -212,6 +227,9 @@ describe("passkey helpers", () => {
     };
     expect(signInArgs.publicKey.challenge).toBeInstanceOf(Uint8Array);
     expect(Array.isArray(signInArgs.publicKey.allowCredentials)).toBe(true);
+    const firstAllowed = signInArgs.publicKey.allowCredentials[0] as { id: Uint8Array };
+    expect(firstAllowed.id).toBeInstanceOf(Uint8Array);
+    expect(firstAllowed.id.length).toBe(0);
   });
 
   it("handles passkey registration failures", async () => {
@@ -383,10 +401,10 @@ describe("passkey helpers", () => {
     installPasskeySupport();
     setNavigatorCredentials({});
 
-    installFetchMock([new Response("", { status: 500 })]);
+    installFetchMock([new Response(null, { status: 500 })]);
     await expect(listPasskeysFromSession("http://api")).rejects.toThrow("Could not load passkeys.");
 
-    installFetchMock([new Response("", { status: 500 })]);
+    installFetchMock([new Response(null, { status: 500 })]);
     await expect(removePasskeyFromSession("http://api", "pk-2")).rejects.toThrow("Could not remove passkey.");
   });
 });
