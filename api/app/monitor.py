@@ -315,12 +315,12 @@ def print_containers(containers: list[dict]) -> None:
         health = c.get("Health", "")
         
         # Determine status color
-        if "healthy" in health.lower() or state == "running":
-            status_color = Colors.GREEN
-            icon = "✓"
-        elif "unhealthy" in health.lower():
+        if "unhealthy" in health.lower():
             status_color = Colors.RED
             icon = "✗"
+        elif "healthy" in health.lower() or state == "running":
+            status_color = Colors.GREEN
+            icon = "✓"
         elif state == "exited":
             status_color = Colors.RED
             icon = "✗"

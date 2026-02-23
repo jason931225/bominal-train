@@ -301,3 +301,27 @@ async def test_send_email_disabled_unsupported_and_smtp_failure(monkeypatch):
     monkeypatch.setattr(email_service.asyncio, "to_thread", _to_thread_fail)
     with pytest.raises(email_service.EmailDeliveryError, match="SMTP delivery failed"):
         await email_service.send_email(payload)
+
+
+@pytest.mark.asyncio
+async def test_send_email_smtp_success(monkeypatch):
+    payload = EmailJobPayload(to_email="user@example.com", subject="SMTP success", text_body="body")
+    _patch_settings(monkeypatch, email_provider="smtp")
+
+    send_calls: list[str] = []
+
+    def _send_sync(_message):  # noqa: ANN001
+        send_calls.append("sent")
+
+    async def _to_thread_ok(fn, arg):  # noqa: ANN001
+        fn(arg)
+        return None
+
+    monkeypatch.setattr(email_service, "_send_smtp_sync", _send_sync)
+    monkeypatch.setattr(email_service.asyncio, "to_thread", _to_thread_ok)
+
+    result = await email_service.send_email(payload)
+    assert result.status == "sent"
+    assert result.provider == "smtp"
+    assert result.metadata["mode"] == "smtp"
+    assert send_calls == ["sent"]

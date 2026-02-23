@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+from pydantic import ValidationError
 
 from app.schemas.notification import (
     EmailJobPayload,
@@ -152,3 +153,39 @@ async def test_deliver_email_job_accepts_legacy_raw_payload_without_text_body(mo
     assert result["status"] == "sent"
     assert captured["subject"] == "Legacy subject only"
     assert captured["text"] == "Legacy subject only"
+
+
+def test_build_email_payload_template_detection_and_validation_fallback_paths():
+    assert email_worker._looks_like_template_payload({"metadata": {"kind": "password_reset"}}) is True
+    assert email_worker._looks_like_template_payload({"subject": "x"}) is False
+
+    # Template validation fails due invalid blocks type; falls back to raw payload.
+    fallback = email_worker._build_email_payload(
+        {
+            "to_email": "fallback@example.com",
+            "subject": "Fallback Subject",
+            "blocks": "invalid",
+        }
+    )
+    assert fallback.subject == "Fallback Subject"
+    assert fallback.text_body == "Fallback Subject"
+
+    # Both template and raw validation fail; template validation error is re-raised.
+    with pytest.raises(ValidationError) as exc_info:
+        email_worker._build_email_payload(
+            {
+                "to_email": "not-an-email",
+                "subject": "Broken",
+                "blocks": "invalid",
+            }
+        )
+    assert "blocks" in str(exc_info.value)
+
+    # Not template-like and invalid raw payload => raw validation error re-raised.
+    with pytest.raises(ValidationError):
+        email_worker._build_email_payload(
+            {
+                "to_email": "not-an-email",
+                "subject": "",
+            }
+        )

@@ -103,3 +103,53 @@ def test_allows_upstash_for_non_cde_when_cde_redis_is_non_upstash(monkeypatch) -
     assert settings.resolved_redis_url_cde == "redis://redis:6379/1"
     assert is_upstash_redis_url(settings.resolved_redis_url_non_cde) is True
     assert is_upstash_redis_url(settings.resolved_redis_url_cde) is False
+
+
+def test_parses_master_keys_by_version_json(monkeypatch) -> None:
+    monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.setenv("MASTER_KEY", _VALID_MASTER_KEY)
+    monkeypatch.setenv("MASTER_KEYS_BY_VERSION", '{"1":"%s","2":"%s"}' % (_VALID_MASTER_KEY, _VALID_MASTER_KEY))
+    monkeypatch.setenv("KEK_VERSION", "2")
+
+    settings = Settings(_env_file=None)
+    assert settings.master_keys_by_version == {1: _VALID_MASTER_KEY, 2: _VALID_MASTER_KEY}
+
+
+def test_master_keys_by_version_parser_branches() -> None:
+    assert Settings.parse_master_keys_by_version(None) is None
+    assert Settings.parse_master_keys_by_version("   ") is None
+    assert Settings.parse_master_keys_by_version('{"1":"abc"}') == {1: "abc"}
+    with pytest.raises(ValueError, match="keys must be integers"):
+        Settings.parse_master_keys_by_version({"x": "abc"})
+    with pytest.raises(ValueError, match="values must be non-empty"):
+        Settings.parse_master_keys_by_version({"1": " "})
+
+
+def test_rejects_invalid_master_keys_by_version_shape(monkeypatch) -> None:
+    monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.setenv("MASTER_KEYS_BY_VERSION", '["bad"]')
+    with pytest.raises(ValueError):
+        Settings(_env_file=None)
+
+
+def test_rejects_master_keyring_missing_active_version_without_master_key(monkeypatch) -> None:
+    monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.setenv("MASTER_KEY", "")
+    monkeypatch.setenv("KEK_VERSION", "2")
+    monkeypatch.setenv("MASTER_KEYS_BY_VERSION", '{"1":"%s"}' % _VALID_MASTER_KEY)
+    with pytest.raises(ValueError, match="MASTER_KEYS_BY_VERSION must include KEK_VERSION"):
+        Settings(_env_file=None)
+
+
+def test_rejects_non_positive_internal_identity_ttl(monkeypatch) -> None:
+    monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.setenv("INTERNAL_IDENTITY_TTL_SECONDS", "0")
+    with pytest.raises(ValueError):
+        Settings(_env_file=None)
+
+
+def test_rejects_non_positive_kek_retirement_window(monkeypatch) -> None:
+    monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.setenv("KEK_RETIREMENT_WINDOW_DAYS", "0")
+    with pytest.raises(ValueError):
+        Settings(_env_file=None)

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import signal
+from uuid import uuid4
 
 import pytest
 
@@ -111,3 +112,37 @@ async def test_heartbeat_loop_handles_redis_failures_and_timeout(monkeypatch):
     await worker_mod._heartbeat_loop(shutdown_event)
     assert called["redis"] == 1
     assert called["wait_for"] == 1
+
+
+@pytest.mark.asyncio
+async def test_recover_in_flight_returns_zero_when_nothing_tracked():
+    worker_mod._in_flight_tasks.clear()
+    assert await worker_mod._recover_in_flight_tasks() == 0
+
+
+@pytest.mark.asyncio
+async def test_recover_in_flight_logs_warning_and_discards_on_error(monkeypatch):
+    worker_mod._in_flight_tasks.clear()
+    bad_task_id = str(uuid4())
+    worker_mod._in_flight_tasks.add(bad_task_id)
+
+    class _SessionCtx:
+        async def __aenter__(self):
+            class _DB:
+                async def get(self, *_args, **_kwargs):  # noqa: ANN002, ANN003
+                    raise RuntimeError("db exploded")
+
+            return _DB()
+
+        async def __aexit__(self, *_args):
+            return None
+
+    warnings: list[str] = []
+
+    monkeypatch.setattr(worker_mod, "SessionLocal", lambda: _SessionCtx())
+    monkeypatch.setattr(worker_mod.logger, "warning", lambda msg, *_args: warnings.append(str(msg)))
+
+    recovered = await worker_mod._recover_in_flight_tasks()
+    assert recovered == 0
+    assert worker_mod._in_flight_tasks == set()
+    assert warnings

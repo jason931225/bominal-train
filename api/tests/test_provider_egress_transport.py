@@ -230,6 +230,59 @@ def test_proxy_url_rewrite_maps_host_to_route_prefix_and_preserves_query():
         )
 
 
+def test_proxy_url_rewrite_normalizes_missing_leading_slash(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(
+        transport_module,
+        "urlparse",
+        lambda _url: SimpleNamespace(  # noqa: ARG005
+            hostname="app.srail.or.kr",
+            path="ara/selectListAra10007_n.do",
+            query="a=1",
+        ),
+    )
+    rewritten = _rewrite_url_for_egress_proxy(
+        "https://app.srail.or.kr/ignored",
+        proxy_base_url="http://egress-train:8080",
+        host_path_map={"app.srail.or.kr": "srt"},
+    )
+    assert rewritten == "http://egress-train:8080/srt/ara/selectListAra10007_n.do?a=1"
+
+
+def test_proxy_helpers_cover_empty_host_config_and_unknown_domain_set():
+    resolved = transport_module._resolve_proxy_path_prefix(
+        "child.app.srail.or.kr",
+        host_path_map={"": "skip-me", "app.srail.or.kr": "srt"},
+    )
+    assert resolved == "srt"
+
+    assert (
+        transport_module._resolve_proxy_path_prefix(
+            "child.example.com",
+            host_path_map={"": "skip-me"},
+        )
+        is None
+    )
+
+    proxy_url, host_map = transport_module._resolve_egress_proxy_config(
+        settings=SimpleNamespace(
+            train_provider_egress_proxy_url="http://egress-train:8080",
+            restaurant_provider_egress_proxy_url="http://egress-restaurant:8080",
+        ),
+        domain_set="unknown-domain",
+    )
+    assert proxy_url is None
+    assert host_map == {}
+
+
+def test_proxy_url_rewrite_rejects_relative_urls_when_proxying():
+    with pytest.raises(RuntimeError, match="absolute URL host"):
+        _rewrite_url_for_egress_proxy(
+            "/relative/path",
+            proxy_base_url="http://egress-train:8080",
+            host_path_map={"app.srail.or.kr": "srt"},
+        )
+
+
 @pytest.mark.asyncio
 async def test_resilient_transport_operation_timeout_profiles_and_backoff(monkeypatch):
     _patch_settings(
@@ -345,6 +398,23 @@ async def test_retries_transient_5xx_for_query_operation():
 
     assert response.status_code == 200
     assert len(base.requests) == 2
+
+
+@pytest.mark.asyncio
+async def test_resilient_transport_defensive_retry_exhausted_branch(monkeypatch):
+    base = _SequenceTransport(actions=[_Action(status_code=200)])
+    transport = ResilientTransport(base, provider="SRT", retry_attempts=2, retry_backoff_seconds=0.0)
+
+    monkeypatch.setattr(transport, "_max_attempts_for_operation", lambda _operation: 0)
+
+    with pytest.raises(ProviderTransportError) as exc_info:
+        await transport.request(
+            method="GET",
+            url="https://app.srail.or.kr:443/ara/selectListAra10007_n.do",
+        )
+
+    assert exc_info.value.retryable is True
+    assert exc_info.value.error_code == "srt_provider_retry_exhausted"
 
 
 @pytest.mark.asyncio
@@ -874,3 +944,41 @@ async def test_curl_transport_close_best_effort_closes_fallback(monkeypatch):
 
     assert session.close_called is True
     assert fallback.closed is True
+
+
+@pytest.mark.asyncio
+async def test_curl_transport_default_headers_and_impersonation_resolution_variants(monkeypatch):
+    _patch_settings(monkeypatch, allowed_hosts=("app.srail.or.kr",), trust_env=False)
+
+    session_no_browser = _FakeCurlSession(responses=[_FakeCurlResponse(status_code=200)])
+    captured_no_browser = _install_fake_curl_module(monkeypatch, session=session_no_browser, browser_type_attrs=None)
+    fallback = _FallbackTransport(response=TransportResponse(status_code=200, text="{}", headers={}))
+    monkeypatch.setattr(transport_module, "HttpxTransport", lambda **_: fallback)
+    transport_no_browser = CurlCffiTransport(
+        impersonate="custom-desired",
+        default_headers={"X-Test": "1"},
+    )
+    assert transport_no_browser._impersonate == "custom-desired"
+    assert captured_no_browser["impersonate"] == "custom-desired"
+    assert session_no_browser.headers["X-Test"] == "1"
+    await transport_no_browser.close()
+
+    session_desired = _FakeCurlSession(responses=[_FakeCurlResponse(status_code=200)])
+    _install_fake_curl_module(
+        monkeypatch,
+        session=session_desired,
+        browser_type_attrs={"chrome131_android": "chrome131_android"},
+    )
+    transport_desired = CurlCffiTransport(impersonate="chrome131_android")
+    assert transport_desired._impersonate == "chrome131_android"
+    await transport_desired.close()
+
+    session_fallback_desired = _FakeCurlSession(responses=[_FakeCurlResponse(status_code=200)])
+    _install_fake_curl_module(
+        monkeypatch,
+        session=session_fallback_desired,
+        browser_type_attrs={"safari17": "safari17"},
+    )
+    transport_fallback_desired = CurlCffiTransport(impersonate="chrome131_android")
+    assert transport_fallback_desired._impersonate == "chrome131_android"
+    await transport_fallback_desired.close()

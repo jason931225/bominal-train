@@ -11,6 +11,7 @@ Security:
     - INTERNAL_API_KEY must be set in production (for internal service auth)
 """
 
+import json
 from functools import lru_cache
 from typing import Annotated
 from typing import List
@@ -87,12 +88,17 @@ class Settings(BaseSettings):
     redis_url_non_cde: str | None = Field(default=None, alias="REDIS_URL_NON_CDE")
     redis_url_cde: str | None = Field(default=None, alias="REDIS_URL_CDE")
     internal_api_key: str | None = Field(default=None, alias="INTERNAL_API_KEY")
+    internal_identity_secret: str | None = Field(default=None, alias="INTERNAL_IDENTITY_SECRET")
+    internal_identity_issuer: str = Field(default="bominal-internal", alias="INTERNAL_IDENTITY_ISSUER")
+    internal_identity_ttl_seconds: int = Field(default=120, alias="INTERNAL_IDENTITY_TTL_SECONDS")
 
     master_key: str = Field(
         default=DEFAULT_MASTER_KEY_B64,
         alias="MASTER_KEY",
     )
+    master_keys_by_version: dict[int, str] | None = Field(default=None, alias="MASTER_KEYS_BY_VERSION")
     kek_version: int = Field(default=1, alias="KEK_VERSION")
+    kek_retirement_window_days: int = Field(default=30, alias="KEK_RETIREMENT_WINDOW_DAYS")
     auth_mode: str = Field(default="legacy", alias="AUTH_MODE")
     supabase_url: str | None = Field(default=None, alias="SUPABASE_URL")
     supabase_jwks_url: str | None = Field(default=None, alias="SUPABASE_JWKS_URL")
@@ -256,6 +262,32 @@ class Settings(BaseSettings):
         normalized = str(value).strip()
         return normalized or None
 
+    @field_validator("master_keys_by_version", mode="before")
+    @classmethod
+    def parse_master_keys_by_version(cls, value: object) -> dict[int, str] | None:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            normalized = value.strip()
+            if not normalized:
+                return None
+            parsed = json.loads(normalized)
+        else:
+            parsed = value
+        if not isinstance(parsed, dict):
+            raise ValueError("MASTER_KEYS_BY_VERSION must be a JSON object")
+        keyring: dict[int, str] = {}
+        for raw_version, raw_key in parsed.items():
+            try:
+                version = int(raw_version)
+            except Exception as exc:
+                raise ValueError("MASTER_KEYS_BY_VERSION keys must be integers") from exc
+            key_value = str(raw_key).strip()
+            if not key_value:
+                raise ValueError("MASTER_KEYS_BY_VERSION values must be non-empty base64 strings")
+            keyring[version] = key_value
+        return keyring
+
     @field_validator("email_provider")
     @classmethod
     def validate_email_provider(cls, value: str) -> str:
@@ -309,6 +341,15 @@ class Settings(BaseSettings):
             raise ValueError("MASTER_KEY must be overridden in production")
         if self.app_env.lower() == "production" and not self.internal_api_key:
             raise ValueError("INTERNAL_API_KEY must be set in production")
+        if self.internal_identity_ttl_seconds < 1:
+            raise ValueError("INTERNAL_IDENTITY_TTL_SECONDS must be >= 1")
+        if self.kek_retirement_window_days < 1:
+            raise ValueError("KEK_RETIREMENT_WINDOW_DAYS must be >= 1")
+        if self.master_keys_by_version is not None:
+            if self.kek_version not in self.master_keys_by_version and not self.master_key:
+                raise ValueError(
+                    "MASTER_KEYS_BY_VERSION must include KEK_VERSION or MASTER_KEY must be set"
+                )
         if is_upstash_redis_url(self.resolved_redis_url_cde):
             raise ValueError(
                 "REDIS_URL_CDE (or REDIS_URL fallback) cannot point to Upstash for CDE/CVV usage; "
