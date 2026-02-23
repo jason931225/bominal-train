@@ -22,9 +22,11 @@ from app.schemas.auth import (
     LoginRequest,
     PasswordResetConfirmRequest,
     PasswordResetRequest,
+    PasswordVerifyRequest,
     PasskeyAuthenticationOptionsRequest,
     PasskeyAuthenticationVerifyRequest,
     PasskeyRegistrationVerifyRequest,
+    PasskeyStepUpVerifyRequest,
     RegisterRequest,
 )
 
@@ -426,6 +428,22 @@ async def test_register_login_session_optional_logout_and_update_account(db_sess
             db=db_session,
         )
 
+    async def _consume_step_up(db, *, user_id, token):  # noqa: ANN001
+        return token == "valid-step-up-token"
+
+    monkeypatch.setattr(auth_routes, "consume_passkey_step_up_token", _consume_step_up)
+    step_up_email = f"stepup-{uuid4().hex[:8]}@example.com"
+    updated_sensitive_with_step_up = await auth_routes.update_account(
+            payload=AccountUpdateRequest(
+                email=step_up_email,
+                passkey_step_up_token="valid-step-up-token",
+            ),
+        current_user=current_user,
+        db=db_session,
+    )
+    assert updated_sensitive_with_step_up.user.email == current_user.email
+    assert updated_sensitive_with_step_up.pending_email_change_to == step_up_email
+
     updated_non_sensitive = await auth_routes.update_account(
         payload=AccountUpdateRequest(
             phone_number="01099998888",
@@ -624,6 +642,11 @@ async def test_passkey_route_units_with_mocked_service(db_session, monkeypatch):
     monkeypatch.setattr(auth_routes, "begin_passkey_authentication", _begin_authentication)
     monkeypatch.setattr(auth_routes, "complete_passkey_authentication", _complete_authentication)
 
+    async def _issue_step_up_token(db, *, user_id):  # noqa: ANN001
+        return "step-up-token"
+
+    monkeypatch.setattr(auth_routes, "issue_passkey_step_up_token", _issue_step_up_token)
+
     listed = await auth_routes.get_passkeys(current_user=user, db=db_session)
     assert len(listed.credentials) == 1
     assert listed.credentials[0].id == passkey_id
@@ -659,6 +682,22 @@ async def test_passkey_route_units_with_mocked_service(db_session, monkeypatch):
     )
     assert "challenge" in auth_options.public_key
 
+    step_up_options = await auth_routes.passkey_step_up_options(
+        current_user=user,
+        db=db_session,
+    )
+    assert "challenge" in step_up_options.public_key
+
+    step_up_verified = await auth_routes.passkey_step_up_verify(
+        payload=PasskeyStepUpVerifyRequest(
+            challenge_id=step_up_options.challenge_id,
+            credential={"id": "cred-1"},
+        ),
+        current_user=user,
+        db=db_session,
+    )
+    assert step_up_verified.step_up_token == "step-up-token"
+
     auth_response = await auth_routes.passkey_auth_verify(
         payload=PasskeyAuthenticationVerifyRequest(
             email=email,
@@ -671,6 +710,19 @@ async def test_passkey_route_units_with_mocked_service(db_session, monkeypatch):
     )
     assert auth_response.status_code == 200
     assert "set-cookie" in auth_response.headers
+
+    verified_password = await auth_routes.verify_current_password(
+        payload=PasswordVerifyRequest(current_password="SuperSecret123"),
+        current_user=user,
+    )
+    assert "verified" in verified_password.message.lower()
+
+    with pytest.raises(HTTPException) as invalid_password:
+        await auth_routes.verify_current_password(
+            payload=PasswordVerifyRequest(current_password="WrongPass123"),
+            current_user=user,
+        )
+    assert invalid_password.value.status_code == 401
 
 
 @pytest.mark.asyncio

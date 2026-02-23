@@ -13,6 +13,12 @@ export type PasskeyOperationResult = {
   error?: string;
 };
 
+export type PasskeyStepUpResult = {
+  ok: boolean;
+  stepUpToken?: string;
+  error?: string;
+};
+
 function parseClientWebAuthnError(error: unknown, fallback: string): string {
   const domExceptionMessages: Record<string, string> = {
     NotAllowedError: "Passkey operation was cancelled or timed out.",
@@ -260,4 +266,54 @@ export async function removePasskeyFromSession(apiBaseUrl: string, passkeyId: st
   if (!response.ok) {
     throw new Error(await parseApiError(response, "Could not remove passkey."));
   }
+}
+
+export async function verifyPasskeyStepUpFromSession(apiBaseUrl: string): Promise<PasskeyStepUpResult> {
+  if (!isPasskeySupported()) {
+    return { ok: false, error: "Passkeys are not supported on this device." };
+  }
+
+  const optionsResponse = await fetch(`${apiBaseUrl}/api/auth/passkeys/step-up/options`, {
+    method: "POST",
+    credentials: "include",
+  });
+  if (!optionsResponse.ok) {
+    return { ok: false, error: await parseApiError(optionsResponse, "Could not start passkey verification.") };
+  }
+
+  const optionsBody = (await optionsResponse.json()) as PasskeyAuthenticationOptionsResponse;
+  let assertion: Credential | null = null;
+  try {
+    assertion = await navigator.credentials.get({
+      publicKey: normalizeRequestOptions(optionsBody.public_key),
+    });
+  } catch (error: unknown) {
+    return {
+      ok: false,
+      error: parseClientWebAuthnError(error, "Could not start passkey verification."),
+    };
+  }
+  if (!assertion) {
+    return { ok: false, error: "Passkey verification was cancelled." };
+  }
+
+  const verifyResponse = await fetch(`${apiBaseUrl}/api/auth/passkeys/step-up/verify`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({
+      challenge_id: optionsBody.challenge_id,
+      credential: serializeAuthenticationCredential(assertion as PublicKeyCredential),
+    }),
+  });
+  if (!verifyResponse.ok) {
+    return { ok: false, error: await parseApiError(verifyResponse, "Passkey verification failed.") };
+  }
+
+  const body = (await verifyResponse.json().catch(() => null)) as { step_up_token?: string } | null;
+  const stepUpToken = body?.step_up_token?.trim();
+  if (!stepUpToken) {
+    return { ok: false, error: "Passkey verification failed." };
+  }
+  return { ok: true, stepUpToken };
 }

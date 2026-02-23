@@ -5,7 +5,12 @@ import { useRouter } from "next/navigation";
 
 import { useLocale } from "@/components/locale-provider";
 import { clientApiBaseUrl } from "@/lib/api-base";
-import { listPasskeysFromSession, registerPasskeyFromSession, removePasskeyFromSession } from "@/lib/passkey";
+import {
+  listPasskeysFromSession,
+  registerPasskeyFromSession,
+  removePasskeyFromSession,
+  verifyPasskeyStepUpFromSession,
+} from "@/lib/passkey";
 import { ROUTES } from "@/lib/routes";
 import type { BominalUser } from "@/lib/types";
 import { UI_BUTTON_PRIMARY, UI_CARD_MD, UI_FIELD, UI_KICKER, UI_TITLE_MD } from "@/lib/ui";
@@ -24,7 +29,6 @@ type AccountFormState = {
   birthday: string;
   new_password: string;
   new_password_confirm: string;
-  current_password: string;
   email_change_code: string;
 };
 
@@ -163,10 +167,13 @@ function buildInitialForm(user: BominalUser): AccountFormState {
     birthday: normalizeBirthdayInput(user.birthday),
     new_password: "",
     new_password_confirm: "",
-    current_password: "",
     email_change_code: "",
   };
 }
+
+type SensitiveActionContext =
+  | { type: "account_update"; payload: AccountPatchPayload }
+  | { type: "add_passkey" };
 
 async function parseApiErrorMessage(response: Response, fallback: string): Promise<string> {
   const contentType = response.headers.get("content-type") ?? "";
@@ -195,6 +202,10 @@ export function AccountSettingsPanel({
   const [passkeyBusy, setPasskeyBusy] = useState(false);
   const [passkeyLoading, setPasskeyLoading] = useState(false);
   const [passkeys, setPasskeys] = useState<PasskeyListItem[]>([]);
+  const [passwordPromptOpen, setPasswordPromptOpen] = useState(false);
+  const [passwordPromptValue, setPasswordPromptValue] = useState("");
+  const [passwordPromptBusy, setPasswordPromptBusy] = useState(false);
+  const [pendingSensitiveAction, setPendingSensitiveAction] = useState<SensitiveActionContext | null>(null);
   const [pendingEmailChangeTo, setPendingEmailChangeTo] = useState<string | null>(prefillEmailChange?.email ?? null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -246,6 +257,89 @@ export function AccountSettingsPanel({
     return { payload, passwordChanged, sensitiveChanged, hasChanges };
   }, [form, baseline]);
 
+  const openPasswordPrompt = (action: SensitiveActionContext) => {
+    setPendingSensitiveAction(action);
+    setPasswordPromptValue("");
+    setPasswordPromptOpen(true);
+  };
+
+  const closePasswordPrompt = () => {
+    setPasswordPromptOpen(false);
+    setPasswordPromptValue("");
+    setPasswordPromptBusy(false);
+    setPendingSensitiveAction(null);
+  };
+
+  const submitAccountPatch = async (
+    payload: AccountPatchPayload,
+    auth?: { currentPassword?: string; stepUpToken?: string },
+  ): Promise<boolean> => {
+    setSubmitting(true);
+    try {
+      const bodyPayload = {
+        ...payload,
+        ...(auth?.currentPassword ? { current_password: auth.currentPassword } : {}),
+        ...(auth?.stepUpToken ? { passkey_step_up_token: auth.stepUpToken } : {}),
+      };
+      const response = await fetch(`${clientApiBaseUrl}/api/auth/account`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(bodyPayload),
+      });
+      if (!response.ok) {
+        setError(await parseApiErrorMessage(response, t("settings.updateFailed")));
+        return false;
+      }
+
+      const body = (await response.json()) as {
+        user: BominalUser;
+        notice?: string;
+        pending_email_change_to?: string | null;
+      };
+      const refreshed = buildInitialForm(body.user);
+      setBaseline(refreshed);
+      setForm(refreshed);
+      setPendingEmailChangeTo(body.pending_email_change_to ?? null);
+      setNotice(body.notice ?? t("settings.updated"));
+      router.refresh();
+      return true;
+    } catch {
+      setError(t("settings.updateFailed"));
+      return false;
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const attemptPasskeyStepUp = async (): Promise<string | null> => {
+    const result = await verifyPasskeyStepUpFromSession(clientApiBaseUrl);
+    if (result.ok && result.stepUpToken) {
+      return result.stepUpToken;
+    }
+    return null;
+  };
+
+  const performAddPasskey = async (): Promise<boolean> => {
+    setPasskeyBusy(true);
+    try {
+      const result = await registerPasskeyFromSession(clientApiBaseUrl);
+      if (!result.ok) {
+        setError(result.error ?? t("settings.passkeyAddFailed"));
+        return false;
+      }
+      const refreshed = await listPasskeysFromSession(clientApiBaseUrl);
+      setPasskeys(refreshed.credentials);
+      setNotice(t("settings.passkeyAdded"));
+      return true;
+    } catch {
+      setError(t("settings.passkeyAddFailed"));
+      return false;
+    } finally {
+      setPasskeyBusy(false);
+    }
+  };
+
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError(null);
@@ -261,44 +355,18 @@ export function AccountSettingsPanel({
       return;
     }
 
-    if (patch.sensitiveChanged && !form.current_password) {
-      setError(t("settings.currentPasswordRequiredSensitive"));
+    if (!patch.sensitiveChanged) {
+      await submitAccountPatch(patch.payload);
       return;
     }
 
-    setSubmitting(true);
-    try {
-      const payload = patch.sensitiveChanged
-        ? { ...patch.payload, current_password: form.current_password }
-        : patch.payload;
-
-      const response = await fetch(`${clientApiBaseUrl}/api/auth/account`, {
-        method: "PATCH",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      if (!response.ok) {
-        setError(await parseApiErrorMessage(response, t("settings.updateFailed")));
-        return;
-      }
-
-      const body = (await response.json()) as {
-        user: BominalUser;
-        notice?: string;
-        pending_email_change_to?: string | null;
-      };
-      const refreshed = buildInitialForm(body.user);
-      setBaseline(refreshed);
-      setForm(refreshed);
-      setPendingEmailChangeTo(body.pending_email_change_to ?? null);
-      setNotice(body.notice ?? t("settings.updated"));
-      router.refresh();
-    } catch {
-      setError(t("settings.updateFailed"));
-    } finally {
-      setSubmitting(false);
+    const stepUpToken = await attemptPasskeyStepUp();
+    if (stepUpToken) {
+      await submitAccountPatch(patch.payload, { stepUpToken });
+      return;
     }
+
+    openPasswordPrompt({ type: "account_update", payload: patch.payload });
   };
 
   const onDeleteAccount = async () => {
@@ -365,20 +433,47 @@ export function AccountSettingsPanel({
   const onAddPasskey = async () => {
     setError(null);
     setNotice(null);
-    setPasskeyBusy(true);
+    openPasswordPrompt({ type: "add_passkey" });
+  };
+
+  const onConfirmPasswordPrompt = async () => {
+    setError(null);
+    if (!pendingSensitiveAction) return;
+
+    const currentPassword = passwordPromptValue.trim();
+    if (!currentPassword) {
+      setError(t("settings.currentPasswordRequired"));
+      return;
+    }
+
+    setPasswordPromptBusy(true);
     try {
-      const result = await registerPasskeyFromSession(clientApiBaseUrl);
-      if (!result.ok) {
-        setError(result.error ?? t("settings.passkeyAddFailed"));
+      if (pendingSensitiveAction.type === "account_update") {
+        const ok = await submitAccountPatch(pendingSensitiveAction.payload, { currentPassword });
+        if (ok) {
+          closePasswordPrompt();
+        }
         return;
       }
-      const refreshed = await listPasskeysFromSession(clientApiBaseUrl);
-      setPasskeys(refreshed.credentials);
-      setNotice(t("settings.passkeyAdded"));
+
+      const verifyResponse = await fetch(`${clientApiBaseUrl}/api/auth/account/verify-password`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ current_password: currentPassword }),
+      });
+      if (!verifyResponse.ok) {
+        setError(await parseApiErrorMessage(verifyResponse, t("settings.currentPasswordRequiredSensitive")));
+        return;
+      }
+      const added = await performAddPasskey();
+      if (added) {
+        closePasswordPrompt();
+      }
     } catch {
-      setError(t("settings.passkeyAddFailed"));
+      setError(t("settings.currentPasswordRequiredSensitive"));
     } finally {
-      setPasskeyBusy(false);
+      setPasswordPromptBusy(false);
     }
   };
 
@@ -580,17 +675,6 @@ export function AccountSettingsPanel({
             />
           </label>
 
-          <label className="text-sm text-slate-700 md:col-span-2">
-            {t("settings.currentPassword")}
-            <input
-              type="password"
-              value={form.current_password}
-              onChange={(event) => setForm((current) => ({ ...current, current_password: event.target.value }))}
-              className={`mt-1 ${UI_FIELD}`}
-              placeholder={t("settings.currentPasswordRequired")}
-            />
-          </label>
-
           {pendingEmailChangeTo ? (
             <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 md:col-span-2">
               <p className="text-sm font-medium text-amber-800">{t("settings.emailChangePendingTitle")}</p>
@@ -684,6 +768,44 @@ export function AccountSettingsPanel({
           </button>
         </div>
       </div>
+
+      {passwordPromptOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
+            <p className="text-sm font-semibold text-slate-900">{t("settings.sensitiveAuthTitle")}</p>
+            <p className="mt-1 text-xs text-slate-600">{t("settings.sensitiveAuthBody")}</p>
+            <label className="mt-4 block text-sm text-slate-700">
+              {t("settings.currentPassword")}
+              <input
+                type="password"
+                value={passwordPromptValue}
+                onChange={(event) => setPasswordPromptValue(event.target.value)}
+                className={`mt-1 ${UI_FIELD}`}
+                placeholder={t("settings.currentPasswordRequired")}
+                autoFocus
+              />
+            </label>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={closePasswordPrompt}
+                disabled={passwordPromptBusy}
+                className="inline-flex h-10 items-center justify-center rounded-full border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {t("common.cancel")}
+              </button>
+              <button
+                type="button"
+                onClick={onConfirmPasswordPrompt}
+                disabled={passwordPromptBusy}
+                className={`inline-flex h-10 items-center justify-center ${UI_BUTTON_PRIMARY}`}
+              >
+                {passwordPromptBusy ? t("common.saving") : t("settings.sensitiveAuthConfirm")}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

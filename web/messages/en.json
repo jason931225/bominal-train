@@ -20,6 +20,8 @@
     "created": "Created"
   },
   "auth": {
+    "continue": "Continue",
+    "continuing": "Continuing...",
     "signIn": "Sign in",
     "signingIn": "Signing in...",
     "signOut": "Sign out",
@@ -137,7 +139,7 @@
   "settings": {
     "kicker": "Settings",
     "accountTitle": "Account settings",
-    "accountBody": "Update profile details. Only email/password changes require your current password.",
+    "accountBody": "Update profile details. Sensitive changes use passkey-first verification, then current password fallback.",
     "noChanges": "No changes to save.",
     "passwordConfirmMismatch": "New password confirmation does not match.",
     "currentPasswordRequiredSensitive": "Current password is required to apply email or password changes.",
@@ -194,6 +196,9 @@
     "passkeyCreatedAt": "Created: {date}",
     "passkeyLastUsedAt": "Last used: {date}",
     "passkeyNeverUsed": "Last used: never",
+    "sensitiveAuthTitle": "Verify to continue",
+    "sensitiveAuthBody": "Passkey verification was unavailable. Enter your current password to continue.",
+    "sensitiveAuthConfirm": "Confirm",
     "dangerZone": "Danger zone",
     "dangerBody": "Delete your account and remove saved profile data. Outstanding worker instances must be completed first.",
     "passwordConfirmRequired": "Required when changing password",
