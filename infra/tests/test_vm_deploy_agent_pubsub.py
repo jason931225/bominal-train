@@ -29,6 +29,7 @@ class TestVmDeployAgentPubSub(unittest.TestCase):
             pulled_marker = tdir / "pulled_once"
             pull_response = tdir / "pull.json"
             deploy_args_file = tdir / "deploy_args.txt"
+            deploy_env_file = tdir / "deploy_env.txt"
 
             pull_response.write_text(
                 json.dumps(
@@ -94,6 +95,14 @@ class TestVmDeployAgentPubSub(unittest.TestCase):
                     #!/usr/bin/env bash
                     set -euo pipefail
                     printf '%s' "$*" > {deploy_args_file!s}
+                    {{
+                      printf 'API_GATEWAY_IMAGE=%s\\n' "${{API_GATEWAY_IMAGE:-}}"
+                      printf 'API_TRAIN_IMAGE=%s\\n' "${{API_TRAIN_IMAGE:-}}"
+                      printf 'API_RESTAURANT_IMAGE=%s\\n' "${{API_RESTAURANT_IMAGE:-}}"
+                      printf 'WORKER_TRAIN_IMAGE=%s\\n' "${{WORKER_TRAIN_IMAGE:-}}"
+                      printf 'WORKER_RESTAURANT_IMAGE=%s\\n' "${{WORKER_RESTAURANT_IMAGE:-}}"
+                      printf 'WEB_IMAGE=%s\\n' "${{WEB_IMAGE:-}}"
+                    }} > {deploy_env_file!s}
                     exit 0
                     """
                 ),
@@ -131,6 +140,11 @@ class TestVmDeployAgentPubSub(unittest.TestCase):
             # Latest-only deploy: no args should be passed even if message mode=commit.
             self.assertTrue(deploy_args_file.exists(), msg="deploy script was not invoked")
             self.assertEqual(deploy_args_file.read_text(encoding="utf-8").strip(), "")
+            env_dump = deploy_env_file.read_text(encoding="utf-8")
+            self.assertIn("API_GATEWAY_IMAGE=", env_dump)
+            self.assertIn("WEB_IMAGE=", env_dump)
+            self.assertIn("API_GATEWAY_IMAGE=\n", env_dump)
+            self.assertIn("WEB_IMAGE=\n", env_dump)
 
             calls = calls_file.read_text(encoding="utf-8")
             self.assertIn("pubsub subscriptions pull sub1", calls)
@@ -178,3 +192,117 @@ class TestVmDeployAgentPubSub(unittest.TestCase):
 
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("Refusing deprecated deploy script path", result.stdout)
+
+    def test_applies_per_service_image_overrides(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            tdir = Path(td)
+            bindir = tdir / "bin"
+            bindir.mkdir(parents=True, exist_ok=True)
+
+            calls_file = tdir / "gcloud_calls.txt"
+            pulled_marker = tdir / "pulled_once"
+            pull_response = tdir / "pull.json"
+            deploy_env_file = tdir / "deploy_env.txt"
+
+            pull_response.write_text(
+                json.dumps(
+                    [
+                        {
+                            "ackId": "ack-123",
+                            "message": {
+                                "attributes": {
+                                    "mode": "latest",
+                                    "api_gateway_image": "ghcr.io/example/bominal/api-gateway:abc",
+                                    "api_train_image": "ghcr.io/example/bominal/api-train:abc",
+                                    "worker_train_image": "ghcr.io/example/bominal/api-train:abc",
+                                    "web_image": "ghcr.io/example/bominal/web:abc",
+                                }
+                            },
+                        }
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            _write_exe(
+                bindir / "gcloud",
+                textwrap.dedent(
+                    f"""\
+                    #!/usr/bin/env bash
+                    set -euo pipefail
+                    echo "gcloud $*" >> {calls_file!s}
+
+                    if [[ "${{1:-}}" == "pubsub" && "${{2:-}}" == "subscriptions" && "${{3:-}}" == "pull" ]]; then
+                      if [[ -f {pulled_marker!s} ]]; then
+                        echo "[]"
+                      else
+                        cat {pull_response!s}
+                        : > {pulled_marker!s}
+                      fi
+                      exit 0
+                    fi
+
+                    if [[ "${{1:-}}" == "pubsub" && "${{2:-}}" == "subscriptions" && ( "${{3:-}}" == "ack" || "${{3:-}}" == "modify-ack-deadline" ) ]]; then
+                      exit 0
+                    fi
+
+                    echo "unexpected gcloud invocation: $*" >&2
+                    exit 1
+                    """
+                ),
+            )
+            _write_exe(
+                bindir / "git",
+                "#!/usr/bin/env bash\nset -euo pipefail\nexit 0\n",
+            )
+            _write_exe(
+                bindir / "flock",
+                "#!/usr/bin/env bash\nset -euo pipefail\nexit 0\n",
+            )
+
+            deploy_script = tdir / "deploy.sh"
+            _write_exe(
+                deploy_script,
+                textwrap.dedent(
+                    f"""\
+                    #!/usr/bin/env bash
+                    set -euo pipefail
+                    {{
+                      printf 'API_GATEWAY_IMAGE=%s\\n' "${{API_GATEWAY_IMAGE:-}}"
+                      printf 'API_TRAIN_IMAGE=%s\\n' "${{API_TRAIN_IMAGE:-}}"
+                      printf 'WORKER_TRAIN_IMAGE=%s\\n' "${{WORKER_TRAIN_IMAGE:-}}"
+                      printf 'WEB_IMAGE=%s\\n' "${{WEB_IMAGE:-}}"
+                    }} > {deploy_env_file!s}
+                    exit 0
+                    """
+                ),
+            )
+
+            env = os.environ.copy()
+            env["PATH"] = f"{bindir}{os.pathsep}{env.get('PATH','')}"
+            env["GCP_PROJECT_ID"] = "bominal"
+            env["DEPLOY_SUBSCRIPTION"] = "sub1"
+            env["REPO_DIR"] = str(tdir / "repo")
+            env["DEPLOY_SCRIPT"] = str(deploy_script)
+            env["ALLOW_NONCANONICAL_DEPLOY_SCRIPT"] = "true"
+            env["LOCK_FILE"] = str(tdir / "lockfile")
+            env["SLEEP_SECONDS"] = "0"
+            env["DEPLOY_AGENT_ONCE"] = "1"
+
+            Path(env["REPO_DIR"]).mkdir(parents=True, exist_ok=True)
+
+            result = subprocess.run(
+                ["bash", str(AGENT_PATH)],
+                env=env,
+                text=True,
+                capture_output=True,
+                timeout=10,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, msg=f"stderr={result.stderr!r}\nstdout={result.stdout!r}")
+
+            env_dump = deploy_env_file.read_text(encoding="utf-8")
+            self.assertIn("API_GATEWAY_IMAGE=ghcr.io/example/bominal/api-gateway:abc", env_dump)
+            self.assertIn("API_TRAIN_IMAGE=ghcr.io/example/bominal/api-train:abc", env_dump)
+            self.assertIn("WORKER_TRAIN_IMAGE=ghcr.io/example/bominal/api-train:abc", env_dump)
+            self.assertIn("WEB_IMAGE=ghcr.io/example/bominal/web:abc", env_dump)

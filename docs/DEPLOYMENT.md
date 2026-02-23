@@ -105,7 +105,9 @@ GitHub Actions publishes a deploy request to Pub/Sub (authenticated via WIF).
 The VM runs a pull-based deploy agent (systemd) that consumes the request and
 runs `infra/scripts/deploy.sh` locally.
 
-CI-triggered deploys are **latest-only** (the message includes the triggering commit SHA for audit, but the VM deploys `:latest` images).
+CI-triggered deploys use a **latest baseline with per-service commit-tag overrides**:
+- changed services are pinned to `ghcr.io/...:<commit_sha>`;
+- unchanged services stay on `:latest` to avoid missing-image failures in split-image builds.
 Deploy gating in CI:
 - Deploy workflow is triggered from successful `Infra Tests` completion on `main`.
 - Manual dispatches are also gated against prerequisite workflow status for the selected commit.
