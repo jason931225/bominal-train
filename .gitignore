@@ -5,6 +5,10 @@
 __pycache__/
 *.pyc
 .pytest_cache/
+api/mutants/
+.coverage
+api/.coverage
+htmlcov/
 
 # Node
 node_modules/

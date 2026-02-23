@@ -33,6 +33,12 @@ Before staging any commit:
    - npm/package-manager deprecation warnings
    - toolchain warnings that indicate pending breakage
    If any warning cannot be removed safely in-scope, record explicit rationale and follow-up owner before staging.
+7. Run assertiveness + mutation gates before staging:
+   - `python3 infra/scripts/check_assertive_tests.py api/tests`
+   - `node infra/scripts/check_assertive_tests_web.mjs web`
+   - `bash infra/scripts/run_mutation_api.sh`
+   - `npm run --prefix web test:mutation`
+   Hard-fail on survivors, missing assertions, or vacuous assertions (for example tautological `assert True` / `expect(true).toBe(true)`).
 
 NPM warning policy:
 - `npm warn deprecated` must be treated as actionable.

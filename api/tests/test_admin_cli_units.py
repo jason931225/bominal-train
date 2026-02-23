@@ -673,4 +673,6 @@ def test_main_dispatch(monkeypatch):
 def test_main_module_entrypoint(monkeypatch):
     monkeypatch.setattr(sys, "argv", ["admin_cli"])
     sys.modules.pop("app.admin_cli", None)
-    runpy.run_module("app.admin_cli", run_name="__main__")
+    module_globals = runpy.run_module("app.admin_cli", run_name="__main__")
+    assert module_globals.get("__name__") == "__main__"
+    assert callable(module_globals.get("main"))
