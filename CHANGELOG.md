@@ -64,6 +64,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Changed
 
+- [0000000] Changed auth-boundary client navigation (login/register/logout) to full-document redirects so persistent Next.js root layout reliably re-hydrates authenticated top-nav state after session cookie changes (`web/components/login-form.tsx`, `web/components/register-form.tsx`, `web/components/logout-button.tsx`).
 - [0000000] Changed account email updates to a two-step verified flow: `PATCH /api/auth/account` requests verification to the new address and `POST /api/auth/account/email-change/confirm` applies the email only after valid code confirmation (`api/app/http/routes/auth.py`, `api/app/schemas/auth.py`, `api/tests/test_auth_flow.py`, `api/tests/test_auth_route_units.py`, `web/components/account/account-settings-panel.tsx`, `web/app/settings/account/page.tsx`).
 - [0000000] Updated production/dev auth env and security/deployment architecture docs with passkey relying-party/origin requirements and verified email-change policy (`infra/env/prod/api.env.example`, `infra/env/dev/api.env`, `docs/ARCHITECTURE.md`, `docs/SECURITY.md`, `docs/DEPLOYMENT.md`, `README.md`).
 - [0000000] Added Postgres 18 `PGDATA` compatibility env in dev/prod compose manifests to keep existing `pgdata` volume layouts bootable after image upgrades (`infra/docker-compose.yml`, `infra/docker-compose.prod.yml`, `docs/DEPLOYMENT.md`).
