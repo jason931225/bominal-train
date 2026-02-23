@@ -211,6 +211,24 @@ describe("passkey helpers", () => {
       new Response(
         JSON.stringify({
           challenge_id: "a3",
+          public_key: {},
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    ]);
+    const signInNoAllowCredentials = await signInWithPasskey("http://api", {
+      email: "user@example.com",
+      rememberMe: false,
+    });
+    expect(signInNoAllowCredentials).toEqual({ ok: false, error: "Passkey sign in was cancelled." });
+
+    installFetchMock([
+      new Response(
+        JSON.stringify({
+          challenge_id: "a4",
           public_key: { allowCredentials: [{ type: "public-key" }] },
         }),
         {
@@ -221,12 +239,20 @@ describe("passkey helpers", () => {
     ]);
     const signInResult = await signInWithPasskey("http://api", { email: "user@example.com", rememberMe: false });
     expect(signInResult).toEqual({ ok: false, error: "Passkey sign in was cancelled." });
-    expect(getMock).toHaveBeenCalledTimes(1);
-    const signInArgs = getMock.mock.calls[0]?.[0] as {
+    expect(getMock).toHaveBeenCalledTimes(2);
+    const signInNoAllowCredentialsArgs = getMock.mock.calls[0]?.[0] as {
+      publicKey: { challenge: Uint8Array; allowCredentials: unknown[] };
+    };
+    expect(signInNoAllowCredentialsArgs.publicKey.challenge).toBeInstanceOf(Uint8Array);
+    expect(Array.isArray(signInNoAllowCredentialsArgs.publicKey.allowCredentials)).toBe(true);
+    expect(signInNoAllowCredentialsArgs.publicKey.allowCredentials).toHaveLength(0);
+
+    const signInArgs = getMock.mock.calls[1]?.[0] as {
       publicKey: { challenge: Uint8Array; allowCredentials: unknown[] };
     };
     expect(signInArgs.publicKey.challenge).toBeInstanceOf(Uint8Array);
     expect(Array.isArray(signInArgs.publicKey.allowCredentials)).toBe(true);
+    expect(signInArgs.publicKey.allowCredentials).toHaveLength(1);
     const firstAllowed = signInArgs.publicKey.allowCredentials[0] as { id: Uint8Array };
     expect(firstAllowed.id).toBeInstanceOf(Uint8Array);
     expect(firstAllowed.id.length).toBe(0);
