@@ -52,6 +52,7 @@ MASTER_KEY=base64-secret
 EOF
   cat >"$TMP_DIR/repo/infra/env/prod/web.env" <<'EOF'
 NEXT_PUBLIC_API_BASE_URL=https://example.com
+API_SERVER_URL=http://api-gateway:8000
 EOF
   cat >"$TMP_DIR/repo/infra/env/prod/caddy.env" <<'EOF'
 CADDY_SITE_ADDRESS=example.com
@@ -168,8 +169,17 @@ assert_fails "resend requires api key" env PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_D
 make_valid_envs
 cat >"$TMP_DIR/repo/infra/env/prod/web.env" <<'EOF'
 NEXT_PUBLIC_API_BASE_URL=http://example.com
+API_SERVER_URL=http://api-gateway:8000
 EOF
 assert_fails "web public api base must be https" env PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" BOMINAL_ROOT_DIR="$TMP_DIR/repo" "$SCRIPT" --skip-smoke-tests
+
+# Legacy split-host alias must fail.
+make_valid_envs
+cat >"$TMP_DIR/repo/infra/env/prod/web.env" <<'EOF'
+NEXT_PUBLIC_API_BASE_URL=https://example.com
+API_SERVER_URL=http://api:8000
+EOF
+assert_fails "legacy API_SERVER_URL alias must fail" env PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" BOMINAL_ROOT_DIR="$TMP_DIR/repo" "$SCRIPT" --skip-smoke-tests
 
 # CORS origins must be HTTPS in production.
 make_valid_envs
