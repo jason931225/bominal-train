@@ -358,6 +358,32 @@ async def test_hybrid_reservation_and_ticket_fallback_rules():
     assert mock_unused.calls == []
 
 
+@pytest.mark.asyncio
+async def test_hybrid_reservation_and_ticket_live_success_short_circuits():
+    live = _DynamicOutcomeClient(
+        {
+            "get_reservations": ProviderOutcome(ok=True, data={"reservations": [{"reservation_id": "r1"}]}),
+            "ticket_info": ProviderOutcome(ok=True, data={"reservation_id": "r1", "tickets": [{"seat": "1A"}]}),
+        }
+    )
+    mock = _DynamicOutcomeClient(
+        {
+            "get_reservations": ProviderOutcome(ok=True, data={"reservations": []}),
+            "ticket_info": ProviderOutcome(ok=True, data={"reservation_id": "r1", "tickets": []}),
+        }
+    )
+    hybrid = _HybridProviderClient(live_client=live, mock_client=mock)
+
+    reservations = await hybrid.get_reservations(user_id="u1")
+    ticket_info = await hybrid.ticket_info(reservation_id="r1", user_id="u1")
+
+    assert reservations.ok is True
+    assert reservations.data["reservations"][0]["reservation_id"] == "r1"
+    assert ticket_info.ok is True
+    assert ticket_info.data["tickets"][0]["seat"] == "1A"
+    assert mock.calls == []
+
+
 def test_hybrid_provider_default_constructors(monkeypatch):
     sentinel_live_srt = object()
     sentinel_mock_srt = object()

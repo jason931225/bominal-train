@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import runpy
+import sys
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
@@ -126,6 +128,19 @@ def test_get_container_status_handles_subprocess_errors(monkeypatch):
     assert monitor.get_container_status() == []
 
 
+def test_clear_screen_uses_platform_specific_command(monkeypatch):
+    calls: list[str] = []
+    monkeypatch.setattr(monitor.os, "system", lambda cmd: calls.append(cmd))
+
+    monkeypatch.setattr(monitor.os, "name", "posix", raising=False)
+    monitor.clear_screen()
+    assert calls[-1] == "clear"
+
+    monkeypatch.setattr(monitor.os, "name", "nt", raising=False)
+    monitor.clear_screen()
+    assert calls[-1] == "cls"
+
+
 @pytest.mark.asyncio
 async def test_get_redis_stats_success_and_error_paths():
     success = await monitor.get_redis_stats(_FakeRedis())
@@ -190,6 +205,8 @@ async def test_get_db_stats_success_and_error_paths(monkeypatch):
 
 def test_formatters_and_printers(capsys):
     now = datetime.now(timezone.utc)
+    assert monitor.format_time_ago(datetime.now(timezone.utc)).endswith("ago")
+    assert monitor.format_time_ago(datetime.now(timezone.utc).replace(tzinfo=None)).endswith("ago")
     assert monitor.format_time_ago(now - timedelta(seconds=5)).endswith("ago")
     assert monitor.format_time_ago(now - timedelta(minutes=5)).endswith("ago")
     assert monitor.format_time_ago(now - timedelta(hours=5)).endswith("ago")
@@ -212,6 +229,61 @@ def test_formatters_and_printers(capsys):
     assert "Redis disconnected" in output
     assert "Database disconnected" in output
     assert "No tasks found" in output
+
+
+def test_printer_branches_for_nonempty_inputs(capsys):
+    now = datetime.now(timezone.utc)
+    monitor.print_containers(
+        [
+            {"Name": "api-gateway", "State": "running", "Health": "healthy"},
+            {"Service": "worker-train", "State": "starting", "Health": "unhealthy"},
+            {"Name": "redis", "State": "exited", "Health": ""},
+            {"Name": "mailpit", "State": "created", "Health": ""},
+        ]
+    )
+    monitor.print_redis_stats(
+        {
+            "connected": True,
+            "queue_pending": 2,
+            "queue_processing": 1,
+            "queue_completed": 3,
+            "rate_limiters": [{"key": "train_rate:user1", "tokens": "4", "ttl": 7}],
+            "memory_used": "1M",
+            "uptime_seconds": 3661,
+            "total_connections": 4,
+        }
+    )
+    monitor.print_db_stats(
+        {
+            "connected": True,
+            "total_users": 3,
+            "total_tasks": 6,
+            "active_tasks": 2,
+            "tasks_today": 4,
+            "completed_today": 2,
+            "failed_today": 1,
+            "total_attempts_today": 5,
+            "error_rate_today": 60.0,
+        }
+    )
+    monitor.print_recent_tasks(
+        [
+            {
+                "id": "abcd1234",
+                "module": "train",
+                "state": "FAILED",
+                "hidden": True,
+                "updated_at": now - timedelta(minutes=1),
+                "attempts": 2,
+                "last_error": "provider_error",
+            }
+        ]
+    )
+    output = capsys.readouterr().out
+    assert "api-gateway" in output
+    assert "Rate Limiters" in output
+    assert "Attempts:" in output
+    assert "FAILED(H)" in output
 
 
 @pytest.mark.asyncio
@@ -263,3 +335,17 @@ def test_monitor_main_dispatch(monkeypatch):
     monitor.main()
 
     assert called == {"watch": True, "interval": 5}
+
+
+def test_monitor_module_main_guard_executes(monkeypatch):
+    called = {"ran": False}
+
+    def _fake_asyncio_run(coro):
+        called["ran"] = True
+        coro.close()
+
+    monkeypatch.setattr("asyncio.run", _fake_asyncio_run)
+    monkeypatch.setattr("sys.argv", ["monitor"])
+    sys.modules.pop("app.monitor", None)
+    runpy.run_module("app.monitor", run_name="__main__")
+    assert called["ran"] is True

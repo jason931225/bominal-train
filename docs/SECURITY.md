@@ -24,7 +24,9 @@ Security controls and requirements for bominal.
 - API access separation:
   - Public: unauthenticated auth bootstrap routes
   - Authenticated: Supabase Bearer or session-cookie depending on `AUTH_MODE`
-  - Internal-only: `X-Internal-Api-Key` header must match `INTERNAL_API_KEY`
+  - Internal-only:
+    - `X-Internal-Api-Key` must match `INTERNAL_API_KEY`, or
+    - `X-Internal-Service-Token` must be a valid short-lived internal token signed by `INTERNAL_IDENTITY_SECRET`
   - Admin: local DB role (`admin`) required
 - Supabase JWT role claims are not trusted as authorization source; API resolves local user by `sub` and enforces DB role.
 
@@ -47,6 +49,18 @@ Envelope decrypt behavior:
 
 - Persisted secret decrypt paths must validate stored `kek_version` against active crypto settings.
 - Envelope payload serialization uses JSON with stable separators and ASCII escaping; compatibility-sensitive changes require migration review.
+- Key rotation execution path:
+  - `MASTER_KEYS_BY_VERSION` supplies keyring entries for legacy versions.
+  - `KEK_VERSION` defines the active write key.
+  - `python -m app.admin_cli secret prepare-kek-rotation --new-version <N>` generates a new 32-byte KEK and env payload where `<N>` becomes the primary wrapping version while older versions remain available for unwrapping.
+  - `python -m app.admin_cli secret rotate-kek --dry-run` validates rewrap viability.
+  - `python -m app.admin_cli secret rotate-kek --yes` rewraps non-current secrets to active `kek_version`.
+  - `python -m app.admin_cli secret rotate-kek-background --yes` executes batch rewrap in the background until no non-current `kek_version` rows remain.
+  - `python -m app.admin_cli secret retire-kek --version <OLD> --rotation-completed-at <UTC_ISO> --yes` is the retirement readiness gate; it refuses retirement if any secrets still reference `<OLD>` or if `KEK_RETIREMENT_WINDOW_DAYS` has not elapsed since rewrap completion.
+  - Rapid successive rotations are safe when keyring continuity is maintained:
+    - new writes always use current `KEK_VERSION`;
+    - decrypt keeps working as long as old versions remain in `MASTER_KEYS_BY_VERSION`;
+    - rewrap converges to the currently active `KEK_VERSION` after rerun/background completion.
 
 ## Payment data handling
 
@@ -426,6 +440,11 @@ The following are automatically CRITICAL and block deploy:
 4. Keep env secrets outside git (`infra/env/prod/*.env` is gitignored).
 5. Preserve cookie security semantics unless intentionally changed and documented.
 6. For payment/CDE/relay changes, run PCI/ASVS security tests before completion.
+7. CI security gates must remain enabled:
+   - repository secret scan (gitleaks),
+   - Python dependency vulnerability scan (`pip-audit`),
+   - Web dependency vulnerability scan (`npm audit --omit=dev`),
+   - frontend unit-test coverage gate.
 
 ## Hardening backlog
 

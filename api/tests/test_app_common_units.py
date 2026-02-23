@@ -100,3 +100,29 @@ def test_add_admin_docs_registers_routes():
     paths = {route.path for route in app.routes}
     assert "/api/docs" in paths
     assert "/api/openapi.json" in paths
+
+
+def test_lifespan_and_admin_docs_handlers(monkeypatch):
+    log_events: list[str] = []
+
+    class _Logger:
+        def info(self, message: str, **_kwargs):  # noqa: ANN003
+            log_events.append(message)
+
+    monkeypatch.setattr(app_common, "logger", _Logger())
+    monkeypatch.setattr(app_common, "setup_logging", lambda: log_events.append("setup"))
+
+    app = app_common.create_base_app(description="docs-live")
+    app.dependency_overrides[app_common.get_current_admin] = lambda: object()
+    app_common.add_admin_docs(app)
+
+    with TestClient(app) as client:
+        docs_response = client.get("/api/docs")
+        openapi_response = client.get("/api/openapi.json")
+
+    assert docs_response.status_code == 200
+    assert openapi_response.status_code == 200
+    assert "openapi" in openapi_response.json()
+    assert "setup" in log_events
+    assert "Application starting" in log_events
+    assert "Application shutting down" in log_events

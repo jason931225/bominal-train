@@ -457,3 +457,73 @@ async def test_register_login_session_optional_logout_and_update_account(db_sess
     assert updated_password.user.email.startswith("changed-")
     await db_session.refresh(current_user)
     assert verify_password("BrandNewSecret123", current_user.password_hash)
+
+
+@pytest.mark.asyncio
+async def test_register_duplicate_display_name_and_update_integrity_delete_paths(db_session, monkeypatch):
+    async def _enqueue_ok(_payload, defer_seconds: float = 0.0):  # noqa: ANN001
+        return "job-id"
+
+    monkeypatch.setattr(auth_routes, "enqueue_template_email", _enqueue_ok)
+
+    first_email = f"display-a-{uuid4().hex[:8]}@example.com"
+    second_email = f"display-b-{uuid4().hex[:8]}@example.com"
+    display_name = f"Display-{uuid4().hex[:6]}"
+
+    await auth_routes.register(
+        payload=RegisterRequest(email=first_email, password="SuperSecret123", display_name=display_name),
+        db=db_session,
+    )
+
+    with pytest.raises(HTTPException) as duplicate_display:
+        await auth_routes.register(
+            payload=RegisterRequest(email=second_email, password="SuperSecret123", display_name=display_name.lower()),
+            db=db_session,
+        )
+    assert duplicate_display.value.status_code == 400
+    assert "display name already registered" in str(duplicate_display.value.detail).lower()
+
+    current_user = await _load_user_with_role(db_session, email=first_email)
+    updated = await auth_routes.update_account(
+        payload=AccountUpdateRequest(ui_locale="ko"),
+        current_user=current_user,
+        db=db_session,
+    )
+    assert updated.user.ui_locale == "ko"
+    updated_display = await auth_routes.update_account(
+        payload=AccountUpdateRequest(display_name=f"Renamed-{uuid4().hex[:6]}"),
+        current_user=current_user,
+        db=db_session,
+    )
+    assert updated_display.user.display_name.startswith("Renamed-")
+
+    real_commit = AsyncSession.commit
+
+    async def _raise_integrity(self: AsyncSession):  # type: ignore[no-untyped-def]
+        raise IntegrityError("update", params={}, orig=Exception("users.email"))
+
+    monkeypatch.setattr(AsyncSession, "commit", _raise_integrity)
+    try:
+        with pytest.raises(HTTPException) as update_integrity:
+            await auth_routes.update_account(
+                payload=AccountUpdateRequest(
+                    email=f"changed-{uuid4().hex[:8]}@example.com",
+                    current_password="SuperSecret123",
+                ),
+                current_user=current_user,
+                db=db_session,
+            )
+        assert update_integrity.value.status_code == 409
+    finally:
+        monkeypatch.setattr(AsyncSession, "commit", real_commit)
+
+    calls: list[str] = []
+
+    async def _delete_account_data(db, *, user):  # noqa: ANN001
+        calls.append("called")
+
+    monkeypatch.setattr(auth_routes, "delete_account_data", _delete_account_data)
+    response = Response()
+    deleted = await auth_routes.delete_account(response=response, current_user=current_user, db=db_session)
+    assert "account deleted" in deleted.message.lower()
+    assert calls == ["called"]

@@ -34,7 +34,7 @@ done
 
 # Start services
 echo "→ Starting Docker Compose services..."
-"${COMPOSE_CMD[@]}" -f infra/docker-compose.yml up --build "$@"
+"${COMPOSE_CMD[@]}" -f infra/docker-compose.yml up --build --remove-orphans "$@"
 
 echo ""
 echo "Mailpit dev inbox: http://localhost:8025"
