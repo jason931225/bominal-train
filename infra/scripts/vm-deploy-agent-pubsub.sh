@@ -74,9 +74,6 @@ main() {
     die "Repo directory not found: $repo_dir"
   fi
 
-  if [[ "$deploy_script" == *"deploy-zero-downtime.sh"* || "$deploy_script" == *"deploy.prod.sh"* ]]; then
-    die "Refusing deprecated deploy script path: $deploy_script (required: $canonical_deploy_script)"
-  fi
   if [[ "$deploy_script" != "$canonical_deploy_script" ]] && ! is_truthy "$allow_noncanonical_deploy_script"; then
     die "Non-canonical DEPLOY_SCRIPT is blocked: $deploy_script (required: $canonical_deploy_script; set ALLOW_NONCANONICAL_DEPLOY_SCRIPT=true for test-only overrides)"
   fi
@@ -122,8 +119,9 @@ main() {
 
     # Extract ackId + attributes (mode/commit) via a shared, tested parser.
     local ack_id deploy_mode deploy_commit
+    local deploy_api_image deploy_worker_image deploy_web_image
     local deploy_api_gateway_image deploy_api_train_image deploy_api_restaurant_image
-    local deploy_worker_train_image deploy_worker_restaurant_image deploy_web_image
+    local deploy_worker_train_image deploy_worker_restaurant_image
     local parsed
     if ! parsed="$(python3 "$parser_script" <<<"$pull_json")"; then
       log "WARN: pulled message but parser failed; sleeping"
@@ -141,12 +139,22 @@ main() {
     ack_id="$ACK_ID"
     deploy_mode="${DEPLOY_MODE:-latest}"
     deploy_commit="${DEPLOY_COMMIT:-}"
+    deploy_api_image="${DEPLOY_API_IMAGE:-}"
+    deploy_worker_image="${DEPLOY_WORKER_IMAGE:-}"
+    # Backward compatibility with split-runtime payload vars.
     deploy_api_gateway_image="${DEPLOY_API_GATEWAY_IMAGE:-}"
     deploy_api_train_image="${DEPLOY_API_TRAIN_IMAGE:-}"
     deploy_api_restaurant_image="${DEPLOY_API_RESTAURANT_IMAGE:-}"
     deploy_worker_train_image="${DEPLOY_WORKER_TRAIN_IMAGE:-}"
     deploy_worker_restaurant_image="${DEPLOY_WORKER_RESTAURANT_IMAGE:-}"
     deploy_web_image="${DEPLOY_WEB_IMAGE:-}"
+
+    if [[ -z "$deploy_api_image" ]]; then
+      deploy_api_image="${deploy_api_gateway_image:-${deploy_api_train_image:-${deploy_api_restaurant_image:-}}}"
+    fi
+    if [[ -z "$deploy_worker_image" ]]; then
+      deploy_worker_image="${deploy_worker_train_image:-${deploy_worker_restaurant_image:-${deploy_api_image:-}}}"
+    fi
 
     log "Received deploy request (mode=$deploy_mode, commit=${deploy_commit:-none})"
 
@@ -186,14 +194,11 @@ main() {
       export GCP_PROJECT_ID
       export GCP_REGION="$gcp_region"
 
-      if [[ -n "$deploy_api_gateway_image" ]]; then export API_GATEWAY_IMAGE="$deploy_api_gateway_image"; fi
-      if [[ -n "$deploy_api_train_image" ]]; then export API_TRAIN_IMAGE="$deploy_api_train_image"; fi
-      if [[ -n "$deploy_api_restaurant_image" ]]; then export API_RESTAURANT_IMAGE="$deploy_api_restaurant_image"; fi
-      if [[ -n "$deploy_worker_train_image" ]]; then export WORKER_TRAIN_IMAGE="$deploy_worker_train_image"; fi
-      if [[ -n "$deploy_worker_restaurant_image" ]]; then export WORKER_RESTAURANT_IMAGE="$deploy_worker_restaurant_image"; fi
+      if [[ -n "$deploy_api_image" ]]; then export API_IMAGE="$deploy_api_image"; fi
+      if [[ -n "$deploy_worker_image" ]]; then export WORKER_IMAGE="$deploy_worker_image"; fi
       if [[ -n "$deploy_web_image" ]]; then export WEB_IMAGE="$deploy_web_image"; fi
 
-      log "Running deploy script (latest baseline with optional per-service image overrides)"
+      log "Running deploy script (latest baseline with optional api/worker/web image overrides)"
       bash "$deploy_script"
 
       # ACK only after successful deploy.

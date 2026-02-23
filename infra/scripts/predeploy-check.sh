@@ -215,7 +215,7 @@ Usage: ./infra/scripts/predeploy-check.sh [options]
 
 Options:
   --skip-smoke-tests         Skip compose exec smoke checks.
-  --require-running-services Fail if api-gateway/web containers are not currently running.
+  --require-running-services Fail if api/web containers are not currently running.
   --min-total-memory-mb N    Require at least N MB total system memory (0 disables gate).
   --min-total-swap-mb N      Require at least N MB total system swap (0 disables gate).
   --help                     Show this help.
@@ -351,10 +351,6 @@ if ! [[ "$api_server_url" =~ ^https?:// ]]; then
   log_error "API_SERVER_URL must be an absolute http(s) URL in infra/env/prod/web.env"
   exit 1
 fi
-if [[ "$api_server_url" =~ ^https?://api([:/]|$) ]]; then
-  log_error "API_SERVER_URL=http://api:8000 is legacy and invalid for split API runtime; use http://api-gateway:8000"
-  exit 1
-fi
 
 echo "==> Checking required Caddy settings"
 required_caddy_keys=(
@@ -383,13 +379,13 @@ if [[ "$skip_smoke_tests" -eq 1 ]]; then
   exit 0
 fi
 
-api_service="$(first_running_compose_service infra/docker-compose.yml api-gateway api || true)"
+api_service="$(first_running_compose_service infra/docker-compose.yml api || true)"
 if [[ -z "$api_service" ]] || ! service_is_running "web"; then
   if [[ "$require_running_services" -eq 1 ]]; then
-    log_error "Required local services are not running (api-gateway/web). Start stack or use --skip-smoke-tests."
+    log_error "Required local services are not running (api/web). Start stack or use --skip-smoke-tests."
     exit 1
   fi
-  log_warn "Skipping smoke tests because api-gateway/web are not running. Use --require-running-services to enforce."
+  log_warn "Skipping smoke tests because api/web are not running. Use --require-running-services to enforce."
   echo "Pre-deploy checks passed (env + compose validation only)."
   exit 0
 fi

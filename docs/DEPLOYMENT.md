@@ -172,9 +172,9 @@ sudo journalctl -u bominal-deploy-agent -f
 ```
 
 Safety note:
-- Deploy agent is fail-closed for deprecated/non-canonical script paths.
+- Deploy agent is fail-closed for non-canonical script paths.
 - `DEPLOY_SCRIPT` must be `/opt/bominal/repo/infra/scripts/deploy.sh`.
-- Legacy values like `deploy-zero-downtime.sh` are rejected and deployment messages are not ACKed on failure.
+- Deployment messages are ACKed only after successful deploy execution.
 
 **Remote Deploy** (from local machine):
 
@@ -282,7 +282,7 @@ Production URL scheme enforcement (predeploy gate):
 - `CORS_ORIGINS` entries must be `https://`.
 - `RESEND_API_BASE_URL` must be `https://` when set.
 - `NEXT_PUBLIC_API_BASE_URL` may be empty (recommended same-origin) or must be `https://` if set.
-- `API_SERVER_URL` must be an absolute `http(s)://` URL and must not use legacy `http://api-gateway:8000` (use `http://api:8000`).
+- `API_SERVER_URL` must be an absolute `http(s)://` URL.
 - `SUPABASE_STORAGE_ENABLED=true`: `SUPABASE_SERVICE_ROLE_KEY`
 - `EMAIL_PROVIDER=disabled`: Resend credentials may remain unset
 - `EMAIL_PROVIDER=smtp`: `SMTP_HOST`, `SMTP_PORT`, and SMTP credentials/TLS settings as required

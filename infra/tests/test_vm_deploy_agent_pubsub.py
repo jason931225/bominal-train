@@ -96,11 +96,8 @@ class TestVmDeployAgentPubSub(unittest.TestCase):
                     set -euo pipefail
                     printf '%s' "$*" > {deploy_args_file!s}
                     {{
-                      printf 'API_GATEWAY_IMAGE=%s\\n' "${{API_GATEWAY_IMAGE:-}}"
-                      printf 'API_TRAIN_IMAGE=%s\\n' "${{API_TRAIN_IMAGE:-}}"
-                      printf 'API_RESTAURANT_IMAGE=%s\\n' "${{API_RESTAURANT_IMAGE:-}}"
-                      printf 'WORKER_TRAIN_IMAGE=%s\\n' "${{WORKER_TRAIN_IMAGE:-}}"
-                      printf 'WORKER_RESTAURANT_IMAGE=%s\\n' "${{WORKER_RESTAURANT_IMAGE:-}}"
+                      printf 'API_IMAGE=%s\\n' "${{API_IMAGE:-}}"
+                      printf 'WORKER_IMAGE=%s\\n' "${{WORKER_IMAGE:-}}"
                       printf 'WEB_IMAGE=%s\\n' "${{WEB_IMAGE:-}}"
                     }} > {deploy_env_file!s}
                     exit 0
@@ -141,57 +138,17 @@ class TestVmDeployAgentPubSub(unittest.TestCase):
             self.assertTrue(deploy_args_file.exists(), msg="deploy script was not invoked")
             self.assertEqual(deploy_args_file.read_text(encoding="utf-8").strip(), "")
             env_dump = deploy_env_file.read_text(encoding="utf-8")
-            self.assertIn("API_GATEWAY_IMAGE=", env_dump)
+            self.assertIn("API_IMAGE=", env_dump)
+            self.assertIn("WORKER_IMAGE=", env_dump)
             self.assertIn("WEB_IMAGE=", env_dump)
-            self.assertIn("API_GATEWAY_IMAGE=\n", env_dump)
+            self.assertIn("API_IMAGE=\n", env_dump)
+            self.assertIn("WORKER_IMAGE=\n", env_dump)
             self.assertIn("WEB_IMAGE=\n", env_dump)
 
             calls = calls_file.read_text(encoding="utf-8")
             self.assertIn("pubsub subscriptions pull sub1", calls)
             self.assertIn("pubsub subscriptions modify-ack-deadline sub1", calls)
             self.assertIn("pubsub subscriptions ack sub1", calls)
-
-    def test_rejects_deprecated_deploy_script_path(self) -> None:
-        with tempfile.TemporaryDirectory() as td:
-            tdir = Path(td)
-            bindir = tdir / "bin"
-            bindir.mkdir(parents=True, exist_ok=True)
-
-            _write_exe(
-                bindir / "gcloud",
-                "#!/usr/bin/env bash\nset -euo pipefail\nexit 0\n",
-            )
-            _write_exe(
-                bindir / "git",
-                "#!/usr/bin/env bash\nset -euo pipefail\nexit 0\n",
-            )
-            _write_exe(
-                bindir / "flock",
-                "#!/usr/bin/env bash\nset -euo pipefail\nexit 0\n",
-            )
-
-            repo_dir = tdir / "repo"
-            repo_dir.mkdir(parents=True, exist_ok=True)
-
-            env = os.environ.copy()
-            env["PATH"] = f"{bindir}{os.pathsep}{env.get('PATH','')}"
-            env["GCP_PROJECT_ID"] = "bominal"
-            env["DEPLOY_SUBSCRIPTION"] = "sub1"
-            env["REPO_DIR"] = str(repo_dir)
-            env["DEPLOY_SCRIPT"] = str(repo_dir / "infra/scripts/deploy-zero-downtime.sh")
-            env["DEPLOY_AGENT_ONCE"] = "1"
-
-            result = subprocess.run(
-                ["bash", str(AGENT_PATH)],
-                env=env,
-                text=True,
-                capture_output=True,
-                timeout=10,
-                check=False,
-            )
-
-            self.assertNotEqual(result.returncode, 0)
-            self.assertIn("Refusing deprecated deploy script path", result.stdout)
 
     def test_applies_per_service_image_overrides(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -212,9 +169,8 @@ class TestVmDeployAgentPubSub(unittest.TestCase):
                             "message": {
                                 "attributes": {
                                     "mode": "latest",
-                                    "api_gateway_image": "ghcr.io/example/bominal/api-gateway:abc",
-                                    "api_train_image": "ghcr.io/example/bominal/api-train:abc",
-                                    "worker_train_image": "ghcr.io/example/bominal/api-train:abc",
+                                    "api_image": "ghcr.io/example/bominal/api:abc",
+                                    "worker_image": "ghcr.io/example/bominal/api:abc",
                                     "web_image": "ghcr.io/example/bominal/web:abc",
                                 }
                             },
@@ -268,9 +224,8 @@ class TestVmDeployAgentPubSub(unittest.TestCase):
                     #!/usr/bin/env bash
                     set -euo pipefail
                     {{
-                      printf 'API_GATEWAY_IMAGE=%s\\n' "${{API_GATEWAY_IMAGE:-}}"
-                      printf 'API_TRAIN_IMAGE=%s\\n' "${{API_TRAIN_IMAGE:-}}"
-                      printf 'WORKER_TRAIN_IMAGE=%s\\n' "${{WORKER_TRAIN_IMAGE:-}}"
+                      printf 'API_IMAGE=%s\\n' "${{API_IMAGE:-}}"
+                      printf 'WORKER_IMAGE=%s\\n' "${{WORKER_IMAGE:-}}"
                       printf 'WEB_IMAGE=%s\\n' "${{WEB_IMAGE:-}}"
                     }} > {deploy_env_file!s}
                     exit 0
@@ -302,7 +257,6 @@ class TestVmDeployAgentPubSub(unittest.TestCase):
             self.assertEqual(result.returncode, 0, msg=f"stderr={result.stderr!r}\nstdout={result.stdout!r}")
 
             env_dump = deploy_env_file.read_text(encoding="utf-8")
-            self.assertIn("API_GATEWAY_IMAGE=ghcr.io/example/bominal/api-gateway:abc", env_dump)
-            self.assertIn("API_TRAIN_IMAGE=ghcr.io/example/bominal/api-train:abc", env_dump)
-            self.assertIn("WORKER_TRAIN_IMAGE=ghcr.io/example/bominal/api-train:abc", env_dump)
+            self.assertIn("API_IMAGE=ghcr.io/example/bominal/api:abc", env_dump)
+            self.assertIn("WORKER_IMAGE=ghcr.io/example/bominal/api:abc", env_dump)
             self.assertIn("WEB_IMAGE=ghcr.io/example/bominal/web:abc", env_dump)
