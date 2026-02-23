@@ -449,7 +449,15 @@ async def test_account_update_rejects_invalid_ui_locale(client):
 
 
 @pytest.mark.asyncio
-async def test_account_update_updates_optional_fields_and_password(client):
+async def test_account_update_updates_optional_fields_and_password(client, monkeypatch):
+    captured: dict[str, object] = {}
+
+    async def _capture_enqueue(payload, defer_seconds: float = 0.0):
+        captured["payload"] = payload
+        return "job-email-change-1"
+
+    monkeypatch.setattr("app.http.routes.auth.enqueue_template_email", _capture_enqueue)
+
     await client.post(
         "/api/auth/register",
         json={"email": "account-update@example.com", "password": "SuperSecret123", "display_name": "Old Name"},
@@ -481,8 +489,9 @@ async def test_account_update_updates_optional_fields_and_password(client):
         },
     )
     assert update_res.status_code == 200
-    updated_user = update_res.json()["user"]
-    assert updated_user["email"] == "account-update-new@example.com"
+    update_payload = update_res.json()
+    updated_user = update_payload["user"]
+    assert updated_user["email"] == "account-update@example.com"
     assert updated_user["display_name"] == "New Name"
     assert updated_user["phone_number"] == "010-1234-5678"
     assert updated_user["billing_address_line1"] == "123 Blossom St"
@@ -493,6 +502,16 @@ async def test_account_update_updates_optional_fields_and_password(client):
     assert updated_user["billing_postal_code"] == "04524"
     assert updated_user["birthday"] == "1990-01-01"
     assert updated_user["ui_locale"] == "en"
+    assert update_payload["pending_email_change_to"] == "account-update-new@example.com"
+    code = _extract_otp_code(captured["payload"])
+
+    confirm_res = await client.post(
+        "/api/auth/account/email-change/confirm",
+        cookies={"bominal_session": session_cookie},
+        json={"email": "account-update-new@example.com", "code": code},
+    )
+    assert confirm_res.status_code == 200
+    assert confirm_res.json()["user"]["email"] == "account-update-new@example.com"
 
     old_password_login = await client.post(
         "/api/auth/login",
@@ -540,6 +559,94 @@ async def test_account_update_rejects_duplicate_email_and_display_name(client):
     )
     assert duplicate_display_name.status_code == 400
     assert duplicate_display_name.json()["detail"] == "Display name already registered"
+
+
+@pytest.mark.asyncio
+async def test_passkey_http_routes_with_mocked_service(client, monkeypatch):
+    await client.post(
+        "/api/auth/register",
+        json={"email": "passkey-http@example.com", "password": "SuperSecret123", "display_name": "Passkey HTTP"},
+    )
+    login_res = await client.post(
+        "/api/auth/login",
+        json={"email": "passkey-http@example.com", "password": "SuperSecret123", "remember_me": False},
+    )
+    session_cookie = login_res.cookies.get("bominal_session")
+    assert session_cookie
+
+    created_at = datetime.now(timezone.utc)
+    stored_passkey_id = str(uuid4())
+    challenge_id = str(uuid4())
+    auth_challenge_id = str(uuid4())
+
+    async def _list_passkeys(_db, *, user_id):  # noqa: ANN001
+        return [SimpleNamespace(id=stored_passkey_id, created_at=created_at, last_used_at=None)]
+
+    async def _begin_register(_db, *, user):  # noqa: ANN001
+        return challenge_id, {"challenge": "reg", "user": {"id": "AQID"}}
+
+    async def _finish_register(_db, *, user, challenge_id, credential):  # noqa: ANN001
+        assert credential["id"] == "cred-id"
+        return SimpleNamespace(id=stored_passkey_id, created_at=created_at, last_used_at=None)
+
+    async def _delete_passkey(_db, *, user_id, passkey_id):  # noqa: ANN001
+        return str(passkey_id) == stored_passkey_id
+
+    async def _begin_auth(_db, *, email, user):  # noqa: ANN001
+        return auth_challenge_id, {"challenge": "auth", "allowCredentials": []}
+
+    async def _finish_auth(_db, *, email, user, challenge_id, credential):  # noqa: ANN001
+        assert credential["id"] == "cred-id"
+        return None
+
+    monkeypatch.setattr("app.http.routes.auth.ensure_passkeys_enabled", lambda: None)
+    monkeypatch.setattr("app.http.routes.auth.list_passkeys", _list_passkeys)
+    monkeypatch.setattr("app.http.routes.auth.begin_passkey_registration", _begin_register)
+    monkeypatch.setattr("app.http.routes.auth.complete_passkey_registration", _finish_register)
+    monkeypatch.setattr("app.http.routes.auth.delete_passkey", _delete_passkey)
+    monkeypatch.setattr("app.http.routes.auth.begin_passkey_authentication", _begin_auth)
+    monkeypatch.setattr("app.http.routes.auth.complete_passkey_authentication", _finish_auth)
+
+    listed = await client.get("/api/auth/passkeys", cookies={"bominal_session": session_cookie})
+    assert listed.status_code == 200
+    assert listed.json()["credentials"][0]["id"] == stored_passkey_id
+
+    register_options = await client.post(
+        "/api/auth/passkeys/register/options",
+        cookies={"bominal_session": session_cookie},
+    )
+    assert register_options.status_code == 200
+    assert register_options.json()["challenge_id"] == challenge_id
+
+    register_verify = await client.post(
+        "/api/auth/passkeys/register/verify",
+        cookies={"bominal_session": session_cookie},
+        json={"challenge_id": challenge_id, "credential": {"id": "cred-id"}},
+    )
+    assert register_verify.status_code == 200
+    assert register_verify.json()["id"] == stored_passkey_id
+
+    remove_res = await client.delete(
+        f"/api/auth/passkeys/{stored_passkey_id}",
+        cookies={"bominal_session": session_cookie},
+    )
+    assert remove_res.status_code == 200
+
+    auth_options = await client.post("/api/auth/passkeys/auth/options", json={"email": "passkey-http@example.com"})
+    assert auth_options.status_code == 200
+    assert auth_options.json()["challenge_id"] == auth_challenge_id
+
+    auth_verify = await client.post(
+        "/api/auth/passkeys/auth/verify",
+        json={
+            "email": "passkey-http@example.com",
+            "challenge_id": auth_challenge_id,
+            "credential": {"id": "cred-id"},
+            "remember_me": False,
+        },
+    )
+    assert auth_verify.status_code == 200
+    assert "set-cookie" in auth_verify.headers
 
 
 @pytest.mark.asyncio

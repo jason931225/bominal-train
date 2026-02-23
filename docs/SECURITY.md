@@ -11,12 +11,19 @@ Security controls and requirements for bominal.
   - `legacy`: session-cookie auth
   - `supabase`: Bearer JWT auth verified against Supabase JWKS
   - `dual`: Bearer JWT first, cookie fallback
+- Optional passkey auth is enabled via WebAuthn for session-auth flows:
+  - authenticated passkey enrollment in account/signup flow
+  - passkey login bootstrap issuing the same session cookie contract
 - Session token stored as hash in DB (`sessions.token_hash`) for cookie mode
 - Cookie flags:
   - `httponly=True`
   - `samesite="lax"`
   - `secure=True` in production only
 - Remember-me lifetime: 90 days; default: 7 days
+- Email-change security contract:
+  - `PATCH /api/auth/account` never applies new email directly.
+  - New email must be verified through a short-lived code/link before change takes effect.
+  - Only after `/api/auth/account/email-change/confirm` succeeds is `users.email` updated.
 
 ## Authorization
 

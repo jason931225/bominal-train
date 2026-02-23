@@ -93,6 +93,13 @@ Module contract:
 - `AUTH_MODE=dual`: Bearer token takes precedence when present; otherwise falls back to session cookie.
 - Session cookie behavior remains `HttpOnly`, `SameSite=Lax`, and `Secure` only in production.
 - Local authorization source of truth remains `users.role_id` / `roles.name` (JWT role claims are not trusted for privilege).
+- Passkeys (WebAuthn) are optional and supported in session-auth flows:
+  - authenticated enrollment (`/api/auth/passkeys/register/options`, `/api/auth/passkeys/register/verify`)
+  - passkey login bootstrap (`/api/auth/passkeys/auth/options`, `/api/auth/passkeys/auth/verify`)
+  - account-level passkey listing/removal (`/api/auth/passkeys`, `/api/auth/passkeys/{id}`)
+- Account email changes are two-step:
+  - settings update requests verification to the new email address
+  - email value changes only after `/api/auth/account/email-change/confirm` succeeds
 
 ### API access tiers
 

@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.security import hash_password, new_session_token
-from app.db.models import PasswordResetToken, Secret, Session, Task, User, VerificationToken
+from app.db.models import AuthChallenge, PasswordResetToken, PasskeyCredential, Secret, Session, Task, User, VerificationToken
 from app.modules.train.constants import ACTIVE_TASK_STATES
 from app.schemas.auth import UserOut
 from app.services.wallet import clear_payment_card_cache
@@ -127,6 +127,8 @@ async def delete_account_data(db: AsyncSession, *, user: User) -> None:
         task.updated_at = now
 
     await db.execute(delete(Session).where(Session.user_id == user.id))
+    await db.execute(delete(AuthChallenge).where(AuthChallenge.user_id == user.id))
+    await db.execute(delete(PasskeyCredential).where(PasskeyCredential.user_id == user.id))
     await db.execute(delete(VerificationToken).where(VerificationToken.user_id == user.id))
     await db.execute(delete(PasswordResetToken).where(PasswordResetToken.user_id == user.id))
     await db.execute(delete(Secret).where(Secret.user_id == user.id))
