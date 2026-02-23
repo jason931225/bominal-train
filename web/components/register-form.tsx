@@ -6,18 +6,26 @@ import { z } from "zod";
 
 import { useLocale } from "@/components/locale-provider";
 import { clientApiBaseUrl } from "@/lib/api-base";
+import { registerPasskeyFromSession } from "@/lib/passkey";
+import { ROUTES } from "@/lib/routes";
 import { UI_BUTTON_PRIMARY, UI_FIELD } from "@/lib/ui";
 
 type RegisterFormData = {
   email: string;
   password: string;
   display_name: string;
+  setup_passkey: boolean;
 };
 
 export function RegisterForm() {
   const router = useRouter();
   const { t } = useLocale();
-  const [form, setForm] = useState<RegisterFormData>({ email: "", password: "", display_name: "" });
+  const [form, setForm] = useState<RegisterFormData>({
+    email: "",
+    password: "",
+    display_name: "",
+    setup_passkey: false,
+  });
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<keyof RegisterFormData, string>>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -73,7 +81,31 @@ export function RegisterForm() {
         return;
       }
 
-      router.push("/login?registered=1");
+      if (!form.setup_passkey) {
+        router.push("/login?registered=1");
+        return;
+      }
+
+      const loginResponse = await fetch(`${clientApiBaseUrl}/api/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          email: parsed.data.email,
+          password: parsed.data.password,
+          remember_me: true,
+        }),
+      });
+      if (!loginResponse.ok) {
+        router.push("/login?registered=1");
+        return;
+      }
+
+      const passkeyResult = await registerPasskeyFromSession(clientApiBaseUrl);
+      if (!passkeyResult.ok) {
+        setFormError(passkeyResult.error ?? t("auth.passkeySetupFailed"));
+      }
+      router.push(ROUTES.dashboard);
     } catch {
       setFormError(t("auth.apiUnreachable"));
     } finally {
@@ -130,6 +162,16 @@ export function RegisterForm() {
         />
         {fieldErrors.password ? <p className="mt-1 text-xs text-rose-600">{fieldErrors.password}</p> : null}
       </div>
+
+      <label className="flex items-center gap-2 text-sm text-slate-600">
+        <input
+          type="checkbox"
+          checked={form.setup_passkey}
+          onChange={(event) => setForm((prev) => ({ ...prev, setup_passkey: event.target.checked }))}
+          className="h-4 w-4 rounded border-blossom-300 text-blossom-500 focus:ring-blossom-300"
+        />
+        {t("auth.setupPasskeyAtSignup")}
+      </label>
 
       {formError ? <p className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">{formError}</p> : null}
 

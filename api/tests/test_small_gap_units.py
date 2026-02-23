@@ -6,7 +6,9 @@ from uuid import uuid4
 
 import fakeredis.aioredis
 import pytest
+from argon2.exceptions import InvalidHashError
 
+from app.core import security
 from app.core.config import Settings
 from app.http.routes.notifications import get_email_status
 from app.modules.restaurant.lease import acquire_payment_lease, release_payment_lease
@@ -152,3 +154,13 @@ def test_config_and_schema_validation_small_gaps():
             subject="   ",
             blocks=[],
         )
+
+
+def test_password_needs_rehash_handles_invalid_hash_errors(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _BrokenHasher:
+        @staticmethod
+        def check_needs_rehash(_password_hash: str) -> bool:
+            raise InvalidHashError("invalid hash")
+
+    monkeypatch.setattr(security, "password_hasher", _BrokenHasher())
+    assert security.password_needs_rehash("not-a-valid-hash") is False

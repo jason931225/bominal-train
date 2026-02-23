@@ -108,10 +108,14 @@ runs `infra/scripts/deploy.sh` locally.
 CI-triggered deploys use a **latest baseline with per-service commit-tag overrides**:
 - changed services are pinned to `ghcr.io/...:<commit_sha>`;
 - unchanged services stay on `:latest` to avoid missing-image failures in split-image builds.
+Canonical workflow files:
+- `.github/workflows/ci-infra-quality-gates.yml`
+- `.github/workflows/ci-build-publish-images.yml`
+- `.github/workflows/cd-deploy-production.yml`
 Deploy gating in CI:
-- Deploy workflow is triggered from successful `Infra Tests` completion on `main`.
+- Deploy workflow is triggered from successful `CI - Infra Quality Gates` completion on `main`.
 - Manual dispatches are also gated against prerequisite workflow status for the selected commit.
-- Before publish, CI blocks deploy unless **both** `Infra Tests` and `Build and Push Images` for the same commit completed with `success`.
+- Before publish, CI blocks deploy unless **both** `CI - Infra Quality Gates` and `CI - Build and Publish Images` for the same commit completed with `success`.
 - After publish, CI runs a post-deploy verification gate:
   - production API health must report `db=true` and `redis=true`;
   - production web endpoint must return `200` or `3xx`.
@@ -266,8 +270,8 @@ Optional:
 
 Replace all `CHANGE_ME...` values. Required manual deploy values:
 - `infra/env/prod/postgres.env`: `POSTGRES_PASSWORD`
-- `infra/env/prod/api.env`: `INTERNAL_API_KEY`, `MASTER_KEY`, DB password portions of `DATABASE_URL` and `SYNC_DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_JWT_ISSUER`, `RESEND_API_KEY`, and sender-domain placeholder in `EMAIL_FROM_ADDRESS`
-- `infra/env/prod/web.env`: `NEXT_PUBLIC_API_BASE_URL`
+- `infra/env/prod/api.env`: `INTERNAL_API_KEY`, `MASTER_KEY`, DB password portions of `DATABASE_URL` and `SYNC_DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_JWT_ISSUER`, `RESEND_API_KEY`, sender-domain placeholder in `EMAIL_FROM_ADDRESS`, plus passkey origin settings (`PASSKEY_RP_ID`, `PASSKEY_ORIGIN`)
+- `infra/env/prod/web.env`: `NEXT_PUBLIC_API_BASE_URL`, `API_SERVER_URL` (`http://api-gateway:8000` for split API runtime)
 - `infra/env/prod/caddy.env`: `CADDY_SITE_ADDRESS`, `CADDY_ACME_EMAIL`
 - `infra/env/prod/deploy.env` (optional helper): set `GHCR_USERNAME` + `GHCR_TOKEN` when GHCR packages are private
 
@@ -280,6 +284,7 @@ Production URL scheme enforcement (predeploy gate):
 - `CORS_ORIGINS` entries must be `https://`.
 - `RESEND_API_BASE_URL` must be `https://` when set.
 - `NEXT_PUBLIC_API_BASE_URL` may be empty (recommended same-origin) or must be `https://` if set.
+- `API_SERVER_URL` must be an absolute `http(s)://` URL and must not use legacy `http://api:8000` (use `http://api-gateway:8000`).
 - `SUPABASE_STORAGE_ENABLED=true`: `SUPABASE_SERVICE_ROLE_KEY`
 - `EMAIL_PROVIDER=disabled`: Resend credentials may remain unset
 - `EMAIL_PROVIDER=smtp`: `SMTP_HOST`, `SMTP_PORT`, and SMTP credentials/TLS settings as required
@@ -287,6 +292,7 @@ Production URL scheme enforcement (predeploy gate):
 - `NEXT_PUBLIC_FONT_BASE_URL`: optional remote font base URL (must be `https://` when set). Expected files at that base path: `NotoSansKR-Regular.woff2`, `NotoSerifKR-Regular.woff2`, `NotoSerifKR-SemiBold.woff2`, `NotoSerifKR-Bold.woff2`, `DynaPuff-SemiBold.woff2`
 
 Production note: set `DATABASE_URL` / `SYNC_DATABASE_URL` to your managed Postgres endpoint (for example Supabase Postgres). Local dev defaults remain Docker-local Postgres/Redis.
+Postgres 18 note: compose sets `PGDATA=/var/lib/postgresql/data` for backward compatibility with existing `pgdata` volume layout during image upgrades.
 
 Generate secure `MASTER_KEY`:
 
@@ -360,7 +366,7 @@ for f in infra/env/prod/*.example; do cp "$f" "${f%.example}"; done
 
 Edit each file and replace all `CHANGE_ME` values:
 - `infra/env/prod/postgres.env` - database credentials
-- `infra/env/prod/api.env` - MASTER_KEY, INTERNAL_API_KEY, DATABASE_URL, SUPABASE_URL, SUPABASE_JWT_ISSUER, RESEND_API_KEY, EMAIL_FROM_ADDRESS sender domain
+- `infra/env/prod/api.env` - MASTER_KEY, INTERNAL_API_KEY, DATABASE_URL, SUPABASE_URL, SUPABASE_JWT_ISSUER, RESEND_API_KEY, EMAIL_FROM_ADDRESS sender domain, PASSKEY_RP_ID, PASSKEY_ORIGIN
 - `infra/env/prod/web.env` - keep `NEXT_PUBLIC_API_BASE_URL` empty for same-origin browser API calls
 - `infra/env/prod/caddy.env` - CADDY_SITE_ADDRESS, CADDY_ACME_EMAIL
 

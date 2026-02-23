@@ -1,10 +1,11 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { useLocale } from "@/components/locale-provider";
 import { clientApiBaseUrl } from "@/lib/api-base";
+import { listPasskeysFromSession, registerPasskeyFromSession, removePasskeyFromSession } from "@/lib/passkey";
 import { ROUTES } from "@/lib/routes";
 import type { BominalUser } from "@/lib/types";
 import { UI_BUTTON_PRIMARY, UI_CARD_MD, UI_FIELD, UI_KICKER, UI_TITLE_MD } from "@/lib/ui";
@@ -24,6 +25,18 @@ type AccountFormState = {
   new_password: string;
   new_password_confirm: string;
   current_password: string;
+  email_change_code: string;
+};
+
+type PrefillEmailChange = {
+  email: string;
+  code: string;
+};
+
+type PasskeyListItem = {
+  id: string;
+  created_at: string;
+  last_used_at: string | null;
 };
 
 const DELETE_ACCOUNT_BUTTON_CLASS =
@@ -151,6 +164,7 @@ function buildInitialForm(user: BominalUser): AccountFormState {
     new_password: "",
     new_password_confirm: "",
     current_password: "",
+    email_change_code: "",
   };
 }
 
@@ -164,15 +178,60 @@ async function parseApiErrorMessage(response: Response, fallback: string): Promi
   return text.trim() || fallback;
 }
 
-export function AccountSettingsPanel({ initialUser }: { initialUser: BominalUser }) {
+export function AccountSettingsPanel({
+  initialUser,
+  prefillEmailChange,
+}: {
+  initialUser: BominalUser;
+  prefillEmailChange?: PrefillEmailChange | null;
+}) {
   const router = useRouter();
   const { t } = useLocale();
   const [form, setForm] = useState<AccountFormState>(() => buildInitialForm(initialUser));
   const [baseline, setBaseline] = useState<AccountFormState>(() => buildInitialForm(initialUser));
   const [submitting, setSubmitting] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
+  const [confirmingEmailChange, setConfirmingEmailChange] = useState(false);
+  const [passkeyBusy, setPasskeyBusy] = useState(false);
+  const [passkeyLoading, setPasskeyLoading] = useState(false);
+  const [passkeys, setPasskeys] = useState<PasskeyListItem[]>([]);
+  const [pendingEmailChangeTo, setPendingEmailChangeTo] = useState<string | null>(prefillEmailChange?.email ?? null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (prefillEmailChange?.code) {
+      setForm((current) => ({ ...current, email_change_code: prefillEmailChange.code }));
+    }
+    if (prefillEmailChange?.email) {
+      setPendingEmailChangeTo(prefillEmailChange.email);
+    }
+  }, [prefillEmailChange?.code, prefillEmailChange?.email]);
+
+  useEffect(() => {
+    let active = true;
+    const loadPasskeys = async () => {
+      setPasskeyLoading(true);
+      try {
+        const response = await listPasskeysFromSession(clientApiBaseUrl);
+        if (active) {
+          setPasskeys(response.credentials);
+        }
+      } catch {
+        if (active) {
+          setPasskeys([]);
+        }
+      } finally {
+        if (active) {
+          setPasskeyLoading(false);
+        }
+      }
+    };
+    void loadPasskeys();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const passwordStrength = useMemo(() => {
     if (!form.new_password) return null;
@@ -224,11 +283,16 @@ export function AccountSettingsPanel({ initialUser }: { initialUser: BominalUser
         return;
       }
 
-      const body = (await response.json()) as { user: BominalUser };
+      const body = (await response.json()) as {
+        user: BominalUser;
+        notice?: string;
+        pending_email_change_to?: string | null;
+      };
       const refreshed = buildInitialForm(body.user);
       setBaseline(refreshed);
       setForm(refreshed);
-      setNotice(t("settings.updated"));
+      setPendingEmailChangeTo(body.pending_email_change_to ?? null);
+      setNotice(body.notice ?? t("settings.updated"));
       router.refresh();
     } catch {
       setError(t("settings.updateFailed"));
@@ -258,6 +322,78 @@ export function AccountSettingsPanel({ initialUser }: { initialUser: BominalUser
       setError(t("settings.deleteFailed"));
     } finally {
       setDeletingAccount(false);
+    }
+  };
+
+  const onConfirmEmailChange = async () => {
+    setError(null);
+    setNotice(null);
+    const targetEmail = (pendingEmailChangeTo || "").trim().toLowerCase();
+    const code = form.email_change_code.trim();
+    if (!targetEmail || !code) {
+      setError(t("settings.emailChangeCodeRequired"));
+      return;
+    }
+
+    setConfirmingEmailChange(true);
+    try {
+      const response = await fetch(`${clientApiBaseUrl}/api/auth/account/email-change/confirm`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: targetEmail, code }),
+      });
+      if (!response.ok) {
+        setError(await parseApiErrorMessage(response, t("settings.emailChangeConfirmFailed")));
+        return;
+      }
+      const body = (await response.json()) as { user: BominalUser; notice?: string };
+      const refreshed = buildInitialForm(body.user);
+      refreshed.email_change_code = "";
+      setBaseline(refreshed);
+      setForm(refreshed);
+      setPendingEmailChangeTo(null);
+      setNotice(body.notice ?? t("settings.emailChangeConfirmed"));
+      router.refresh();
+    } catch {
+      setError(t("settings.emailChangeConfirmFailed"));
+    } finally {
+      setConfirmingEmailChange(false);
+    }
+  };
+
+  const onAddPasskey = async () => {
+    setError(null);
+    setNotice(null);
+    setPasskeyBusy(true);
+    try {
+      const result = await registerPasskeyFromSession(clientApiBaseUrl);
+      if (!result.ok) {
+        setError(result.error ?? t("settings.passkeyAddFailed"));
+        return;
+      }
+      const refreshed = await listPasskeysFromSession(clientApiBaseUrl);
+      setPasskeys(refreshed.credentials);
+      setNotice(t("settings.passkeyAdded"));
+    } catch {
+      setError(t("settings.passkeyAddFailed"));
+    } finally {
+      setPasskeyBusy(false);
+    }
+  };
+
+  const onRemovePasskey = async (passkeyId: string) => {
+    setError(null);
+    setNotice(null);
+    setPasskeyBusy(true);
+    try {
+      await removePasskeyFromSession(clientApiBaseUrl, passkeyId);
+      setPasskeys((current) => current.filter((item) => item.id !== passkeyId));
+      setNotice(t("settings.passkeyRemoved"));
+    } catch {
+      setError(t("settings.passkeyRemoveFailed"));
+    } finally {
+      setPasskeyBusy(false);
     }
   };
 
@@ -454,6 +590,77 @@ export function AccountSettingsPanel({ initialUser }: { initialUser: BominalUser
               placeholder={t("settings.currentPasswordRequired")}
             />
           </label>
+
+          {pendingEmailChangeTo ? (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 md:col-span-2">
+              <p className="text-sm font-medium text-amber-800">{t("settings.emailChangePendingTitle")}</p>
+              <p className="mt-1 text-xs text-amber-700">
+                {t("settings.emailChangePendingBody", { email: pendingEmailChangeTo })}
+              </p>
+              <label className="mt-3 block text-sm text-slate-700">
+                {t("settings.emailChangeCode")}
+                <input
+                  type="text"
+                  value={form.email_change_code}
+                  onChange={(event) => setForm((current) => ({ ...current, email_change_code: event.target.value }))}
+                  className={`mt-1 ${UI_FIELD}`}
+                  placeholder={t("settings.emailChangeCodePlaceholder")}
+                />
+              </label>
+              <button
+                type="button"
+                onClick={onConfirmEmailChange}
+                disabled={submitting || deletingAccount || confirmingEmailChange}
+                className="mt-3 inline-flex h-10 items-center justify-center rounded-full border border-amber-300 bg-white px-4 text-sm font-medium text-amber-800 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {confirmingEmailChange ? t("common.saving") : t("settings.confirmEmailChange")}
+              </button>
+            </div>
+          ) : null}
+
+          <div className="rounded-2xl border border-blossom-100 bg-white p-3 md:col-span-2">
+            <p className="text-sm font-medium text-slate-900">{t("settings.passkeyTitle")}</p>
+            <p className="mt-1 text-xs text-slate-600">{t("settings.passkeyBody")}</p>
+            <button
+              type="button"
+              onClick={onAddPasskey}
+              disabled={submitting || deletingAccount || passkeyBusy}
+              className="mt-3 inline-flex h-10 items-center justify-center rounded-full border border-blossom-200 bg-blossom-50 px-4 text-sm font-medium text-blossom-700 transition hover:bg-blossom-100 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {passkeyBusy ? t("common.saving") : t("settings.addPasskey")}
+            </button>
+            {passkeyLoading ? (
+              <p className="mt-2 text-xs text-slate-500">{t("common.loading")}</p>
+            ) : passkeys.length === 0 ? (
+              <p className="mt-2 text-xs text-slate-500">{t("settings.passkeyEmpty")}</p>
+            ) : (
+              <ul className="mt-3 space-y-2">
+                {passkeys.map((item) => (
+                  <li
+                    key={item.id}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700"
+                  >
+                    <div>
+                      <p>{t("settings.passkeyCreatedAt", { date: new Date(item.created_at).toLocaleString() })}</p>
+                      <p>
+                        {item.last_used_at
+                          ? t("settings.passkeyLastUsedAt", { date: new Date(item.last_used_at).toLocaleString() })
+                          : t("settings.passkeyNeverUsed")}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => onRemovePasskey(item.id)}
+                      disabled={submitting || deletingAccount || passkeyBusy}
+                      className="inline-flex h-8 items-center justify-center rounded-full border border-rose-200 bg-white px-3 text-xs font-medium text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {t("common.delete")}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
 
           <div className="md:col-span-2">
             <button type="submit" disabled={submitting || deletingAccount} className={UI_BUTTON_PRIMARY}>
