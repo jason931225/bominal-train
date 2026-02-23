@@ -62,6 +62,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Changed
 
+- [0021408] Fixed production reverse-proxy module routing so `/api/train/*` and `/api/restaurant/*` are sent to their domain API services instead of `api-gateway`, resolving train endpoint `404 Not Found` failures for task/credential flows (`infra/caddy/Caddyfile`).
 - [eecba4c] Fixed slow/blank dashboard behavior caused by stalled server-side auth/module fetches by adding timeout-bounded server fetches with safe fallback, updated dev web internal API default to split runtime host (`api-gateway`), and hardened predeploy validation to reject legacy `API_SERVER_URL=http://api:8000` (`web/lib/server-auth.ts`, `web/app/dashboard/page.tsx`, `infra/env/dev/web.env`, `infra/scripts/predeploy-check.sh`, `infra/tests/test_predeploy_check.sh`, `README.md`).
 - [1841215] Hardened rolling deploy change detection to force-roll missing/stopped services even when image digests are unchanged (including worker containers), and added regression coverage for unchanged-image + missing-worker rollout behavior (`infra/scripts/deploy.sh`, `infra/tests/test_deploy_changed_image_rollout.sh`).
 - [dd48ffb] Documented emergency GCP cost-stop incident handling for rapid billing triage and hard-stop disable/delete flows covering Secret Manager and Artifact Registry (`docs/RUNBOOK.md`).
