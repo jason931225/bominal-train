@@ -291,6 +291,102 @@ describe("passkey helpers", () => {
     expect(result.error).toContain("verify failed");
   });
 
+  it("surfaces client-side WebAuthn errors from browser credential APIs", async () => {
+    installPasskeySupport();
+
+    const createMock = vi
+      .fn()
+      .mockRejectedValueOnce(new DOMException("blocked", "SecurityError"))
+      .mockRejectedValueOnce(new DOMException("", "SecurityError"))
+      .mockRejectedValueOnce(new DOMException("mystery", "UnknownError"))
+      .mockRejectedValueOnce(new Error("browser-create-boom"))
+      .mockRejectedValueOnce("non-error")
+      .mockRejectedValueOnce(new DOMException("", "UnknownError"))
+      .mockRejectedValueOnce(new Error(""));
+    setNavigatorCredentials({ create: createMock });
+
+    installFetchMock([
+      new Response(
+        JSON.stringify({ challenge_id: "c-client-0", public_key: { challenge: "AQID", user: { id: "AQID" } } }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+      new Response(
+        JSON.stringify({ challenge_id: "c-client-1", public_key: { challenge: "AQID", user: { id: "AQID" } } }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+      new Response(
+        JSON.stringify({ challenge_id: "c-client-2", public_key: { challenge: "AQID", user: { id: "AQID" } } }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+      new Response(
+        JSON.stringify({ challenge_id: "c-client-3", public_key: { challenge: "AQID", user: { id: "AQID" } } }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+      new Response(
+        JSON.stringify({ challenge_id: "c-client-4", public_key: { challenge: "AQID", user: { id: "AQID" } } }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+      new Response(
+        JSON.stringify({ challenge_id: "c-client-5", public_key: { challenge: "AQID", user: { id: "AQID" } } }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+      new Response(
+        JSON.stringify({ challenge_id: "c-client-6", public_key: { challenge: "AQID", user: { id: "AQID" } } }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    ]);
+
+    let result = await registerPasskeyFromSession("http://api");
+    expect(result).toEqual({
+      ok: false,
+      error: "Passkey security check failed: blocked. Use http://localhost:3000 for local development.",
+    });
+
+    result = await registerPasskeyFromSession("http://api");
+    expect(result).toEqual({
+      ok: false,
+      error: "Passkey security check failed. Use http://localhost:3000 for local development.",
+    });
+
+    result = await registerPasskeyFromSession("http://api");
+    expect(result).toEqual({ ok: false, error: "mystery" });
+
+    result = await registerPasskeyFromSession("http://api");
+    expect(result).toEqual({ ok: false, error: "browser-create-boom" });
+
+    result = await registerPasskeyFromSession("http://api");
+    expect(result).toEqual({ ok: false, error: "Could not start passkey setup." });
+
+    result = await registerPasskeyFromSession("http://api");
+    expect(result).toEqual({ ok: false, error: "Could not start passkey setup." });
+
+    result = await registerPasskeyFromSession("http://api");
+    expect(result).toEqual({ ok: false, error: "Could not start passkey setup." });
+
+    const getMock = vi
+      .fn()
+      .mockRejectedValueOnce(new DOMException("denied", "NotAllowedError"))
+      .mockRejectedValueOnce(new DOMException("aborted", "AbortError"));
+    setNavigatorCredentials({ get: getMock });
+
+    installFetchMock([
+      new Response(
+        JSON.stringify({ challenge_id: "a-client-0", public_key: { challenge: "AQID", allowCredentials: [] } }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+      new Response(
+        JSON.stringify({ challenge_id: "a-client-1", public_key: { challenge: "AQID", allowCredentials: [] } }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    ]);
+
+    let signInResult = await signInWithPasskey("http://api", { email: "user@example.com", rememberMe: false });
+    expect(signInResult).toEqual({ ok: false, error: "Passkey operation was cancelled or timed out." });
+
+    signInResult = await signInWithPasskey("http://api", { email: "user@example.com", rememberMe: false });
+    expect(signInResult).toEqual({ ok: false, error: "Passkey operation was interrupted." });
+  });
+
   it("signs in with passkey", async () => {
     installPasskeySupport();
     setNavigatorCredentials({

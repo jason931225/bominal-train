@@ -13,6 +13,29 @@ export type PasskeyOperationResult = {
   error?: string;
 };
 
+function parseClientWebAuthnError(error: unknown, fallback: string): string {
+  const domExceptionMessages: Record<string, string> = {
+    NotAllowedError: "Passkey operation was cancelled or timed out.",
+    InvalidStateError: "This passkey is already registered on this device for this account.",
+    NotSupportedError: "Passkeys are not supported on this device/browser.",
+    AbortError: "Passkey operation was interrupted.",
+  };
+  if (error instanceof DOMException) {
+    if (error.name === "SecurityError") {
+      const detail = error.message.trim();
+      if (detail) {
+        return `Passkey security check failed: ${detail}. Use http://localhost:3000 for local development.`;
+      }
+      return "Passkey security check failed. Use http://localhost:3000 for local development.";
+    }
+    return domExceptionMessages[error.name] ?? (error.message || fallback);
+  }
+  if (error instanceof Error) {
+    return error.message || fallback;
+  }
+  return fallback;
+}
+
 function normalizeBase64Url(value: string): string {
   const padded = value.replace(/-/g, "+").replace(/_/g, "/");
   return padded + "=".repeat((4 - (padded.length % 4 || 4)) % 4);
@@ -133,9 +156,17 @@ export async function registerPasskeyFromSession(apiBaseUrl: string): Promise<Pa
   }
 
   const optionsBody = (await optionsResponse.json()) as PasskeyRegistrationOptionsResponse;
-  const creation = await navigator.credentials.create({
-    publicKey: normalizeCreationOptions(optionsBody.public_key),
-  });
+  let creation: Credential | null = null;
+  try {
+    creation = await navigator.credentials.create({
+      publicKey: normalizeCreationOptions(optionsBody.public_key),
+    });
+  } catch (error: unknown) {
+    return {
+      ok: false,
+      error: parseClientWebAuthnError(error, "Could not start passkey setup."),
+    };
+  }
   if (!creation) {
     return { ok: false, error: "Passkey setup was cancelled." };
   }
@@ -175,9 +206,17 @@ export async function signInWithPasskey(
   }
 
   const optionsBody = (await optionsResponse.json()) as PasskeyAuthenticationOptionsResponse;
-  const assertion = await navigator.credentials.get({
-    publicKey: normalizeRequestOptions(optionsBody.public_key),
-  });
+  let assertion: Credential | null = null;
+  try {
+    assertion = await navigator.credentials.get({
+      publicKey: normalizeRequestOptions(optionsBody.public_key),
+    });
+  } catch (error: unknown) {
+    return {
+      ok: false,
+      error: parseClientWebAuthnError(error, "Could not start passkey sign in."),
+    };
+  }
   if (!assertion) {
     return { ok: false, error: "Passkey sign in was cancelled." };
   }
