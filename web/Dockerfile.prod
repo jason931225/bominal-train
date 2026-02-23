@@ -1,11 +1,13 @@
-FROM node:24-alpine AS deps
+# syntax=docker/dockerfile:1.7
+FROM node:24-bookworm-slim AS deps
 
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --prefer-offline --no-audit --no-fund
 
-FROM node:24-alpine AS builder
+FROM node:24-bookworm-slim AS builder
 
 WORKDIR /app
 ENV NODE_ENV=production
@@ -19,13 +21,15 @@ ENV APP_VERSION=${APP_VERSION}
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-RUN npm run build && npm prune --omit=dev
+RUN npm run build
 
-FROM node:24-alpine AS runner
+FROM node:24-bookworm-slim AS runner
 
 WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV HOSTNAME=0.0.0.0
+ENV PORT=3000
 
 ARG BUILD_VERSION=dev
 ENV BUILD_VERSION=${BUILD_VERSION}
@@ -33,13 +37,15 @@ ARG APP_VERSION=0.0.0
 ENV APP_VERSION=${APP_VERSION}
 LABEL org.opencontainers.image.revision=$BUILD_VERSION
 
-COPY package.json package-lock.json ./
-COPY --from=builder /app/node_modules ./node_modules
+RUN groupadd --gid 10001 bominal \
+    && useradd --uid 10001 --gid bominal --home-dir /home/bominal --create-home --shell /usr/sbin/nologin bominal
 
-COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/next.config.mjs ./next.config.mjs
-COPY --from=builder /app/public ./public
+COPY --from=builder --chown=bominal:bominal /app/public ./public
+COPY --from=builder --chown=bominal:bominal /app/.next/standalone ./
+COPY --from=builder --chown=bominal:bominal /app/.next/static ./.next/static
+
+USER bominal
 
 EXPOSE 3000
 
-CMD ["npm", "run", "start", "--", "-H", "0.0.0.0", "-p", "3000"]
+CMD ["node", "server.js"]

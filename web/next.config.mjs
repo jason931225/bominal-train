@@ -8,6 +8,7 @@ function normalizedApiTarget(rawValue) {
 const apiProxyTarget = normalizedApiTarget(process.env.API_SERVER_URL ?? process.env.NEXT_PUBLIC_API_BASE_URL);
 
 const nextConfig = {
+  output: "standalone",
   env: {
     APP_VERSION: process.env.APP_VERSION || "0.0.0",
     BUILD_VERSION: process.env.BUILD_VERSION || "dev",
