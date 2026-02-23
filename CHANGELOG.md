@@ -149,6 +149,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- [0000000] Fixed local passkey enrollment `500` failures by making registration-option generation compatible with current `webauthn` signatures (no hard dependency on deprecated `user_verification` kwarg), and added a regression test that fails if unsupported kwargs are reintroduced (`api/app/services/passkeys.py`, `api/tests/test_passkeys_service.py`).
 - [ac078a8] Fixed changelog gate reliability by switching `infra/tests/test_changelog.sh` to temp-file streaming for Unreleased parsing, eliminating long-shell-substitution hangs on large changelog sections.
 - [3235c90] Prevented Vitest CI runs from loading Playwright e2e specs by excluding `e2e/**` and `playwright.config.ts` from the unit-test runner (`web/vitest.config.ts`).
 - [8938629] Restored wait-reserve-aware seat-class fallback so waitlist-capable KTX/SRT schedules can proceed when direct seat availability is false (`api/app/modules/train/worker.py`).
