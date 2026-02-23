@@ -84,6 +84,23 @@ describe("passkey helpers", () => {
     expect(isPasskeySupported()).toBe(false);
   });
 
+  it("returns unsupported errors when register/sign-in are attempted without passkey support", async () => {
+    Object.defineProperty(globalThis, "PublicKeyCredential", {
+      configurable: true,
+      value: undefined,
+    });
+    setNavigatorCredentials({});
+
+    await expect(registerPasskeyFromSession("http://api")).resolves.toEqual({
+      ok: false,
+      error: "Passkeys are not supported on this device.",
+    });
+    await expect(signInWithPasskey("http://api", { email: "user@example.com", rememberMe: false })).resolves.toEqual({
+      ok: false,
+      error: "Passkeys are not supported on this device.",
+    });
+  });
+
   it("registers a passkey with session credentials", async () => {
     installPasskeySupport();
     setNavigatorCredentials({
@@ -144,7 +161,13 @@ describe("passkey helpers", () => {
 
     installFetchMock([
       new Response(
-        JSON.stringify({ challenge_id: "auth-1", public_key: { challenge: "AQID", allowCredentials: [] } }),
+        JSON.stringify({
+          challenge_id: "auth-1",
+          public_key: {
+            challenge: "AQID",
+            allowCredentials: [{ id: "AQID", type: "public-key" }],
+          },
+        }),
         { status: 200, headers: { "Content-Type": "application/json" } },
       ),
       new Response(JSON.stringify({ user: { id: "u1" } }), { status: 200, headers: { "Content-Type": "application/json" } }),
