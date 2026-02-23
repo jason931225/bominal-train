@@ -11,6 +11,16 @@ on:
       - '.github/workflows/build-push.yml'
   workflow_dispatch:
 
+concurrency:
+  group: build-push-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+  attestations: write
+
 env:
   REGISTRY: ghcr.io
   API_GATEWAY_IMAGE: ghcr.io/${{ github.repository_owner }}/bominal/api-gateway
@@ -82,9 +92,6 @@ jobs:
     needs: changes
     if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.api_gateway == 'true'
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -106,6 +113,7 @@ jobs:
             type=sha,prefix=
             type=raw,value=latest,enable={{is_default_branch}}
       - name: Build and push API gateway image
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: ./api
@@ -116,15 +124,14 @@ jobs:
           build-args: BUILD_VERSION=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=min
+          provenance: mode=max
+          sbom: true
 
   build-api-train:
     name: Build API Train Image
     needs: changes
     if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.api_train == 'true'
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -146,6 +153,7 @@ jobs:
             type=sha,prefix=
             type=raw,value=latest,enable={{is_default_branch}}
       - name: Build and push API train image
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: ./api
@@ -156,15 +164,14 @@ jobs:
           build-args: BUILD_VERSION=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=min
+          provenance: mode=max
+          sbom: true
 
   build-api-restaurant:
     name: Build API Restaurant Image
     needs: changes
     if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.api_restaurant == 'true'
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -186,6 +193,7 @@ jobs:
             type=sha,prefix=
             type=raw,value=latest,enable={{is_default_branch}}
       - name: Build and push API restaurant image
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: ./api
@@ -196,15 +204,14 @@ jobs:
           build-args: BUILD_VERSION=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=min
+          provenance: mode=max
+          sbom: true
 
   build-web:
     name: Build Web Image
     needs: changes
     if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -235,6 +242,7 @@ jobs:
             type=sha,prefix=
             type=raw,value=latest,enable={{is_default_branch}}
       - name: Build and push Web image
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: ./web
@@ -247,3 +255,31 @@ jobs:
             APP_VERSION=${{ steps.app_version.outputs.app_version }}
           cache-from: type=gha
           cache-to: type=gha,mode=min
+          provenance: mode=max
+          sbom: true
+
+  build-summary:
+    name: Build Summary
+    needs: [changes, build-api-gateway, build-api-train, build-api-restaurant, build-web]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Summarize build plan and outcomes
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "### Build and Push Summary"
+            echo ""
+            echo "- Commit: \`${GITHUB_SHA}\`"
+            echo "- API Gateway changed: \`${{ needs.changes.outputs.api_gateway }}\`"
+            echo "- API Train changed: \`${{ needs.changes.outputs.api_train }}\`"
+            echo "- API Restaurant changed: \`${{ needs.changes.outputs.api_restaurant }}\`"
+            echo "- Web changed: \`${{ needs.changes.outputs.web }}\`"
+            echo ""
+            echo "#### Job Results"
+            echo "- build-api-gateway: \`${{ needs['build-api-gateway'].result }}\`"
+            echo "- build-api-train: \`${{ needs['build-api-train'].result }}\`"
+            echo "- build-api-restaurant: \`${{ needs['build-api-restaurant'].result }}\`"
+            echo "- build-web: \`${{ needs['build-web'].result }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

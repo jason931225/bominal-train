@@ -8,6 +8,10 @@ on:
 
   workflow_dispatch:
 
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
 permissions:
   actions: read
   contents: read
@@ -17,6 +21,7 @@ env:
   DEPLOY_PUBSUB_TOPIC: bominal-deploy-requests
   PROD_HEALTHCHECK_URL: https://www.bominal.com/health
   PROD_WEB_URL: https://www.bominal.com/
+  GHCR_NAMESPACE: ghcr.io/${{ github.repository_owner }}/bominal
 
   GCP_PROJECT_ID: bominal
   GCP_REGION: us-central1
@@ -33,11 +38,13 @@ jobs:
         github.event.workflow_run.conclusion == 'success'
       )
     runs-on: ubuntu-latest
+    environment: production
 
     steps:
       - uses: actions/checkout@v4
 
       - name: Gate on successful Infra + image build workflows for same commit
+        id: prereq
         uses: actions/github-script@v7
         with:
           script: |
@@ -102,6 +109,46 @@ jobs:
 
             core.info(`Prerequisite workflows succeeded for ${targetSha}; deploy gate passed.`);
 
+            const buildRun = selected.get("Build and Push Images");
+            const workflowJobs = {
+              "Build API Gateway Image": "api_gateway_changed",
+              "Build API Train Image": "api_train_changed",
+              "Build API Restaurant Image": "api_restaurant_changed",
+              "Build Web Image": "web_changed",
+            };
+            const changed = {
+              api_gateway_changed: false,
+              api_train_changed: false,
+              api_restaurant_changed: false,
+              web_changed: false,
+            };
+
+            let page = 1;
+            while (true) {
+              const { data } = await github.rest.actions.listJobsForWorkflowRun({
+                owner,
+                repo,
+                run_id: buildRun.id,
+                per_page: 100,
+                page,
+              });
+              for (const job of data.jobs) {
+                const key = workflowJobs[job.name];
+                if (!key) continue;
+                changed[key] = job.conclusion === "success";
+                core.info(`Build job '${job.name}' conclusion=${job.conclusion}`);
+              }
+              if (data.jobs.length < 100) break;
+              page += 1;
+            }
+
+            core.setOutput("target_sha", targetSha);
+            core.setOutput("build_run_id", String(buildRun.id));
+            core.setOutput("api_gateway_changed", String(changed.api_gateway_changed));
+            core.setOutput("api_train_changed", String(changed.api_train_changed));
+            core.setOutput("api_restaurant_changed", String(changed.api_restaurant_changed));
+            core.setOutput("web_changed", String(changed.web_changed));
+
       - name: Validate deprecation gates
         shell: bash
         run: |
@@ -125,17 +172,49 @@ jobs:
         run: |
           set -euo pipefail
 
-          workflow_commit="${{ github.event.workflow_run.head_sha }}"
-          default_commit="${{ github.sha }}"
-
+          commit="${{ steps.prereq.outputs.target_sha }}"
           mode="latest"
-          commit="${workflow_commit:-$default_commit}"
+          ghcr_namespace="${{ env.GHCR_NAMESPACE }}"
+
+          api_gateway_image=""
+          api_train_image=""
+          api_restaurant_image=""
+          worker_train_image=""
+          worker_restaurant_image=""
+          web_image=""
+
+          if [[ "${{ steps.prereq.outputs.api_gateway_changed }}" == "true" ]]; then
+            api_gateway_image="${ghcr_namespace}/api-gateway:${commit}"
+          fi
+          if [[ "${{ steps.prereq.outputs.api_train_changed }}" == "true" ]]; then
+            api_train_image="${ghcr_namespace}/api-train:${commit}"
+            worker_train_image="${ghcr_namespace}/api-train:${commit}"
+          fi
+          if [[ "${{ steps.prereq.outputs.api_restaurant_changed }}" == "true" ]]; then
+            api_restaurant_image="${ghcr_namespace}/api-restaurant:${commit}"
+            worker_restaurant_image="${ghcr_namespace}/api-restaurant:${commit}"
+          fi
+          if [[ "${{ steps.prereq.outputs.web_changed }}" == "true" ]]; then
+            web_image="${ghcr_namespace}/web:${commit}"
+          fi
 
           echo "Deploy request:"
           echo "  mode:   $mode"
           echo "  commit: $commit"
+          echo "  api_gateway_image: ${api_gateway_image:-<latest>}"
+          echo "  api_train_image: ${api_train_image:-<latest>}"
+          echo "  api_restaurant_image: ${api_restaurant_image:-<latest>}"
+          echo "  worker_train_image: ${worker_train_image:-<latest>}"
+          echo "  worker_restaurant_image: ${worker_restaurant_image:-<latest>}"
+          echo "  web_image: ${web_image:-<latest>}"
 
           export DEPLOY_COMMIT="$commit"
+          export DEPLOY_API_GATEWAY_IMAGE="$api_gateway_image"
+          export DEPLOY_API_TRAIN_IMAGE="$api_train_image"
+          export DEPLOY_API_RESTAURANT_IMAGE="$api_restaurant_image"
+          export DEPLOY_WORKER_TRAIN_IMAGE="$worker_train_image"
+          export DEPLOY_WORKER_RESTAURANT_IMAGE="$worker_restaurant_image"
+          export DEPLOY_WEB_IMAGE="$web_image"
 
           # Publish without a preflight `topics describe` to keep least privilege
           # (roles/pubsub.publisher doesn't include pubsub.topics.get).
@@ -147,6 +226,12 @@ jobs:
               "action": "deploy",
               "mode": "latest",
               "commit": os.environ.get("DEPLOY_COMMIT", ""),
+              "api_gateway_image": os.environ.get("DEPLOY_API_GATEWAY_IMAGE", ""),
+              "api_train_image": os.environ.get("DEPLOY_API_TRAIN_IMAGE", ""),
+              "api_restaurant_image": os.environ.get("DEPLOY_API_RESTAURANT_IMAGE", ""),
+              "worker_train_image": os.environ.get("DEPLOY_WORKER_TRAIN_IMAGE", ""),
+              "worker_restaurant_image": os.environ.get("DEPLOY_WORKER_RESTAURANT_IMAGE", ""),
+              "web_image": os.environ.get("DEPLOY_WEB_IMAGE", ""),
               "actor": os.environ.get("GITHUB_ACTOR", ""),
               "event": os.environ.get("GITHUB_EVENT_NAME", ""),
               "run_id": os.environ.get("GITHUB_RUN_ID", ""),
@@ -162,6 +247,12 @@ jobs:
             --attribute="app=bominal" \
             --attribute="mode=latest" \
             --attribute="commit=$commit" \
+            --attribute="api_gateway_image=$api_gateway_image" \
+            --attribute="api_train_image=$api_train_image" \
+            --attribute="api_restaurant_image=$api_restaurant_image" \
+            --attribute="worker_train_image=$worker_train_image" \
+            --attribute="worker_restaurant_image=$worker_restaurant_image" \
+            --attribute="web_image=$web_image" \
             --attribute="run_id=${{ github.run_id }}" \
             --attribute="run_attempt=${{ github.run_attempt }}"
 

@@ -40,6 +40,7 @@ Deploy script guardrails:
 - Logs tracked working-tree dirty state before deploy; set `DEPLOY_FAIL_ON_DIRTY_REPO=true` to hard-fail on dirty tracked files.
 - GitHub deploy workflow guardrails:
   - deploy request is published only after same-commit `Infra Tests` and `Build and Push Images` both succeed (including manual dispatches);
+  - deploy payload pins changed services to commit-tagged GHCR images and leaves unchanged services on latest baseline;
   - post-deploy CI verification checks production `/health` (`db=true`, `redis=true`) and production web endpoint HTTP `200`/`3xx`.
 - VM deploy agent guardrail:
   - `DEPLOY_SCRIPT` must point to canonical `infra/scripts/deploy.sh`; deprecated script paths are rejected fail-closed.
