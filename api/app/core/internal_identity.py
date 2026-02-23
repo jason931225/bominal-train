@@ -99,7 +99,7 @@ def verify_internal_service_token(
     try:
         header = json.loads(_b64url_decode(header_segment).decode("utf-8"))
         claims = json.loads(_b64url_decode(claims_segment).decode("utf-8"))
-    except Exception as exc:  # pragma: no cover - defensive parsing
+    except Exception as exc:
         raise InternalIdentityError("invalid token encoding") from exc
 
     if str(header.get("alg") or "") != "HS256":

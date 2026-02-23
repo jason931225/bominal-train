@@ -37,7 +37,7 @@ def verify_supabase_jwt(token: str) -> dict[str, Any]:
             issuer=settings.supabase_jwt_issuer,
             options={"require": ["exp", "iat", "sub"]},
         )
-    except Exception as exc:  # pragma: no cover - mapped to auth errors in deps
+    except Exception as exc:
         raise SupabaseJWTError("Invalid Supabase JWT") from exc
 
     if not claims.get("sub"):

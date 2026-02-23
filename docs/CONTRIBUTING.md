@@ -105,6 +105,9 @@ Backend tests:
 (cd api && ./.venv/bin/pytest -q)
 ```
 
+- `api/pytest.ini` enforces `--cov=app --cov-fail-under=100` by default.
+- Any backend test run that drops below 100% coverage fails.
+
 Frontend type check:
 
 ```bash
@@ -116,6 +119,18 @@ Frontend unit tests with coverage gate:
 ```bash
 (cd web && npm run test:ci)
 ```
+
+- `web/vitest.config.mts` enforces:
+  - `coverage.all = true`
+  - global thresholds `100/100/100/100` (lines/statements/functions/branches)
+- Any web test run that drops below 100% coverage fails.
+
+Coverage ignore policy (mandatory):
+
+- New `/* c8 ignore */`, `# pragma: no cover`, or equivalent coverage exclusions require:
+  - inline rationale at the annotation site, and
+  - explicit justification in review notes for why deterministic test coverage is not feasible in-scope.
+- Do not add coverage-ignore annotations for convenience.
 
 Frontend E2E tests (containerized, Chromium-enabled profile):
 
