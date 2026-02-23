@@ -74,10 +74,15 @@ describe("dummy task card storage helpers", () => {
   });
 
   it("filters out invalid rows and malformed payloads", () => {
+    const nonStringIdButOtherwiseValid = {
+      ...makeTask("placeholder"),
+      id: 123,
+    };
     window.localStorage.setItem(
       TRAIN_DUMMY_TASKS_STORAGE_KEY,
       JSON.stringify([
         makeTask("valid"),
+        nonStringIdButOtherwiseValid,
         { id: "invalid-no-spec", state: "QUEUED", created_at: "x", updated_at: "y" },
         "bad",
       ]),
