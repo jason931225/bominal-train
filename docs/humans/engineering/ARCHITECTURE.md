@@ -14,7 +14,7 @@ Shared infrastructure:
 - **Postgres** for primary data storage
 - **Redis** split by purpose:
   - non-CDE Redis for queueing + token-bucket rate limiting (`REDIS_URL_NON_CDE` or fallback `REDIS_URL`)
-  - CDE Redis for encrypted CVV TTL cache (`REDIS_URL_CDE` or fallback `REDIS_URL`)
+  - CDE Redis for payment/runtime sensitive flows (`REDIS_URL_CDE` or fallback `REDIS_URL`)
   - CDE Redis endpoint must be non-durable and must not be Upstash-hosted
 - **Mailpit** in local dev (SMTP sink + inbox UI)
 - **Provider egress gateways** (Caddy path-allowlist proxies):
@@ -84,9 +84,10 @@ Module contract:
 
 ### Auth model
 
-- `AUTH_MODE=legacy`: session cookie auth (`bominal_session`) with DB-backed hashed session tokens.
 - `AUTH_MODE=supabase`: stateless Bearer token auth; API verifies Supabase JWT (`iss`/`aud`/`exp`) and maps `sub` to local user role.
-- `AUTH_MODE=dual`: Bearer token takes precedence when present; otherwise falls back to session cookie.
+- `AUTH_MODE=legacy`: session cookie auth (`bominal_session`) with DB-backed hashed session tokens (development/backward-compatibility mode).
+- `AUTH_MODE=dual`: Bearer token takes precedence when present; otherwise falls back to session cookie (development/backward-compatibility mode).
+- Production deploy/predeploy gates enforce `AUTH_MODE=supabase`.
 - Session cookie behavior remains `HttpOnly`, `SameSite=Lax`, and `Secure` only in production.
 - Local authorization source of truth remains `users.role_id` / `roles.name` (JWT role claims are not trusted for privilege).
 - Passkeys (WebAuthn) are optional and supported in session-auth flows:
@@ -239,11 +240,11 @@ Envelope encryption (`api/app/core/crypto/envelope.py`):
 Data controls:
 
 - Redaction helper for logs/safe metadata in `redaction.py`
-- Payment CVV not persisted to Postgres; encrypted short-term cache in Redis
+- Payment CVV is never accepted or stored by wallet APIs
 
 Cardholder Data Environment (CDE) boundary:
 
-- In scope: wallet secret decryption paths, payment execution worker paths, CVV Redis keys, in-memory decrypted PAN/CVV.
+- In scope: wallet secret decryption paths, payment execution worker paths, and in-memory decrypted PAN.
 - Out of scope: web layer, queue payloads, `meta_json_safe`/`data_json_safe`, non-sensitive artifacts, logs.
 - Raw cardholder data must never cross from CDE code paths into non-CDE persistence or transport layers.
 

@@ -8,9 +8,8 @@ Security controls and requirements for bominal.
 
 - Password hashing: Argon2id (`api/app/core/security.py`)
 - Auth mode is controlled by `AUTH_MODE`:
-  - `legacy`: session-cookie auth
-  - `supabase`: Bearer JWT auth verified against Supabase JWKS
-  - `dual`: Bearer JWT first, cookie fallback
+  - production requires `supabase` (Bearer JWT auth verified against Supabase JWKS)
+  - `legacy` and `dual` remain development/backward-compatibility modes only
 - Optional passkey auth is enabled via WebAuthn for session-auth flows:
   - authenticated passkey enrollment in account/signup flow
   - passkey login bootstrap issuing the same session cookie contract
@@ -30,7 +29,8 @@ Security controls and requirements for bominal.
 - Role-based user model (`roles`, `users.role_id`)
 - API access separation:
   - Public: unauthenticated auth bootstrap routes
-  - Authenticated: Supabase Bearer or session-cookie depending on `AUTH_MODE`
+  - Authenticated (production): Supabase Bearer
+  - Authenticated (non-production): Supabase Bearer or session-cookie depending on `AUTH_MODE`
   - Internal-only:
     - `X-Internal-Api-Key` must match `INTERNAL_API_KEY`, or
     - `X-Internal-Service-Token` must be a valid short-lived internal token signed by `INTERNAL_IDENTITY_SECRET`
@@ -72,11 +72,11 @@ Envelope decrypt behavior:
 ## Payment data handling
 
 - Payment card persisted encrypted in `secrets`
-- CVV is not persisted to Postgres
-- CVV is cached temporarily in Redis (encrypted payload) with TTL (`PAYMENT_CVV_TTL_SECONDS`)
+- CVV is not accepted by wallet APIs
+- CVV is never cached or persisted by bominal
 - Redis routing is split by purpose:
   - `REDIS_URL_NON_CDE`: queueing, rate limiting, non-sensitive cache
-  - `REDIS_URL_CDE`: CDE-only CVV cache
+  - `REDIS_URL_CDE`: CDE runtime-sensitive flows
   - `REDIS_URL_CDE` falls back to `REDIS_URL` when unset
 
 ## PCI Relay Worker Isolation Policy
@@ -85,7 +85,7 @@ Envelope decrypt behavior:
 
 This policy applies to any component that:
 
-- Receives raw cardholder data (PAN, expiry, CVV)
+- Receives raw cardholder data (PAN, expiry)
 - Transmits cardholder data to third-party providers
 - Decrypts stored card payload for provider submission
 
@@ -97,9 +97,8 @@ The CDE includes:
 
 - API code paths that decrypt wallet secrets
 - Any worker that constructs provider payment requests
-- Redis keys storing encrypted CVV
 - Envelope decryption logic for card payload
-- Any runtime memory holding decrypted PAN/CVV
+- Any runtime memory holding decrypted PAN
 
 The CDE explicitly does not include:
 
@@ -144,13 +143,11 @@ Logging prohibition:
 
 Violation of this section is CRITICAL.
 
-### 3. Redis CVV Handling
+### 3. Legacy CVV Cache Cleanup
 
-- CVV may exist only in Redis
-- Redis must enforce TTL (`PAYMENT_CVV_TTL_SECONDS`)
-- TTL must be set on write, not extended indefinitely
-- Redis persistence must not store CVV to durable disk snapshots in production
-- Redis AOF/RDB configuration must be reviewed before enabling persistence
+- CVV caching is deprecated and disabled for wallet updates.
+- Legacy keys may still exist from older releases and must be purged.
+- Run `python -m app.admin_cli secret purge-payment-cvv --yes` to delete current/legacy CVV keys.
 
 CVV must never:
 
@@ -247,7 +244,6 @@ Exception handlers must pass through redaction before emission.
 If retry occurs:
 
 - re-fetch encrypted secret
-- re-fetch CVV from Redis
 - decrypt only in memory
 
 ### 9. Crash and Dump Safety
@@ -263,10 +259,10 @@ Production runtime must:
 The following are automatically CRITICAL:
 
 - Plaintext PAN persistence anywhere
-- CVV persistence outside Redis
+- Any CVV collection/caching/persistence in runtime paths
 - Logging of provider payment payload
 - Queue serialization of card data
-- Missing TTL on CVV
+- Reintroduction of CVV cache write paths
 - Envelope encryption bypass
 - TLS verification disabled
 
@@ -278,7 +274,7 @@ Before any production release affecting payment flows:
 
 Unit tests must verify:
 
-- CVV is never written to Postgres
+- Wallet rejects legacy `cvv` payloads
 - Queue payload schema excludes card fields
 - Redaction function masks PAN patterns
 
@@ -307,7 +303,7 @@ Guardrails override implementation shortcuts. If this policy conflicts with feat
 
 ## PCI relay worker isolation policy
 
-This policy applies to any component that receives raw PAN/CVV, decrypts payment payloads, or submits card data to external providers.
+This policy applies to any component that receives raw PAN/expiry, decrypts payment payloads, or submits card data to external providers.
 
 ### CDE boundary
 
@@ -315,8 +311,7 @@ The Cardholder Data Environment (CDE) includes:
 
 - API code paths that decrypt wallet secrets
 - Workers that construct provider payment requests
-- Redis keys storing encrypted CVV
-- Envelope decryption logic and runtime memory that holds decrypted PAN/CVV
+- Envelope decryption logic and runtime memory that holds decrypted PAN
 
 The CDE explicitly excludes:
 
@@ -339,7 +334,7 @@ Any worker performing payment submission MUST satisfy all requirements below:
 - Memory lifetime:
   - MUST decrypt card payload only immediately before provider submission.
   - MUST drop decrypted references after submission (best-effort zeroization in language/runtime limits).
-  - MUST re-fetch encrypted secret + CVV on retry; MUST NOT reuse persisted plaintext payload.
+  - MUST re-fetch encrypted secret on retry; MUST NOT reuse persisted plaintext payload.
 - Logging prohibition:
   - MUST NOT log request or response bodies containing card data.
   - MUST disable HTTP client debug payload logging.
@@ -354,16 +349,12 @@ Violation of this section is CRITICAL.
 - Structured logging formatters MUST redact message, exception text, and `extra` fields before emission.
 - Provider traces written to `meta_json_safe` / `data_json_safe` MUST pass through redaction first.
 
-### Redis CVV policy
+### Legacy CVV key cleanup policy
 
-- CVV may exist only in Redis and only as encrypted payload.
-- `PAYMENT_CVV_TTL_SECONDS` MUST be bounded by:
-  - `PAYMENT_CVV_TTL_MIN_SECONDS`
-  - `PAYMENT_CVV_TTL_MAX_SECONDS`
-- TTL MUST be set on write and MUST NOT be extended indefinitely.
+- CVV inputs are rejected by wallet APIs and are not cached.
 - CDE Redis endpoint (`REDIS_URL_CDE` or fallback `REDIS_URL`) MUST NOT be Upstash-hosted.
-- Production Redis for CDE workloads MUST NOT persist CVV-bearing keys to disk (`AOF`/`RDB` disabled).
-- CVV-bearing keys MUST be excluded from backups.
+- Legacy CVV keys from prior releases MUST be removed with:
+  - `python -m app.admin_cli secret purge-payment-cvv --yes`
 - CVV MUST NEVER appear in Postgres, queue payloads, artifacts, or logs.
 
 ### Queue safety contract
@@ -422,10 +413,10 @@ Production runtime MUST:
 The following are automatically CRITICAL and block deploy:
 
 - plaintext PAN persistence anywhere
-- CVV persistence outside Redis TTL cache
+- any CVV collection/caching/persistence
 - logging of provider payment payloads
 - queue serialization of card data
-- missing CVV TTL on Redis writes
+- reintroduction of CVV cache write paths
 - envelope encryption bypass
 - TLS verification disabled on provider payment egress
 

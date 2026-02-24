@@ -11,7 +11,6 @@ type PaymentFormState = {
   cardNumber: string;
   expiryMonth: string;
   expiryYear: string;
-  cvv: string;
   birthDate: string;
   pin2: string;
 };
@@ -20,7 +19,6 @@ const EMPTY_FORM: PaymentFormState = {
   cardNumber: "",
   expiryMonth: "",
   expiryYear: "",
-  cvv: "",
   birthDate: "",
   pin2: "",
 };
@@ -97,7 +95,6 @@ export function PaymentSettingsPanel() {
           card_number: form.cardNumber,
           expiry_month: expiryMonth,
           expiry_year: expiryYear,
-          cvv: form.cvv,
           birth_date: form.birthDate,
           pin2: form.pin2,
         }),
@@ -222,21 +219,6 @@ export function PaymentSettingsPanel() {
             />
           </label>
         </div>
-
-        <label className="text-sm text-slate-700">
-          {t("wallet.cvv")}
-          <input
-            type="password"
-            inputMode="numeric"
-            autoComplete="cc-csc"
-            value={form.cvv}
-            onChange={(event) => setForm((current) => ({ ...current, cvv: event.target.value }))}
-            className={`mt-1 ${UI_FIELD}`}
-            placeholder={t("wallet.cvvPlaceholder")}
-            maxLength={4}
-            required
-          />
-        </label>
 
         <label className="text-sm text-slate-700">
           {t("wallet.dob")}

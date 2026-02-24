@@ -20,7 +20,8 @@
 ## Payment and CDE
 
 - PAN/CVV must not persist outside approved CDE boundaries
-- CVV may exist only as encrypted Redis TTL cache
+- CVV must not be collected, accepted, cached, or persisted by bominal
+- Legacy CVV cache keys (if any) must be purged via admin controls
 - no raw provider payment payload logging/persistence
 - payment egress must be allowlisted with TLS verification enabled
 

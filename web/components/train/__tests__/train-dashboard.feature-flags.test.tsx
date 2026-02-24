@@ -122,7 +122,6 @@ describe("TrainDashboard feature-flag and fallback branches", () => {
           expiry_month: 12,
           expiry_year: 2030,
           updated_at: "2026-02-22T10:00:00+09:00",
-          cvv_cached_until: null,
           detail: null,
         });
       }
@@ -312,7 +311,6 @@ describe("TrainDashboard feature-flag and fallback branches", () => {
             expiry_month: 12,
             expiry_year: 2030,
             updated_at: "2026-02-22T10:00:00+09:00",
-            cvv_cached_until: null,
             detail: null,
           });
         }
@@ -381,7 +379,6 @@ describe("TrainDashboard feature-flag and fallback branches", () => {
           expiry_month: null,
           expiry_year: null,
           updated_at: null,
-          cvv_cached_until: null,
           detail: null,
         });
       }
@@ -443,7 +440,6 @@ describe("TrainDashboard feature-flag and fallback branches", () => {
           expiry_month: 12,
           expiry_year: 2030,
           updated_at: "2026-02-22T10:00:00+09:00",
-          cvv_cached_until: null,
           detail: null,
         });
       }

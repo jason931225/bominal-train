@@ -311,6 +311,22 @@ async def test_db_stats_and_secret_commands(monkeypatch, capsys):
     assert "Payment Data Purge" in out
     assert "total" in out.lower()
 
+    await admin_cli.secret_purge_payment_cvv(yes=False)
+    assert "Refusing to purge cached CVV data" in capsys.readouterr().out
+
+    async def _fake_purge_cvv() -> dict[str, int]:
+        return {
+            "redis_cvv_keys_deleted_current": 4,
+            "redis_cvv_keys_deleted_legacy": 1,
+            "redis_cvv_keys_deleted_total": 5,
+        }
+
+    monkeypatch.setattr(admin_cli, "purge_cached_payment_cvv_data", _fake_purge_cvv)
+    await admin_cli.secret_purge_payment_cvv(yes=True)
+    out = capsys.readouterr().out
+    assert "Payment CVV Cache Purge" in out
+    assert "total" in out.lower()
+
 
 @pytest.mark.asyncio
 async def test_secret_rotate_kek_branches(monkeypatch, capsys):

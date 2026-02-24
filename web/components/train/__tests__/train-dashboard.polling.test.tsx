@@ -144,7 +144,6 @@ describe("TrainDashboard polling behavior", () => {
               expiry_month: 12,
               expiry_year: 2030,
               updated_at: "2026-02-15T11:00:00+09:00",
-              cvv_cached_until: null,
               detail: null,
             }),
             { status: 200, headers: { "Content-Type": "application/json" } },

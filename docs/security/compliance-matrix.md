@@ -13,7 +13,7 @@
 | Session cookie security (`HttpOnly`, `SameSite=Lax`, `Secure` in prod) | `api/app/services/auth.py`, `api/app/http/deps.py`, `docs/humans/security/SECURITY.md` | `api/tests/test_auth_flow.py` |
 | Password hashing + session token hashing | `api/app/core/security.py`, `api/app/services/auth.py` | `api/tests/test_auth_flow.py` |
 | Envelope encryption AES-256-GCM + per-record DEK + `kek_version` | `api/app/core/crypto/envelope.py`, `api/app/core/crypto/secrets_store.py` | `api/tests/test_crypto_envelope.py` |
-| CVV only in Redis bounded TTL | `api/app/services/wallet.py`, `api/app/core/config.py`, `infra/env/*/api.env*` | `api/tests/test_wallet.py`, `api/tests/test_security_config.py` |
+| CVV rejected at API boundary + legacy CVV cache purge controls | `api/app/schemas/wallet.py`, `api/app/services/wallet.py`, `api/app/admin_cli.py` | `api/tests/test_wallet.py`, `api/tests/test_admin_cli_units.py` |
 | Redaction boundary enforcement | `api/app/core/crypto/redaction.py`, `api/app/core/logging.py`, `api/app/main.py` | `api/tests/test_crypto_redaction.py`, `api/tests/test_logging_redaction.py` |
 | Safe metadata only (`meta_json_safe`, `data_json_safe`) | `api/app/core/crypto/safe_metadata.py`, `api/app/modules/train/*.py`, `api/app/modules/restaurant/worker.py` | `api/tests/test_safe_metadata.py` |
 | Queue payload safety | `api/app/modules/train/queue.py`, `api/app/modules/restaurant/queue.py` | `api/tests/test_queue_payload_safety.py` |
@@ -26,7 +26,7 @@
 Deployment must be blocked when CRITICAL controls fail, including:
 
 - raw PAN/CVV in logs/queues/artifacts
-- CVV persistence outside Redis TTL cache
+- any CVV collection/caching/persistence in runtime paths
 - disabled TLS verification on provider payment egress
 - missing/enforcement-bypassed `kek_version` at decrypt boundaries
 - non-allowlisted provider egress host usage
