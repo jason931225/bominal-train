@@ -6,8 +6,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.http.deps import get_current_approved_user, require_payment_enabled
 from app.db.models import User
 from app.db.session import get_db
-from app.schemas.wallet import PaymentCardSetRequest, PaymentCardStatusResponse
-from app.services.wallet import clear_payment_card, get_payment_card_status, set_payment_card
+from app.schemas.wallet import PaymentCardConfiguredResponse, PaymentCardSetRequest, PaymentCardStatusResponse
+from app.services.wallet import (
+    clear_payment_card,
+    get_payment_card_configured,
+    get_payment_card_status,
+    set_payment_card,
+)
 
 router = APIRouter(
     prefix="/api/wallet",
@@ -22,6 +27,14 @@ async def get_wallet_payment_card(
     db: AsyncSession = Depends(get_db),
 ) -> PaymentCardStatusResponse:
     return await get_payment_card_status(db, user=user)
+
+
+@router.get("/payment-card/configured", response_model=PaymentCardConfiguredResponse)
+async def get_wallet_payment_card_configured(
+    user: User = Depends(get_current_approved_user),
+    db: AsyncSession = Depends(get_db),
+) -> PaymentCardConfiguredResponse:
+    return await get_payment_card_configured(db, user=user)
 
 
 @router.post("/payment-card", response_model=PaymentCardStatusResponse)

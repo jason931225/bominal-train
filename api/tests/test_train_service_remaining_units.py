@@ -439,6 +439,29 @@ async def test_service_remaining_pause_resume_retry_cancel_and_pay_branches(monk
     monkeypatch.setattr(train_service, "enqueue_train_task", _enqueue)
     resumed = await train_service.resume_task(db, task_id=uuid4(), user=user)
     assert paused_task.state == "QUEUED"
+    assert paused_task.paused_at is None
+
+    paused_flag_task = _task(state="RUNNING")
+    paused_flag_task.paused_at = now
+
+    async def _paused_flag_task(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        return paused_flag_task
+
+    monkeypatch.setattr(train_service, "get_task_for_user", _paused_flag_task)
+    await train_service.resume_task(db, task_id=uuid4(), user=user)
+    assert paused_flag_task.state == "QUEUED"
+    assert paused_flag_task.paused_at is None
+
+    terminal_paused_flag_task = _task(state="COMPLETED")
+    terminal_paused_flag_task.paused_at = now
+
+    async def _terminal_paused_flag_task(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        return terminal_paused_flag_task
+
+    monkeypatch.setattr(train_service, "get_task_for_user", _terminal_paused_flag_task)
+    with pytest.raises(HTTPException) as terminal_paused_resume:
+        await train_service.resume_task(db, task_id=uuid4(), user=user)
+    assert terminal_paused_resume.value.status_code == 400
 
     not_paused_task = _task(state="RUNNING")
     async def _not_paused_task(*_args, **_kwargs):  # noqa: ANN002, ANN003

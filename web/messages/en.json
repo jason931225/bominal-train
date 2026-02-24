@@ -467,10 +467,16 @@
       "retryable": "Retryable",
       "duration": "Duration",
       "started": "Started",
+      "finished": "Finished",
+      "errorCode": "Error code",
+      "metadata": "Metadata",
       "error": "Error"
     },
     "attemptPagination": {
       "actionsPerPage": "Actions per page",
+      "sort": "Sort",
+      "newestFirst": "Newest first",
+      "oldestFirst": "Oldest first",
       "all": "All",
       "page": "Page",
       "prev": "Prev",

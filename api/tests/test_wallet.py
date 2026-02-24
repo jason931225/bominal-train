@@ -124,6 +124,36 @@ async def test_remove_payment_settings_is_idempotent(client, db_session, monkeyp
 
 
 @pytest.mark.asyncio
+async def test_payment_card_configured_endpoint_returns_minimal_boolean(client, db_session, monkeypatch):
+    fake_redis = fakeredis.aioredis.FakeRedis()
+    monkeypatch.setattr("app.services.wallet.get_cde_redis_pool", lambda: MockRedisContextManager(fake_redis))
+
+    cookie = await _register_and_login(client, db_session, email="wallet-configured-only@example.com")
+
+    before_res = await client.get("/api/wallet/payment-card/configured", cookies={"bominal_session": cookie})
+    assert before_res.status_code == 200
+    assert before_res.json() == {"configured": False}
+
+    save_res = await client.post(
+        "/api/wallet/payment-card",
+        cookies={"bominal_session": cookie},
+        json={
+            "card_number": "4111 1111 1111 1111",
+            "expiry_month": 12,
+            "expiry_year": 2099,
+            "cvv": "123",
+            "birth_date": "1990-01-01",
+            "pin2": "12",
+        },
+    )
+    assert save_res.status_code == 200
+
+    after_res = await client.get("/api/wallet/payment-card/configured", cookies={"bominal_session": cookie})
+    assert after_res.status_code == 200
+    assert after_res.json() == {"configured": True}
+
+
+@pytest.mark.asyncio
 async def test_payment_card_cache_blob_has_kek_version_and_bounded_ttl(client, db_session, monkeypatch):
     fake_redis = fakeredis.aioredis.FakeRedis()
     monkeypatch.setattr("app.services.wallet.get_cde_redis_pool", lambda: MockRedisContextManager(fake_redis))

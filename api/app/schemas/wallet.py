@@ -30,3 +30,7 @@ class PaymentCardStatusResponse(BaseModel):
     updated_at: datetime | None = None
     cvv_cached_until: datetime | None = None
     detail: str | None = None
+
+
+class PaymentCardConfiguredResponse(BaseModel):
+    configured: bool

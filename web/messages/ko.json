@@ -465,10 +465,16 @@
       "retryable": "재시도",
       "duration": "소요",
       "started": "시작",
+      "finished": "종료",
+      "errorCode": "오류 코드",
+      "metadata": "메타데이터",
       "error": "오류"
     },
     "attemptPagination": {
       "actionsPerPage": "페이지당 시도",
+      "sort": "정렬",
+      "newestFirst": "최신순",
+      "oldestFirst": "오래된순",
       "all": "전체",
       "page": "페이지",
       "prev": "이전",

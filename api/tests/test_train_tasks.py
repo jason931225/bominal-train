@@ -84,6 +84,16 @@ def test_poll_delay_seconds_is_clamped_to_valid_bounds(monkeypatch) -> None:
     assert max(all_samples) <= max_interval
 
 
+def test_poll_delay_seconds_force_max_rate_uses_constant_min_interval(monkeypatch) -> None:
+    monkeypatch.setattr(train_worker.settings, "train_poll_force_max_rate", True)
+    monkeypatch.setattr(train_worker.settings, "train_poll_min_seconds", 2.0)
+    monkeypatch.setattr(train_worker.settings, "train_poll_max_seconds", 6.0)
+    monkeypatch.setattr(train_worker.random, "gammavariate", lambda *_args, **_kwargs: 999.0)
+
+    for t in (0, 60, 24 * 60 * 60, 48 * 60 * 60, 72 * 60 * 60):
+        assert train_worker._poll_delay_seconds(1, seconds_until_departure=t) == pytest.approx(2.0)
+
+
 async def _register_and_login(client, db_session, *, email: str = "train-user@example.com") -> str:
     register_res = await client.post(
         "/api/auth/register",
@@ -943,6 +953,133 @@ async def test_worker_resumes_polling_when_reserve_fails_due_to_non_payment_expi
     assert reserve_attempt.retryable is True
     assert reserve_attempt.meta_json_safe is not None
     assert reserve_attempt.meta_json_safe.get("non_payment_expiry_retry") is True
+    assert len(enqueued) == 1
+    assert enqueued[0][0] == str(task.id)
+    assert enqueued[0][1] > 0
+
+
+@pytest.mark.asyncio
+async def test_worker_retries_polling_on_reserve_sold_out(db_session_factory, db_session, monkeypatch):
+    fake_redis = fakeredis.aioredis.FakeRedis()
+    enqueued: list[tuple[str, float]] = []
+
+    class _NoLimitResult:
+        waited_ms = 0
+        rounds = 1
+
+    async def _no_limit(self, **kwargs):
+        return _NoLimitResult()
+
+    async def _capture_enqueue(task_id: str, defer_seconds: float = 0.0) -> None:
+        enqueued.append((task_id, defer_seconds))
+
+    async def _fake_credentials(*args, **kwargs):
+        return {"username": "soldout-user", "password": "soldout-password"}
+
+    class FakeProvider:
+        provider_name = "SRT"
+
+        async def login(self, **kwargs):
+            return ProviderOutcome(ok=True, data={"membership_number": "M-123"})
+
+        async def search(self, **kwargs):
+            departure = _utc_now() + timedelta(hours=2)
+            return ProviderOutcome(
+                ok=True,
+                data={
+                    "schedules": [
+                        ProviderSchedule(
+                            schedule_id="srt-sold-out-schedule",
+                            provider="SRT",
+                            dep="수서",
+                            arr="부산",
+                            departure_at=departure,
+                            arrival_at=departure + timedelta(minutes=100),
+                            train_no="S555",
+                            availability={"general": True, "special": False},
+                        )
+                    ]
+                },
+            )
+
+        async def reserve(self, **kwargs):
+            return ProviderOutcome(
+                ok=False,
+                retryable=False,
+                error_code="sold_out",
+                error_message_safe="No reservable seats are available for this schedule.",
+            )
+
+        async def pay(self, **kwargs):
+            return ProviderOutcome(ok=False)
+
+        async def cancel(self, **kwargs):
+            return ProviderOutcome(ok=True)
+
+    monkeypatch.setattr("app.modules.train.worker.enqueue_train_task", _capture_enqueue)
+    monkeypatch.setattr("app.modules.train.worker.RedisTokenBucketLimiter.acquire_provider_call", _no_limit)
+    monkeypatch.setattr("app.modules.train.worker._load_provider_credentials", _fake_credentials)
+    monkeypatch.setattr("app.modules.train.worker.get_provider_client", lambda _provider: FakeProvider())
+
+    user = User(
+        email="reserve-sold-out-retry@example.com",
+        password_hash="x",
+        display_name="Reserve Sold Out Retry User",
+        role_id=2,
+    )
+    db_session.add(user)
+    await db_session.flush()
+
+    task = Task(
+        user_id=user.id,
+        module="train",
+        state="QUEUED",
+        deadline_at=_utc_now() + timedelta(hours=1),
+        spec_json={
+            "provider": "SRT",
+            "providers": ["SRT"],
+            "dep": "수서",
+            "arr": "부산",
+            "date": _utc_now().date().isoformat(),
+            "selected_trains_ranked": [
+                {
+                    "schedule_id": "srt-sold-out-schedule",
+                    "departure_at": (_utc_now() + timedelta(hours=2)).isoformat(),
+                    "rank": 1,
+                    "provider": "SRT",
+                }
+            ],
+            "passengers": {"adults": 1, "children": 0},
+            "seat_class": "general",
+            "auto_pay": True,
+        },
+        idempotency_key="reserve-sold-out-retry",
+    )
+    db_session.add(task)
+    await db_session.commit()
+
+    await run_train_task({"db_factory": db_session_factory, "redis": fake_redis}, str(task.id))
+
+    async with db_session_factory() as verify_session:
+        refreshed = await verify_session.get(Task, task.id)
+        assert refreshed is not None
+        assert refreshed.state == "POLLING"
+        assert refreshed.spec_json.get("next_run_at")
+
+        reserve_attempt = (
+            await verify_session.execute(
+                select(TaskAttempt)
+                .where(TaskAttempt.task_id == task.id)
+                .where(TaskAttempt.action == "RESERVE")
+                .order_by(TaskAttempt.started_at.desc())
+                .limit(1)
+            )
+        ).scalar_one()
+
+    assert reserve_attempt.retryable is True
+    assert reserve_attempt.error_code == "sold_out"
+    assert reserve_attempt.meta_json_safe is not None
+    assert reserve_attempt.meta_json_safe.get("sold_out_retry") is True
     assert len(enqueued) == 1
     assert enqueued[0][0] == str(task.id)
     assert enqueued[0][1] > 0

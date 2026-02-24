@@ -6,7 +6,6 @@ import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useLocale } from "@/components/locale-provider";
-import { clientApiBaseUrl } from "@/lib/api-base";
 import { ROUTES } from "@/lib/routes";
 import {
   readDummyTaskCards,
@@ -14,11 +13,17 @@ import {
   TRAIN_DUMMY_TASKS_EVENT,
   TRAIN_DUMMY_TASKS_STORAGE_KEY,
 } from "@/lib/train/dummy-task-cards";
+import { subscribeTrainTaskEvents } from "@/lib/train/task-events";
+import {
+  clearTaskListBootstrapSnapshot,
+  fetchTaskListBootstrap,
+  readTaskListBootstrapSnapshot,
+} from "@/lib/train/task-list-bootstrap";
 import type { TrainTaskSummary } from "@/lib/types";
 
-const ATTENTION_TASK_FETCH_LIMIT = 200;
 const ATTENTION_STORAGE_PREFIX = "bominal_train_attention_seen_v1";
 const TERMINAL_TASK_STATES = new Set(["COMPLETED", "CANCELLED", "EXPIRED", "FAILED"]);
+const ATTENTION_REFRESH_EVENT_STATES = new Set(["COMPLETED", "CANCELLED", "EXPIRED", "FAILED"]);
 const MOBILE_DRAWER_HIDDEN_TRANSLATE = "calc(-100dvh - 24px)";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -110,6 +115,18 @@ function compareAttentionTasks(a: TrainTaskSummary, b: TrainTaskSummary): number
   return bb - aa;
 }
 
+function readAttentionSnapshotTasks(value: unknown): TrainTaskSummary[] {
+  if (!Array.isArray(value)) return [];
+  const tasks: TrainTaskSummary[] = [];
+  for (const row of value) {
+    if (!isRecord(row)) continue;
+    if (typeof row.id !== "string") continue;
+    if (typeof row.state !== "string") continue;
+    tasks.push(row as unknown as TrainTaskSummary);
+  }
+  return tasks;
+}
+
 export function TopNavTaskAttention({
   userId,
   displayName,
@@ -123,6 +140,10 @@ export function TopNavTaskAttention({
   const mobilePanelRef = useRef<HTMLDivElement | null>(null);
   const mobileDragStartYRef = useRef<number | null>(null);
   const mobileDragYRef = useRef(0);
+  const attentionSnapshotReceivedRef = useRef(false);
+  const attentionLoadInFlightRef = useRef(false);
+  const queuedAttentionReloadRef = useRef(false);
+  const queuedAttentionForceRemoteRef = useRef(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [portalReady, setPortalReady] = useState(false);
   const [mobileDragY, setMobileDragY] = useState(0);
@@ -164,24 +185,7 @@ export function TopNavTaskAttention({
     markTasksAsSeen([taskId]);
   }, [markTasksAsSeen]);
 
-  const loadAttentionTasks = useCallback(async () => {
-    let apiTasks: TrainTaskSummary[] = [];
-    try {
-      const response = await fetch(
-        `${clientApiBaseUrl}/api/train/tasks?status=all&limit=${ATTENTION_TASK_FETCH_LIMIT}`,
-        {
-          credentials: "include",
-          cache: "no-store",
-        },
-      );
-      if (response.ok) {
-        const payload = (await response.json()) as { tasks: TrainTaskSummary[] };
-        apiTasks = payload.tasks;
-      }
-    } catch {
-      // Fall back to local dummy task source (if present).
-    }
-
+  const applyAttentionTasks = useCallback((apiTasks: TrainTaskSummary[]) => {
     const merged = new Map<string, TrainTaskSummary>();
     for (const task of apiTasks) {
       merged.set(task.id, task);
@@ -198,39 +202,85 @@ export function TopNavTaskAttention({
     setAttentionTasksLoaded(true);
   }, []);
 
+  const loadAttentionTasks = useCallback(async (options?: { forceRemote?: boolean }) => {
+    const requestedForceRemote = Boolean(options?.forceRemote);
+    if (attentionLoadInFlightRef.current) {
+      queuedAttentionReloadRef.current = true;
+      queuedAttentionForceRemoteRef.current = queuedAttentionForceRemoteRef.current || requestedForceRemote;
+      return;
+    }
+    attentionLoadInFlightRef.current = true;
+
+    try {
+      let forceRemote = requestedForceRemote;
+      do {
+        queuedAttentionReloadRef.current = false;
+        queuedAttentionForceRemoteRef.current = false;
+        try {
+          const cachedSnapshot = readTaskListBootstrapSnapshot();
+          if (cachedSnapshot && !forceRemote) {
+            applyAttentionTasks(cachedSnapshot.tasks);
+          } else {
+            const snapshot = await fetchTaskListBootstrap({
+              refreshCompleted: forceRemote,
+              force: forceRemote || !cachedSnapshot,
+            });
+            applyAttentionTasks(snapshot.tasks);
+          }
+        } catch {
+          // Fall back to local dummy task source (if present).
+          applyAttentionTasks([]);
+        }
+        forceRemote = queuedAttentionForceRemoteRef.current;
+      } while (queuedAttentionReloadRef.current);
+    } finally {
+      attentionLoadInFlightRef.current = false;
+      queuedAttentionReloadRef.current = false;
+      queuedAttentionForceRemoteRef.current = false;
+    }
+  }, [applyAttentionTasks]);
   useEffect(() => {
     setSeenTaskIds(readSeenTaskIds(userId));
   }, [userId]);
 
   useEffect(() => {
-    void loadAttentionTasks();
+    clearTaskListBootstrapSnapshot();
+  }, [userId]);
 
-    if (typeof window === "undefined" || !("EventSource" in window)) {
-      return undefined;
-    }
-
-    const eventSource = new EventSource(`${clientApiBaseUrl}/api/train/tasks/events`, {
-      withCredentials: true,
-    });
-
-    const onTaskState = () => {
+  useEffect(() => {
+    attentionSnapshotReceivedRef.current = false;
+    const unsubscribeTaskEvents = subscribeTrainTaskEvents((payload, event) => {
+      if (event.type === "attention_snapshot") {
+        attentionSnapshotReceivedRef.current = true;
+        applyAttentionTasks(readAttentionSnapshotTasks(payload.tasks));
+        return;
+      }
       if (document.visibilityState === "hidden") return;
-      void loadAttentionTasks();
-    };
+      if (event.type !== "task_state") {
+        return;
+      }
+      const state = typeof payload.state === "string" ? payload.state : null;
+      if (!state || !ATTENTION_REFRESH_EVENT_STATES.has(state)) return;
+      void loadAttentionTasks({ forceRemote: true });
+    });
     const onVisibilityChange = () => {
       if (document.visibilityState === "visible") {
-        void loadAttentionTasks();
+        void loadAttentionTasks({ forceRemote: true });
       }
     };
+    const fallbackTimer = window.setTimeout(() => {
+      if (!attentionSnapshotReceivedRef.current) {
+        void loadAttentionTasks();
+      }
+    }, 1500);
 
-    eventSource.addEventListener("task_state", onTaskState);
     document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
-      eventSource.removeEventListener("task_state", onTaskState);
-      eventSource.close();
+      window.clearTimeout(fallbackTimer);
+      unsubscribeTaskEvents();
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-  }, [loadAttentionTasks]);
+  }, [applyAttentionTasks, loadAttentionTasks]);
 
   useEffect(() => {
     if (!TRAIN_DUMMY_TASKS_ENABLED) return;

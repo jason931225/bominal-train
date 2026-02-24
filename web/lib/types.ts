@@ -72,8 +72,6 @@ export type TrainStation = {
 export type TrainProviderCredentialStatus = {
   configured: boolean;
   verified: boolean;
-  username: string | null;
-  verified_at: string | null;
   detail: string | null;
 };
 
@@ -90,6 +88,10 @@ export type WalletPaymentCardStatus = {
   updated_at: string | null;
   cvv_cached_until: string | null;
   detail: string | null;
+};
+
+export type WalletPaymentCardConfigured = {
+  configured: boolean;
 };
 
 export type TrainTaskSummary = {

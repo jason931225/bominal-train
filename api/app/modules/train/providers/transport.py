@@ -50,6 +50,9 @@ _TRAIN_EGRESS_PROXY_PATH_BY_HOST: dict[str, str] = {
     "app.srail.or.kr": "srt",
     "smart.letskorail.com": "korail",
     "nf.letskorail.com": "netfunnel",
+    # NetFunnel can rotate among hostnames like nf5.letskorail.com.
+    # Keep a domain fallback so those hosts route to the same egress path.
+    "letskorail.com": "netfunnel",
 }
 
 _RESTAURANT_EGRESS_PROXY_PATH_BY_HOST: dict[str, str] = {

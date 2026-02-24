@@ -144,6 +144,7 @@ class Settings(BaseSettings):
     )
     train_poll_min_seconds: float = Field(default=2.0, alias="TRAIN_POLL_MIN_SECONDS")
     train_poll_max_seconds: float = Field(default=6.0, alias="TRAIN_POLL_MAX_SECONDS")
+    train_poll_force_max_rate: bool = Field(default=False, alias="TRAIN_POLL_FORCE_MAX_RATE")
     train_credential_verify_timeout_seconds: float = Field(
         default=8.0,
         alias="TRAIN_CREDENTIAL_VERIFY_TIMEOUT_SECONDS",
@@ -151,6 +152,10 @@ class Settings(BaseSettings):
     train_credential_cache_seconds: int = Field(
         default=3600,
         alias="TRAIN_CREDENTIAL_CACHE_SECONDS",
+    )
+    train_persist_all_attempts: bool = Field(
+        default=False,
+        alias="TRAIN_PERSIST_ALL_ATTEMPTS",
     )
     restaurant_auth_refresh_retries: int = Field(default=2, alias="RESTAURANT_AUTH_REFRESH_RETRIES")
     restaurant_payment_lease_ttl_seconds: int = Field(default=120, alias="RESTAURANT_PAYMENT_LEASE_TTL_SECONDS")
