@@ -75,10 +75,15 @@ For each incident/update:
 - Test first for behavior changes (TDD for production code).
 - Run narrow tests for touched areas, then required baseline suite.
 - Enforce `Docs > Plan > Test` ordering before staging commits.
-- 100% automated test coverage is required before staging commits.
+- Use risk-based coverage goals; do not use blanket 100% as the sole quality target.
 - Perform a test relevance check before staging:
   - map each staged behavior change to specific test cases;
   - add/update tests if coverage is only incidental or indirect.
+- Require high-quality tests for critical areas:
+  - auth/session and authorization boundaries
+  - crypto/redaction and sensitive-data boundaries
+  - payment/CDE controls (when enabled)
+  - deploy/rollback and operational safety paths
 - Perform warning hygiene before staging:
   - remove runtime and deprecation warnings in touched scope where feasible;
   - if warnings remain, record reason + owner + follow-up issue/plan entry.

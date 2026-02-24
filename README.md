@@ -124,20 +124,18 @@ Compatibility notice:
 - Removal gate: remove the deprecated compose artifact after no active callers remain (completed on 2026-02-14).
 - Canonical deprecation lifecycle policy: `docs/DEPRECATION_WORKFLOW.md`.
 
-1) Create prod env files from templates:
+1) Bootstrap prod env files (interactive, canonical):
 
 ```bash
-cp infra/env/prod/api.env.example infra/env/prod/api.env
-cp infra/env/prod/web.env.example infra/env/prod/web.env
-cp infra/env/prod/caddy.env.example infra/env/prod/caddy.env
+bash infra/scripts/bootstrap-prod-env.sh
 ```
 
 Optional:
 - `infra/env/prod/deploy.env` can be created from `infra/env/prod/deploy.env.example` for helper workflows.
 - Canonical `infra/scripts/deploy.sh` does not require `deploy.env`.
 
-2) Edit those files and replace every `CHANGE_ME...` value. Required manual deploy values:
-   - `infra/env/prod/api.env`: `INTERNAL_API_KEY`, `MASTER_KEY`, `DATABASE_URL`, `SYNC_DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_JWT_ISSUER`, `SUPABASE_AUTH_API_KEY` (or `SUPABASE_SERVICE_ROLE_KEY` fallback), `RESEND_API_KEY`, sender-domain placeholder in `EMAIL_FROM_ADDRESS`, plus passkey origin settings (`PASSKEY_RP_ID`, `PASSKEY_ORIGIN`)
+2) Review generated files and confirm required values:
+   - `infra/env/prod/api.env`: `INTERNAL_API_KEY`, `MASTER_KEY`, `DATABASE_URL`, `SYNC_DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_JWT_ISSUER`, `SUPABASE_AUTH_API_KEY` (or `SUPABASE_SERVICE_ROLE_KEY` fallback), `RESEND_API_KEY`, sender-domain in `EMAIL_FROM_ADDRESS`, plus passkey origin settings (`PASSKEY_RP_ID`, `PASSKEY_ORIGIN`)
   - `infra/env/prod/web.env`:
     - keep `NEXT_PUBLIC_API_BASE_URL` empty so browser auth requests stay same-origin (required for `SameSite=Lax` session cookies)
     - set `API_SERVER_URL=http://api:8000` for server-side Next.js fetches in monolithic API runtime
@@ -153,6 +151,7 @@ Optional:
      - `EMAIL_PROVIDER=smtp`: `SMTP_HOST`, `SMTP_PORT`, and SMTP credentials/TLS flags as needed
 
    Production note: `DATABASE_URL` / `SYNC_DATABASE_URL` must target Supabase Postgres (`*.supabase.co`) with TLS required (`sslmode=require` or equivalent). Local dev remains Docker-local Postgres/Redis by default.
+   If you bypass the bootstrap script and edit manually, ensure no unresolved placeholders remain.
 
 3) Deploy (recommended):
 
@@ -375,7 +374,7 @@ Run this checklist before first deployment:
 
 1. **Env sanity**
    - `infra/env/prod/api.env`, `infra/env/prod/web.env`, `infra/env/prod/caddy.env` exist.
-   - No `CHANGE_ME` placeholders remain.
+   - No unresolved placeholders remain (bootstrap script enforces this).
    - `APP_ENV=production` in `infra/env/prod/api.env`.
    - `MASTER_KEY` is set to a real 32-byte base64 key (generate with `openssl rand -base64 32`).
 

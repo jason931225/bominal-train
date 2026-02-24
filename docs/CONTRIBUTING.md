@@ -81,9 +81,10 @@ If touching auth, wallet, or provider credentials:
 Pre-stage gate (mandatory):
 
 - Follow `Docs > Plan > Test` ordering before staging commits.
-- 100% automated test coverage is required before staging.
+- Enforce high-quality tests for critical areas before staging.
 - Verify test relevance before staging:
   - each staged behavior change must have directly relevant test coverage.
+- Prefer behavior/invariant assertions; avoid assertion spam tied to internals.
 - Resolve warnings in touched scope before staging:
   - runtime warnings
   - deprecation warnings
@@ -110,8 +111,7 @@ Backend tests:
 (cd api && ./.venv/bin/pytest -q)
 ```
 
-- `api/pytest.ini` enforces `--cov=app --cov-fail-under=100` by default.
-- Any backend test run that drops below 100% coverage fails.
+- Coverage thresholds are enforced by repository config and CI gates; treat them as minimums, not as a substitute for meaningful test quality.
 
 Frontend type check:
 
@@ -125,10 +125,7 @@ Frontend unit tests with coverage gate:
 (cd web && npm run test:ci)
 ```
 
-- `web/vitest.config.mts` enforces:
-  - `coverage.all = true`
-  - global thresholds `100/100/100/100` (lines/statements/functions/branches)
-- Any web test run that drops below 100% coverage fails.
+- Coverage thresholds are enforced by repository config and CI gates; prioritize meaningful behavior verification over blanket threshold chasing.
 
 Coverage ignore policy (mandatory):
 
@@ -137,7 +134,7 @@ Coverage ignore policy (mandatory):
   - explicit justification in review notes for why deterministic test coverage is not feasible in-scope.
 - Do not add coverage-ignore annotations for convenience.
 
-Assertiveness and mutation gates (mandatory):
+Assertiveness and mutation gates (risk-based):
 
 ```bash
 python3 infra/scripts/check_assertive_tests.py api/tests
@@ -146,11 +143,10 @@ bash infra/scripts/run_mutation_api.sh
 npm run --prefix web test:mutation
 ```
 
-- `check_assertive_tests.py` fails when a Python `test_*` function has no assertive signal (`assert`, `pytest.raises`, `assert*` calls).
-- `check_assertive_tests_web.mjs` fails when a web `it()/test()` block lacks `expect(...)`/`assert(...)` in repo-owned tests (dependency/build paths like `node_modules` and `.next` are excluded).
-- Both assertive-check scripts also fail vacuous assertions (for example `assert True`, `expect(true).toBe(true)`); only meaningful behavior assertions count.
-- API mutation gate runs deterministic mutation-smoke checks on high-risk crypto invariants (`redaction.py`, `envelope.py`) and fails if any injected mutant survives.
-- Web mutation gate runs deterministic mutation-smoke checks against high-risk UI/dataflow behavior and fails if any injected mutant survives.
+- Run these gates for critical-path changes (auth/session, permissions, crypto/redaction, payment/CDE, deploy safety).
+- For low-risk non-critical changes, these gates are recommended but not mandatory.
+- Keep assertions meaningful: avoid vacuous checks (`assert True`, `expect(true).toBe(true)`).
+- Use mutation checks where they provide signal on security- or correctness-critical invariants.
 
 Frontend E2E tests (containerized, Chromium-enabled profile):
 
