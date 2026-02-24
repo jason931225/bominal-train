@@ -19,11 +19,17 @@ from typing import AsyncIterator
 from typing import Literal
 
 from redis.asyncio import Redis
+from redis.asyncio.connection import BlockingConnectionPool
 
 from app.core.config import get_settings
 
 settings = get_settings()
 RedisPurpose = Literal["non_cde", "cde"]
+REDIS_POOL_MAX_CONNECTIONS_NON_CDE = 200
+REDIS_POOL_MAX_CONNECTIONS_CDE = 40
+REDIS_POOL_ACQUIRE_TIMEOUT_SECONDS = 5.0
+REDIS_SOCKET_CONNECT_TIMEOUT_SECONDS = 5.0
+REDIS_SOCKET_TIMEOUT_SECONDS = 5.0
 
 # Global connection pools (lazy initialized)
 _redis_pool_non_cde: Redis | None = None
@@ -53,14 +59,17 @@ def _redis_url_for_purpose(*, purpose: RedisPurpose) -> str:
 
 async def _create_pool(*, purpose: RedisPurpose) -> Redis:
     """Create a new Redis connection pool for the specified purpose."""
-    return Redis.from_url(
+    pool = BlockingConnectionPool.from_url(
         _redis_url_for_purpose(purpose=purpose),
         decode_responses=False,
-        # Connection pool settings for production use
-        max_connections=20,
-        socket_connect_timeout=5.0,
-        socket_timeout=5.0,
+        max_connections=(
+            REDIS_POOL_MAX_CONNECTIONS_CDE if purpose == "cde" else REDIS_POOL_MAX_CONNECTIONS_NON_CDE
+        ),
+        timeout=REDIS_POOL_ACQUIRE_TIMEOUT_SECONDS,
+        socket_connect_timeout=REDIS_SOCKET_CONNECT_TIMEOUT_SECONDS,
+        socket_timeout=REDIS_SOCKET_TIMEOUT_SECONDS,
     )
+    return Redis(connection_pool=pool)
 
 
 def _get_existing_pool(*, purpose: RedisPurpose) -> Redis | None:

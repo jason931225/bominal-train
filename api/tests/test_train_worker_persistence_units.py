@@ -6,7 +6,7 @@ from uuid import uuid4
 import pytest
 
 from app.db.models import Task, TaskAttempt
-from app.modules.train.constants import ATTEMPT_ACTION_CANCEL, ATTEMPT_ACTION_PAY, ATTEMPT_ACTION_SEARCH
+from app.modules.train.constants import ATTEMPT_ACTION_CANCEL, ATTEMPT_ACTION_PAY, ATTEMPT_ACTION_SEARCH, ATTEMPT_ACTION_SYNC
 from app.modules.train import worker as train_worker
 from app.modules.train.worker import PendingAttempt, _persist_attempts
 
@@ -44,7 +44,15 @@ def _task() -> Task:
     )
 
 
-def _attempt(*, action: str, ok: bool, retryable: bool, error_code: str | None, error_message_safe: str | None) -> PendingAttempt:
+def _attempt(
+    *,
+    action: str,
+    ok: bool,
+    retryable: bool,
+    error_code: str | None,
+    error_message_safe: str | None,
+    meta_json_safe: dict | None = None,
+) -> PendingAttempt:
     return PendingAttempt(
         action=action,
         provider="SRT",
@@ -53,12 +61,20 @@ def _attempt(*, action: str, ok: bool, retryable: bool, error_code: str | None, 
         error_code=error_code,
         error_message_safe=error_message_safe,
         duration_ms=10,
-        meta_json_safe=None,
+        meta_json_safe=meta_json_safe,
         started_at=datetime.now(timezone.utc),
     )
 
 
-def _persisted_attempt(*, action: str, ok: bool, retryable: bool, error_code: str | None, error_message_safe: str | None) -> TaskAttempt:
+def _persisted_attempt(
+    *,
+    action: str,
+    ok: bool,
+    retryable: bool,
+    error_code: str | None,
+    error_message_safe: str | None,
+    meta_json_safe: dict | None = None,
+) -> TaskAttempt:
     return TaskAttempt(
         task_id=uuid4(),
         action=action,
@@ -68,7 +84,7 @@ def _persisted_attempt(*, action: str, ok: bool, retryable: bool, error_code: st
         error_code=error_code,
         error_message_safe=error_message_safe,
         duration_ms=9,
-        meta_json_safe=None,
+        meta_json_safe=meta_json_safe,
         started_at=datetime.now(timezone.utc),
         finished_at=datetime.now(timezone.utc),
     )
@@ -273,3 +289,67 @@ async def test_persist_attempts_always_stores_pay_and_cancel_actions(monkeypatch
     )
 
     assert persisted_actions == [ATTEMPT_ACTION_PAY, ATTEMPT_ACTION_CANCEL]
+
+
+@pytest.mark.asyncio
+async def test_persist_attempts_sync_updates_existing_row_without_new_inserts(monkeypatch):
+    previous_sync = _persisted_attempt(
+        action=ATTEMPT_ACTION_SYNC,
+        ok=True,
+        retryable=True,
+        error_code=None,
+        error_message_safe=None,
+        meta_json_safe={"ticket_status": "waiting", "waiting": True, "paid": False},
+    )
+    db = _DB(previous_attempt=previous_sync)
+    task = _task()
+    persisted: list[tuple[str, dict | None]] = []
+
+    async def _fake_save_attempt(_db, *, task, action, provider, ok, retryable, error_code, error_message_safe, duration_ms, meta_json_safe, started_at):  # noqa: ANN001, ANN003
+        persisted.append((action, meta_json_safe))
+        return _persisted_attempt(
+            action=action,
+            ok=ok,
+            retryable=retryable,
+            error_code=error_code,
+            error_message_safe=error_message_safe,
+            meta_json_safe=meta_json_safe,
+        )
+
+    monkeypatch.setattr("app.modules.train.worker._save_attempt", _fake_save_attempt)
+
+    # Same signature + same metadata updates the existing row in-place.
+    await _persist_attempts(
+        db,
+        task=task,
+        attempts=[
+            _attempt(
+                action=ATTEMPT_ACTION_SYNC,
+                ok=True,
+                retryable=True,
+                error_code=None,
+                error_message_safe=None,
+                meta_json_safe={"ticket_status": "waiting", "waiting": True, "paid": False},
+            )
+        ],
+    )
+    assert persisted == []
+    assert previous_sync.meta_json_safe == {"ticket_status": "waiting", "waiting": True, "paid": False}
+
+    # Transition should still update existing row in-place (no insert growth).
+    await _persist_attempts(
+        db,
+        task=task,
+        attempts=[
+            _attempt(
+                action=ATTEMPT_ACTION_SYNC,
+                ok=True,
+                retryable=True,
+                error_code=None,
+                error_message_safe=None,
+                meta_json_safe={"ticket_status": "awaiting_payment", "waiting": False, "paid": False},
+            )
+        ],
+    )
+    assert persisted == []
+    assert previous_sync.meta_json_safe == {"ticket_status": "awaiting_payment", "waiting": False, "paid": False}

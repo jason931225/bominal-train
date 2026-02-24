@@ -99,17 +99,37 @@ async def test_redis_pool_lifecycle_and_helpers(monkeypatch):
 @pytest.mark.asyncio
 async def test_redis_create_pool_uses_expected_options(monkeypatch):
     captured: dict[str, object] = {}
+    pool_marker = object()
 
-    def _fake_from_url(url: str, **kwargs):  # noqa: ANN001
-        captured["url"] = url
-        captured["kwargs"] = kwargs
-        return _FakeRedis()
+    def _fake_pool_from_url(url: str, **kwargs):  # noqa: ANN001
+        captured["pool_url"] = url
+        captured["pool_kwargs"] = kwargs
+        return pool_marker
 
-    monkeypatch.setattr(redis_mod.Redis, "from_url", _fake_from_url)
+    class _FakeRedisClient:
+        def __init__(self, *, connection_pool=None):  # noqa: ANN001
+            captured["redis_ctor_pool"] = connection_pool
+
+        @classmethod
+        def from_url(cls, url: str, **kwargs):  # noqa: ANN001
+            captured["redis_from_url_called"] = True
+            captured["redis_from_url_url"] = url
+            captured["redis_from_url_kwargs"] = kwargs
+            return cls(connection_pool=None)
+
+    monkeypatch.setattr(
+        redis_mod,
+        "BlockingConnectionPool",
+        SimpleNamespace(from_url=_fake_pool_from_url),
+        raising=False,
+    )
+    monkeypatch.setattr(redis_mod, "Redis", _FakeRedisClient)
     await redis_mod._create_pool(purpose="non_cde")
-    assert captured["url"] == redis_mod.settings.resolved_redis_url_non_cde
-    assert isinstance(captured["kwargs"], dict)
-    assert captured["kwargs"]["decode_responses"] is False
+    assert captured["pool_url"] == redis_mod.settings.resolved_redis_url_non_cde
+    assert isinstance(captured["pool_kwargs"], dict)
+    assert captured["pool_kwargs"]["decode_responses"] is False
+    assert captured["redis_ctor_pool"] is pool_marker
+    assert captured.get("redis_from_url_called") is not True
 
 
 @pytest.mark.asyncio
