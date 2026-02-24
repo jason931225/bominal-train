@@ -7,7 +7,7 @@
 
 **Goal:** Track the full restructure program and delegate implementation to stage-level executable plans.
 
-**Architecture:** This is an umbrella tracker. Execution happens only through the stage plans listed below. Lock/request workflow, docs-first/docs-last gates, and changelog policy are enforced by `docs/EXECUTION_PROTOCOL.md`.
+**Architecture:** This is an umbrella tracker. Execution happens only through the stage plans listed below. Lock/request workflow, docs-first/docs-last gates, and changelog policy are enforced by `docs/agents/EXECUTION_PROTOCOL.md`.
 
 **Tech Stack:** FastAPI, SQLAlchemy, Redis/arq, Docker Compose, Bash, pytest.
 
@@ -18,9 +18,9 @@
 1. This file is non-executable by itself.
 2. Historical note: execution was performed one stage plan at a time from `docs/plans/active/` (now archived).
 3. Every stage execution must follow:
-- `docs/EXECUTION_PROTOCOL.md`
-- `docs/LOCK.md`
-- `docs/REQUEST.md`
+- `docs/agents/EXECUTION_PROTOCOL.md`
+- `docs/governance/CHANGE_MANAGEMENT.md`
+- `docs/governance/CHANGE_MANAGEMENT.md`
 
 ## Stage Plan Index
 
@@ -69,6 +69,6 @@ Per stage completion:
 
 Program completion:
 - all stage plan statuses marked complete
-- no unresolved `OPEN` requests in `docs/REQUEST.md`
-- no lingering `ACTIVE` locks in `docs/LOCK.md`
+- no unresolved `OPEN` requests in `docs/governance/CHANGE_MANAGEMENT.md`
+- no lingering `ACTIVE` locks in `docs/governance/CHANGE_MANAGEMENT.md`
 - backlog status report updated: `docs/plans/archive/2026-02-14-backlog-status-report.md`

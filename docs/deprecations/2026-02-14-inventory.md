@@ -4,7 +4,7 @@ This inventory tracks runtime artifacts under deprecation governance.
 
 Canonical forward-looking registry:
 - `docs/deprecations/registry.json`
-- policy: `docs/DEPRECATION_WORKFLOW.md`
+- policy: `docs/governance/DEPRECATION_POLICY.md`
 
 ## DEP-2026-02-14-001
 

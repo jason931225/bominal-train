@@ -152,8 +152,8 @@ git commit -m "feat(restaurant-worker): enforce auth fallback and payment lease 
 - Modify: `api/app/core/config.py`
 - Modify: `infra/env/dev/api.env.example`
 - Modify: `infra/env/prod/api.env.example`
-- Modify: `docs/ARCHITECTURE.md`
-- Modify: `docs/RUNBOOK.md`
+- Modify: `docs/humans/engineering/ARCHITECTURE.md`
+- Modify: `docs/humans/operations/RUNBOOK.md`
 
 **Step 1: Write failing config and docs expectations**
 
@@ -182,7 +182,7 @@ Expected: PASS.
 **Step 5: Commit**
 
 ```bash
-git add api/app/core/config.py infra/env/dev/api.env.example infra/env/prod/api.env.example docs/ARCHITECTURE.md docs/RUNBOOK.md api/tests/test_restaurant_policy_config.py
+git add api/app/core/config.py infra/env/dev/api.env.example infra/env/prod/api.env.example docs/humans/engineering/ARCHITECTURE.md docs/humans/operations/RUNBOOK.md api/tests/test_restaurant_policy_config.py
 git commit -m "config/docs: add restaurant policy settings and operator guidance"
 ```
 

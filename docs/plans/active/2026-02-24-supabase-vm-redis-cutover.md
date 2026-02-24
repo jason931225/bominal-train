@@ -76,10 +76,10 @@ Files:
 - `infra/scripts/deploy.sh`
 - `infra/scripts/quick-restart.sh`
 - `README.md`
-- `docs/DEPLOYMENT.md`
-- `docs/RUNBOOK.md`
-- `docs/ARCHITECTURE.md`
-- `docs/SECURITY.md`
+- `docs/humans/operations/DEPLOYMENT.md`
+- `docs/humans/operations/RUNBOOK.md`
+- `docs/humans/engineering/ARCHITECTURE.md`
+- `docs/humans/security/SECURITY.md`
 
 Changes:
 

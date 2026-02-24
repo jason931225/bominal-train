@@ -2,99 +2,84 @@
 
 This folder is the operational and engineering documentation pack for Bominal.
 
-## Quick start
+Audience split:
+- Governance (policy): `docs/governance/**`
+- Humans (procedures): `docs/humans/**`
+- Agents (overlays): `docs/agents/**`
 
-1. `EXECUTION_PROTOCOL.md` - dynamic lock/request protocol for multi-session execution
-2. `ARCHITECTURE.md` - system design and module boundaries
-3. `CONTRIBUTING.md` - local setup, coding standards, and testing
-4. `DEPLOYMENT.md` - production deployment and environment separation
-5. `RUNBOOK.md` - operations, troubleshooting, and recovery steps
-6. `SECURITY.md` - security controls, secret handling, and hardening priorities
-7. `DOCUMENTATION_WORKFLOW.md` - standardized docs workflow and protocol library
-8. `PERMISSIONS.md` - approval, scope, and least-privilege protocol
-9. `GUARDRAILS.md` - hard safety constraints and fail-closed behavior
-10. `INTENT_ROUTING.md` - keyword-to-pointer routing for token-efficient discovery
-11. `DEPRECATION_WORKFLOW.md` - deprecation lifecycle policy and enforcement model
-12. `playbooks/README.md` - complex-task playbook index
+Start here: `docs/START_HERE.md`.
 
 ## Canonical Pointer Library
 
-This is the single source of truth for operational and implementation pointers.
-
 Pointer format convention (mandatory):
 - Format: `- [PTR-<GROUP>-<NNN>] \`<repo-relative-path>\` - <short description>`
-- Use uppercase group names (`CORE`, `DOCS`, `PLAN`, `OPS`, etc.).
+- Use uppercase group names.
 - Use stable IDs; do not renumber existing IDs.
 - One pointer per line; no nested bullets.
 - Paths must be repo-relative and exist.
-- Keep descriptions concise and factual.
 
-### Core governance
+### Audience Entrypoints
+
+- [PTR-AUD-001] `docs/START_HERE.md` - entrypoint and taxonomy.
+- [PTR-AUD-002] `docs/governance/README.md` - governance index and precedence.
+- [PTR-AUD-003] `docs/humans/README.md` - human procedures index.
+- [PTR-AUD-004] `docs/agents/README.md` - agent overlays index.
+
+### Core Governance
 
 - [PTR-CORE-001] `AGENTS.md` - agent governance and non-negotiables.
 - [PTR-CORE-002] `docs/README.md` - canonical pointer library.
-- [PTR-CORE-003] `docs/EXECUTION_PROTOCOL.md` - dynamic locking and request workflow.
-- [PTR-CORE-004] `docs/LOCK.md` - active lock ledger for dynamic scope ownership.
-- [PTR-CORE-005] `docs/REQUEST.md` - cross-scope request queue.
-- [PTR-CORE-006] `CHANGELOG.md` - commit-based project changelog (Keep a Changelog).
+- [PTR-CORE-003] `docs/INTENT_ROUTING.md` - keyword routing map.
+- [PTR-CORE-004] `CHANGELOG.md` - commit-based changelog.
 
-### Architecture and delivery
+### Canonical Policy
 
-- [PTR-DOCS-001] `docs/ARCHITECTURE.md` - system architecture and boundaries.
-- [PTR-DOCS-002] `docs/CONTRIBUTING.md` - coding/testing conventions.
-- [PTR-DOCS-003] `docs/DEPLOYMENT.md` - production deployment and rollback.
-- [PTR-DOCS-004] `docs/RUNBOOK.md` - operations and incident handling.
-- [PTR-DOCS-005] `docs/SECURITY.md` - security controls and requirements.
-- [PTR-DOCS-006] `docs/DOCUMENTATION_WORKFLOW.md` - standardized documentation workflow and protocols.
-- [PTR-DOCS-007] `docs/PERMISSIONS.md` - permission and approval protocol for code/docs/ops changes.
-- [PTR-DOCS-008] `docs/GUARDRAILS.md` - non-negotiable hard safety constraints.
-- [PTR-DOCS-009] `docs/INTENT_ROUTING.md` - keyword routing map for low-token document discovery.
-- [PTR-DOCS-010] `docs/plans/README.md` - active/archive planning lifecycle policy.
-- [PTR-DOCS-011] `docs/deprecations/2026-02-14-inventory.md` - deprecation inventory with owner/replacement/removal-gate tracking.
-- [PTR-DOCS-012] `docs/DEPRECATION_WORKFLOW.md` - canonical deprecation lifecycle policy across local, GitHub, and production.
-- [PTR-DOCS-013] `docs/deprecations/registry.json` - machine-validated deprecation registry used by CI/deploy guards.
-- [PTR-DOCS-014] `docs/security/compliance-matrix.md` - PCI DSS and OWASP ASVS control-to-enforcement mapping for runtime and CI gates.
-- [PTR-DOCS-015] `docs/releases/README.md` - semantic versioning policy and commit-parity operating model.
-- [PTR-DOCS-016] `docs/releases/version-map.json` - canonical semantic version to commit-hash registry.
+- [PTR-GOV-001] `docs/governance/PRODUCTION_POLICY.md` - production baseline policy.
+- [PTR-GOV-002] `docs/governance/ENGINEERING_QUALITY.md` - testing/quality/warning policy.
+- [PTR-GOV-003] `docs/governance/RELIABILITY_OBSERVABILITY.md` - reliability and observability policy.
+- [PTR-GOV-004] `docs/governance/CHANGE_MANAGEMENT.md` - change, migration, and rollback policy.
+- [PTR-GOV-005] `docs/governance/SECURITY_POLICY.md` - security and CDE policy.
+- [PTR-GOV-006] `docs/governance/INCIDENT_MANAGEMENT.md` - incident and break-glass policy.
+- [PTR-GOV-007] `docs/governance/DEPRECATION_POLICY.md` - deprecation lifecycle policy.
+- [PTR-GOV-008] `docs/governance/DOCUMENTATION_POLICY.md` - documentation policy and anti-drift rules.
+- [PTR-GOV-009] `docs/governance/APPROVALS_AND_PERMISSIONS.md` - approvals and auditability policy.
 
-### Program Plans and Closure Artifacts
+### Human Procedures
 
-- [PTR-PLAN-001] `docs/plans/archive/2026-02-11-bominal-grand-restructure-plan.md` - archived top-level restructure umbrella with stage links.
-- [PTR-PLAN-002] `docs/todo/backend-production-readiness.md` - archived backend production-readiness tracker and implementation record.
-- [PTR-PLAN-003] `docs/plans/archive/2026-02-14-backlog-status-report.md` - archived restructure/backlog execution snapshot.
-- [PTR-PLAN-004] `docs/plans/archive/2026-02-14-stage2-worker-split-queue-contracts.md` - archived Stage 2 queue-domain isolation execution plan.
-- [PTR-PLAN-005] `docs/plans/archive/2026-02-14-stage3-restaurant-partial-exposure.md` - archived Stage 3 module capability exposure execution plan.
-- [PTR-PLAN-006] `docs/plans/archive/2026-02-14-stage4-restaurant-policy-enforcement.md` - archived Stage 4 restaurant policy/lease execution plan.
-- [PTR-PLAN-007] `docs/plans/archive/2026-02-14-stage5-infra-deploy-hardening.md` - archived Stage 5 deploy hardening execution plan.
-- [PTR-PLAN-008] `docs/plans/archive/2026-02-14-stage6-safe-deprecation-cleanup.md` - archived Stage 6 deprecation cleanup execution plan.
-- [PTR-PLAN-009] `docs/plans/archive/2026-02-14-stage7-docs-canonization.md` - archived Stage 7 docs canonization execution plan.
-- [PTR-PLAN-010] `docs/plans/archive/2026-02-14-stage8-program-closure-and-archival-hygiene.md` - archived Stage 8 closure and archival hygiene execution plan.
-- [PTR-PLAN-011] `docs/plans/archive/2026-02-14-program-closure-report.md` - final closure report for the restructure program.
-- [PTR-PLAN-012] `docs/plans/active/README.md` - current active-plan state marker.
-- [PTR-PLAN-013] `docs/plans/active/2026-02-14-stage9-performance-optimization.md` - active Stage 9 backend-first performance optimization execution plan.
-- [PTR-PLAN-014] `docs/plans/active/2026-02-22-wave1-stabilization-gate-tracker.md` - active Wave 1 stabilization gate status tracker with objective evidence and remaining actions.
-- [PTR-PLAN-015] `docs/plans/2026-02-22-pci-dss-owasp-remediation.md` - implementation plan for PCI DSS and OWASP ASVS hardening across docs, runtime controls, and verification gates.
-- [PTR-PLAN-016] `docs/plans/active/2026-02-22-pci-runtime-policy-codification.md` - active PCI runtime isolation policy codification plan for CDE/relay governance controls.
-- [PTR-PLAN-017] `docs/plans/2026-02-22-redaction-envelope-hardening.md` - crypto hardening implementation plan for redaction and envelope key-version enforcement.
-- [PTR-PLAN-018] `docs/plans/2026-02-22-ci-and-prod-deploy-latency-optimization.md` - CI and production deployment latency optimization plan with measured bottleneck hypotheses, deploy profiling, and safe remediation path.
-- [PTR-PLAN-019] `docs/plans/active/2026-02-24-supabase-vm-redis-cutover.md` - active execution plan for Supabase Postgres/Auth cutover, VM Redis alignment, and payment-disabled runtime enforcement.
-- [PTR-PLAN-020] `docs/plans/active/2026-02-24-no-poll-verification-guard.md` - active plan for enforcing event-driven train task updates and preventing periodic polling regressions across dashboard/task-detail/alerts.
-- [PTR-PLAN-021] `docs/plans/active/2026-02-24-independent-code-best-practice-review.md` - active independent best-practice review plan for full-stack code quality, reliability, and maintainability.
+- [PTR-HUM-001] `docs/humans/engineering/ARCHITECTURE.md` - architecture reference.
+- [PTR-HUM-002] `docs/humans/engineering/CONTRIBUTING.md` - contributor workflow.
+- [PTR-HUM-003] `docs/humans/operations/DEPLOYMENT.md` - deployment and rollback procedures.
+- [PTR-HUM-004] `docs/humans/operations/RUNBOOK.md` - operations and troubleshooting.
+- [PTR-HUM-005] `docs/humans/security/SECURITY.md` - security reference details.
 
-### Playbooks
+### Agent Overlays
 
-- [PTR-PLAY-001] `docs/playbooks/README.md` - playbook index and usage standard.
-- [PTR-PLAY-002] `docs/playbooks/TEMPLATE.md` - mandatory template for complex-task playbooks.
-- [PTR-PLAY-003] `docs/playbooks/resy-widget-form-data-capture.md` - Resy form-data capture/replay protocol.
-- [PTR-PLAY-004] `docs/playbooks/daily-operations-chores.md` - standardized daily engineering and operations chore workflow.
-- [PTR-PLAY-005] `docs/playbooks/new-module-feature-workflow.md` - end-to-end workflow for adding modules/features with policy and docs gates.
+- [PTR-AGT-001] `docs/agents/GUARDRAILS.md` - hard constraints.
+- [PTR-AGT-002] `docs/agents/PERMISSIONS.md` - agent approval gates.
+- [PTR-AGT-003] `docs/agents/EXECUTION_PROTOCOL.md` - agent execution workflow.
+- [PTR-AGT-004] `docs/agents/DEPLOYMENT.md` - deploy overlay for agents.
+- [PTR-AGT-005] `docs/agents/DOCUMENTATION.md` - docs workflow overlay for agents.
+
+### Plans and Playbooks
+
+- [PTR-PLAN-001] `docs/plans/README.md` - plans lifecycle policy.
+- [PTR-PLAN-002] `docs/plans/active/README.md` - active plans state marker.
+- [PTR-PLAN-003] `docs/plans/archive/2026-02-14-program-closure-report.md` - restructure closure report.
+- [PTR-PLAY-001] `docs/playbooks/README.md` - playbook index.
+- [PTR-PLAY-002] `docs/playbooks/TEMPLATE.md` - playbook template.
+
+### Registry and Compliance
+
+- [PTR-DOCS-001] `docs/deprecations/registry.json` - deprecation registry.
+- [PTR-DOCS-002] `docs/deprecations/2026-02-14-inventory.md` - historical deprecation inventory.
+- [PTR-DOCS-003] `docs/security/compliance-matrix.md` - PCI/OWASP compliance mapping.
+- [PTR-DOCS-004] `docs/releases/README.md` - versioning policy.
+- [PTR-DOCS-005] `docs/releases/version-map.json` - version map.
 
 ### Validation
 
-- [PTR-OPS-001] `infra/tests/test_docs_pointers.sh` - validates pointer section and target paths.
-- [PTR-OPS-002] `infra/tests/test_intent_routing.sh` - validates required intent keyword mappings.
-- [PTR-OPS-003] `infra/tests/test_docs_consistency.sh` - enforces deployment-policy and docs consistency rules.
-- [PTR-OPS-004] `infra/tests/test_execution_ledgers.sh` - validates lock/request ledger structure and template safety.
-- [PTR-OPS-005] `infra/tests/test_versioning.sh` - validates semantic version registry parity and bump semantics.
-
-For agent-focused instructions, also read the root `AGENTS.md`.
+- [PTR-OPS-001] `infra/tests/test_docs_pointers.sh` - pointer library validator.
+- [PTR-OPS-002] `infra/tests/test_intent_routing.sh` - intent routing validator.
+- [PTR-OPS-003] `infra/tests/test_docs_consistency.sh` - docs consistency validator.
+- [PTR-OPS-004] `infra/tests/test_docs_audience_split.sh` - audience-split structure validator.
+- [PTR-OPS-005] `infra/tests/test_versioning.sh` - version mapping validator.

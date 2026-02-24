@@ -124,7 +124,7 @@ Acceptance:
 
 Files:
 - `infra/scripts/deploy.sh`
-- `docs/DEPLOYMENT.md` (timing interpretation notes)
+- `docs/humans/operations/DEPLOYMENT.md` (timing interpretation notes)
 
 Changes:
 - Add timestamped phase timing logs for:

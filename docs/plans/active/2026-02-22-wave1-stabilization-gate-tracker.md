@@ -16,9 +16,9 @@ Primary user-facing capability is Train task automation. Restaurant and Calendar
 
 ## Current Feature Status Snapshot
 
-- Train module: active and user-facing (`README.md`, `docs/ARCHITECTURE.md`).
-- Restaurant module: policy/runtime scaffold present, still controlled exposure (`docs/ARCHITECTURE.md`, `/api/modules` contract notes).
-- Calendar module: coming soon (`README.md`, `docs/ARCHITECTURE.md`).
+- Train module: active and user-facing (`README.md`, `docs/humans/engineering/ARCHITECTURE.md`).
+- Restaurant module: policy/runtime scaffold present, still controlled exposure (`docs/humans/engineering/ARCHITECTURE.md`, `/api/modules` contract notes).
+- Calendar module: coming soon (`README.md`, `docs/humans/engineering/ARCHITECTURE.md`).
 - Restructure program Stages 1-8: archived as completed (`docs/plans/archive/2026-02-14-program-closure-report.md`).
 - Stage 9 performance plan: active execution artifact (`docs/plans/active/2026-02-14-stage9-performance-optimization.md`).
 
@@ -36,14 +36,14 @@ This tracker is docs-only and does not change runtime behavior. It reduces revie
 
 | Gate ID | Gate | Status | Objective evidence available in repo | Concrete remaining action |
 |---|---|---|---|---|
-| W1-G01 | Architecture baseline is documented for all runtime tiers | done | `docs/ARCHITECTURE.md` defines web/api/workers + infra topology | Re-check only when runtime topology changes |
-| W1-G02 | Current module exposure is reviewer-visible (Train active, Restaurant/Calendar staged) | done | `docs/ARCHITECTURE.md`, `README.md`, module contract notes in docs | Re-verify at next module exposure change |
+| W1-G01 | Architecture baseline is documented for all runtime tiers | done | `docs/humans/engineering/ARCHITECTURE.md` defines web/api/workers + infra topology | Re-check only when runtime topology changes |
+| W1-G02 | Current module exposure is reviewer-visible (Train active, Restaurant/Calendar staged) | done | `docs/humans/engineering/ARCHITECTURE.md`, `README.md`, module contract notes in docs | Re-verify at next module exposure change |
 | W1-G03 | Prior restructure work (Stages 1-8) has closure evidence | done | `docs/plans/archive/2026-02-14-program-closure-report.md`, `docs/plans/archive/2026-02-14-backlog-status-report.md` | Keep archive immutable; add new closure report for future waves |
 | W1-G04 | Active Wave work has an executable plan with bounded scope | partial | `docs/plans/active/2026-02-14-stage9-performance-optimization.md` exists with phases/acceptance criteria | Add or link explicit Stage 9 closure artifact once final verification is complete |
-| W1-G05 | Program-level lock/request hygiene is closed | done | `docs/LOCK.md` entries are `RELEASED`; `docs/REQUEST.md` says no open cross-scope requests | Maintain clean ledgers during new active sessions |
-| W1-G06 | Docs governance policy is canonical and cross-linked | done | `docs/EXECUTION_PROTOCOL.md`, `docs/DOCUMENTATION_WORKFLOW.md`, `docs/PERMISSIONS.md`, `docs/GUARDRAILS.md`, `docs/INTENT_ROUTING.md` | Re-run docs consistency checks whenever governance docs change |
+| W1-G05 | Program-level coordination workflow is documented and enforced | done | `docs/governance/CHANGE_MANAGEMENT.md` defines branch/PR coordination and risk-gated approvals | Re-check if coordination model changes again |
+| W1-G06 | Docs governance policy is canonical and cross-linked | done | `docs/agents/EXECUTION_PROTOCOL.md`, `docs/governance/DOCUMENTATION_POLICY.md`, `docs/agents/PERMISSIONS.md`, `docs/agents/GUARDRAILS.md`, `docs/INTENT_ROUTING.md` | Re-run docs consistency checks whenever governance docs change |
 | W1-G07 | Active Wave 1 tracker is discoverable via canonical pointers | done | This tracker in `docs/plans/active/` plus pointer registration in `docs/README.md` | Keep pointer entry updated if file is renamed or archived |
-| W1-G08 | Fresh docs validation evidence exists for the current branch state | done | 2026-02-22 UTC evidence run captured in this tracker (`test_docs_pointers`, `test_execution_ledgers`, `test_changelog`, `test_intent_routing`, `test_docs_consistency`) | Re-run the validator bundle on every branch that changes docs/governance artifacts |
+| W1-G08 | Fresh docs validation evidence exists for the current branch state | done | 2026-02-22 UTC evidence run captured in this tracker (`test_docs_pointers`, `test_docs_audience_split`, `test_changelog`, `test_intent_routing`, `test_docs_consistency`) | Re-run the validator bundle on every branch that changes docs/governance artifacts |
 | W1-G09 | Performance-wave verification is fresh (not only historical) | done | 2026-02-22 UTC Stage 9 freshness run captured in this tracker (`pytest` provider egress + auth flow, web `tsc --noEmit`) | Re-run the Stage 9 freshness suite if API/Web contract behavior changes |
 | W1-G10 | Reviewer sign-off packet is complete for Wave 1 stabilization | done | Gate table, dated evidence, and explicit decision state are now in this tracker | Carry decision conditions forward into the next wave intake checklist |
 
@@ -54,7 +54,7 @@ Execution window: 2026-02-22T00:39:00Z to 2026-02-22T00:42:00Z.
 ### Docs/governance validators
 
 - `bash infra/tests/test_docs_pointers.sh` -> `OK: Canonical pointer library is valid (42 pointers).`
-- `bash infra/tests/test_execution_ledgers.sh` -> `OK: execution ledgers are structurally valid and template-safe.`
+- `bash infra/tests/test_docs_audience_split.sh` -> `OK: audience-split docs layout is valid.`
 - `bash infra/tests/test_changelog.sh` -> `OK: CHANGELOG.md structure and commit-based Unreleased entries are valid.`
 - `bash infra/tests/test_intent_routing.sh` -> `OK: intent routing is valid.`
 - `bash infra/tests/test_docs_consistency.sh` -> `OK: docs consistency checks passed.`

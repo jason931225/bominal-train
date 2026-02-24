@@ -49,7 +49,7 @@ Deploy script guardrails:
 Compatibility notice:
 - `infra/docker-compose.deploy.yml.deprecated` is deprecated and removed from active operator workflow.
 - Use `infra/docker-compose.prod.yml` and `infra/scripts/deploy.sh` exclusively.
-- Deprecation lifecycle policy is tracked in `docs/DEPRECATION_WORKFLOW.md` and `docs/deprecations/registry.json`.
+- Deprecation lifecycle policy is tracked in `docs/governance/DEPRECATION_POLICY.md` and `docs/deprecations/registry.json`.
 
 Quick restart after VM reset (no rebuild, existing images):
 

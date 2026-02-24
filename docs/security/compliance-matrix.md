@@ -10,7 +10,7 @@
 
 | Control | Repo enforcement | Verification |
 |---|---|---|
-| Session cookie security (`HttpOnly`, `SameSite=Lax`, `Secure` in prod) | `api/app/services/auth.py`, `api/app/http/deps.py`, `docs/SECURITY.md` | `api/tests/test_auth_flow.py` |
+| Session cookie security (`HttpOnly`, `SameSite=Lax`, `Secure` in prod) | `api/app/services/auth.py`, `api/app/http/deps.py`, `docs/humans/security/SECURITY.md` | `api/tests/test_auth_flow.py` |
 | Password hashing + session token hashing | `api/app/core/security.py`, `api/app/services/auth.py` | `api/tests/test_auth_flow.py` |
 | Envelope encryption AES-256-GCM + per-record DEK + `kek_version` | `api/app/core/crypto/envelope.py`, `api/app/core/crypto/secrets_store.py` | `api/tests/test_crypto_envelope.py` |
 | CVV only in Redis bounded TTL | `api/app/services/wallet.py`, `api/app/core/config.py`, `infra/env/*/api.env*` | `api/tests/test_wallet.py`, `api/tests/test_security_config.py` |
