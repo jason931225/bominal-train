@@ -118,6 +118,23 @@ async def test_persist_attempts_skips_duplicate_retry_noise(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_persist_attempts_returns_early_when_attempt_list_is_empty(monkeypatch):
+    db = _DB(previous_attempt=None)
+    task = _task()
+
+    async def _should_not_save(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        raise AssertionError("_save_attempt should not be called for empty attempts")
+
+    monkeypatch.setattr("app.modules.train.worker._save_attempt", _should_not_save)
+
+    await _persist_attempts(
+        db,
+        task=task,
+        attempts=[],
+    )
+
+
+@pytest.mark.asyncio
 async def test_persist_attempts_stores_transition_when_retry_signature_changes(monkeypatch):
     previous = _persisted_attempt(
         action=ATTEMPT_ACTION_SEARCH,
