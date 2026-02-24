@@ -6,22 +6,32 @@ DEV_COMPOSE="$ROOT_DIR/infra/docker-compose.yml"
 PROD_COMPOSE="$ROOT_DIR/infra/docker-compose.prod.yml"
 LOCAL_CHECK="$ROOT_DIR/infra/scripts/local-check.sh"
 
-if ! rg -n 'python -m app\.worker_entrypoint app\.worker\.WorkerSettings' "$DEV_COMPOSE" >/dev/null; then
+matches_pattern() {
+  local pattern="$1"
+  local file="$2"
+  if command -v rg >/dev/null 2>&1; then
+    rg -n -- "$pattern" "$file" >/dev/null
+    return $?
+  fi
+  grep -En -- "$pattern" "$file" >/dev/null
+}
+
+if ! matches_pattern 'python -m app\.worker_entrypoint app\.worker\.WorkerSettings' "$DEV_COMPOSE"; then
   echo "FAIL: dev compose worker must use app.worker_entrypoint app.worker.WorkerSettings." >&2
   exit 1
 fi
 
-if ! rg -n 'python -m app\.worker_entrypoint app\.worker\.WorkerSettings' "$PROD_COMPOSE" >/dev/null; then
+if ! matches_pattern 'python -m app\.worker_entrypoint app\.worker\.WorkerSettings' "$PROD_COMPOSE"; then
   echo "FAIL: prod compose worker must use app.worker_entrypoint app.worker.WorkerSettings." >&2
   exit 1
 fi
 
-if ! rg -n 'WorkerSettings' "$PROD_COMPOSE" >/dev/null; then
+if ! matches_pattern 'WorkerSettings' "$PROD_COMPOSE"; then
   echo "FAIL: prod compose worker healthcheck must verify WorkerSettings process." >&2
   exit 1
 fi
 
-if ! rg -n 'check_worker_service "worker" "app\.worker\.WorkerSettings"' "$LOCAL_CHECK" >/dev/null; then
+if ! matches_pattern 'check_worker_service "worker" "app\.worker\.WorkerSettings"' "$LOCAL_CHECK"; then
   echo "FAIL: local-check must validate worker health." >&2
   exit 1
 fi
