@@ -1,14 +1,40 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   clearStoredDummyTaskCards,
+  readDummyTaskCardsModeEnabled,
   readDummyTaskCards,
+  setDummyTaskCardsModeEnabled,
   storeDummyTaskCards,
   TRAIN_DUMMY_TASKS_ENABLED,
   TRAIN_DUMMY_TASKS_EVENT,
   TRAIN_DUMMY_TASKS_STORAGE_KEY,
 } from "@/lib/train/dummy-task-cards";
 import type { TrainTaskSummary } from "@/lib/types";
+
+function createMemoryStorage(): Storage {
+  const store = new Map<string, string>();
+  return {
+    get length() {
+      return store.size;
+    },
+    clear() {
+      store.clear();
+    },
+    getItem(key: string) {
+      return store.has(key) ? store.get(key)! : null;
+    },
+    key(index: number) {
+      return Array.from(store.keys())[index] ?? null;
+    },
+    removeItem(key: string) {
+      store.delete(key);
+    },
+    setItem(key: string, value: string) {
+      store.set(String(key), String(value));
+    },
+  } as Storage;
+}
 
 function makeTask(id: string): TrainTaskSummary {
   return {
@@ -47,14 +73,43 @@ function makeTask(id: string): TrainTaskSummary {
   };
 }
 
+function resetDummyStorage(): void {
+  window.localStorage.clear();
+  window.sessionStorage.clear();
+}
+
 describe("dummy task card storage helpers", () => {
+  const originalLocalStorage = Object.getOwnPropertyDescriptor(window, "localStorage");
+  const originalSessionStorage = Object.getOwnPropertyDescriptor(window, "sessionStorage");
+
+  const installStorageMocks = () => {
+    Object.defineProperty(window, "localStorage", {
+      configurable: true,
+      value: createMemoryStorage(),
+    });
+    Object.defineProperty(window, "sessionStorage", {
+      configurable: true,
+      value: createMemoryStorage(),
+    });
+  };
+
   beforeEach(() => {
-    window.localStorage.clear();
+    installStorageMocks();
+    resetDummyStorage();
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
-    window.localStorage.clear();
+    resetDummyStorage();
+  });
+
+  afterAll(() => {
+    if (originalLocalStorage) {
+      Object.defineProperty(window, "localStorage", originalLocalStorage);
+    }
+    if (originalSessionStorage) {
+      Object.defineProperty(window, "sessionStorage", originalSessionStorage);
+    }
   });
 
   it("enables dummy mode in non-production test runtime", () => {
@@ -67,6 +122,14 @@ describe("dummy task card storage helpers", () => {
     const restored = readDummyTaskCards();
     expect(restored).toHaveLength(1);
     expect(restored[0].id).toBe(task.id);
+  });
+
+  it("reads and updates session-scoped dummy mode state", () => {
+    expect(readDummyTaskCardsModeEnabled()).toBe(false);
+    setDummyTaskCardsModeEnabled(true);
+    expect(readDummyTaskCardsModeEnabled()).toBe(true);
+    setDummyTaskCardsModeEnabled(false);
+    expect(readDummyTaskCardsModeEnabled()).toBe(false);
   });
 
   it("returns an empty list when storage key is absent", () => {
@@ -108,19 +171,32 @@ describe("dummy task card storage helpers", () => {
     }
   });
 
+  it("clears both dummy task rows and mode state", () => {
+    storeDummyTaskCards([makeTask("dummy-4")]);
+    setDummyTaskCardsModeEnabled(true);
+    expect(readDummyTaskCards()).toHaveLength(1);
+    expect(readDummyTaskCardsModeEnabled()).toBe(true);
+
+    clearStoredDummyTaskCards();
+
+    expect(readDummyTaskCards()).toEqual([]);
+    expect(readDummyTaskCardsModeEnabled()).toBe(false);
+  });
+
   it("handles storage failures as best-effort and still emits change events", () => {
     const listener = vi.fn();
-    const setItemSpy = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+    const setItemSpy = vi.spyOn(window.localStorage, "setItem").mockImplementation(() => {
       throw new Error("setItem failed");
     });
-    const removeItemSpy = vi.spyOn(Storage.prototype, "removeItem").mockImplementation(() => {
+    const removeItemSpy = vi.spyOn(window.localStorage, "removeItem").mockImplementation(() => {
       throw new Error("removeItem failed");
     });
     window.addEventListener(TRAIN_DUMMY_TASKS_EVENT, listener);
     try {
       expect(() => storeDummyTaskCards([makeTask("dummy-3")])).not.toThrow();
+      expect(() => setDummyTaskCardsModeEnabled(true)).not.toThrow();
       expect(() => clearStoredDummyTaskCards()).not.toThrow();
-      expect(listener).toHaveBeenCalledTimes(2);
+      expect(listener).toHaveBeenCalledTimes(3);
       expect(setItemSpy).toHaveBeenCalled();
       expect(removeItemSpy).toHaveBeenCalled();
     } finally {
@@ -134,6 +210,8 @@ describe("dummy task card storage helpers", () => {
     try {
       expect(readDummyTaskCards()).toEqual([]);
       expect(() => storeDummyTaskCards([makeTask("no-window")])).not.toThrow();
+      expect(() => setDummyTaskCardsModeEnabled(true)).not.toThrow();
+      expect(readDummyTaskCardsModeEnabled()).toBe(false);
       expect(() => clearStoredDummyTaskCards()).not.toThrow();
     } finally {
       vi.stubGlobal("window", originalWindow);

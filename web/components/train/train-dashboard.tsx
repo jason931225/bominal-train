@@ -1,15 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { FormEvent, UIEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useLocale } from "@/components/locale-provider";
 import { clientApiBaseUrl } from "@/lib/api-base";
 import { formatDateTimeKst, kstDateInputValue } from "@/lib/kst";
 import { ROUTES } from "@/lib/routes";
-import { UI_BUTTON_OUTLINE_SM, UI_BUTTON_PRIMARY, UI_BUTTON_DANGER_SM, UI_FIELD } from "@/lib/ui";
+import { UI_BUTTON_OUTLINE, UI_BUTTON_OUTLINE_SM, UI_BUTTON_PRIMARY, UI_BUTTON_DANGER_SM, UI_FIELD } from "@/lib/ui";
 import {
   clearStoredDummyTaskCards,
+  setDummyTaskCardsModeEnabled,
   storeDummyTaskCards,
   TRAIN_DUMMY_TASKS_ENABLED,
 } from "@/lib/train/dummy-task-cards";
@@ -89,6 +91,7 @@ type TrainTaskCreatePayload = {
   selected_trains_ranked: Array<{
     schedule_id: string;
     departure_at: string;
+    arrival_at: string;
     rank: number;
     provider: "SRT" | "KTX";
   }>;
@@ -126,6 +129,7 @@ const VALID_TASK_EVENT_STATES = new Set<TrainTaskState>([
   "FAILED",
 ]);
 const TASK_LIST_REFRESH_EVENT_STATES = new Set<TrainTaskState>(["COMPLETED", "CANCELLED", "EXPIRED", "FAILED"]);
+const TASK_LIST_PENDING_TICKET_STATUSES = new Set(["awaiting_payment", "waiting"]);
 const SOLD_OUT_LIKE_ERROR_CODES = new Set(["seat_unavailable", "sold_out"]);
 const DUPLICATE_CATEGORY_ORDER: DuplicateMatchCategory[] = ["already_reserved", "waiting", "polling"];
 const TRAIN_AUTO_PAY_FEATURE_ENABLED = ["1", "true", "yes", "on"].includes(
@@ -144,6 +148,83 @@ const TRAIN_TYPE_NAME_BY_CODE: Record<string, string> = {
   "17": "SRT",
   "18": "ITX-마음",
 };
+const TRAIN_DASHBOARD_FETCH_DEDUPE_TTL_MS = 5_000;
+let credentialStatusCache: { value: TrainCredentialStatusResponse | null; fetchedAt: number } = {
+  value: null,
+  fetchedAt: 0,
+};
+let credentialStatusInFlight: Promise<TrainCredentialStatusResponse> | null = null;
+let paymentCardConfiguredCache: { value: boolean | null; fetchedAt: number } = {
+  value: null,
+  fetchedAt: 0,
+};
+let paymentCardConfiguredInFlight: Promise<boolean> | null = null;
+
+function isDashboardFetchCacheFresh(fetchedAt: number): boolean {
+  return fetchedAt > 0 && Date.now() - fetchedAt <= TRAIN_DASHBOARD_FETCH_DEDUPE_TTL_MS;
+}
+
+async function fetchCredentialStatusForDashboard(
+  options?: { force?: boolean; signal?: AbortSignal },
+): Promise<TrainCredentialStatusResponse> {
+  const force = Boolean(options?.force);
+  if (!force && credentialStatusCache.value && isDashboardFetchCacheFresh(credentialStatusCache.fetchedAt)) {
+    return credentialStatusCache.value;
+  }
+  if (credentialStatusInFlight) {
+    return credentialStatusInFlight;
+  }
+
+  credentialStatusInFlight = (async () => {
+    const response = await fetch(`${clientApiBaseUrl}/api/train/credentials/status`, {
+      credentials: "include",
+      cache: "no-store",
+      signal: options?.signal,
+    });
+    if (!response.ok) {
+      throw new Error("failed");
+    }
+    const payload = (await response.json()) as TrainCredentialStatusResponse;
+    credentialStatusCache = { value: payload, fetchedAt: Date.now() };
+    return payload;
+  })();
+
+  try {
+    return await credentialStatusInFlight;
+  } finally {
+    credentialStatusInFlight = null;
+  }
+}
+
+async function fetchPaymentCardConfiguredForDashboard(options?: { force?: boolean }): Promise<boolean> {
+  const force = Boolean(options?.force);
+  if (!force && paymentCardConfiguredCache.value != null && isDashboardFetchCacheFresh(paymentCardConfiguredCache.fetchedAt)) {
+    return paymentCardConfiguredCache.value;
+  }
+  if (paymentCardConfiguredInFlight) {
+    return paymentCardConfiguredInFlight;
+  }
+
+  paymentCardConfiguredInFlight = (async () => {
+    const response = await fetch(`${clientApiBaseUrl}/api/wallet/payment-card/configured`, {
+      credentials: "include",
+      cache: "no-store",
+    });
+    if (!response.ok) {
+      throw new Error("failed");
+    }
+    const payload = (await response.json()) as WalletPaymentCardConfigured;
+    const configured = Boolean(payload.configured);
+    paymentCardConfiguredCache = { value: configured, fetchedAt: Date.now() };
+    return configured;
+  })();
+
+  try {
+    return await paymentCardConfiguredInFlight;
+  } finally {
+    paymentCardConfiguredInFlight = null;
+  }
+}
 
 /**
  * Normalize Korean phone numbers to 11-digit format (e.g., 01012345678).
@@ -175,13 +256,16 @@ export function normalizePhoneNumber(input: string): string {
 }
 
 const FIELD_BASE_CLASS = `mt-1 ${UI_FIELD}`;
+const SEARCH_SECTION_LABEL_CLASS = "text-xs font-medium uppercase tracking-[0.14em] text-blossom-500";
 const PRIMARY_BUTTON_CLASS = UI_BUTTON_PRIMARY;
+const SECONDARY_BUTTON_CLASS = UI_BUTTON_OUTLINE;
 const SMALL_BUTTON_CLASS = UI_BUTTON_OUTLINE_SM;
 const SMALL_DANGER_BUTTON_CLASS = UI_BUTTON_DANGER_SM;
 const SMALL_SUCCESS_BUTTON_CLASS =
   "inline-flex h-8 items-center justify-center rounded-full border border-emerald-200 bg-emerald-50 px-2.5 text-xs font-medium text-emerald-700 shadow-sm transition hover:bg-emerald-100 focus:outline-none focus:ring-2 focus:ring-emerald-100 disabled:cursor-not-allowed disabled:opacity-60";
 const SMALL_DISABLED_BUTTON_CLASS =
   "inline-flex h-8 items-center justify-center rounded-full border border-slate-200 bg-slate-100 px-2.5 text-xs font-medium text-slate-500 shadow-sm transition focus:outline-none focus:ring-2 focus:ring-slate-100";
+const TASK_ACTION_BUTTON_SIZE_CLASS = "h-9 min-w-[88px] px-3";
 const EMPTY_CREDENTIAL_STATUS: TrainCredentialStatusResponse = {
   ktx: { configured: false, verified: false, detail: null },
   srt: { configured: false, verified: false, detail: null },
@@ -191,11 +275,16 @@ export function isUnpaidAwaitingPaymentTicket(task: Pick<TrainTaskSummary, "tick
   return task.ticket_status === "awaiting_payment" && task.ticket_paid !== true;
 }
 
+export function isPendingTicketForActiveList(task: Pick<TrainTaskSummary, "ticket_status" | "ticket_paid">): boolean {
+  const status = String(task.ticket_status || "").trim().toLowerCase();
+  return (status === "awaiting_payment" || status === "waiting") && task.ticket_paid !== true;
+}
+
 export function isActiveTaskForList(task: TrainTaskSummary): boolean {
   if (ACTIVE_TASK_STATES_FOR_LIST.has(task.state)) {
     return true;
   }
-  return task.state === "COMPLETED" && isUnpaidAwaitingPaymentTicket(task);
+  return task.state === "COMPLETED" && isPendingTicketForActiveList(task);
 }
 
 function readTaskEventState(value: unknown): TrainTaskState | null {
@@ -232,21 +321,33 @@ function hasTaskById(tasks: TrainTaskSummary[], taskId: string): boolean {
 export function buildDummyTaskCards(now: Date = new Date()): { active: TrainTaskSummary[]; completed: TrainTaskSummary[] } {
   const isoAtOffsetMinutes = (minutesFromNow: number): string =>
     new Date(now.getTime() + minutesFromNow * 60_000).toISOString();
+  const isoWithOffsetMinutes = (iso: string, offsetMinutes: number): string => {
+    const parsed = new Date(iso).getTime();
+    if (Number.isNaN(parsed)) {
+      return iso;
+    }
+    return new Date(parsed + offsetMinutes * 60_000).toISOString();
+  };
 
-  const makeSpec = (provider: "SRT" | "KTX", departureAtIso: string): Record<string, unknown> => ({
-    dep: "수서",
-    arr: "부산",
+  const makeSpec = (
+    provider: "SRT" | "KTX",
+    departureAtIso: string,
+    rankedDepartureAtIso: string[] = [departureAtIso],
+    dep: string = "수서",
+    arr: string = "부산",
+  ): Record<string, unknown> => ({
+    dep,
+    arr,
     date: departureAtIso.slice(0, 10),
     passengers: { adults: 1, children: 0 },
     seat_class: "general_preferred",
-    selected_trains_ranked: [
-      {
-        rank: 1,
-        departure_at: departureAtIso,
-        provider,
-        schedule_id: `dummy-${provider.toLowerCase()}-${departureAtIso}`,
-      },
-    ],
+    selected_trains_ranked: rankedDepartureAtIso.map((departureAt, index) => ({
+      rank: index + 1,
+      departure_at: departureAt,
+      arrival_at: isoWithOffsetMinutes(departureAt, 150),
+      provider,
+      schedule_id: `dummy-${provider.toLowerCase()}-${index + 1}-${departureAt}`,
+    })),
   });
 
   const makeTask = (
@@ -254,7 +355,10 @@ export function buildDummyTaskCards(now: Date = new Date()): { active: TrainTask
     state: TrainTaskState,
     options: {
       provider?: "SRT" | "KTX";
+      dep?: string;
+      arr?: string;
       departureOffsetMinutes?: number;
+      additionalDepartureOffsetMinutes?: number[];
       deadlineOffsetMinutes?: number;
       lastAttemptOffsetMinutes?: number | null;
       nextRunOffsetMinutes?: number | null;
@@ -271,10 +375,15 @@ export function buildDummyTaskCards(now: Date = new Date()): { active: TrainTask
       ticketPaid?: boolean | null;
       ticketPaymentDeadlineOffsetMinutes?: number | null;
       ticketReservationId?: string | null;
+      ticketTrainNo?: string | null;
+      ticketSeatCount?: number | null;
+      ticketSeats?: string[] | null;
     } = {},
   ): TrainTaskSummary => {
     const provider = options.provider ?? "SRT";
-    const departureAt = isoAtOffsetMinutes(options.departureOffsetMinutes ?? 120);
+    const departureOffsets = [options.departureOffsetMinutes ?? 120, ...(options.additionalDepartureOffsetMinutes ?? [])];
+    const rankedDepartureAt = departureOffsets.map((offsetMinutes) => isoAtOffsetMinutes(offsetMinutes));
+    const departureAt = rankedDepartureAt[0];
     const createdAt = isoAtOffsetMinutes(-45);
     const updatedAt = isoAtOffsetMinutes(-2);
     const deadlineAt = isoAtOffsetMinutes(options.deadlineOffsetMinutes ?? 240);
@@ -306,7 +415,7 @@ export function buildDummyTaskCards(now: Date = new Date()): { active: TrainTask
       retry_now_allowed: options.retryNowAllowed ?? true,
       retry_now_reason: options.retryNowReason ?? null,
       retry_now_available_at: null,
-      spec_json: makeSpec(provider, departureAt),
+      spec_json: makeSpec(provider, departureAt, rankedDepartureAt, options.dep ?? "수서", options.arr ?? "부산"),
       ticket_status: options.ticketStatus ?? null,
       ticket_paid: options.ticketPaid ?? null,
       ticket_payment_deadline_at:
@@ -314,6 +423,9 @@ export function buildDummyTaskCards(now: Date = new Date()): { active: TrainTask
           ? null
           : isoAtOffsetMinutes(options.ticketPaymentDeadlineOffsetMinutes),
       ticket_reservation_id: options.ticketReservationId ?? null,
+      ticket_train_no: options.ticketTrainNo ?? null,
+      ticket_seat_count: options.ticketSeatCount ?? null,
+      ticket_seats: options.ticketSeats ?? null,
     };
   };
 
@@ -335,6 +447,18 @@ export function buildDummyTaskCards(now: Date = new Date()): { active: TrainTask
       lastAttemptErrorCode: "seat_unavailable",
       lastAttemptErrorMessageSafe: "No available seats in selected trains right now",
       nextRunOffsetMinutes: 1,
+    }),
+    makeTask("polling-multi-schedule", "POLLING", {
+      provider: "SRT",
+      dep: "수서",
+      arr: "마산",
+      departureOffsetMinutes: 12 * 60 + 24,
+      additionalDepartureOffsetMinutes: [12 * 60 + 38, 12 * 60 + 56],
+      deadlineOffsetMinutes: 18 * 60,
+      lastAttemptOk: false,
+      lastAttemptErrorCode: "seat_unavailable",
+      lastAttemptErrorMessageSafe: "No available seats in selected trains right now",
+      nextRunOffsetMinutes: 2,
     }),
     makeTask("polling-error", "POLLING", {
       provider: "KTX",
@@ -373,6 +497,9 @@ export function buildDummyTaskCards(now: Date = new Date()): { active: TrainTask
       ticketStatus: "ticket_issued",
       ticketPaid: true,
       ticketReservationId: "DUMMY-RSV-001",
+      ticketTrainNo: "311",
+      ticketSeatCount: 1,
+      ticketSeats: ["8-12A"],
     }),
     makeTask("expired", "EXPIRED", {
       provider: "SRT",
@@ -488,6 +615,9 @@ export function getTaskTicketBadge(task: TrainTaskSummary): { label: string; cla
   if (status === "awaiting_payment" && !paid) {
     return { label: "train.badge.awaitingPayment", className: "bg-amber-100 text-amber-700" };
   }
+  if (status === "waiting") {
+    return { label: "train.badge.waitlisted", className: "bg-sky-100 text-sky-700" };
+  }
   if (paid) {
     return { label: "train.badge.confirmed", className: "bg-emerald-100 text-emerald-700" };
   }
@@ -496,6 +626,17 @@ export function getTaskTicketBadge(task: TrainTaskSummary): { label: string; cla
     label: formatTicketStatus(fallbackStatus) ?? fallbackStatus,
     className: "bg-slate-100 text-slate-700",
   };
+}
+
+export function taskDisplayState(task: Pick<TrainTaskSummary, "state" | "ticket_status" | "ticket_paid">): string {
+  const status = task.ticket_status ?? null;
+  if (status === "awaiting_payment" && task.ticket_paid !== true) {
+    return "PENDING";
+  }
+  if (status === "waiting") {
+    return "PENDING";
+  }
+  return task.state;
 }
 
 export function isAwaitingPaymentTask(task: TrainTaskSummary): boolean {
@@ -528,6 +669,27 @@ export function formatScheduleTitleDate(value: string): string {
   const [year, month, day] = value.split("-");
   if (!year || !month || !day) return "MM/DD/YYYY";
   return `${month.padStart(2, "0")}/${day.padStart(2, "0")}/${year}`;
+}
+
+export function formatScheduleDateWithWeekday(value: string): string {
+  if (!value) return "MM/DD/YYYY (Weekday)";
+  const [yearRaw, monthRaw, dayRaw] = value.split("-");
+  if (!yearRaw || !monthRaw || !dayRaw) return "MM/DD/YYYY (Weekday)";
+  const year = Number.parseInt(yearRaw, 10);
+  const month = Number.parseInt(monthRaw, 10);
+  const day = Number.parseInt(dayRaw, 10);
+  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) {
+    return "MM/DD/YYYY (Weekday)";
+  }
+  const asUtcDate = new Date(Date.UTC(year, month - 1, day));
+  if (Number.isNaN(asUtcDate.getTime())) {
+    return "MM/DD/YYYY (Weekday)";
+  }
+  const weekday = asUtcDate.toLocaleDateString("en-US", {
+    weekday: "long",
+    timeZone: "UTC",
+  });
+  return `${String(month).padStart(2, "0")}/${String(day).padStart(2, "0")}/${String(year)} (${weekday})`;
 }
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
@@ -570,12 +732,16 @@ export function scrollElementToViewportCenter(element: HTMLElement | null): void
   });
 }
 
-export function scrollElementToViewportTop(element: HTMLElement | null): void {
+export function scrollElementToViewportTop(
+  element: HTMLElement | null,
+  options?: { offsetPx?: number },
+): void {
   if (!element || typeof window === "undefined") return;
   window.requestAnimationFrame(() => {
     window.requestAnimationFrame(() => {
       const rect = element.getBoundingClientRect();
-      const absoluteTop = Math.max(0, rect.top + window.scrollY);
+      const offsetPx = Math.max(0, options?.offsetPx ?? 0);
+      const absoluteTop = Math.max(0, rect.top + window.scrollY - offsetPx);
       window.scrollTo({ top: absoluteTop, behavior: "smooth" });
     });
   });
@@ -611,14 +777,31 @@ export function scheduleTrainLabel(schedule: TrainSchedule): string {
   return `${schedule.provider} ${schedule.train_no}`;
 }
 
-export function taskInfoFromSpec(task: TrainTaskSummary): {
+export function taskInfoFromSpec(task: TrainTaskSummary, locale: string = "en"): {
+  travelDateLabel: string;
+  primaryDepartureLabel: string;
+  primaryArrivalLabel: string;
+  scheduleTimeOptions: Array<{
+    rank: number;
+    provider: string | null;
+    departureLabel: string;
+    arrivalLabel: string;
+  }>;
   scheduleLabel: string;
+  scheduleOptionCount: number;
+  scheduleOptions: Array<{ rank: number; timeLabel: string; provider: string | null }>;
   dep: string;
   arr: string;
   passengerLabel: string;
 } {
   const fallback = {
+    travelDateLabel: "MM/DD/YYYY (Weekday)",
+    primaryDepartureLabel: "-",
+    primaryArrivalLabel: "-",
+    scheduleTimeOptions: [],
     scheduleLabel: "-",
+    scheduleOptionCount: 0,
+    scheduleOptions: [],
     dep: "-",
     arr: "-",
     passengerLabel: "-",
@@ -631,7 +814,6 @@ export function taskInfoFromSpec(task: TrainTaskSummary): {
   const dep = typeof task.spec_json.dep === "string" && task.spec_json.dep.length > 0 ? task.spec_json.dep : "-";
   const arr = typeof task.spec_json.arr === "string" && task.spec_json.arr.length > 0 ? task.spec_json.arr : "-";
   const dateString = typeof task.spec_json.date === "string" ? task.spec_json.date : "";
-  const dateLabel = formatScheduleTitleDate(dateString);
 
   const rankedRaw = Array.isArray(task.spec_json.selected_trains_ranked) ? task.spec_json.selected_trains_ranked : [];
   const ranked = rankedRaw
@@ -639,32 +821,207 @@ export function taskInfoFromSpec(task: TrainTaskSummary): {
     .map((row) => ({
       rank: readInteger(row.rank) ?? 999,
       departureAt: typeof row.departure_at === "string" ? row.departure_at : "",
+      arrivalAt: typeof row.arrival_at === "string" ? row.arrival_at : "",
+      provider: typeof row.provider === "string" && row.provider.trim().length > 0 ? row.provider.trim() : null,
     }))
     .filter((row) => row.departureAt.length > 0)
     .sort((a, b) => a.rank - b.rank);
 
+  const effectiveDateString = dateString || (ranked.length > 0 ? ranked[0].departureAt.slice(0, 10) : "");
+  const dateLabel = formatScheduleTitleDate(effectiveDateString);
+  const travelDateLabel = formatScheduleDateWithWeekday(effectiveDateString);
+
+  const scheduleTimeOptions = ranked
+    .map((row) => ({
+      rank: row.rank,
+      provider: row.provider,
+      departureLabel: formatTimeKst(row.departureAt, "ko"),
+      arrivalLabel: row.arrivalAt ? formatTimeKst(row.arrivalAt, "ko") : "-",
+    }))
+    .filter((row) => row.departureLabel !== "-");
+
+  const scheduleOptions = scheduleTimeOptions.map((row) => ({
+    rank: row.rank,
+    provider: row.provider,
+    timeLabel: row.departureLabel,
+  }));
+
   let scheduleLabel = "-";
-  if (ranked.length > 0) {
-    const firstTime = formatTimeKst(ranked[0].departureAt, "ko");
+  if (scheduleOptions.length > 0) {
+    const firstTime = scheduleOptions[0].timeLabel;
     scheduleLabel = `${dateLabel} ${firstTime}`;
-    if (ranked.length > 1) {
-      scheduleLabel += ` (+${ranked.length - 1})`;
-    }
-  } else if (dateString) {
+  } else if (effectiveDateString) {
     scheduleLabel = dateLabel;
   }
 
   const passengersRaw = isRecord(task.spec_json.passengers) ? task.spec_json.passengers : {};
   const adults = Math.max(0, readInteger(passengersRaw.adults) ?? 0);
   const children = Math.max(0, readInteger(passengersRaw.children) ?? 0);
-  const adultLabel = `${adults} adult${adults === 1 ? "" : "s"}`;
-  const childLabel = `${children} child${children === 1 ? "" : "ren"}`;
+  const isKorean = locale.toLowerCase().startsWith("ko");
+  const passengerParts: string[] = [];
+  if (adults > 0) {
+    passengerParts.push(isKorean ? `성인 ${adults}` : `${adults} adult${adults === 1 ? "" : "s"}`);
+  }
+  if (children > 0) {
+    passengerParts.push(isKorean ? `아동 ${children}` : `${children} child${children === 1 ? "" : "ren"}`);
+  }
 
   return {
+    travelDateLabel,
+    primaryDepartureLabel: scheduleTimeOptions[0]?.departureLabel ?? "-",
+    primaryArrivalLabel: scheduleTimeOptions[0]?.arrivalLabel ?? "-",
+    scheduleTimeOptions,
     scheduleLabel,
+    scheduleOptionCount: ranked.length,
+    scheduleOptions,
     dep,
     arr,
-    passengerLabel: `${adultLabel}, ${childLabel}`,
+    passengerLabel: passengerParts.length > 0 ? passengerParts.join(", ") : "-",
+  };
+}
+
+function taskPrimaryProviderFromSpec(task: TrainTaskSummary): string | null {
+  if (!isRecord(task.spec_json)) {
+    return null;
+  }
+
+  if (typeof task.spec_json.provider === "string" && task.spec_json.provider.trim().length > 0) {
+    return task.spec_json.provider.trim();
+  }
+
+  if (Array.isArray(task.spec_json.providers)) {
+    for (const value of task.spec_json.providers) {
+      if (typeof value === "string" && value.trim().length > 0) {
+        return value.trim();
+      }
+    }
+  }
+
+  const rankedRaw = Array.isArray(task.spec_json.selected_trains_ranked) ? task.spec_json.selected_trains_ranked : [];
+  const ranked = rankedRaw
+    .filter(isRecord)
+    .map((row) => ({
+      rank: readInteger(row.rank) ?? 999,
+      provider: typeof row.provider === "string" ? row.provider.trim() : "",
+    }))
+    .filter((row) => row.provider.length > 0)
+    .sort((a, b) => a.rank - b.rank);
+
+  return ranked.length > 0 ? ranked[0].provider : null;
+}
+
+export function taskTicketTrainLabel(task: TrainTaskSummary): string | null {
+  if (typeof task.ticket_train_no !== "string") {
+    return null;
+  }
+  const trainNo = task.ticket_train_no.trim();
+  if (!trainNo) {
+    return null;
+  }
+  const provider = taskPrimaryProviderFromSpec(task);
+  return provider ? `${provider} ${trainNo}` : trainNo;
+}
+
+function formatTicketSeatEntry(rawSeat: string, locale: string): string {
+  const seat = rawSeat.trim();
+  const match = seat.match(/^(\d+)\s*-\s*(.+)$/);
+  if (!match) {
+    return seat;
+  }
+  const carNo = match[1];
+  const seatNo = match[2].trim();
+  if (!seatNo) {
+    return seat;
+  }
+  if (locale.toLowerCase().startsWith("ko")) {
+    return `${carNo}호차 - ${seatNo}`;
+  }
+  return `Car ${carNo} - ${seatNo}`;
+}
+
+export function taskTicketSeatLabel(
+  task: Pick<TrainTaskSummary, "ticket_seat_count" | "ticket_seats">,
+  locale: string = "en",
+): string | null {
+  if (Array.isArray(task.ticket_seats)) {
+    const seats = Array.from(
+      new Set(
+        task.ticket_seats
+          .filter((seat): seat is string => typeof seat === "string")
+          .map((seat) => seat.trim())
+          .filter((seat) => seat.length > 0),
+      ),
+    );
+    if (seats.length > 0) {
+      return seats.map((seat) => formatTicketSeatEntry(seat, locale)).join(", ");
+    }
+  }
+
+  if (typeof task.ticket_seat_count === "number" && Number.isFinite(task.ticket_seat_count)) {
+    const count = Math.max(0, Math.trunc(task.ticket_seat_count));
+    if (count > 0) {
+      return String(count);
+    }
+  }
+
+  return null;
+}
+
+function parseDateMs(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const parsed = new Date(value).getTime();
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+export function formatCountdownSeconds(valueMs: number): string {
+  const totalSeconds = Math.max(0, Math.ceil(valueMs / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    return `${hours}h ${minutes}m`;
+  }
+  if (minutes > 0) {
+    return `${minutes}m ${String(seconds).padStart(2, "0")}s`;
+  }
+  return `${seconds}s`;
+}
+
+export type TaskRetryCountdown = {
+  remainingMs: number;
+  elapsedMs: number | null;
+  windowMs: number | null;
+  progressPercent: number | null;
+  isDue: boolean;
+};
+
+export function taskRetryCountdown(task: TrainTaskSummary, nowMs: number): TaskRetryCountdown | null {
+  const nextRunMs = parseDateMs(task.next_run_at);
+  if (nextRunMs === null) return null;
+
+  const remainingMs = Math.max(0, nextRunMs - nowMs);
+  const isDue = remainingMs === 0;
+  const lastAttemptMs = parseDateMs(task.last_attempt_finished_at ?? task.last_attempt_at);
+  if (lastAttemptMs === null || lastAttemptMs >= nextRunMs) {
+    return {
+      remainingMs,
+      elapsedMs: null,
+      windowMs: null,
+      progressPercent: isDue ? 100 : null,
+      isDue,
+    };
+  }
+
+  const windowMs = nextRunMs - lastAttemptMs;
+  const elapsedMs = Math.min(windowMs, Math.max(0, nowMs - lastAttemptMs));
+  const progressPercent = Math.max(0, Math.min(100, Math.round((elapsedMs / windowMs) * 100)));
+  return {
+    remainingMs,
+    elapsedMs,
+    windowMs,
+    progressPercent,
+    isDue,
   };
 }
 
@@ -677,6 +1034,7 @@ export function taskSummaryRenderKey(task: TrainTaskSummary): string {
     task.last_attempt_action ?? "",
     task.last_attempt_ok == null ? "" : String(task.last_attempt_ok),
     task.last_attempt_error_code ?? "",
+    task.last_attempt_finished_at ?? "",
     task.next_run_at ?? "",
     task.retry_now_allowed ? "1" : "0",
     task.retry_now_reason ?? "",
@@ -685,6 +1043,9 @@ export function taskSummaryRenderKey(task: TrainTaskSummary): string {
     task.ticket_paid == null ? "" : String(task.ticket_paid),
     task.ticket_payment_deadline_at ?? "",
     task.ticket_reservation_id ?? "",
+    task.ticket_train_no ?? "",
+    task.ticket_seat_count == null ? "" : String(task.ticket_seat_count),
+    Array.isArray(task.ticket_seats) ? task.ticket_seats.join(",") : "",
   ].join("|");
 }
 
@@ -759,6 +1120,25 @@ export function sortTasksByScheduleProximity(tasks: TrainTaskSummary[], order: S
   });
 }
 
+export function sortActiveTasksByImminence(tasks: TrainTaskSummary[]): TrainTaskSummary[] {
+  return [...tasks].sort((a, b) => {
+    const aSchedule = taskPrimaryDepartureAtMs(a);
+    const bSchedule = taskPrimaryDepartureAtMs(b);
+
+    if (aSchedule !== null && bSchedule !== null && aSchedule !== bSchedule) {
+      return aSchedule - bSchedule;
+    }
+    if (aSchedule !== null && bSchedule === null) return -1;
+    if (aSchedule === null && bSchedule !== null) return 1;
+
+    const aCreated = new Date(a.created_at).getTime();
+    const bCreated = new Date(b.created_at).getTime();
+    const aFallback = Number.isNaN(aCreated) ? 0 : aCreated;
+    const bFallback = Number.isNaN(bCreated) ? 0 : bCreated;
+    return aFallback - bFallback;
+  });
+}
+
 export function validateCreateTaskInputs(
   selectedScheduleCount: number,
   totalPassengers: number,
@@ -809,7 +1189,7 @@ export function TrainDashboard() {
     dep: DEFAULT_DEP_STATION,
     arr: DEFAULT_ARR_STATION,
     date: kstDateInputValue(new Date()),
-    start: "06:00",
+    start: "00:01",
     end: "23:59",
     providers: { SRT: true, KTX: true },
   });
@@ -821,9 +1201,11 @@ export function TrainDashboard() {
     notify: false,
   });
   const [duplicateWarning, setDuplicateWarning] = useState<TrainTaskDuplicateCheckResponse | null>(null);
+  const [duplicateDetailTargetTaskId, setDuplicateDetailTargetTaskId] = useState<string | null>(null);
+  const [createTaskReviewOpen, setCreateTaskReviewOpen] = useState(false);
   const [searching, setSearching] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
-  const [mobileSearchCollapsed, setMobileSearchCollapsed] = useState(false);
+  const [shouldScrollToSearchResultsSection, setShouldScrollToSearchResultsSection] = useState(false);
   const [lastSearchResultDate, setLastSearchResultDate] = useState<string | null>(null);
   const [schedules, setSchedules] = useState<TrainSchedule[]>([]);
   const [selectedScheduleIds, setSelectedScheduleIds] = useState<string[]>([]);
@@ -846,17 +1228,20 @@ export function TrainDashboard() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [dummyTaskCardsMode, setDummyTaskCardsMode] = useState(false);
-  const [scheduleSortOrder, setScheduleSortOrder] = useState<ScheduleSortOrder>("asc");
+  const [reviewScheduleScrollIndex, setReviewScheduleScrollIndex] = useState(0);
   const tasksLoadInFlight = useRef(false);
   const activeTasksRef = useRef<TrainTaskSummary[]>([]);
   const completedTasksRef = useRef<TrainTaskSummary[]>([]);
-  const queuedTaskReload = useRef<{ pending: boolean; refreshCompleted: boolean }>({
+  const queuedTaskReload = useRef<{ pending: boolean; refreshCompleted: boolean; forceCompleted: boolean }>({
     pending: false,
     refreshCompleted: false,
+    forceCompleted: false,
   });
   const dummyTaskCardsModeRef = useRef(false);
   const searchPanelRef = useRef<HTMLDivElement | null>(null);
   const schedulePanelRef = useRef<HTMLDivElement | null>(null);
+  const searchSummaryCardRef = useRef<HTMLDivElement | null>(null);
+  const reviewSchedulesCarouselRef = useRef<HTMLDivElement | null>(null);
 
   const scheduleById = useMemo(() => {
     const map = new Map<string, TrainSchedule>();
@@ -878,23 +1263,32 @@ export function TrainDashboard() {
     () => formatScheduleTitleDate(lastSearchResultDate ?? searchForm.date),
     [lastSearchResultDate, searchForm.date],
   );
-  const searchSummaryRoute = `${formatStationLabel(searchForm.dep, locale, { compact: true })} -> ${formatStationLabel(
-    searchForm.arr,
-    locale,
-    { compact: true },
-  )}`;
-  const searchSummaryDateTime = `${formatScheduleTitleDate(searchForm.date)} · ${searchForm.start} - ${searchForm.end}`;
+  const searchSummaryDep = formatStationLabel(searchForm.dep, locale, { compact: true });
+  const searchSummaryArr = formatStationLabel(searchForm.arr, locale, { compact: true });
+  const searchSummaryTimeRange = `${searchForm.start} - ${searchForm.end}`;
   const searchSummaryProvider = selectedSearchProviders.length > 0 ? selectedSearchProviders.join(" + ") : "-";
-  const searchSummaryPassengers = `${createForm.adults} ${t("train.adult")} / ${createForm.children} ${t("train.child")}`;
-  const showMobileSearchSummary = hasSearched && mobileSearchCollapsed;
+  const searchSummaryPassengerParts: string[] = [];
+  if (createForm.adults > 0) {
+    searchSummaryPassengerParts.push(
+      locale.toLowerCase().startsWith("ko")
+        ? `성인 ${createForm.adults}`
+        : `${createForm.adults} ${t("train.adult")}${createForm.adults === 1 ? "" : "s"}`,
+    );
+  }
+  if (createForm.children > 0) {
+    searchSummaryPassengerParts.push(
+      locale.toLowerCase().startsWith("ko")
+        ? `아동 ${createForm.children}`
+        : `${createForm.children} ${t("train.child")}${createForm.children === 1 ? "" : "ren"}`,
+    );
+  }
+  const searchSummaryPassengers = searchSummaryPassengerParts.length > 0 ? searchSummaryPassengerParts.join(", ") : "-";
 
   const ktxVerified = Boolean(credentialStatus?.ktx.verified);
   const srtVerified = Boolean(credentialStatus?.srt.verified);
   const selectedProviderCount = Number(searchForm.providers.SRT) + Number(searchForm.providers.KTX);
   const hasSearchResults = schedules.length > 0;
   const showRanking = hasSearched && hasSearchResults;
-  const selectedProviders = new Set(selectedSchedules.map((schedule) => schedule.provider));
-  const selectedProviderList = Array.from(selectedProviders).sort();
   const suggestedCredentialProvider =
     credentialStatus == null
       ? "KTX"
@@ -909,15 +1303,25 @@ export function TrainDashboard() {
   const searchDisabled = searching || selectedProviderCount === 0 || !searchUnlocked;
   const totalPassengers = createForm.adults + createForm.children;
   const createDisabled = !showRanking || selectedSchedules.length === 0 || creatingTask || totalPassengers < 1;
-  const sortedActiveTasks = useMemo(
-    () => sortTasksByScheduleProximity(activeTasks, scheduleSortOrder),
-    [activeTasks, scheduleSortOrder],
-  );
-  const sortedCompletedTasks = useMemo(
-    () => sortTasksByScheduleProximity(completedTasks, scheduleSortOrder),
-    [completedTasks, scheduleSortOrder],
-  );
+  const statusBannerCount = Number(Boolean(errorMessage)) + Number(Boolean(notice));
+  const hasStatusBanner = statusBannerCount > 0;
+  const searchSummaryStickyTopClass =
+    statusBannerCount > 1 ? "top-40" : statusBannerCount === 1 ? "top-28" : "top-16";
+  const searchSummaryStickyTopPx = statusBannerCount > 1 ? 160 : statusBannerCount === 1 ? 112 : 64;
+  const sortedActiveTasks = useMemo(() => sortActiveTasksByImminence(activeTasks), [activeTasks]);
+  const sortedCompletedTasks = useMemo(() => sortTasksByScheduleProximity(completedTasks, "asc"), [completedTasks]);
   const autoPayAvailable = TRAIN_AUTO_PAY_FEATURE_ENABLED && paymentCardConfigured;
+  const reviewScheduleProviders = useMemo(() => {
+    const seen = new Set<string>();
+    const providers: string[] = [];
+    for (const schedule of selectedSchedules) {
+      if (!seen.has(schedule.provider)) {
+        seen.add(schedule.provider);
+        providers.push(schedule.provider);
+      }
+    }
+    return providers.join(" + ");
+  }, [selectedSchedules]);
   const isProviderVerified = (provider: CredentialProvider): boolean =>
     provider === "SRT" ? srtVerified : ktxVerified;
   const isProviderSelected = (provider: CredentialProvider): boolean =>
@@ -940,6 +1344,7 @@ export function TrainDashboard() {
   useEffect(() => {
     completedTasksRef.current = completedTasks;
   }, [completedTasks]);
+
   const toggleProviderSelection = (provider: CredentialProvider) => {
     setProviderSelected(provider, !isProviderSelected(provider));
   };
@@ -968,12 +1373,33 @@ export function TrainDashboard() {
     });
   };
 
+  const handleReviewSchedulesScroll = useCallback(
+    (event: UIEvent<HTMLDivElement>) => {
+      if (selectedSchedules.length <= 1) {
+        setReviewScheduleScrollIndex(0);
+        return;
+      }
+      const container = event.currentTarget;
+      const viewportWidth = container.clientWidth;
+      if (viewportWidth <= 0) {
+        return;
+      }
+      const nextIndex = Math.min(
+        selectedSchedules.length - 1,
+        Math.max(0, Math.round(container.scrollLeft / viewportWidth)),
+      );
+      setReviewScheduleScrollIndex(nextIndex);
+    },
+    [selectedSchedules.length],
+  );
+
   const reloadTasks = useCallback(async (options?: { refreshCompleted?: boolean; forceCompleted?: boolean }) => {
     if (dummyTaskCardsModeRef.current) return;
     if (tasksLoadInFlight.current) {
       queuedTaskReload.current = {
         pending: true,
         refreshCompleted: queuedTaskReload.current.refreshCompleted || Boolean(options?.refreshCompleted),
+        forceCompleted: queuedTaskReload.current.forceCompleted || Boolean(options?.forceCompleted),
       };
       return;
     }
@@ -981,7 +1407,7 @@ export function TrainDashboard() {
     try {
       const { active, completed } = await fetchTaskListBootstrap({
         refreshCompleted: options?.refreshCompleted,
-        force: true,
+        force: Boolean(options?.forceCompleted),
         activeLimit: ACTIVE_TASK_FETCH_LIMIT,
         completedLimit: COMPLETED_TASK_FETCH_LIMIT,
       });
@@ -1007,8 +1433,8 @@ export function TrainDashboard() {
       tasksLoadInFlight.current = false;
       if (queuedTaskReload.current.pending) {
         const queued = queuedTaskReload.current;
-        queuedTaskReload.current = { pending: false, refreshCompleted: false };
-        void reloadTasks({ refreshCompleted: queued.refreshCompleted, forceCompleted: true });
+        queuedTaskReload.current = { pending: false, refreshCompleted: false, forceCompleted: false };
+        void reloadTasks({ refreshCompleted: queued.refreshCompleted, forceCompleted: queued.forceCompleted });
       }
     }
   }, []);
@@ -1040,6 +1466,10 @@ export function TrainDashboard() {
     }
     return "border-sky-200 bg-sky-50 text-sky-700";
   };
+
+  const duplicateWarningDetailHref = duplicateDetailTargetTaskId
+    ? `${ROUTES.modules.train}/tasks/${duplicateDetailTargetTaskId}`
+    : null;
 
   const taskErrorPresentation = (
     task: TrainTaskSummary,
@@ -1082,6 +1512,7 @@ export function TrainDashboard() {
 
   const seedDummyTaskCards = () => {
     const dummy = buildDummyTaskCards();
+    setDummyTaskCardsModeEnabled(true);
     storeDummyTaskCards([...dummy.active, ...dummy.completed]);
     dummyTaskCardsModeRef.current = true;
     setDummyTaskCardsMode(true);
@@ -1099,21 +1530,15 @@ export function TrainDashboard() {
     await reloadTasks({ forceCompleted: true, refreshCompleted: true });
   };
 
-  const loadCredentialStatus = useCallback(async () => {
+  const loadCredentialStatus = useCallback(async (options?: { force?: boolean }) => {
     setCredentialLoading(true);
     const abortController = new AbortController();
     const timeoutHandle = window.setTimeout(() => abortController.abort(), CREDENTIAL_STATUS_TIMEOUT_MS);
     try {
-      const response = await fetch(`${clientApiBaseUrl}/api/train/credentials/status`, {
-        credentials: "include",
-        cache: "no-store",
+      const payload = await fetchCredentialStatusForDashboard({
+        force: Boolean(options?.force),
         signal: abortController.signal,
       });
-      if (!response.ok) {
-        throw new Error("failed");
-      }
-
-      const payload = (await response.json()) as TrainCredentialStatusResponse;
       setCredentialStatus(payload);
       setOmittedProviders((current) => {
         const next = new Set(current);
@@ -1139,17 +1564,10 @@ export function TrainDashboard() {
     }
   }, [t]);
 
-  const loadPaymentCardConfigured = useCallback(async () => {
+  const loadPaymentCardConfigured = useCallback(async (options?: { force?: boolean }) => {
     try {
-      const response = await fetch(`${clientApiBaseUrl}/api/wallet/payment-card/configured`, {
-        credentials: "include",
-        cache: "no-store",
-      });
-      if (!response.ok) {
-        throw new Error("failed");
-      }
-      const payload = (await response.json()) as WalletPaymentCardConfigured;
-      setPaymentCardConfigured(Boolean(payload.configured));
+      const configured = await fetchPaymentCardConfiguredForDashboard({ force: Boolean(options?.force) });
+      setPaymentCardConfigured(configured);
     } catch {
       setErrorMessage((current) => current ?? t("train.error.walletStatusLoad"));
     }
@@ -1168,16 +1586,61 @@ export function TrainDashboard() {
   }, [loadPaymentCardConfigured]);
 
   useEffect(() => {
-    if (!searchUnlocked) {
-      setMobileSearchCollapsed(false);
-    }
-  }, [searchUnlocked]);
+    if (!shouldScrollToSearchResultsSection || !hasSearched) return;
+    const animationFrame = window.requestAnimationFrame(() => {
+      const stickyOffset = showRanking ? searchSummaryStickyTopPx : 0;
+
+      // When schedules are visible, scroll so the schedule section sits right
+      // below the sticky search summary (instead of stopping too early).
+      if (showRanking && schedulePanelRef.current && searchSummaryCardRef.current) {
+        const summaryHeight = searchSummaryCardRef.current.getBoundingClientRect().height;
+        const summaryGapPx = 16; // matches `space-y-4`
+        scrollElementToViewportTop(schedulePanelRef.current, {
+          offsetPx: stickyOffset + summaryHeight + summaryGapPx,
+        });
+      } else {
+        scrollElementToViewportTop(searchSummaryCardRef.current, { offsetPx: stickyOffset });
+      }
+      setShouldScrollToSearchResultsSection(false);
+    });
+    return () => window.cancelAnimationFrame(animationFrame);
+  }, [hasSearched, shouldScrollToSearchResultsSection, showRanking, searchSummaryStickyTopPx]);
 
   useEffect(() => {
-    if (!mobileSearchCollapsed || !showRanking) return;
-    if (!isMobileViewport()) return;
-    scrollElementToViewportCenter(schedulePanelRef.current);
-  }, [mobileSearchCollapsed, showRanking, schedules.length]);
+    if (!errorMessage) return;
+    const timeout = window.setTimeout(() => {
+      setErrorMessage((current) => (current === errorMessage ? null : current));
+    }, 5_000);
+    return () => window.clearTimeout(timeout);
+  }, [errorMessage]);
+
+  useEffect(() => {
+    if (!notice) return;
+    const timeout = window.setTimeout(() => {
+      setNotice((current) => (current === notice ? null : current));
+    }, 5_000);
+    return () => window.clearTimeout(timeout);
+  }, [notice]);
+
+  useEffect(() => {
+    if (showRanking && selectedSchedules.length > 0) return;
+    setCreateTaskReviewOpen(false);
+  }, [selectedSchedules.length, showRanking]);
+
+  useEffect(() => {
+    if (!createTaskReviewOpen) {
+      setReviewScheduleScrollIndex(0);
+      return;
+    }
+    const animationFrame = window.requestAnimationFrame(() => {
+      const carousel = reviewSchedulesCarouselRef.current;
+      if (carousel) {
+        carousel.scrollTo({ left: 0, top: 0, behavior: "auto" });
+      }
+      setReviewScheduleScrollIndex(0);
+    });
+    return () => window.cancelAnimationFrame(animationFrame);
+  }, [createTaskReviewOpen, selectedSchedules.length]);
 
   useEffect(() => {
     setCreateForm((current) => {
@@ -1217,13 +1680,24 @@ export function TrainDashboard() {
       await reloadTasks(options);
     };
 
-    void reloadTasks({ refreshCompleted: true, forceCompleted: true });
+    void reloadTasks({ refreshCompleted: true });
     const unsubscribeTaskEvents = subscribeTrainTaskEvents((payload, event) => {
+      if (event.type === "task_ticket_status") {
+        const ticketStatus = String(payload.ticket_status || "").trim().toLowerCase();
+        const previousTicketStatus = String(payload.previous_ticket_status || "").trim().toLowerCase();
+        if (
+          TASK_LIST_PENDING_TICKET_STATUSES.has(ticketStatus) ||
+          TASK_LIST_PENDING_TICKET_STATUSES.has(previousTicketStatus)
+        ) {
+          void refreshIfVisible({ refreshCompleted: true });
+        }
+        return;
+      }
       if (event.type !== "task_state") return;
       const state = readTaskEventState(payload.state);
       if (!state) return;
       if (TASK_LIST_REFRESH_EVENT_STATES.has(state)) {
-        void refreshIfVisible({ forceCompleted: true, refreshCompleted: true });
+        void refreshIfVisible({ refreshCompleted: true });
         return;
       }
       const taskId = typeof payload.task_id === "string" ? payload.task_id : null;
@@ -1232,7 +1706,7 @@ export function TrainDashboard() {
         hasTaskById(activeTasksRef.current, taskId) || hasTaskById(completedTasksRef.current, taskId);
       if (!knownTask) {
         // Task list can be stale across tabs/sessions; reconcile once on unknown events.
-        void refreshIfVisible({ forceCompleted: true });
+        void refreshIfVisible({ refreshCompleted: true });
         return;
       }
       const updatedAt = typeof payload.updated_at === "string" ? payload.updated_at : null;
@@ -1242,7 +1716,7 @@ export function TrainDashboard() {
 
     const onVisibilityChange = () => {
       if (document.visibilityState === "visible") {
-        void refreshIfVisible({ forceCompleted: true, refreshCompleted: true });
+        void refreshIfVisible({ refreshCompleted: true });
       }
     };
 
@@ -1326,7 +1800,7 @@ export function TrainDashboard() {
       const payload = (await response.json()) as { schedules: TrainSchedule[] };
       setHasSearched(true);
       setLastSearchResultDate(searchForm.date);
-      setMobileSearchCollapsed(true);
+      setShouldScrollToSearchResultsSection(true);
       setSchedules(payload.schedules);
       setSelectedScheduleIds([]);
       if (payload.schedules.length === 0) {
@@ -1372,7 +1846,7 @@ export function TrainDashboard() {
       });
       setNotice(t("train.notice.credentialsVerified", { provider }));
       setCredentialProvider(null);
-      await loadCredentialStatus();
+      await loadCredentialStatus({ force: true });
     } catch {
       setErrorMessage(t("train.providerErrors.verifyFailed", { provider }));
     } finally {
@@ -1418,7 +1892,7 @@ export function TrainDashboard() {
       setCredentialProvider(null);
       setCredentialForm({ username: "", password: "" });
       setNotice(t("train.notice.signedOutProvider", { provider }));
-      await loadCredentialStatus();
+      await loadCredentialStatus({ force: true });
     } catch {
       setErrorMessage(t("train.providerErrors.signOutFailed", { provider }));
     } finally {
@@ -1435,25 +1909,12 @@ export function TrainDashboard() {
     });
   };
 
-  const moveRank = (index: number, direction: "up" | "down") => {
-    setSelectedScheduleIds((current) => {
-      const next = [...current];
-      const target = direction === "up" ? index - 1 : index + 1;
-      if (target < 0 || target >= current.length) {
-        return current;
-      }
-      const item = next[index];
-      next[index] = next[target];
-      next[target] = item;
-      return next;
-    });
-  };
-
   const buildCreatePayload = useCallback(
     (confirmDuplicate: boolean): TrainTaskCreatePayload => {
       const ranked = selectedSchedules.map((schedule, index) => ({
         schedule_id: schedule.schedule_id,
         departure_at: schedule.departure_at,
+        arrival_at: schedule.arrival_at,
         rank: index + 1,
         provider: schedule.provider,
       }));
@@ -1512,11 +1973,24 @@ export function TrainDashboard() {
     [reloadTasks, t],
   );
 
+  const openCreateTaskReview = () => {
+    const validationError = validateCreateTaskInputs(selectedSchedules.length, totalPassengers);
+    if (validationError) {
+      setErrorMessage(t(validationError));
+      return;
+    }
+    setErrorMessage(null);
+    setNotice(null);
+    setCreateTaskReviewOpen(true);
+  };
+
   const createTask = async () => {
+    setCreateTaskReviewOpen(false);
     setCreatingTask(true);
     setErrorMessage(null);
     setNotice(null);
     setDuplicateWarning(null);
+    setDuplicateDetailTargetTaskId(null);
     const payload = buildCreatePayload(false);
 
     try {
@@ -1540,6 +2014,7 @@ export function TrainDashboard() {
 
       if (duplicatePayload?.has_duplicate) {
         setDuplicateWarning(duplicatePayload);
+        setDuplicateDetailTargetTaskId(null);
         return;
       }
 
@@ -1559,6 +2034,7 @@ export function TrainDashboard() {
       const ok = await submitCreateTask(buildCreatePayload(true));
       if (ok) {
         setDuplicateWarning(null);
+        setDuplicateDetailTargetTaskId(null);
       }
     } catch {
       setErrorMessage(t("train.error.createTask"));
@@ -1663,108 +2139,427 @@ export function TrainDashboard() {
   };
 
   const onExpandSearchMobile = () => {
-    setMobileSearchCollapsed(false);
-    if (!isMobileViewport()) return;
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
     scrollElementToViewportTop(searchPanelRef.current);
   };
 
-  return (
-    <section className="space-y-8">
-      {errorMessage ? (
-        <p className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">{renderError(errorMessage)}</p>
-      ) : null}
-      {notice ? <p className="rounded-xl bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{notice}</p> : null}
-      {duplicateWarning ? (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/50 px-4 py-8">
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="duplicate-warning-title"
-            className="w-full max-w-2xl rounded-2xl border border-blossom-200 bg-white p-5 shadow-xl"
-          >
-            <h3 id="duplicate-warning-title" className="text-lg font-semibold text-slate-800">
-              {t("train.duplicateCheck.title")}
-            </h3>
-            <p className="mt-2 text-sm text-slate-600">{t("train.duplicateCheck.body")}</p>
-            <ul className="mt-4 grid gap-2 md:grid-cols-3">
-              {DUPLICATE_CATEGORY_ORDER.map((category) => {
-                const count = duplicateWarning.summary[category];
-                if (count < 1) return null;
-                return (
-                  <li
-                    key={category}
-                    className={`rounded-xl border px-3 py-2 text-sm font-medium ${duplicateCategoryClass(category)}`}
-                  >
-                    {duplicateCategoryLabel(category)} ({count})
-                  </li>
-                );
-              })}
-            </ul>
-            <div className="mt-4 max-h-56 space-y-2 overflow-y-auto rounded-xl border border-blossom-100 bg-blossom-50/40 p-3">
-              {duplicateWarning.matches.slice(0, 8).map((match) => (
-                <div key={match.task_id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-white px-3 py-2">
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-slate-700">{duplicateCategoryLabel(match.category)}</p>
-                    <p className="text-xs text-slate-500">{formatDateTimeKst(match.departure_at, locale)}</p>
+  const createTaskReviewModal =
+    createTaskReviewOpen && typeof document !== "undefined"
+      ? createPortal(
+          <div className="fixed inset-0 z-[230] flex items-center justify-center bg-slate-900/60 px-4 py-8">
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="create-task-review-title"
+              className="w-full max-w-2xl rounded-2xl border border-blossom-200 bg-white p-5 shadow-xl"
+            >
+              <h3 id="create-task-review-title" className="text-lg font-semibold text-slate-800">
+                {t("train.reviewTask.title")}
+              </h3>
+              <p className="mt-2 text-sm text-slate-600">{t("train.reviewTask.body")}</p>
+
+              <div className="mt-4 overflow-hidden rounded-2xl border border-blossom-100 bg-white">
+                <div className="border-b border-dashed border-blossom-200 bg-gradient-to-r from-blossom-50 via-white to-sky-50 px-4 py-3">
+                  <div className="flex items-center justify-between gap-3 text-xs font-medium text-slate-500">
+                    <p className="truncate">{selectedDateLabel}</p>
+                    <p className="truncate text-right">{searchSummaryPassengers}</p>
                   </div>
-                  <Link
-                    href={`/modules/train/tasks/${match.task_id}`}
-                    className="text-xs font-medium text-blossom-600 hover:text-blossom-700"
-                  >
-                    {t("train.action.detail")}
-                  </Link>
+                  <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2">
+                    <p className="truncate text-center text-sm font-semibold text-slate-800">
+                      {formatStationLabel(searchForm.dep, locale)}
+                    </p>
+                    <span className="inline-flex items-center gap-1 text-slate-400">
+                      <span className="h-px w-4 bg-blossom-200 sm:w-6" />
+                      <svg
+                        aria-hidden="true"
+                        viewBox="0 0 20 20"
+                        className="h-4 w-4 text-slate-400"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.8"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M3 10h12" />
+                        <path d="m11 6 4 4-4 4" />
+                      </svg>
+                      <span className="h-px w-4 bg-blossom-200 sm:w-6" />
+                    </span>
+                    <p className="truncate text-center text-sm font-semibold text-slate-800">
+                      {formatStationLabel(searchForm.arr, locale)}
+                    </p>
+                  </div>
                 </div>
-              ))}
+
+                <dl className="divide-y divide-blossom-100/70 px-4 py-1 text-sm text-slate-700">
+                  <div className="flex min-h-12 items-center justify-between gap-3 py-2">
+                    <dt className="text-slate-500">{t("train.seatClass")}</dt>
+                    <dd className="text-right font-medium text-slate-800">{seatClassLabels[createForm.seatClass]}</dd>
+                  </div>
+                  <div className="flex min-h-12 items-center justify-between gap-3 py-2">
+                    <dt className="text-slate-500">{t("train.provider")}</dt>
+                    <dd className="text-right font-medium text-slate-800">{reviewScheduleProviders || "-"}</dd>
+                  </div>
+                  <div className="flex min-h-12 items-center justify-between gap-3 py-2">
+                    <dt className="text-slate-500">{t("train.autoPay")}</dt>
+                    <dd className="flex items-center">
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={createForm.autoPay && autoPayAvailable}
+                        aria-label={t("train.autoPay")}
+                        disabled={!autoPayAvailable}
+                        onClick={() =>
+                          setCreateForm((current) => ({
+                            ...current,
+                            autoPay: autoPayAvailable ? !current.autoPay : false,
+                          }))
+                        }
+                        className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition focus:outline-none focus:ring-2 focus:ring-blossom-100 ${
+                          createForm.autoPay && autoPayAvailable ? "bg-blossom-500" : "bg-slate-300"
+                        } ${!autoPayAvailable ? "cursor-not-allowed opacity-50" : ""}`}
+                      >
+                        <span
+                          aria-hidden="true"
+                          className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition ${
+                            createForm.autoPay && autoPayAvailable ? "translate-x-5" : "translate-x-0.5"
+                          }`}
+                        />
+                      </button>
+                    </dd>
+                  </div>
+                  <div className="flex min-h-12 items-center justify-between gap-3 py-2">
+                    <dt className="text-slate-500">{t("train.notify")}</dt>
+                    <dd className="flex items-center">
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={createForm.notify}
+                        aria-label={t("train.notify")}
+                        onClick={() =>
+                          setCreateForm((current) => ({
+                            ...current,
+                            notify: !current.notify,
+                          }))
+                        }
+                        className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition focus:outline-none focus:ring-2 focus:ring-blossom-100 ${
+                          createForm.notify ? "bg-blossom-500" : "bg-slate-300"
+                        }`}
+                      >
+                        <span
+                          aria-hidden="true"
+                          className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition ${
+                            createForm.notify ? "translate-x-5" : "translate-x-0.5"
+                          }`}
+                        />
+                      </button>
+                    </dd>
+                  </div>
+                </dl>
+                {TRAIN_AUTO_PAY_FEATURE_ENABLED && !autoPayAvailable ? (
+                  <p className="px-4 pb-3 text-xs text-slate-500">{t("train.walletRequiredAutoPay")}</p>
+                ) : null}
+              </div>
+
+              <div className="mt-4 rounded-xl border border-blossom-100 bg-blossom-50/40 p-3">
+                <p className="text-xs font-medium uppercase tracking-[0.14em] text-blossom-500">
+                  {t("train.reviewTask.selectedSchedules")}
+                </p>
+                <div
+                  ref={reviewSchedulesCarouselRef}
+                  onScroll={handleReviewSchedulesScroll}
+                  className="mt-2 flex snap-x snap-mandatory overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+                >
+                  {selectedSchedules.map((schedule, index) => (
+                    <article key={schedule.schedule_id} className="w-full shrink-0 snap-start pr-2 last:pr-0">
+                      <div className="rounded-lg border border-blossom-100 bg-white px-3 py-2">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-sm font-medium text-slate-800">
+                            {index + 1}. {scheduleTrainLabel(schedule)}
+                          </p>
+                          <p className="text-xs text-slate-500">{schedule.provider}</p>
+                        </div>
+                        <p className="mt-1 text-xs text-slate-600">
+                          {formatTimeKst(schedule.departure_at, locale)} - {formatTimeKst(schedule.arrival_at, locale)} ·{" "}
+                          {formatTransitDuration(schedule.departure_at, schedule.arrival_at)}
+                        </p>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+                {selectedSchedules.length > 1 ? (
+                  <div className="mt-2 flex items-center justify-center gap-1.5">
+                    {selectedSchedules.map((schedule, index) => (
+                      <span
+                        key={schedule.schedule_id}
+                        aria-hidden="true"
+                        className={`rounded-full transition ${
+                          index === reviewScheduleScrollIndex ? "h-1.5 w-4 bg-blossom-500" : "h-1.5 w-1.5 bg-blossom-200"
+                        }`}
+                      />
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="mt-5 flex flex-wrap justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCreateTaskReviewOpen(false)}
+                  className={SECONDARY_BUTTON_CLASS}
+                  disabled={creatingTask}
+                >
+                  {t("common.cancel")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void createTask()}
+                  className={PRIMARY_BUTTON_CLASS}
+                  disabled={creatingTask}
+                >
+                  {creatingTask ? t("train.creatingTask") : t("train.reviewTask.confirm")}
+                </button>
+              </div>
             </div>
-            <div className="mt-5 flex flex-wrap justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setDuplicateWarning(null)}
-                className={SMALL_BUTTON_CLASS}
-                disabled={creatingTask}
+          </div>,
+          document.body,
+        )
+      : null;
+
+  const duplicateWarningModal =
+    duplicateWarning && typeof document !== "undefined"
+      ? createPortal(
+          <div className="fixed inset-0 z-[220] flex items-center justify-center bg-slate-900/60 px-4 py-8">
+            {duplicateDetailTargetTaskId ? (
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="duplicate-warning-leave-title"
+                className="w-full max-w-lg rounded-2xl border border-blossom-200 bg-white p-5 shadow-xl"
               >
-                {t("common.cancel")}
-              </button>
-              <button
-                type="button"
-                onClick={() => void createTaskWithDuplicateOverride()}
-                className={PRIMARY_BUTTON_CLASS}
-                disabled={creatingTask}
+                <h3 id="duplicate-warning-leave-title" className="text-lg font-semibold text-slate-800">
+                  {t("train.duplicateCheck.leaveDetailTitle")}
+                </h3>
+                <p className="mt-2 text-sm text-slate-600">{t("train.confirm.leaveDuplicateWarningDetail")}</p>
+                <div className="mt-5 flex flex-wrap justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setDuplicateDetailTargetTaskId(null)}
+                    className={SECONDARY_BUTTON_CLASS}
+                  >
+                    {t("common.cancel")}
+                  </button>
+                  {duplicateWarningDetailHref ? (
+                    <Link href={duplicateWarningDetailHref} className={PRIMARY_BUTTON_CLASS}>
+                      {t("train.action.detail")}
+                    </Link>
+                  ) : null}
+                </div>
+              </div>
+            ) : (
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="duplicate-warning-title"
+                className="w-full max-w-2xl rounded-2xl border border-blossom-200 bg-white p-5 shadow-xl"
               >
-                {creatingTask ? t("train.creatingTask") : t("train.duplicateCheck.createAnyway")}
-              </button>
+                <h3 id="duplicate-warning-title" className="text-lg font-semibold text-slate-800">
+                  {t("train.duplicateCheck.title")}
+                </h3>
+                <p className="mt-2 text-sm text-slate-600">{t("train.duplicateCheck.body")}</p>
+                <ul className="mt-4 grid gap-2 md:grid-cols-3">
+                  {DUPLICATE_CATEGORY_ORDER.map((category) => {
+                    const count = duplicateWarning.summary[category];
+                    if (count < 1) return null;
+                    return (
+                      <li
+                        key={category}
+                        className={`rounded-xl border px-3 py-2 text-sm font-medium ${duplicateCategoryClass(category)}`}
+                      >
+                        {duplicateCategoryLabel(category)} ({count})
+                      </li>
+                    );
+                  })}
+                </ul>
+                <div className="mt-4 max-h-56 space-y-2 overflow-y-auto rounded-xl border border-blossom-100 bg-blossom-50/40 p-3">
+                  {duplicateWarning.matches.slice(0, 8).map((match) => (
+                    <div key={match.task_id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-white px-3 py-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-slate-700">{duplicateCategoryLabel(match.category)}</p>
+                        <p className="text-xs text-slate-500">{formatDateTimeKst(match.departure_at, locale)}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setDuplicateDetailTargetTaskId(match.task_id)}
+                        className="text-xs font-medium text-blossom-600 hover:text-blossom-700"
+                      >
+                        {t("train.action.detail")}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-5 flex flex-wrap justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDuplicateWarning(null);
+                      setDuplicateDetailTargetTaskId(null);
+                    }}
+                    className={SECONDARY_BUTTON_CLASS}
+                    disabled={creatingTask}
+                  >
+                    {t("common.cancel")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void createTaskWithDuplicateOverride()}
+                    className={PRIMARY_BUTTON_CLASS}
+                    disabled={creatingTask}
+                  >
+                    {creatingTask ? t("train.creatingTask") : t("train.duplicateCheck.createAnyway")}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>,
+          document.body,
+        )
+      : null;
+
+  const searchSummaryCard =
+    searchUnlocked && hasSearched ? (
+      <div
+        ref={searchSummaryCardRef}
+        data-testid="search-summary-inline"
+        className={showRanking ? `sticky z-30 ${searchSummaryStickyTopClass}` : ""}
+      >
+        <div
+          className={`min-w-0 rounded-xl border border-blossom-100 bg-white px-3 py-3 shadow-petal ${
+            showRanking ? "bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80" : ""
+          }`}
+        >
+          <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-blossom-500">
+            {t("train.searchSummary")}
+          </p>
+          <div className="mt-2 flex items-start justify-between gap-3">
+            <p className="truncate text-xs font-medium text-slate-600">{selectedDateLabel}</p>
+            <p className="truncate text-xs text-slate-600">{searchSummaryPassengers}</p>
+          </div>
+          <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2">
+            <div className="min-w-0 text-center">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-blossom-500">
+                {t("train.fromShort")}
+              </p>
+              <p className="truncate text-sm font-semibold text-slate-800">{searchSummaryDep}</p>
+            </div>
+            <span className="inline-flex items-center gap-1 text-slate-400">
+              <span className="h-px w-4 bg-blossom-200" />
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 20 20"
+                className="h-4 w-4 text-slate-400"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M3 10h12" />
+                <path d="m12 6 4 4-4 4" />
+              </svg>
+            </span>
+            <div className="min-w-0 text-center">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-blossom-500">
+                {t("train.toShort")}
+              </p>
+              <p className="truncate text-sm font-semibold text-slate-800">{searchSummaryArr}</p>
             </div>
           </div>
+          <div className="mt-2 flex items-center justify-between gap-3 text-xs text-slate-600">
+            <p className="truncate">
+              {`${t("train.timeShort")}: ${searchSummaryTimeRange}`}
+            </p>
+            <p className="truncate">{`${t("train.provider")}: ${searchSummaryProvider}`}</p>
+          </div>
+        </div>
+      </div>
+    ) : null;
+
+  return (
+    <section className="space-y-8">
+      {hasStatusBanner ? (
+        <div className="sticky top-16 z-40 space-y-2">
+          {errorMessage ? (
+            <p className="rounded-xl border border-rose-100 bg-rose-50 px-3 py-2 text-sm text-rose-700 shadow-sm">
+              {renderError(errorMessage)}
+            </p>
+          ) : null}
+          {notice ? (
+            <p className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm text-emerald-700 shadow-sm">
+              {notice}
+            </p>
+          ) : null}
         </div>
       ) : null}
+      {createTaskReviewModal}
+      {duplicateWarningModal}
 
       <div ref={searchPanelRef} className="rounded-2xl border border-blossom-100 bg-white p-6 shadow-petal">
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold text-slate-800">{t("train.searchSchedules")}</h2>
-          <button
-            type="button"
-            onClick={() => {
-              setCredentialPanelOpen((current) => {
-                const next = !current;
-                if (!next) {
-                  setCredentialProvider(null);
-                }
-                return next;
-              });
-            }}
-            aria-label={credentialPanelOpen ? t("train.hideCredentials") : t("train.showCredentials")}
-            title={credentialPanelOpen ? t("train.hideCredentials") : t("train.showCredentials")}
-            className={`inline-flex h-10 w-10 items-center justify-center rounded-full border shadow-sm transition focus:outline-none focus:ring-2 ${
-              searchUnlocked
-                ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 focus:ring-emerald-100"
-                : "border-slate-200 bg-slate-100 text-slate-500 hover:bg-slate-200 focus:ring-slate-200"
-            }`}
-          >
-            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
-              <path d="M8 11V8a4 4 0 1 1 8 0v3" strokeLinecap="round" />
-              <rect x="6" y="11" width="12" height="9" rx="2.5" />
-            </svg>
-          </button>
+          <div className="flex items-center gap-2">
+            <div data-testid="provider-selector-desktop" className="hidden items-center gap-2 md:flex">
+              {(["SRT", "KTX"] as const).map((provider) => {
+                const isSelectable = isProviderSelectable(provider);
+                const isSelected = isProviderSelected(provider);
+                return (
+                  <button
+                    key={provider}
+                    type="button"
+                    aria-pressed={isSelected}
+                    disabled={!isSelectable}
+                    onClick={() => toggleProviderSelection(provider)}
+                    className={`inline-flex h-10 items-center justify-center rounded-xl border px-4 text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-blossom-100 ${
+                      isSelectable
+                        ? isSelected
+                          ? "border-blossom-300 bg-blossom-100 text-blossom-700"
+                          : "border-blossom-200 bg-white text-slate-700 hover:bg-blossom-50"
+                        : "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400"
+                    }`}
+                  >
+                    {provider}
+                  </button>
+                );
+              })}
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setCredentialPanelOpen((current) => {
+                  const next = !current;
+                  if (!next) {
+                    setCredentialProvider(null);
+                  }
+                  return next;
+                });
+              }}
+              aria-label={credentialPanelOpen ? t("train.hideCredentials") : t("train.showCredentials")}
+              title={credentialPanelOpen ? t("train.hideCredentials") : t("train.showCredentials")}
+              className={`inline-flex h-10 w-10 items-center justify-center rounded-full border shadow-sm transition focus:outline-none focus:ring-2 ${
+                searchUnlocked
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 focus:ring-emerald-100"
+                  : "border-slate-200 bg-slate-100 text-slate-500 hover:bg-slate-200 focus:ring-slate-200"
+              }`}
+            >
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path d="M8 11V8a4 4 0 1 1 8 0v3" strokeLinecap="round" />
+                <rect x="6" y="11" width="12" height="9" rx="2.5" />
+              </svg>
+            </button>
+          </div>
         </div>
 
         {!searchUnlocked ? (
@@ -1855,30 +2650,28 @@ export function TrainDashboard() {
                         />
                       </label>
                     </div>
-                    <div className="mt-4 flex items-center gap-2">
-                      <button
-                        type="submit"
-                        disabled={credentialSubmitting}
-                        className={PRIMARY_BUTTON_CLASS}
-                      >
-                        {credentialSubmitting
-                          ? t("train.verifying")
-                          : t("train.connectProvider", { provider: activeCredentialProvider })}
-                      </button>
+                    <div className="mt-4 grid grid-cols-3 gap-2">
                       <button
                         type="button"
                         onClick={() => continueWithoutProvider(activeCredentialProvider)}
                         disabled={credentialSubmitting}
-                        className={SMALL_BUTTON_CLASS}
+                        className={`${SECONDARY_BUTTON_CLASS} h-10 w-full justify-center`}
                       >
-                        {t("train.continueWithoutProvider", { provider: activeCredentialProvider })}
+                        {t("train.ignore")}
                       </button>
                       <button
                         type="button"
                         onClick={() => setCredentialProvider(null)}
-                        className={SMALL_BUTTON_CLASS}
+                        className={`${SECONDARY_BUTTON_CLASS} h-10 w-full justify-center`}
                       >
                         {t("common.cancel")}
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={credentialSubmitting}
+                        className={`${PRIMARY_BUTTON_CLASS} h-10 w-full justify-center`}
+                      >
+                        {credentialSubmitting ? t("train.verifying") : t("train.connect")}
                       </button>
                     </div>
                   </form>
@@ -1890,56 +2683,19 @@ export function TrainDashboard() {
 
         {searchUnlocked ? (
           <>
-            <div
-              data-testid="search-summary-mobile"
-              aria-hidden={!showMobileSearchSummary}
-              className={`md:hidden overflow-hidden transition-[max-height,opacity,transform,margin] duration-300 ease-out ${
-                showMobileSearchSummary
-                  ? "mt-4 max-h-72 opacity-100 translate-y-0 visible"
-                  : "mt-0 max-h-0 opacity-0 -translate-y-1 invisible pointer-events-none"
-              }`}
-            >
-              <div className="rounded-xl border border-blossom-100 bg-blossom-50/50 px-3 py-3">
-                <div className="min-w-0">
-                  <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-blossom-500">
-                    {t("train.searchSummary")}
-                  </p>
-                  <p className="mt-1 truncate text-sm font-medium text-slate-700">{searchSummaryRoute}</p>
-                  <p className="mt-0.5 text-xs text-slate-600">{searchSummaryDateTime}</p>
-                  <p className="mt-0.5 text-xs text-slate-600">
-                    {t("train.provider")}: {searchSummaryProvider}
-                  </p>
-                  <p className="mt-0.5 text-xs text-slate-600">{searchSummaryPassengers}</p>
-                </div>
-                <div className="mt-3">
-                  <button
-                    type="button"
-                    onClick={onExpandSearchMobile}
-                    className="inline-flex h-11 w-full items-center justify-center rounded-xl bg-blossom-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-blossom-700 focus:outline-none focus:ring-2 focus:ring-blossom-200"
-                  >
-                    {t("train.editSearch")}
-                  </button>
-                </div>
-              </div>
-            </div>
             <form
               data-testid="train-search-form"
               onSubmit={onSearch}
-              className={`mt-4 overflow-hidden transition-[max-height,opacity,transform] duration-300 ease-out md:overflow-visible ${
-                mobileSearchCollapsed
-                  ? "max-h-0 opacity-0 -translate-y-1 invisible pointer-events-none md:max-h-[5000px] md:opacity-100 md:translate-y-0 md:visible md:pointer-events-auto"
-                  : "max-h-[5000px] opacity-100 translate-y-0 visible"
-              }`}
+              className="mt-4"
             >
             <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
               <div className="rounded-2xl border border-blossom-100 bg-blossom-50/40 p-4">
-                <p className="text-xs font-medium uppercase tracking-[0.14em] text-blossom-500">
-                  {t("train.stationDateTime")}
-                </p>
+                <p className={SEARCH_SECTION_LABEL_CLASS}>{t("train.station")}</p>
                 <div className="mt-3 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-end gap-2 sm:gap-3">
                   <label className="text-sm text-slate-700">
-                    {t("train.departureStation")}
+                    <span className="hidden md:inline">{t("train.departureStation")}</span>
                     <select
+                      aria-label={t("train.departureStation")}
                       value={searchForm.dep}
                       onChange={(event) => setSearchForm((cur) => ({ ...cur, dep: event.target.value }))}
                       className={`${FIELD_BASE_CLASS} md:hidden`}
@@ -1953,6 +2709,7 @@ export function TrainDashboard() {
                       ))}
                     </select>
                     <select
+                      aria-label={t("train.departureStation")}
                       value={searchForm.dep}
                       onChange={(event) => setSearchForm((cur) => ({ ...cur, dep: event.target.value }))}
                       className={`${FIELD_BASE_CLASS} hidden md:block`}
@@ -1990,8 +2747,9 @@ export function TrainDashboard() {
                     </button>
                   </div>
                   <label className="text-sm text-slate-700">
-                    {t("train.arrivalStation")}
+                    <span className="hidden md:inline">{t("train.arrivalStation")}</span>
                     <select
+                      aria-label={t("train.arrivalStation")}
                       value={searchForm.arr}
                       onChange={(event) => setSearchForm((cur) => ({ ...cur, arr: event.target.value }))}
                       className={`${FIELD_BASE_CLASS} md:hidden`}
@@ -2005,6 +2763,7 @@ export function TrainDashboard() {
                       ))}
                     </select>
                     <select
+                      aria-label={t("train.arrivalStation")}
                       value={searchForm.arr}
                       onChange={(event) => setSearchForm((cur) => ({ ...cur, arr: event.target.value }))}
                       className={`${FIELD_BASE_CLASS} hidden md:block`}
@@ -2022,8 +2781,9 @@ export function TrainDashboard() {
 
                 <div className="mt-3 grid gap-3 md:grid-cols-2">
                   <label className="text-sm text-slate-700">
-                    {t("train.date")}
+                    <span className={SEARCH_SECTION_LABEL_CLASS}>{t("train.date")}</span>
                     <input
+                      aria-label={t("train.date")}
                       type="date"
                       value={searchForm.date}
                       onChange={(event) => setSearchForm((cur) => ({ ...cur, date: event.target.value }))}
@@ -2033,9 +2793,13 @@ export function TrainDashboard() {
                     />
                   </label>
                   <div className="grid grid-cols-2 gap-2">
+                    <p className={`col-span-2 ${SEARCH_SECTION_LABEL_CLASS}`}>
+                      {t("train.timeShort")}
+                    </p>
                     <label className="text-sm text-slate-700">
-                      {t("train.timeStart")}
+                      <span className="sr-only">{t("train.timeStart")}</span>
                       <input
+                        aria-label={t("train.timeStart")}
                         type="time"
                         value={searchForm.start}
                         onChange={(event) => setSearchForm((cur) => ({ ...cur, start: event.target.value }))}
@@ -2045,8 +2809,9 @@ export function TrainDashboard() {
                       />
                     </label>
                     <label className="text-sm text-slate-700">
-                      {t("train.timeEnd")}
+                      <span className="sr-only">{t("train.timeEnd")}</span>
                       <input
+                        aria-label={t("train.timeEnd")}
                         type="time"
                         value={searchForm.end}
                         onChange={(event) => setSearchForm((cur) => ({ ...cur, end: event.target.value }))}
@@ -2063,7 +2828,7 @@ export function TrainDashboard() {
                 ) : null}
 
                 <div data-testid="provider-selector-mobile" className="mt-4 md:hidden">
-                  <p className="text-xs font-medium uppercase tracking-[0.14em] text-blossom-500">{t("train.provider")}</p>
+                  <p className={SEARCH_SECTION_LABEL_CLASS}>{t("train.provider")}</p>
                   <div className="mt-2 grid grid-cols-2 gap-2">
                     {(["SRT", "KTX"] as const).map((provider) => {
                       const isSelectable = isProviderSelectable(provider);
@@ -2090,29 +2855,6 @@ export function TrainDashboard() {
                   </div>
                 </div>
 
-                <div
-                  data-testid="provider-selector-desktop"
-                  className="mt-4 hidden flex-wrap items-center gap-4 text-sm text-slate-700 md:flex"
-                >
-                  <label className={`inline-flex items-center gap-2 ${!srtVerified ? "text-slate-400" : ""}`}>
-                    <input
-                      type="checkbox"
-                      checked={searchForm.providers.SRT}
-                      disabled={!srtVerified || !searchUnlocked}
-                      onChange={(event) => setProviderSelected("SRT", event.target.checked)}
-                    />
-                    SRT
-                  </label>
-                  <label className={`inline-flex items-center gap-2 ${!ktxVerified ? "text-slate-400" : ""}`}>
-                    <input
-                      type="checkbox"
-                      checked={searchForm.providers.KTX}
-                      disabled={!ktxVerified || !searchUnlocked}
-                      onChange={(event) => setProviderSelected("KTX", event.target.checked)}
-                    />
-                    KTX
-                  </label>
-                </div>
               </div>
 
               <div className="rounded-2xl border border-blossom-100 bg-blossom-50/40 p-4">
@@ -2120,22 +2862,6 @@ export function TrainDashboard() {
                   {t("train.passengerSeatClass")}
                 </p>
                 <div className="mt-4 space-y-4">
-                  <label className="block text-sm text-slate-700">
-                    {t("train.seatClass")}
-                    <select
-                      value={createForm.seatClass}
-                      onChange={(event) =>
-                        setCreateForm((cur) => ({ ...cur, seatClass: event.target.value as TrainSeatClass }))
-                      }
-                      className={FIELD_BASE_CLASS}
-                    >
-                      <option value="general_preferred">{seatClassLabels.general_preferred}</option>
-                      <option value="general">{seatClassLabels.general}</option>
-                      <option value="special_preferred">{seatClassLabels.special_preferred}</option>
-                      <option value="special">{seatClassLabels.special}</option>
-                    </select>
-                  </label>
-
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div className="rounded-xl border border-blossom-100 bg-white/80 px-3 py-3">
                       <p className="text-sm text-slate-700">{t("train.adults")}</p>
@@ -2145,7 +2871,7 @@ export function TrainDashboard() {
                           aria-label={t("train.decrementAdults")}
                           disabled={createForm.adults <= 0 || (createForm.adults === 1 && createForm.children === 0)}
                           onClick={() => setAdults(createForm.adults - 1)}
-                          className="inline-flex h-12 w-12 items-center justify-center rounded-xl border border-blossom-300 bg-white text-xl font-semibold leading-none text-slate-700 shadow-sm transition hover:bg-blossom-50 focus:outline-none focus:ring-2 focus:ring-blossom-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-blossom-300 bg-white text-lg font-semibold leading-none text-slate-700 shadow-sm transition hover:bg-blossom-50 focus:outline-none focus:ring-2 focus:ring-blossom-100 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           -
                         </button>
@@ -2160,7 +2886,7 @@ export function TrainDashboard() {
                           aria-label={t("train.incrementAdults")}
                           disabled={createForm.adults >= 9}
                           onClick={() => setAdults(createForm.adults + 1)}
-                          className="inline-flex h-12 w-12 items-center justify-center rounded-xl border border-blossom-300 bg-white text-xl font-semibold leading-none text-slate-700 shadow-sm transition hover:bg-blossom-50 focus:outline-none focus:ring-2 focus:ring-blossom-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-blossom-300 bg-white text-lg font-semibold leading-none text-slate-700 shadow-sm transition hover:bg-blossom-50 focus:outline-none focus:ring-2 focus:ring-blossom-100 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           +
                         </button>
@@ -2184,7 +2910,7 @@ export function TrainDashboard() {
                           aria-label={t("train.decrementChildren")}
                           disabled={createForm.children <= 0 || (createForm.children === 1 && createForm.adults === 0)}
                           onClick={() => setChildren(createForm.children - 1)}
-                          className="inline-flex h-12 w-12 items-center justify-center rounded-xl border border-blossom-300 bg-white text-xl font-semibold leading-none text-slate-700 shadow-sm transition hover:bg-blossom-50 focus:outline-none focus:ring-2 focus:ring-blossom-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-blossom-300 bg-white text-lg font-semibold leading-none text-slate-700 shadow-sm transition hover:bg-blossom-50 focus:outline-none focus:ring-2 focus:ring-blossom-100 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           -
                         </button>
@@ -2199,7 +2925,7 @@ export function TrainDashboard() {
                           aria-label={t("train.incrementChildren")}
                           disabled={createForm.children >= 9}
                           onClick={() => setChildren(createForm.children + 1)}
-                          className="inline-flex h-12 w-12 items-center justify-center rounded-xl border border-blossom-300 bg-white text-xl font-semibold leading-none text-slate-700 shadow-sm transition hover:bg-blossom-50 focus:outline-none focus:ring-2 focus:ring-blossom-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-blossom-300 bg-white text-lg font-semibold leading-none text-slate-700 shadow-sm transition hover:bg-blossom-50 focus:outline-none focus:ring-2 focus:ring-blossom-100 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           +
                         </button>
@@ -2215,6 +2941,26 @@ export function TrainDashboard() {
                         className={`${FIELD_BASE_CLASS} hidden md:block`}
                       />
                     </div>
+                  </div>
+
+                  <div>
+                    <label htmlFor="train-seat-class" className="sr-only">
+                      {t("train.seatClass")}
+                    </label>
+                    <select
+                      id="train-seat-class"
+                      aria-label={t("train.seatClass")}
+                      value={createForm.seatClass}
+                      onChange={(event) =>
+                        setCreateForm((cur) => ({ ...cur, seatClass: event.target.value as TrainSeatClass }))
+                      }
+                      className={FIELD_BASE_CLASS}
+                    >
+                      <option value="general_preferred">{seatClassLabels.general_preferred}</option>
+                      <option value="general">{seatClassLabels.general}</option>
+                      <option value="special_preferred">{seatClassLabels.special_preferred}</option>
+                      <option value="special">{seatClassLabels.special}</option>
+                    </select>
                   </div>
 
                 </div>
@@ -2235,319 +2981,242 @@ export function TrainDashboard() {
         ) : null}
       </div>
 
-      {searchUnlocked && showRanking ? (
-            <div ref={schedulePanelRef} className="rounded-2xl border border-blossom-100 bg-white p-6 shadow-petal">
-              <h2 className="text-lg font-semibold text-slate-800">
-                {t("train.selectSchedules", { date: selectedDateLabel })}
-              </h2>
-              <div data-testid="schedule-selector-mobile" className="mt-4 space-y-2 md:hidden">
-                {schedules.map((schedule) => {
-                  const checked = selectedScheduleIds.includes(schedule.schedule_id);
-                  return (
-                    <button
-                      key={schedule.schedule_id}
-                      type="button"
-                      aria-pressed={checked}
-                      aria-label={scheduleTrainLabel(schedule)}
-                      onClick={() => toggleSelectedSchedule(schedule.schedule_id)}
-                      className={`w-full rounded-xl border px-3 py-3 text-left transition focus:outline-none focus:ring-2 focus:ring-blossom-100 ${
-                        checked
-                          ? "border-blossom-300 bg-blossom-100/70"
-                          : "border-blossom-100 bg-white hover:bg-blossom-50/60"
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-semibold text-slate-800">
-                            {scheduleTrainLabel(schedule)}
-                          </p>
-                          <p className="mt-1 text-xs text-slate-600">
-                            {formatTimeKst(schedule.departure_at, locale)} - {formatTimeKst(schedule.arrival_at, locale)} ·{" "}
-                            {formatTransitDuration(schedule.departure_at, schedule.arrival_at)}
-                          </p>
-                        </div>
-                        <span
-                          aria-hidden="true"
-                          className={`inline-flex h-7 w-7 items-center justify-center rounded-full border text-xs font-semibold ${
-                            checked
-                              ? "border-blossom-500 bg-blossom-500 text-white"
-                              : "border-slate-300 bg-white text-slate-400"
-                          }`}
-                        >
-                          {checked ? "✓" : "+"}
-                        </span>
-                      </div>
-                      <div className="mt-2 flex items-center gap-2">
-                        <span
-                          title={schedule.availability.general ? t("train.generalAvailable") : t("train.generalSoldOut")}
-                          className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-semibold ${
-                            schedule.availability.general ? "bg-blossom-500 text-white" : "bg-slate-200 text-slate-500"
-                          }`}
-                        >
-                          G
-                        </span>
-                        <span
-                          title={schedule.availability.special ? t("train.specialAvailable") : t("train.specialSoldOut")}
-                          className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-semibold ${
-                            schedule.availability.special ? "bg-blossom-500 text-white" : "bg-slate-200 text-slate-500"
-                          }`}
-                        >
-                          S
-                        </span>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-              <div data-testid="schedule-selector-desktop" className="mt-4 hidden overflow-x-auto md:block">
-                <table className="min-w-full table-fixed text-left text-sm">
-                  <thead>
-                    <tr className="text-slate-500">
-                      <th className="px-2 pb-2 text-center">{t("train.table.status")}</th>
-                      <th className="px-2 pb-2">{t("train.table.train")}</th>
-                      <th className="px-2 pb-2">{t("train.table.departure")}</th>
-                      <th className="px-2 pb-2">{t("train.table.arrival")}</th>
-                      <th className="px-2 pb-2">{t("train.table.duration")}</th>
-                      <th className="px-2 pb-2 text-center" colSpan={2}>
-                        {t("train.table.availability")}
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {schedules.map((schedule) => {
-                      const checked = selectedScheduleIds.includes(schedule.schedule_id);
-                      return (
-                        <tr
-                          key={schedule.schedule_id}
-                          role="button"
-                          tabIndex={0}
-                          aria-pressed={checked}
-                          onClick={() => toggleSelectedSchedule(schedule.schedule_id)}
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter" || event.key === " ") {
-                              event.preventDefault();
-                              toggleSelectedSchedule(schedule.schedule_id);
-                            }
-                          }}
-                          className={`cursor-pointer border-t border-blossom-100 transition ${
-                            checked ? "bg-blossom-100/70" : "hover:bg-blossom-50/50"
-                          }`}
-                        >
-                          <td className="px-2 py-2 align-middle text-center">
-                            <span
-                              aria-hidden="true"
-                              className={`mx-auto inline-flex h-5 w-5 items-center justify-center rounded-full border transition ${
-                                checked
-                                  ? "border-blossom-500 bg-blossom-500 text-white"
-                                  : "border-slate-300 bg-slate-100 text-transparent"
-                              }`}
-                            >
-                              {checked ? (
-                                <svg
-                                  viewBox="0 0 20 20"
-                                  className="h-3.5 w-3.5"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  strokeWidth="2.2"
-                                >
-                                  <path d="M4 10.5 8 14l8-8" strokeLinecap="round" strokeLinejoin="round" />
-                                </svg>
-                              ) : null}
-                            </span>
-                          </td>
-                          <td className="px-2 py-2">
-                            {scheduleTrainLabel(schedule)}
-                          </td>
-                          <td className="px-2 py-2">{formatTimeKst(schedule.departure_at, locale)}</td>
-                          <td className="px-2 py-2">{formatTimeKst(schedule.arrival_at, locale)}</td>
-                          <td className="px-2 py-2">{formatTransitDuration(schedule.departure_at, schedule.arrival_at)}</td>
-                          <td className="px-2 py-2 text-center">
-                            <span
-                              title={schedule.availability.general ? t("train.generalAvailable") : t("train.generalSoldOut")}
-                              className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-semibold ${
-                                schedule.availability.general ? "bg-blossom-500 text-white" : "bg-slate-200 text-slate-500"
-                              }`}
-                            >
-                              G
-                            </span>
-                          </td>
-                          <td className="px-2 py-2 text-center">
-                            <span
-                              title={schedule.availability.special ? t("train.specialAvailable") : t("train.specialSoldOut")}
-                              className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-semibold ${
-                                schedule.availability.special ? "bg-blossom-500 text-white" : "bg-slate-200 text-slate-500"
-                              }`}
-                            >
-                              S
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="mt-5 rounded-xl border border-blossom-100 bg-blossom-50/50 p-4">
-                {selectedSchedules.length === 0 ? (
-                  <p className="text-sm text-slate-500">{t("train.selectToCreateTask")}</p>
-                ) : null}
-                {selectedSchedules.length === 1 ? (
-                  <div className="rounded-lg border border-blossom-100 bg-white px-3 py-2 text-sm text-slate-700">
-                    <span className="font-medium">{t("train.selected")}</span> {scheduleTrainLabel(selectedSchedules[0])} ·{" "}
-                    {formatDateTimeKst(selectedSchedules[0].departure_at, locale)}
-                  </div>
-                ) : null}
-                {selectedSchedules.length > 1 ? (
-                  <>
-                    <p className="text-sm font-medium text-slate-700">{t("train.priorityOrder")}</p>
-                    <ul className="mt-3 space-y-2 text-sm">
-                      {selectedSchedules.map((schedule, index) => (
-                        <li
-                          key={schedule.schedule_id}
-                          className="flex items-center justify-between rounded-lg border border-blossom-100 bg-white px-3 py-2"
-                        >
-                          <div className="flex items-center gap-2">
-                            <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-blossom-500 px-2 text-xs font-semibold text-white">
-                              {index + 1}
-                            </span>
-                            <span>
-                              {scheduleTrainLabel(schedule)} · {formatDateTimeKst(schedule.departure_at, locale)}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => moveRank(index, "up")}
-                              className={SMALL_BUTTON_CLASS}
-                            >
-                              {t("train.up")}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => moveRank(index, "down")}
-                              className={SMALL_BUTTON_CLASS}
-                            >
-                              {t("train.down")}
-                            </button>
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  </>
-                ) : null}
-
-                <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-blossom-100 bg-white px-3 py-3">
-                  <div className="text-sm text-slate-600">
-                    <p>
-                      <span className="font-medium">{t("train.provider")}:</span>{" "}
-                      {selectedSchedules.length > 0 ? selectedProviderList.join(" + ") : t("train.selectSchedulesFirst")}
-                    </p>
-                    <p>
-                      <span className="font-medium">{t("train.seat")}:</span> {seatClassLabels[createForm.seatClass]} ·{" "}
-                      <span className="font-medium">{t("train.passengers")}:</span> {createForm.adults} {t("train.adult")} /{" "}
-                      {createForm.children} {t("train.child")}
-                    </p>
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <div className="flex flex-wrap items-center gap-3">
-                      {TRAIN_AUTO_PAY_FEATURE_ENABLED ? (
-                        <button
-                          type="button"
-                          role="switch"
-                          aria-checked={createForm.autoPay}
-                          onClick={() => {
-                            setCreateForm((cur) => ({ ...cur, autoPay: !cur.autoPay }));
-                          }}
-                          disabled={!autoPayAvailable}
-                          title={autoPayAvailable ? t("train.autoPay") : t("train.autoPayHelp")}
-                          className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition focus:outline-none focus:ring-2 focus:ring-blossom-100 disabled:cursor-not-allowed disabled:opacity-60 ${
-                            createForm.autoPay
-                              ? "border-blossom-300 bg-blossom-50 text-blossom-700"
-                              : "border-slate-200 bg-white text-slate-600"
-                          }`}
-                        >
-                          <span>{t("train.autoPay")}</span>
-                          <span
-                            className={`relative inline-flex h-5 w-9 items-center rounded-full transition ${
-                              createForm.autoPay ? "bg-blossom-500" : "bg-slate-300"
-                            }`}
-                          >
-                            <span
-                              className={`inline-block h-4 w-4 rounded-full bg-white shadow transition ${
-                                createForm.autoPay ? "translate-x-4" : "translate-x-0.5"
-                              }`}
-                            />
-                          </span>
-                        </button>
-                      ) : null}
-
+      {searchUnlocked && hasSearched ? (
+        <div className="space-y-4">
+          {searchSummaryCard}
+          {showRanking ? (
+              <div ref={schedulePanelRef} className="rounded-2xl border border-blossom-100 bg-white p-6 shadow-petal">
+                <h2 className="text-lg font-semibold text-slate-800">
+                  {t("train.selectSchedules", { date: selectedDateLabel })}
+                </h2>
+                <div data-testid="schedule-selector-mobile" className="mt-4 space-y-2 md:hidden">
+                  {schedules.map((schedule) => {
+                    const checked = selectedScheduleIds.includes(schedule.schedule_id);
+                    const selectedRank = selectedScheduleIds.indexOf(schedule.schedule_id) + 1;
+                    const showSelectedRank = checked && selectedScheduleIds.length > 1;
+                    return (
                       <button
+                        key={schedule.schedule_id}
                         type="button"
-                        role="switch"
-                        aria-checked={createForm.notify}
-                        onClick={() => setCreateForm((cur) => ({ ...cur, notify: !cur.notify }))}
-                        className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition focus:outline-none focus:ring-2 focus:ring-blossom-100 ${
-                          createForm.notify
-                            ? "border-blossom-300 bg-blossom-50 text-blossom-700"
-                            : "border-slate-200 bg-white text-slate-600"
+                        aria-pressed={checked}
+                        aria-label={`${scheduleTrainLabel(schedule)} ${formatTimeKst(schedule.departure_at, locale)} ${formatTimeKst(schedule.arrival_at, locale)}`}
+                        onClick={() => toggleSelectedSchedule(schedule.schedule_id)}
+                        className={`w-full overflow-hidden rounded-2xl border text-left transition focus:outline-none focus:ring-2 focus:ring-blossom-100 ${
+                          checked
+                            ? "border-blossom-300 bg-blossom-50 shadow-sm"
+                            : "border-blossom-100 bg-white hover:bg-blossom-50/60"
                         }`}
                       >
-                        <span>{t("train.notify")}</span>
-                        <span
-                          className={`relative inline-flex h-5 w-9 items-center rounded-full transition ${
-                            createForm.notify ? "bg-blossom-500" : "bg-slate-300"
-                          }`}
-                        >
-                          <span
-                            className={`inline-block h-4 w-4 rounded-full bg-white shadow transition ${
-                              createForm.notify ? "translate-x-4" : "translate-x-0.5"
-                            }`}
-                          />
-                        </span>
+                        <div className="border-b border-dashed border-blossom-200 bg-gradient-to-r from-blossom-50 via-white to-sky-50 px-3 py-2.5">
+                          <div className="flex items-center justify-between gap-3">
+                            <p className="truncate text-sm font-semibold text-slate-800">{scheduleTrainLabel(schedule)}</p>
+                            <span
+                              aria-hidden="true"
+                              className={`inline-flex h-7 w-7 items-center justify-center rounded-full border text-xs font-semibold ${
+                                checked
+                                  ? "border-blossom-500 bg-blossom-500 text-white"
+                                  : "border-slate-300 bg-white text-slate-400"
+                              }`}
+                            >
+                              {checked ? (showSelectedRank ? selectedRank : "✓") : "+"}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="px-3 py-3">
+                          <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2">
+                            <div className="min-w-0 text-center">
+                              <p className="truncate text-sm font-semibold text-slate-800">
+                                {formatStationLabel(schedule.dep, locale, { compact: true })}
+                              </p>
+                              <p className="mt-0.5 text-xs tabular-nums text-slate-600">{formatTimeKst(schedule.departure_at, locale)}</p>
+                            </div>
+                            <span className="inline-flex items-center gap-1 text-slate-400">
+                              <span className="h-px w-3 bg-blossom-200" />
+                              <svg
+                                aria-hidden="true"
+                                viewBox="0 0 20 20"
+                                className="h-4 w-4"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.8"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              >
+                                <path d="M3 10h12" />
+                                <path d="m12 6 4 4-4 4" />
+                              </svg>
+                              <span className="h-px w-3 bg-blossom-200" />
+                            </span>
+                            <div className="min-w-0 text-center">
+                              <p className="truncate text-sm font-semibold text-slate-800">
+                                {formatStationLabel(schedule.arr, locale, { compact: true })}
+                              </p>
+                              <p className="mt-0.5 text-xs tabular-nums text-slate-600">{formatTimeKst(schedule.arrival_at, locale)}</p>
+                            </div>
+                          </div>
+                          <div className="mt-2 flex items-center justify-between gap-2">
+                            <p className="text-xs text-slate-500">{formatTransitDuration(schedule.departure_at, schedule.arrival_at)}</p>
+                            <div className="flex items-center gap-2">
+                              <span
+                                title={schedule.availability.general ? t("train.generalAvailable") : t("train.generalSoldOut")}
+                                className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-semibold ${
+                                  schedule.availability.general ? "bg-blossom-500 text-white" : "bg-slate-200 text-slate-500"
+                                }`}
+                              >
+                                G
+                              </span>
+                              <span
+                                title={schedule.availability.special ? t("train.specialAvailable") : t("train.specialSoldOut")}
+                                className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-semibold ${
+                                  schedule.availability.special ? "bg-blossom-500 text-white" : "bg-slate-200 text-slate-500"
+                                }`}
+                              >
+                                S
+                              </span>
+                            </div>
+                          </div>
+                        </div>
                       </button>
-
+                    );
+                  })}
+                </div>
+                <div data-testid="schedule-selector-desktop" className="mt-4 hidden md:block">
+                  <div className="grid gap-3 md:grid-cols-2">
+                  {schedules.map((schedule) => {
+                    const checked = selectedScheduleIds.includes(schedule.schedule_id);
+                    const selectedRank = selectedScheduleIds.indexOf(schedule.schedule_id) + 1;
+                    const showSelectedRank = checked && selectedScheduleIds.length > 1;
+                    return (
                       <button
+                        key={schedule.schedule_id}
                         type="button"
-                        onClick={createTask}
-                        disabled={createDisabled}
-                        className={PRIMARY_BUTTON_CLASS}
+                        aria-pressed={checked}
+                        aria-label={scheduleTrainLabel(schedule)}
+                        onClick={() => toggleSelectedSchedule(schedule.schedule_id)}
+                        className={`w-full overflow-hidden rounded-2xl border text-left transition focus:outline-none focus:ring-2 focus:ring-blossom-100 ${
+                          checked
+                            ? "border-blossom-300 bg-blossom-50 shadow-sm"
+                            : "border-blossom-100 bg-white hover:bg-blossom-50/60"
+                        }`}
                       >
-                        {creatingTask ? t("train.creatingTask") : t("train.createTask")}
+                        <div className="border-b border-dashed border-blossom-200 bg-gradient-to-r from-blossom-50 via-white to-sky-50 px-3 py-2.5">
+                          <div className="flex items-center justify-between gap-3">
+                            <p className="truncate text-sm font-semibold text-slate-800">{scheduleTrainLabel(schedule)}</p>
+                            <span
+                              aria-hidden="true"
+                              className={`inline-flex h-7 w-7 items-center justify-center rounded-full border text-xs font-semibold ${
+                                checked
+                                  ? "border-blossom-500 bg-blossom-500 text-white"
+                                  : "border-slate-300 bg-white text-slate-400"
+                              }`}
+                            >
+                              {checked ? (showSelectedRank ? selectedRank : "✓") : "+"}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="px-3 py-3">
+                          <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2">
+                            <div className="min-w-0 text-center">
+                              <p className="truncate text-sm font-semibold text-slate-800">
+                                {formatStationLabel(schedule.dep, locale, { compact: true })}
+                              </p>
+                              <p className="mt-0.5 text-xs tabular-nums text-slate-600">{formatTimeKst(schedule.departure_at, locale)}</p>
+                            </div>
+                            <span className="inline-flex items-center gap-1 text-slate-400">
+                              <span className="h-px w-3 bg-blossom-200" />
+                              <svg
+                                aria-hidden="true"
+                                viewBox="0 0 20 20"
+                                className="h-4 w-4"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.8"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              >
+                                <path d="M3 10h12" />
+                                <path d="m12 6 4 4-4 4" />
+                              </svg>
+                              <span className="h-px w-3 bg-blossom-200" />
+                            </span>
+                            <div className="min-w-0 text-center">
+                              <p className="truncate text-sm font-semibold text-slate-800">
+                                {formatStationLabel(schedule.arr, locale, { compact: true })}
+                              </p>
+                              <p className="mt-0.5 text-xs tabular-nums text-slate-600">{formatTimeKst(schedule.arrival_at, locale)}</p>
+                            </div>
+                          </div>
+                          <div className="mt-2 flex items-center justify-between gap-2">
+                            <p className="text-xs text-slate-500">{formatTransitDuration(schedule.departure_at, schedule.arrival_at)}</p>
+                            <div className="flex items-center gap-2">
+                              <span
+                                title={schedule.availability.general ? t("train.generalAvailable") : t("train.generalSoldOut")}
+                                className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-semibold ${
+                                  schedule.availability.general ? "bg-blossom-500 text-white" : "bg-slate-200 text-slate-500"
+                                }`}
+                              >
+                                G
+                              </span>
+                              <span
+                                title={schedule.availability.special ? t("train.specialAvailable") : t("train.specialSoldOut")}
+                                className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-semibold ${
+                                  schedule.availability.special ? "bg-blossom-500 text-white" : "bg-slate-200 text-slate-500"
+                                }`}
+                              >
+                                S
+                              </span>
+                            </div>
+                          </div>
+                        </div>
                       </button>
-                    </div>
-
+                    );
+                  })}
                   </div>
                 </div>
-                {TRAIN_AUTO_PAY_FEATURE_ENABLED && !autoPayAvailable ? (
-                  <div className="mt-3">
-                    <div className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50/90 px-3 py-1.5 text-xs text-amber-700 shadow-sm">
-                      <span className="font-medium">{t("train.walletRequiredAutoPay")}</span>
-                      <span>{t("train.configureIn")}</span>
-                      <Link
-                        href={ROUTES.settings.payment}
-                        className="font-medium underline decoration-amber-300 underline-offset-2 hover:text-amber-800"
-                      >
-                        {t("nav.paymentSettings")}
-                      </Link>
-                      <span>.</span>
-                    </div>
+
+                <div className="mt-5 flex flex-wrap items-center gap-2">
+                  <div className="ml-auto flex w-full items-center gap-2 sm:w-auto">
+                    <button
+                      type="button"
+                      onClick={onExpandSearchMobile}
+                      className={`${SECONDARY_BUTTON_CLASS} h-11 flex-1 px-4 sm:min-w-[148px] sm:flex-none`}
+                    >
+                      {t("train.editSearch")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={openCreateTaskReview}
+                      disabled={createDisabled}
+                      className={`${PRIMARY_BUTTON_CLASS} h-11 flex-1 px-4 sm:min-w-[148px] sm:flex-none`}
+                    >
+                      {creatingTask ? t("train.creatingTask") : t("train.continueTask")}
+                    </button>
                   </div>
-                ) : null}
+                </div>
               </div>
-            </div>
-          ) : searchUnlocked && hasSearched ? (
-            <div className="rounded-2xl border border-blossom-100 bg-white p-6 text-sm text-slate-500 shadow-petal">
-              {t("train.noSchedulesYet")}
-            </div>
-          ) : null}
+            ) : (
+              <div className="rounded-2xl border border-blossom-100 bg-white p-6 text-sm text-slate-500 shadow-petal">
+                <p className="mt-4">{t("train.noSchedulesYet")}</p>
+                <div className="mt-4 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={onExpandSearchMobile}
+                    className={SECONDARY_BUTTON_CLASS}
+                  >
+                    {t("train.editSearch")}
+                  </button>
+                </div>
+              </div>
+            )}
+        </div>
+      ) : null}
 
       {TRAIN_DUMMY_TASKS_ENABLED ? (
         <div className="rounded-2xl border border-dashed border-blossom-200 bg-white p-4 shadow-petal">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm text-slate-600">
               <span className="font-medium text-slate-700">Dev test tools:</span> create dummy task cards across task
-              states.
+              states, including a multi-schedule sample (수서 {"->"} 마산, +2 options).
             </p>
             <div className="flex flex-wrap items-center gap-2">
               <button type="button" onClick={seedDummyTaskCards} className={SMALL_BUTTON_CLASS}>
@@ -2569,105 +3238,145 @@ export function TrainDashboard() {
       ) : null}
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <div className="lg:col-span-2">
-          <div className="flex flex-wrap items-center justify-end gap-2 text-sm text-slate-600">
-            <label htmlFor="task-schedule-sort" className="font-medium text-slate-700">
-              {t("train.sort.label")}
-            </label>
-            <select
-              id="task-schedule-sort"
-              value={scheduleSortOrder}
-              onChange={(event) => setScheduleSortOrder(event.target.value as ScheduleSortOrder)}
-              className="rounded-lg border border-blossom-200 bg-white px-2 py-1 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blossom-100"
-            >
-              <option value="asc">{t("train.sort.scheduleAscending")}</option>
-              <option value="desc">{t("train.sort.scheduleDescending")}</option>
-            </select>
-          </div>
-        </div>
         <div className="rounded-2xl border border-blossom-100 bg-white p-6 shadow-petal">
           <h2 className="text-lg font-semibold text-slate-800">{t("train.activeTasks")}</h2>
           <ul className="mt-4 space-y-3 text-sm">
             {sortedActiveTasks.length === 0 ? <li className="text-slate-500">{t("train.empty.activeTasks")}</li> : null}
             {sortedActiveTasks.map((task) => {
-              const info = taskInfoFromSpec(task);
+              const info = taskInfoFromSpec(task, locale);
               const showRetryNow = task.state === "QUEUED" || task.state === "POLLING";
               const ticketBadge = getTaskTicketBadge(task);
+              const displayState = taskDisplayState(task);
               const taskError = taskErrorPresentation(task);
               return (
-                <li key={task.id} className="overflow-hidden rounded-2xl border border-blossom-200 bg-gradient-to-r from-white via-blossom-50/40 to-white shadow-sm">
-                  <div className="flex items-start justify-between gap-3 border-b border-dashed border-blossom-200 px-4 py-3">
-                    <div className="min-w-0">
-                      <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-blossom-500">
-                        {t("train.ticketStyle.activeTask")}
-                      </p>
-                      <div className="mt-1 flex flex-wrap items-center gap-2">
-                        <p className="font-medium text-slate-700">{task.state}</p>
-                        {ticketBadge ? (
-                          <span
-                            className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${ticketBadge.className}`}
-                          >
-                            {renderMaybeKey(ticketBadge.label)}
-                          </span>
-                        ) : null}
+                <li key={task.id} className="overflow-hidden rounded-2xl border border-blossom-200 bg-white shadow-sm">
+                  <div className="border-b border-dashed border-blossom-200 bg-gradient-to-r from-blossom-50 via-white to-sky-50 px-4 py-3 sm:px-5">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-blossom-500">
+                          {t("train.ticketStyle.activeTask")}
+                        </p>
+                        <div className="mt-1 flex flex-wrap items-center gap-2">
+                          <p className="font-medium text-slate-700">{displayState}</p>
+                          {ticketBadge ? (
+                            <span
+                              className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${ticketBadge.className}`}
+                            >
+                              {renderMaybeKey(ticketBadge.label)}
+                            </span>
+                          ) : null}
+                        </div>
                       </div>
+                      <Link href={`/modules/train/tasks/${task.id}`} className="text-xs font-medium text-blossom-600 hover:text-blossom-700">
+                        {t("train.action.detail")}
+                      </Link>
                     </div>
-                    <Link href={`/modules/train/tasks/${task.id}`} className="text-xs font-medium text-blossom-600 hover:text-blossom-700">
-                      {t("train.action.detail")}
-                    </Link>
-                  </div>
 
-                  <div className="grid gap-3 px-4 py-3 md:grid-cols-2">
-                    <div className="rounded-xl border border-blossom-100 bg-white/90 px-3 py-2">
-                      <p className="text-xs text-slate-500">{t("train.label.route")}</p>
-                      <p className="mt-0.5 text-sm font-medium text-slate-700">
-                        {formatStationLabel(info.dep, locale)} {"->"} {formatStationLabel(info.arr, locale)}
-                      </p>
-                      <p className="mt-2 text-xs text-slate-500">{t("train.label.schedule")}</p>
-                      <p className="mt-0.5 text-sm text-slate-700">{info.scheduleLabel}</p>
-                    </div>
-                    <div className="rounded-xl border border-blossom-100 bg-white/90 px-3 py-2">
-                      <p className="text-xs text-slate-500">{t("train.label.passengers")}</p>
-                      <p className="mt-0.5 text-sm text-slate-700">{info.passengerLabel}</p>
-                      <p className="mt-2 text-xs text-slate-500">{t("train.lastAttempt")}</p>
-                      <p className="mt-0.5 text-sm text-slate-700">
-                        {task.last_attempt_at ? formatDateTimeKst(task.last_attempt_at, locale) : "-"}
-                      </p>
-                      {task.state === "POLLING" && task.next_run_at ? (
-                        <>
-                          <p className="mt-2 text-xs text-slate-500">{t("train.label.nextCheck")}</p>
-                          <p className="mt-0.5 text-sm text-slate-700">{formatDateTimeKst(task.next_run_at, locale)}</p>
-                        </>
+                    <div className="mt-3 rounded-2xl border border-blossom-100 bg-white/90 p-3 sm:p-4">
+                      <div className="flex items-center justify-between gap-3 text-xs font-medium text-slate-500">
+                        <p className="truncate">{info.travelDateLabel}</p>
+                        {info.passengerLabel !== "-" ? (
+                          <p className="truncate text-right">{`${t("train.label.passengers")} ${info.passengerLabel}`}</p>
+                        ) : (
+                          <p aria-hidden="true" className="text-transparent">
+                            {"\u00A0"}
+                          </p>
+                        )}
+                      </div>
+                      <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-2 gap-y-2 sm:gap-x-3">
+                        <p className="truncate text-center text-sm font-semibold text-slate-800 sm:text-base">
+                          {formatStationLabel(info.dep, locale)}
+                        </p>
+                        <span className="inline-flex items-center gap-1 text-slate-400">
+                          <span className="h-px w-4 bg-blossom-200 sm:w-6" />
+                          <svg
+                            aria-hidden="true"
+                            viewBox="0 0 20 20"
+                            className="h-4 w-4 text-slate-400"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.8"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <path d="M3 10h12" />
+                            <path d="m11 6 4 4-4 4" />
+                          </svg>
+                          <span className="h-px w-4 bg-blossom-200 sm:w-6" />
+                        </span>
+                        <p className="truncate text-center text-sm font-semibold text-slate-800 sm:text-base">
+                          {formatStationLabel(info.arr, locale)}
+                        </p>
+                        <p className="truncate text-center text-sm font-medium text-slate-700">{info.primaryDepartureLabel}</p>
+                        <span className="invisible inline-flex items-center gap-1">
+                          <span className="h-px w-4 sm:w-6" />
+                          <svg
+                            aria-hidden="true"
+                            viewBox="0 0 20 20"
+                            className="h-4 w-4"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.8"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <path d="M3 10h12" />
+                            <path d="m11 6 4 4-4 4" />
+                          </svg>
+                          <span className="h-px w-4 sm:w-6" />
+                        </span>
+                        <p className="truncate text-center text-sm font-medium text-slate-700">{info.primaryArrivalLabel}</p>
+                      </div>
+                      {info.scheduleTimeOptions.length > 1 ? (
+                        <ul className="mt-2 space-y-1 rounded-lg bg-slate-50 px-2 py-1.5 text-xs text-slate-600">
+                          {info.scheduleTimeOptions.map((option, index) => (
+                            <li key={`${task.id}-schedule-${index}`} className="flex items-center justify-between gap-2">
+                              <span className="font-medium text-slate-500">{`#${index + 1}`}</span>
+                              <span>
+                                {option.provider ? `${option.provider} ` : ""}
+                                {option.departureLabel} - {option.arrivalLabel}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
                       ) : null}
                     </div>
                   </div>
 
                   {taskError ? (
-                    <div className="px-4 pb-3">
+                    <div className="px-4 py-3">
                       <p className={`rounded-xl border px-3 py-2 text-xs ${taskError.className}`}>
-                        <span className="font-medium">{t("train.label.lastError")} </span>
+                        <span className="font-medium">{t("train.label.message")} </span>
                         <span>{taskError.message}</span>
                       </p>
                     </div>
                   ) : null}
 
-                  <div className="flex flex-wrap gap-2 border-t border-dashed border-blossom-200 px-4 py-3">
+                  <div className="relative flex flex-wrap gap-2 border-t border-dashed border-blossom-200 px-4 py-3">
+                    <span
+                      aria-hidden="true"
+                      className="pointer-events-none absolute -left-3 top-0 h-6 w-6 -translate-y-1/2 rounded-full border border-blossom-200 bg-white"
+                    />
+                    <span
+                      aria-hidden="true"
+                      className="pointer-events-none absolute -right-3 top-0 h-6 w-6 -translate-y-1/2 rounded-full border border-blossom-200 bg-white"
+                    />
                     {showRetryNow ? (
                       <button
                         type="button"
                         onClick={() => sendTaskAction(task.id, "retry")}
                         disabled={!task.retry_now_allowed}
-                        title={task.retry_now_allowed ? "Retry now" : retryNowDisabledTitle(task)}
-                        className={task.retry_now_allowed ? SMALL_BUTTON_CLASS : SMALL_DISABLED_BUTTON_CLASS}
+                        title={task.retry_now_allowed ? t("train.action.retry") : retryNowDisabledTitle(task)}
+                        className={`${task.retry_now_allowed ? SMALL_BUTTON_CLASS : SMALL_DISABLED_BUTTON_CLASS} ${TASK_ACTION_BUTTON_SIZE_CLASS}`}
                       >
-                        Retry now
+                        {t("train.action.retry")}
                       </button>
                     ) : null}
                     {task.state !== "PAUSED" ? (
                       <button
                         type="button"
                         onClick={() => sendTaskAction(task.id, "pause")}
-                        className={SMALL_BUTTON_CLASS}
+                        className={`${SMALL_BUTTON_CLASS} ${TASK_ACTION_BUTTON_SIZE_CLASS}`}
                       >
                         {t("train.action.pause")}
                       </button>
@@ -2675,7 +3384,7 @@ export function TrainDashboard() {
                       <button
                         type="button"
                         onClick={() => sendTaskAction(task.id, "resume")}
-                        className={SMALL_BUTTON_CLASS}
+                        className={`${SMALL_BUTTON_CLASS} ${TASK_ACTION_BUTTON_SIZE_CLASS}`}
                       >
                         {t("train.action.resume")}
                       </button>
@@ -2685,7 +3394,7 @@ export function TrainDashboard() {
                         type="button"
                         onClick={() => void payAwaitingPaymentTask(task.id)}
                         disabled={payingTaskId === task.id}
-                        className={payingTaskId === task.id ? SMALL_DISABLED_BUTTON_CLASS : SMALL_SUCCESS_BUTTON_CLASS}
+                        className={`${payingTaskId === task.id ? SMALL_DISABLED_BUTTON_CLASS : SMALL_SUCCESS_BUTTON_CLASS} ${TASK_ACTION_BUTTON_SIZE_CLASS}`}
                       >
                         {payingTaskId === task.id ? t("train.action.paying") : t("train.action.pay")}
                       </button>
@@ -2695,7 +3404,7 @@ export function TrainDashboard() {
                         type="button"
                         onClick={() => void cancelTaskTicket(task.id)}
                         disabled={cancellingTaskId === task.id || payingTaskId === task.id}
-                        className={SMALL_DANGER_BUTTON_CLASS}
+                        className={`${SMALL_DANGER_BUTTON_CLASS} ${TASK_ACTION_BUTTON_SIZE_CLASS}`}
                       >
                         {cancellingTaskId === task.id ? t("train.action.cancelling") : t("train.action.cancelReservation")}
                       </button>
@@ -2703,7 +3412,7 @@ export function TrainDashboard() {
                     <button
                       type="button"
                       onClick={() => sendTaskAction(task.id, "cancel")}
-                      className={SMALL_DANGER_BUTTON_CLASS}
+                      className={`${SMALL_DANGER_BUTTON_CLASS} ${TASK_ACTION_BUTTON_SIZE_CLASS}`}
                     >
                       {t("train.action.cancel")}
                     </button>
@@ -2719,83 +3428,178 @@ export function TrainDashboard() {
           <ul className="mt-4 space-y-3 text-sm">
             {sortedCompletedTasks.length === 0 ? <li className="text-slate-500">{t("train.empty.completedTasks")}</li> : null}
             {sortedCompletedTasks.map((task) => {
-              const info = taskInfoFromSpec(task);
+              const info = taskInfoFromSpec(task, locale);
               const ticketBadge = getTaskTicketBadge(task);
+              const displayState = taskDisplayState(task);
+              const ticketTrainLabel = taskTicketTrainLabel(task);
+              const ticketSeatLabel = taskTicketSeatLabel(task, locale);
               return (
-                <li key={task.id} className="rounded-xl border border-blossom-100 p-3">
-                <div className="flex items-center justify-between gap-2">
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="font-medium text-slate-700">{task.state}</p>
-                      {ticketBadge ? (
-                        <span
-                          className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${ticketBadge.className}`}
-                        >
-                          {renderMaybeKey(ticketBadge.label)}
-                        </span>
-                      ) : null}
+                <li key={task.id} className="overflow-hidden rounded-2xl border border-blossom-200 bg-white shadow-sm">
+                  <div className="border-b border-dashed border-blossom-200 bg-gradient-to-r from-slate-50 via-white to-blossom-50 px-4 py-3 sm:px-5">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-slate-500">
+                          {t("train.ticketStyle.activeTask")}
+                        </p>
+                        <div className="mt-1 flex flex-wrap items-center gap-2">
+                          <p className="font-medium text-slate-700">{displayState}</p>
+                          {ticketBadge ? (
+                            <span
+                              className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${ticketBadge.className}`}
+                            >
+                              {renderMaybeKey(ticketBadge.label)}
+                            </span>
+                          ) : null}
+                        </div>
+                        <p className="mt-1 text-xs text-slate-500">
+                          {t("train.label.completed")} {task.completed_at ? formatDateTimeKst(task.completed_at, locale) : "-"}
+                        </p>
+                      </div>
+                      <Link href={`/modules/train/tasks/${task.id}`} className="text-xs font-medium text-blossom-600 hover:text-blossom-700">
+                        {t("train.action.detail")}
+                      </Link>
                     </div>
-                    <p className="text-xs text-slate-500">
-                      {t("train.label.completed")} {task.completed_at ? formatDateTimeKst(task.completed_at, locale) : "-"}
-                    </p>
-                    <p className="mt-1 text-xs text-slate-600">
-                      {t("train.label.schedule")} {info.scheduleLabel}
-                    </p>
-                    <p className="text-xs text-slate-600">
-                      {t("train.label.route")} {formatStationLabel(info.dep, locale)} {"->"} {formatStationLabel(info.arr, locale)}
-                    </p>
-                    <p className="text-xs text-slate-600">
-                      {t("train.label.passengers")} {info.passengerLabel}
-                    </p>
+
+                    <div className="mt-3 rounded-2xl border border-blossom-100 bg-white/90 p-3 sm:p-4">
+                      <div className="flex items-center justify-between gap-3 text-xs font-medium text-slate-500">
+                        <p className="truncate">{info.travelDateLabel}</p>
+                        {info.passengerLabel !== "-" ? (
+                          <p className="truncate text-right">{`${t("train.label.passengers")} ${info.passengerLabel}`}</p>
+                        ) : (
+                          <p aria-hidden="true" className="text-transparent">
+                            {"\u00A0"}
+                          </p>
+                        )}
+                      </div>
+                      <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-2 gap-y-2 sm:gap-x-3">
+                        <p className="truncate text-center text-sm font-semibold text-slate-800 sm:text-base">
+                          {formatStationLabel(info.dep, locale)}
+                        </p>
+                        <span className="inline-flex items-center gap-1 text-slate-400">
+                          <span className="h-px w-4 bg-blossom-200 sm:w-6" />
+                          <svg
+                            aria-hidden="true"
+                            viewBox="0 0 20 20"
+                            className="h-4 w-4 text-slate-400"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.8"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <path d="M3 10h12" />
+                            <path d="m11 6 4 4-4 4" />
+                          </svg>
+                          <span className="h-px w-4 bg-blossom-200 sm:w-6" />
+                        </span>
+                        <p className="truncate text-center text-sm font-semibold text-slate-800 sm:text-base">
+                          {formatStationLabel(info.arr, locale)}
+                        </p>
+                        <p className="truncate text-center text-sm font-medium text-slate-700">{info.primaryDepartureLabel}</p>
+                        <span className="invisible inline-flex items-center gap-1">
+                          <span className="h-px w-4 sm:w-6" />
+                          <svg
+                            aria-hidden="true"
+                            viewBox="0 0 20 20"
+                            className="h-4 w-4"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.8"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <path d="M3 10h12" />
+                            <path d="m11 6 4 4-4 4" />
+                          </svg>
+                          <span className="h-px w-4 sm:w-6" />
+                        </span>
+                        <p className="truncate text-center text-sm font-medium text-slate-700">{info.primaryArrivalLabel}</p>
+                      </div>
+                      {info.scheduleTimeOptions.length > 1 ? (
+                        <ul className="mt-2 space-y-1 rounded-lg bg-slate-50 px-2 py-1.5 text-xs text-slate-600">
+                          {info.scheduleTimeOptions.map((option, index) => (
+                            <li key={`${task.id}-schedule-${index}`} className="flex items-center justify-between gap-2">
+                              <span className="font-medium text-slate-500">{`#${index + 1}`}</span>
+                              <span>
+                                {option.provider ? `${option.provider} ` : ""}
+                                {option.departureLabel} - {option.arrivalLabel}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+
+                      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                        {ticketTrainLabel ? (
+                          <div className="rounded-xl border border-blossom-100 bg-white px-3 py-2">
+                            <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-slate-500">
+                              {t("train.label.train")}
+                            </p>
+                            <p className="mt-1 text-sm font-medium text-slate-700">{ticketTrainLabel}</p>
+                          </div>
+                        ) : null}
+                        {ticketSeatLabel ? (
+                          <div className="rounded-xl border border-blossom-100 bg-white px-3 py-2">
+                            <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-slate-500">
+                              {t("train.label.seats")}
+                            </p>
+                            <p className="mt-1 text-sm font-medium text-slate-700">{ticketSeatLabel}</p>
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
                   </div>
-                  <Link href={`/modules/train/tasks/${task.id}`} className="text-xs font-medium text-blossom-600 hover:text-blossom-700">
-                    {t("train.action.detail")}
-                  </Link>
-                </div>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {isAwaitingPaymentTask(task) ? (
-                    <button
-                      type="button"
-                      onClick={() => void payAwaitingPaymentTask(task.id)}
-                      disabled={payingTaskId === task.id || !autoPayAvailable}
-                      title={autoPayAvailable ? t("train.action.payNow") : t("train.hint.paymentSettingsRequired")}
-                      className={
-                        payingTaskId === task.id || !autoPayAvailable
-                          ? SMALL_DISABLED_BUTTON_CLASS
-                          : SMALL_SUCCESS_BUTTON_CLASS
-                      }
-                    >
-                      {payingTaskId === task.id ? t("train.action.paying") : t("train.action.pay")}
-                    </button>
-                  ) : null}
-                  {isAwaitingPaymentTask(task) ? (
-                    <button
-                      type="button"
-                      onClick={() => void cancelTaskTicket(task.id)}
-                      disabled={cancellingTaskId === task.id || payingTaskId === task.id}
-                      className={SMALL_DANGER_BUTTON_CLASS}
-                    >
-                      {cancellingTaskId === task.id ? t("train.action.cancelling") : t("train.action.cancel")}
-                    </button>
-                  ) : shouldShowCompletedCancel(task) ? (
-                    <button
-                      type="button"
-                      onClick={() => void cancelTaskTicket(task.id)}
-                      disabled={cancellingTaskId === task.id}
-                      className={SMALL_DANGER_BUTTON_CLASS}
-                    >
-                      {cancellingTaskId === task.id ? t("train.action.cancelling") : t("train.action.cancel")}
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => sendTaskAction(task.id, "delete")}
-                      className={SMALL_DANGER_BUTTON_CLASS}
-                    >
-                      {t("common.delete")}
-                    </button>
-                  )}
-                </div>
+
+                  <div className="relative flex flex-wrap gap-2 border-t border-dashed border-blossom-200 px-4 py-3">
+                    <span
+                      aria-hidden="true"
+                      className="pointer-events-none absolute -left-3 top-0 h-6 w-6 -translate-y-1/2 rounded-full border border-blossom-200 bg-white"
+                    />
+                    <span
+                      aria-hidden="true"
+                      className="pointer-events-none absolute -right-3 top-0 h-6 w-6 -translate-y-1/2 rounded-full border border-blossom-200 bg-white"
+                    />
+                    {isAwaitingPaymentTask(task) ? (
+                      <button
+                        type="button"
+                        onClick={() => void payAwaitingPaymentTask(task.id)}
+                        disabled={payingTaskId === task.id || !autoPayAvailable}
+                        title={autoPayAvailable ? t("train.action.payNow") : t("train.hint.paymentSettingsRequired")}
+                        className={
+                          `${payingTaskId === task.id || !autoPayAvailable ? SMALL_DISABLED_BUTTON_CLASS : SMALL_SUCCESS_BUTTON_CLASS} ${TASK_ACTION_BUTTON_SIZE_CLASS}`
+                        }
+                      >
+                        {payingTaskId === task.id ? t("train.action.paying") : t("train.action.pay")}
+                      </button>
+                    ) : null}
+                    {isAwaitingPaymentTask(task) ? (
+                      <button
+                        type="button"
+                        onClick={() => void cancelTaskTicket(task.id)}
+                        disabled={cancellingTaskId === task.id || payingTaskId === task.id}
+                        className={`${SMALL_DANGER_BUTTON_CLASS} ${TASK_ACTION_BUTTON_SIZE_CLASS}`}
+                      >
+                        {cancellingTaskId === task.id ? t("train.action.cancelling") : t("train.action.cancel")}
+                      </button>
+                    ) : shouldShowCompletedCancel(task) ? (
+                      <button
+                        type="button"
+                        onClick={() => void cancelTaskTicket(task.id)}
+                        disabled={cancellingTaskId === task.id}
+                        className={`${SMALL_DANGER_BUTTON_CLASS} ${TASK_ACTION_BUTTON_SIZE_CLASS}`}
+                      >
+                        {cancellingTaskId === task.id ? t("train.action.cancelling") : t("train.action.cancel")}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => sendTaskAction(task.id, "delete")}
+                        className={`${SMALL_DANGER_BUTTON_CLASS} ${TASK_ACTION_BUTTON_SIZE_CLASS}`}
+                      >
+                        {t("common.delete")}
+                      </button>
+                    )}
+                  </div>
                 </li>
               );
             })}

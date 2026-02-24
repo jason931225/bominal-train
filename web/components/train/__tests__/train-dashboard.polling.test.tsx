@@ -101,6 +101,7 @@ describe("TrainDashboard polling behavior", () => {
   let activeCalls = 0;
   let completedCalls = 0;
   let pauseCalls = 0;
+  let activeTaskState: TrainTaskSummary["state"] = "RUNNING";
   let visibilityState: DocumentVisibilityState = "visible";
   let searchStatus = 200;
   let searchBody: Record<string, unknown> = { schedules: [] };
@@ -109,6 +110,7 @@ describe("TrainDashboard polling behavior", () => {
     activeCalls = 0;
     completedCalls = 0;
     pauseCalls = 0;
+    activeTaskState = "RUNNING";
     visibilityState = "visible";
     searchStatus = 200;
     searchBody = { schedules: [] };
@@ -164,7 +166,7 @@ describe("TrainDashboard polling behavior", () => {
           const status = parsed.searchParams.get("status");
           if (status === "active") {
             activeCalls += 1;
-            return new Response(JSON.stringify({ tasks: [makeTask("active-1", "RUNNING")] }), {
+            return new Response(JSON.stringify({ tasks: [makeTask("active-1", activeTaskState)] }), {
               status: 200,
               headers: { "Content-Type": "application/json" },
             });
@@ -321,7 +323,7 @@ describe("TrainDashboard polling behavior", () => {
     expect(screen.queryByText("SRT: temporary provider error")).not.toBeInTheDocument();
   });
 
-  it("collapses mobile search panel after search and expands with Modify Search", async () => {
+  it("keeps search panel visible after search and keeps Modify Search available", async () => {
     searchStatus = 200;
     searchBody = {
       schedules: [
@@ -340,21 +342,19 @@ describe("TrainDashboard polling behavior", () => {
     };
 
     await renderDashboard();
-    const searchForm = screen.getByTestId("train-search-form");
-    const searchSummary = screen.getByTestId("search-summary-mobile");
-    expect(searchForm.className).toContain("max-h-[5000px]");
-    expect(searchSummary.className).toContain("max-h-0");
+    expect(screen.getByTestId("train-search-form")).toBeInTheDocument();
+    expect(screen.queryByTestId("search-summary-inline")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Search" }));
     await flushAsyncEffects();
 
-    expect(searchSummary.className).toContain("max-h-72");
-    expect(searchForm.className).toContain("max-h-0");
+    expect(screen.getByTestId("train-search-form")).toBeInTheDocument();
+    expect(screen.getByTestId("search-summary-inline")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Modify Search" }));
+    await flushAsyncEffects();
 
-    expect(searchForm.className).toContain("max-h-[5000px]");
-    expect(searchSummary.className).toContain("max-h-0");
+    expect(screen.getByTestId("train-search-form")).toBeInTheDocument();
   });
 
   it("hides auto-pay badge and toggle while auto-pay feature is disabled", async () => {
@@ -411,6 +411,17 @@ describe("TrainDashboard polling behavior", () => {
           availability: { general: true, special: false },
           metadata: { train_type_name: "KTX-산천" },
         },
+        {
+          schedule_id: "KTX-302",
+          provider: "KTX",
+          departure_at: "2026-02-15T14:10:00+09:00",
+          arrival_at: "2026-02-15T16:20:00+09:00",
+          train_no: "302",
+          dep: "수서",
+          arr: "부산",
+          availability: { general: true, special: true },
+          metadata: { train_type_name: "KTX-산천" },
+        },
       ],
     };
 
@@ -425,9 +436,18 @@ describe("TrainDashboard polling behavior", () => {
     expect(desktopSelector.className).toContain("md:block");
 
     const mobileCard = within(mobileSelector).getByRole("button", { name: "KTX-산천 301" });
+    const mobileCardSecond = within(mobileSelector).getByRole("button", { name: "KTX-산천 302" });
     expect(mobileCard).toHaveAttribute("aria-pressed", "false");
     fireEvent.click(mobileCard);
     expect(mobileCard).toHaveAttribute("aria-pressed", "true");
+    const firstIndicatorSingle = mobileCard.querySelector("span[aria-hidden='true'].inline-flex.h-7.w-7") as HTMLSpanElement | null;
+    expect(firstIndicatorSingle?.textContent).toBe("✓");
+
+    fireEvent.click(mobileCardSecond);
+    const firstIndicatorRanked = mobileCard.querySelector("span[aria-hidden='true'].inline-flex.h-7.w-7") as HTMLSpanElement | null;
+    const secondIndicatorRanked = mobileCardSecond.querySelector("span[aria-hidden='true'].inline-flex.h-7.w-7") as HTMLSpanElement | null;
+    expect(firstIndicatorRanked?.textContent).toBe("1");
+    expect(secondIndicatorRanked?.textContent).toBe("2");
   });
 
   it("renders train type from metadata code plus train number in search results", async () => {

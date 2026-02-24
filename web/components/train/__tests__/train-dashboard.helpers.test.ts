@@ -4,6 +4,7 @@ import {
   buildDummyTaskCards,
   clampPassengerCount,
   fetchTasksByStatus,
+  formatScheduleDateWithWeekday,
   formatScheduleTitleDate,
   formatTicketStatus,
   formatTimeKst,
@@ -26,7 +27,12 @@ import {
   scrollElementToViewportTop,
   shouldShowCompletedCancel,
   sortTasksByScheduleProximity,
+  sortActiveTasksByImminence,
+  taskDisplayState,
+  taskRetryCountdown,
   taskInfoFromSpec,
+  taskTicketSeatLabel,
+  taskTicketTrainLabel,
   taskListRenderKey,
   taskPrimaryDepartureAtMs,
   taskSummaryRenderKey,
@@ -75,6 +81,9 @@ function makeTask(
     ticket_paid: null,
     ticket_payment_deadline_at: null,
     ticket_reservation_id: null,
+    ticket_train_no: null,
+    ticket_seat_count: null,
+    ticket_seats: null,
     ...overrides,
   };
 }
@@ -132,6 +141,56 @@ describe("train dashboard helpers", () => {
     expect(cards.completed.length).toBeGreaterThan(0);
     expect(cards.active.some((task) => task.ticket_status === "awaiting_payment")).toBe(true);
     expect(cards.completed.some((task) => task.state === "FAILED")).toBe(true);
+    const getTaskById = (list: TrainTaskSummary[], id: string): TrainTaskSummary => {
+      const task = list.find((item) => item.id === id);
+      expect(task).toBeDefined();
+      return task as TrainTaskSummary;
+    };
+
+    const awaitingPaymentActiveTask = getTaskById(cards.active, "dummy-completed-awaiting-payment");
+    expect(awaitingPaymentActiveTask.state).toBe("COMPLETED");
+    expect(awaitingPaymentActiveTask.ticket_status).toBe("awaiting_payment");
+    expect(awaitingPaymentActiveTask.ticket_paid).toBe(false);
+    expect(awaitingPaymentActiveTask.ticket_payment_deadline_at).not.toBeNull();
+    expect(awaitingPaymentActiveTask.ticket_reservation_id).toBe("DUMMY-RSV-002");
+    const awaitingInfo = taskInfoFromSpec(awaitingPaymentActiveTask);
+    expect(awaitingInfo.dep).toBe("수서");
+    expect(awaitingInfo.arr).toBe("부산");
+    expect(awaitingInfo.scheduleOptionCount).toBe(1);
+    expect(awaitingInfo.scheduleOptions).toEqual([{ rank: 1, provider: "KTX", timeLabel: "13:10" }]);
+    expect(Math.max(0, awaitingInfo.scheduleOptionCount - 1)).toBe(0);
+
+    const multiScheduleTask = getTaskById(cards.active, "dummy-polling-multi-schedule");
+    const ranked = Array.isArray(multiScheduleTask.spec_json?.selected_trains_ranked)
+      ? multiScheduleTask.spec_json.selected_trains_ranked
+      : [];
+    expect(ranked).toHaveLength(3);
+    expect(multiScheduleTask.spec_json?.dep).toBe("수서");
+    expect(multiScheduleTask.spec_json?.arr).toBe("마산");
+    const multiInfo = taskInfoFromSpec(multiScheduleTask);
+    expect(multiInfo.scheduleOptionCount).toBe(3);
+    expect(multiInfo.scheduleOptions).toEqual([
+      { rank: 1, provider: "SRT", timeLabel: "21:24" },
+      { rank: 2, provider: "SRT", timeLabel: "21:38" },
+      { rank: 3, provider: "SRT", timeLabel: "21:56" },
+    ]);
+    expect(Math.max(0, multiInfo.scheduleOptionCount - 1)).toBe(2);
+
+    const confirmedCompletedTask = getTaskById(cards.completed, "dummy-completed-confirmed");
+    expect(confirmedCompletedTask.state).toBe("COMPLETED");
+    expect(confirmedCompletedTask.ticket_status).toBe("ticket_issued");
+    expect(confirmedCompletedTask.ticket_paid).toBe(true);
+    expect(confirmedCompletedTask.ticket_reservation_id).toBe("DUMMY-RSV-001");
+    expect(confirmedCompletedTask.ticket_train_no).toBe("311");
+    expect(confirmedCompletedTask.ticket_seat_count).toBe(1);
+    expect(confirmedCompletedTask.ticket_seats).toEqual(["8-12A"]);
+    expect(taskTicketTrainLabel(confirmedCompletedTask)).toBe("SRT 311");
+    expect(taskTicketSeatLabel(confirmedCompletedTask)).toBe("Car 8 - 12A");
+
+    const failedCompletedTask = getTaskById(cards.completed, "dummy-failed");
+    expect(failedCompletedTask.state).toBe("FAILED");
+    expect(failedCompletedTask.last_attempt_error_code).toBe("provider_transport_error");
+    expect(failedCompletedTask.last_attempt_error_message_safe).toContain("Provider transport failed");
   });
 
   it("fetches task lists with proper query params and maps auth/errors", async () => {
@@ -262,6 +321,9 @@ describe("train dashboard helpers", () => {
       getTaskTicketBadge(makeTask("awaiting", "COMPLETED", { ticket_status: "awaiting_payment", ticket_paid: false }))
         ?.label,
     ).toBe("train.badge.awaitingPayment");
+    expect(getTaskTicketBadge(makeTask("waitlisted", "POLLING", { ticket_status: "waiting", ticket_paid: false }))?.label).toBe(
+      "train.badge.waitlisted",
+    );
     expect(getTaskTicketBadge(makeTask("paid", "COMPLETED", { ticket_status: "ticket_issued", ticket_paid: true }))?.label).toBe(
       "train.badge.confirmed",
     );
@@ -269,6 +331,102 @@ describe("train dashboard helpers", () => {
       "Custom State",
     );
     expect(getTaskTicketBadge(makeTask("other-empty", "COMPLETED", { ticket_status: "_" }))?.label).toBe("_");
+
+    expect(taskTicketTrainLabel(makeTask("train-default", "COMPLETED", { ticket_train_no: "301" }))).toBe("301");
+    expect(
+      taskTicketTrainLabel(
+        makeTask("train-with-provider", "COMPLETED", {
+          ticket_train_no: "311",
+          spec_json: {
+            dep: "수서",
+            arr: "부산",
+            date: "2026-02-22",
+            passengers: { adults: 1, children: 0 },
+            selected_trains_ranked: [{ rank: 1, departure_at: "2026-02-22T12:30:00+09:00", provider: "SRT" }],
+          },
+        }),
+      ),
+    ).toBe("SRT 311");
+    expect(taskTicketSeatLabel(makeTask("seat-list", "COMPLETED", { ticket_seats: ["8-12A", "8-12A", "14A"] }))).toBe(
+      "Car 8 - 12A, 14A",
+    );
+    expect(taskTicketSeatLabel(makeTask("seat-list-ko", "COMPLETED", { ticket_seats: ["8-12A", "14A"] }), "ko")).toBe(
+      "8호차 - 12A, 14A",
+    );
+    expect(taskTicketSeatLabel(makeTask("seat-count", "COMPLETED", { ticket_seat_count: 2 }))).toBe("2");
+    expect(taskTicketSeatLabel(makeTask("seat-none", "COMPLETED"))).toBeNull();
+  });
+
+  it("formats ticket train/seat labels with provider fallback, locale handling, and dedupe", () => {
+    expect(taskTicketTrainLabel(makeTask("train-trimmed", "COMPLETED", { ticket_train_no: " 311 " }))).toBe("311");
+    expect(taskTicketTrainLabel(makeTask("train-empty", "COMPLETED", { ticket_train_no: "   " }))).toBeNull();
+    expect(
+      taskTicketTrainLabel(
+        makeTask("train-provider-field", "COMPLETED", {
+          ticket_train_no: "511",
+          spec_json: { provider: "  KTX  " } as unknown as Record<string, unknown>,
+        }),
+      ),
+    ).toBe("KTX 511");
+    expect(
+      taskTicketTrainLabel(
+        makeTask("train-provider-list", "COMPLETED", {
+          ticket_train_no: "611",
+          spec_json: { providers: [" ", "SRT", "KTX"] } as unknown as Record<string, unknown>,
+        }),
+      ),
+    ).toBe("SRT 611");
+    expect(
+      taskTicketTrainLabel(
+        makeTask("train-provider-ranked", "COMPLETED", {
+          ticket_train_no: "711",
+          spec_json: {
+            selected_trains_ranked: [
+              { rank: 3, departure_at: "2026-02-22T12:40:00+09:00", provider: " KTX " },
+              { rank: 1, departure_at: "2026-02-22T12:10:00+09:00", provider: " SRT " },
+            ],
+          },
+        }),
+      ),
+    ).toBe("SRT 711");
+    expect(
+      taskTicketTrainLabel(
+        makeTask("train-provider-invalid-spec", "COMPLETED", {
+          ticket_train_no: "811",
+          spec_json: "bad" as unknown as Record<string, unknown>,
+        }),
+      ),
+    ).toBe("811");
+
+    expect(
+      taskTicketSeatLabel({
+        ticket_seat_count: 4,
+        ticket_seats: [" 8-12A ", "8-12A", "2 -  3C", "14A", "", "   "],
+      }),
+    ).toBe("Car 8 - 12A, Car 2 - 3C, 14A");
+    expect(
+      taskTicketSeatLabel({
+        ticket_seat_count: 4,
+        ticket_seats: ["2-3C", "2-3C", "10B"],
+      }, "ko-KR"),
+    ).toBe("2호차 - 3C, 10B");
+    expect(
+      taskTicketSeatLabel({
+        ticket_seat_count: 4,
+        ticket_seats: [null, 7, "9-1A"] as unknown as string[],
+      }),
+    ).toBe("Car 9 - 1A");
+    expect(taskTicketSeatLabel({ ticket_seat_count: 2.9, ticket_seats: null })).toBe("2");
+    expect(taskTicketSeatLabel({ ticket_seat_count: 0, ticket_seats: null })).toBeNull();
+    expect(taskTicketSeatLabel({ ticket_seat_count: Number.NaN, ticket_seats: null })).toBeNull();
+  });
+
+  it("maps waitlisted and awaiting-payment cards to pending display state", () => {
+    expect(taskDisplayState(makeTask("w", "POLLING", { ticket_status: "waiting", ticket_paid: false }))).toBe("PENDING");
+    expect(taskDisplayState(makeTask("a", "COMPLETED", { ticket_status: "awaiting_payment", ticket_paid: false }))).toBe(
+      "PENDING",
+    );
+    expect(taskDisplayState(makeTask("d", "RUNNING", { ticket_status: null, ticket_paid: null }))).toBe("RUNNING");
   });
 
   it("computes completion cancel visibility and retry disabled titles", () => {
@@ -306,6 +464,9 @@ describe("train dashboard helpers", () => {
     expect(formatScheduleTitleDate("2026-02-22")).toBe("02/22/2026");
     expect(formatScheduleTitleDate("")).toBe("MM/DD/YYYY");
     expect(formatScheduleTitleDate("bad")).toBe("MM/DD/YYYY");
+    expect(formatScheduleDateWithWeekday("2026-02-23")).toBe("02/23/2026 (Monday)");
+    expect(formatScheduleDateWithWeekday("")).toBe("MM/DD/YYYY (Weekday)");
+    expect(formatScheduleDateWithWeekday("bad")).toBe("MM/DD/YYYY (Weekday)");
 
     expect(isRecord({ a: 1 })).toBe(true);
     expect(isRecord([])).toBe(false);
@@ -405,11 +566,19 @@ describe("train dashboard helpers", () => {
     const info = taskInfoFromSpec(task);
     expect(info.dep).toBe("수서");
     expect(info.arr).toBe("부산");
+    expect(info.travelDateLabel).toBe("02/22/2026 (Sunday)");
+    expect(info.primaryDepartureLabel).toBe("10:30");
+    expect(info.primaryArrivalLabel).toBe("-");
     expect(info.scheduleLabel).toContain("02/22/2026");
-    expect(info.passengerLabel).toBe("1 adult, 0 children");
+    expect(info.scheduleOptionCount).toBe(2);
+    expect(info.passengerLabel).toBe("1 adult");
 
     const fallback = taskInfoFromSpec(makeTask("task-2", "POLLING", { spec_json: "invalid" as unknown as Record<string, unknown> }));
+    expect(fallback.travelDateLabel).toBe("MM/DD/YYYY (Weekday)");
+    expect(fallback.primaryDepartureLabel).toBe("-");
+    expect(fallback.primaryArrivalLabel).toBe("-");
     expect(fallback.scheduleLabel).toBe("-");
+    expect(fallback.scheduleOptionCount).toBe(0);
 
     const dateOnly = taskInfoFromSpec(
       makeTask("task-3", "POLLING", {
@@ -422,7 +591,9 @@ describe("train dashboard helpers", () => {
         },
       }),
     );
+    expect(dateOnly.travelDateLabel).toBe("02/22/2026 (Sunday)");
     expect(dateOnly.scheduleLabel).toBe("02/22/2026");
+    expect(dateOnly.scheduleOptionCount).toBe(0);
 
     const fullyFallback = taskInfoFromSpec(
       makeTask("task-4", "POLLING", {
@@ -438,7 +609,8 @@ describe("train dashboard helpers", () => {
     expect(fullyFallback.dep).toBe("-");
     expect(fullyFallback.arr).toBe("-");
     expect(fullyFallback.scheduleLabel).toBe("-");
-    expect(fullyFallback.passengerLabel).toBe("0 adults, 0 children");
+    expect(fullyFallback.scheduleOptionCount).toBe(0);
+    expect(fullyFallback.passengerLabel).toBe("-");
 
     const oneChild = taskInfoFromSpec(
       makeTask("task-5", "POLLING", {
@@ -451,7 +623,7 @@ describe("train dashboard helpers", () => {
         },
       }),
     );
-    expect(oneChild.passengerLabel).toBe("0 adults, 1 child");
+    expect(oneChild.passengerLabel).toBe("1 child");
 
     const nonStringDateAndRanks = taskInfoFromSpec(
       makeTask("task-6", "POLLING", {
@@ -467,7 +639,8 @@ describe("train dashboard helpers", () => {
     expect(nonStringDateAndRanks.dep).toBe("-");
     expect(nonStringDateAndRanks.arr).toBe("-");
     expect(nonStringDateAndRanks.scheduleLabel).toBe("-");
-    expect(nonStringDateAndRanks.passengerLabel).toBe("0 adults, 0 children");
+    expect(nonStringDateAndRanks.scheduleOptionCount).toBe(0);
+    expect(nonStringDateAndRanks.passengerLabel).toBe("-");
 
     const nonStringDepartureAt = taskInfoFromSpec(
       makeTask("task-7", "POLLING", {
@@ -481,11 +654,158 @@ describe("train dashboard helpers", () => {
       }),
     );
     expect(nonStringDepartureAt.scheduleLabel).toBe("02/22/2026");
+    expect(nonStringDepartureAt.scheduleOptionCount).toBe(0);
+
+    const unsortedAndMixedRanks = taskInfoFromSpec(
+      makeTask("task-7b", "POLLING", {
+        spec_json: {
+          dep: "수서",
+          arr: "진주",
+          date: "2026-02-28",
+          passengers: { adults: 2, children: 1 },
+          selected_trains_ranked: [
+            null,
+            { rank: 3, departure_at: "2026-02-28T09:30:00+09:00", provider: "  KTX " },
+            { rank: 1, departure_at: "2026-02-28T08:10:00+09:00", provider: "  SRT " },
+            { rank: 2, departure_at: "", provider: "SRT" },
+            { rank: "bad", departure_at: "not-a-date", provider: "   " },
+            { rank: 5, departure_at: 9999, provider: "SRT" },
+          ],
+        } as unknown as Record<string, unknown>,
+      }),
+    );
+    expect(unsortedAndMixedRanks.scheduleLabel).toBe("02/28/2026 08:10");
+    expect(unsortedAndMixedRanks.scheduleOptionCount).toBe(3);
+    expect(unsortedAndMixedRanks.scheduleOptions).toEqual([
+      { rank: 1, provider: "SRT", timeLabel: "08:10" },
+      { rank: 3, provider: "KTX", timeLabel: "09:30" },
+    ]);
+    expect(Math.max(0, unsortedAndMixedRanks.scheduleOptionCount - 1)).toBe(2);
+    expect(unsortedAndMixedRanks.passengerLabel).toBe("2 adults, 1 child");
+    const unsortedAndMixedRanksKo = taskInfoFromSpec(
+      makeTask("task-7c", "POLLING", {
+        spec_json: {
+          dep: "수서",
+          arr: "진주",
+          date: "2026-02-28",
+          passengers: { adults: 2, children: 1 },
+          selected_trains_ranked: [],
+        } as unknown as Record<string, unknown>,
+      }),
+      "ko",
+    );
+    expect(unsortedAndMixedRanksKo.passengerLabel).toBe("성인 2, 아동 1");
+
+    const multiRank = taskInfoFromSpec(
+      makeTask("task-8", "POLLING", {
+        spec_json: {
+          dep: "수서",
+          arr: "마산",
+          date: "2026-02-27",
+          passengers: { adults: 1, children: 0 },
+          selected_trains_ranked: [
+            { rank: 1, departure_at: "2026-02-27T19:24:00+09:00", arrival_at: "2026-02-27T21:44:00+09:00" },
+            { rank: 2, departure_at: "2026-02-27T19:38:00+09:00", arrival_at: "2026-02-27T21:58:00+09:00" },
+            { rank: 3, departure_at: "2026-02-27T19:56:00+09:00", arrival_at: "2026-02-27T22:16:00+09:00" },
+          ],
+        },
+      }),
+    );
+    expect(multiRank.scheduleLabel).toContain("02/27/2026 19:24");
+    expect(multiRank.travelDateLabel).toBe("02/27/2026 (Friday)");
+    expect(multiRank.primaryDepartureLabel).toBe("19:24");
+    expect(multiRank.primaryArrivalLabel).toBe("21:44");
+    expect(multiRank.scheduleTimeOptions).toEqual([
+      { rank: 1, provider: null, departureLabel: "19:24", arrivalLabel: "21:44" },
+      { rank: 2, provider: null, departureLabel: "19:38", arrivalLabel: "21:58" },
+      { rank: 3, provider: null, departureLabel: "19:56", arrivalLabel: "22:16" },
+    ]);
+    expect(multiRank.scheduleOptionCount).toBe(3);
+    expect(multiRank.scheduleOptions).toEqual([
+      { rank: 1, provider: null, timeLabel: "19:24" },
+      { rank: 2, provider: null, timeLabel: "19:38" },
+      { rank: 3, provider: null, timeLabel: "19:56" },
+    ]);
+    expect(Math.max(0, multiRank.scheduleOptionCount - 1)).toBe(2);
+    expect(Math.max(0, dateOnly.scheduleOptionCount - 1)).toBe(0);
+    expect(Math.max(0, fallback.scheduleOptionCount - 1)).toBe(0);
 
     const key1 = taskSummaryRenderKey(task);
     const key2 = taskSummaryRenderKey({ ...task, last_attempt_error_code: "x" });
     expect(key1).not.toBe(key2);
+
+    const ticketKeyBase = makeTask("task-ticket-key", "COMPLETED", {
+      ticket_status: "awaiting_payment",
+      ticket_paid: false,
+      ticket_payment_deadline_at: "2026-02-22T11:00:00+09:00",
+      ticket_reservation_id: "RSV-1",
+      ticket_train_no: "311",
+      ticket_seat_count: 2,
+      ticket_seats: ["8-12A", "8-14A"],
+    });
+    const ticketBaseKey = taskSummaryRenderKey(ticketKeyBase);
+    expect(
+      taskSummaryRenderKey({
+        ...ticketKeyBase,
+        ticket_seats: ["8-12A", "8-14A"],
+      }),
+    ).toBe(ticketBaseKey);
+    expect(taskSummaryRenderKey({ ...ticketKeyBase, ticket_status: "ticket_issued" })).not.toBe(ticketBaseKey);
+    expect(taskSummaryRenderKey({ ...ticketKeyBase, ticket_paid: true })).not.toBe(ticketBaseKey);
+    expect(
+      taskSummaryRenderKey({
+        ...ticketKeyBase,
+        ticket_payment_deadline_at: "2026-02-22T11:30:00+09:00",
+      }),
+    ).not.toBe(ticketBaseKey);
+    expect(taskSummaryRenderKey({ ...ticketKeyBase, ticket_reservation_id: "RSV-2" })).not.toBe(ticketBaseKey);
+    expect(taskSummaryRenderKey({ ...ticketKeyBase, ticket_train_no: "312" })).not.toBe(ticketBaseKey);
+    expect(taskSummaryRenderKey({ ...ticketKeyBase, ticket_seat_count: 3 })).not.toBe(ticketBaseKey);
+    expect(
+      taskSummaryRenderKey({
+        ...ticketKeyBase,
+        ticket_seats: ["8-14A", "8-12A"],
+      }),
+    ).not.toBe(ticketBaseKey);
+
     expect(taskListRenderKey([task]).length).toBeGreaterThan(0);
+  });
+
+  it("computes functional retry countdown progress from attempt window timestamps", () => {
+    const task = makeTask("retry-window", "POLLING", {
+      last_attempt_at: "2026-02-22T10:00:00+09:00",
+      last_attempt_finished_at: "2026-02-22T10:00:00+09:00",
+      next_run_at: "2026-02-22T10:05:00+09:00",
+    });
+
+    const nowMid = new Date("2026-02-22T10:02:00+09:00").getTime();
+    const mid = taskRetryCountdown(task, nowMid);
+    expect(mid).not.toBeNull();
+    expect(mid?.remainingMs).toBe(180_000);
+    expect(mid?.windowMs).toBe(300_000);
+    expect(mid?.elapsedMs).toBe(120_000);
+    expect(mid?.progressPercent).toBe(40);
+    expect(mid?.isDue).toBe(false);
+
+    const nowLate = new Date("2026-02-22T10:07:00+09:00").getTime();
+    const late = taskRetryCountdown(task, nowLate);
+    expect(late?.remainingMs).toBe(0);
+    expect(late?.progressPercent).toBe(100);
+    expect(late?.isDue).toBe(true);
+
+    const noWindowTask = makeTask("retry-no-window", "POLLING", {
+      last_attempt_at: null,
+      last_attempt_finished_at: null,
+      next_run_at: "2026-02-22T10:05:00+09:00",
+    });
+    const noWindow = taskRetryCountdown(noWindowTask, nowMid);
+    expect(noWindow?.progressPercent).toBeNull();
+    expect(noWindow?.windowMs).toBeNull();
+
+    const noNextRunTask = makeTask("retry-none", "POLLING", {
+      next_run_at: null,
+    });
+    expect(taskRetryCountdown(noNextRunTask, nowMid)).toBeNull();
   });
 
   it("sorts tasks by schedule proximity with awaiting-payment pinned first", () => {
@@ -570,6 +890,30 @@ describe("train dashboard helpers", () => {
     });
     const fallbackSorted = sortTasksByScheduleProximity([invalidCreatedB, invalidCreatedA], "asc").map((task) => task.id);
     expect(fallbackSorted).toEqual(["invalid-b", "invalid-a"]);
+  });
+
+  it("sorts active tasks by most imminent ranked departure", () => {
+    const awaitingLater = makeTask("awaiting-later", "POLLING", {
+      created_at: "2026-02-22T07:00:00+09:00",
+      ticket_status: "awaiting_payment",
+      ticket_paid: false,
+      spec_json: {
+        selected_trains_ranked: [{ rank: 1, departure_at: "2026-02-22T12:30:00+09:00" }],
+      },
+    });
+    const earliest = makeTask("earliest", "POLLING", {
+      created_at: "2026-02-22T09:00:00+09:00",
+      spec_json: {
+        selected_trains_ranked: [{ rank: 1, departure_at: "2026-02-22T10:30:00+09:00" }],
+      },
+    });
+    const noSchedule = makeTask("none", "POLLING", {
+      created_at: "2026-02-22T06:00:00+09:00",
+      spec_json: { selected_trains_ranked: [] },
+    });
+
+    const sorted = sortActiveTasksByImminence([awaitingLater, noSchedule, earliest]).map((task) => task.id);
+    expect(sorted).toEqual(["earliest", "awaiting-later", "none"]);
   });
 
   it("handles server-side viewport detection fallback", () => {

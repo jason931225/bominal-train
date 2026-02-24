@@ -64,6 +64,7 @@ export function ModuleTile({ module, locale }: { module: BominalModule; locale: 
   return (
     <Link
       href={`/modules/${module.slug}`}
+      prefetch={false}
       className="group rounded-3xl border border-blossom-100 bg-white p-6 shadow-petal transition hover:-translate-y-0.5 hover:border-blossom-300"
     >
       <div className="flex items-start justify-between gap-4">
