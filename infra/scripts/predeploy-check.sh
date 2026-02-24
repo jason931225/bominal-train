@@ -298,6 +298,10 @@ database_url="$(env_key_value "infra/env/prod/api.env" "DATABASE_URL")"
 sync_database_url="$(env_key_value "infra/env/prod/api.env" "SYNC_DATABASE_URL")"
 require_supabase_database_url "$database_url" "DATABASE_URL"
 require_supabase_database_url "$sync_database_url" "SYNC_DATABASE_URL"
+if [[ "$database_url" == postgresql+asyncpg://* ]] && [[ "$database_url" == *"sslmode="* ]]; then
+  log_error "DATABASE_URL uses asyncpg but contains sslmode=. Use ssl=require for asyncpg URLs."
+  exit 1
+fi
 
 api_auth_mode="$(env_key_value "infra/env/prod/api.env" "AUTH_MODE" | tr '[:upper:]' '[:lower:]')"
 case "$api_auth_mode" in

@@ -326,7 +326,7 @@ PY
     require_https_url "$font_base" "NEXT_PUBLIC_FONT_BASE_URL"
   fi
 
-  local db_async_url="postgresql+asyncpg://postgres.${project_ref}:${db_password_encoded}@aws-0-us-central1.pooler.supabase.co:6543/postgres?sslmode=require"
+  local db_async_url="postgresql+asyncpg://postgres.${project_ref}:${db_password_encoded}@aws-0-us-central1.pooler.supabase.co:6543/postgres?ssl=require"
   local db_sync_url="postgresql+psycopg://postgres.${project_ref}:${db_password_encoded}@aws-0-us-central1.pooler.supabase.co:6543/postgres?sslmode=require"
 
   set_env_key "$API_ENV" "APP_ENV" "production"
