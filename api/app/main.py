@@ -13,7 +13,7 @@ from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import HTMLResponse, JSONResponse
 from sqlalchemy import text
 
-from app.http.deps import get_current_admin, get_current_approved_user, get_current_user
+from app.http.deps import get_current_admin, get_current_approved_user
 from app.http.routes import admin, auth, internal, modules, notifications, wallet
 from app.core.config import get_settings
 from app.core.logging import setup_logging, get_logger
