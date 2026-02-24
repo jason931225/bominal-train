@@ -90,9 +90,16 @@ jobs:
             critical_path_changed=true
           fi
 
+          critical_api_web_path_changed=false
+          critical_api_web_pattern='^(api/app/core/crypto/|api/app/core/(security|supabase_jwt)\.py$|api/app/http/deps\.py$|api/app/http/routes/(auth|wallet)\.py$|api/app/services/(auth|identity|passkeys|wallet)\.py$|api/app/modules/train/(service|worker)\.py$|api/app/modules/train/providers/|web/)'
+          if grep -qE "$critical_api_web_pattern" "$changed_file_list"; then
+            critical_api_web_path_changed=true
+          fi
+
           changed_file_count="$(wc -l < "$changed_file_list" | tr -d ' ')"
           echo "changed_api_or_web=$changed_api_or_web" >> "$GITHUB_OUTPUT"
           echo "critical_path_changed=$critical_path_changed" >> "$GITHUB_OUTPUT"
+          echo "critical_api_web_path_changed=$critical_api_web_path_changed" >> "$GITHUB_OUTPUT"
           echo "changed_file_count=$changed_file_count" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-python@v5
@@ -129,24 +136,24 @@ jobs:
           npm run --prefix web test:ci
 
       - name: Assertive test checks (API + web)
-        if: steps.change_scope.outputs.critical_path_changed == 'true'
+        if: steps.change_scope.outputs.critical_api_web_path_changed == 'true'
         run: |
           python3 infra/scripts/check_assertive_tests.py api/tests
           node infra/scripts/check_assertive_tests_web.mjs web
 
       - name: Install API test dependencies
-        if: steps.change_scope.outputs.critical_path_changed == 'true'
+        if: steps.change_scope.outputs.critical_api_web_path_changed == 'true'
         run: |
           python3 -m pip install --upgrade pip
           python3 -m pip install -r api/requirements.txt
 
       - name: Run API mutation gate
-        if: steps.change_scope.outputs.critical_path_changed == 'true'
+        if: steps.change_scope.outputs.critical_api_web_path_changed == 'true'
         run: |
           bash infra/scripts/run_mutation_api.sh
 
       - name: Run web mutation smoke gate
-        if: steps.change_scope.outputs.critical_path_changed == 'true'
+        if: steps.change_scope.outputs.critical_api_web_path_changed == 'true'
         run: |
           npm run --prefix web test:mutation
 
@@ -235,14 +242,15 @@ jobs:
             echo "- Changed files: \`${{ steps.change_scope.outputs.changed_file_count }}\`"
             echo "- API/Web changed: \`${{ steps.change_scope.outputs.changed_api_or_web }}\`"
             echo "- Critical-path changed: \`${{ steps.change_scope.outputs.critical_path_changed }}\`"
+            echo "- Critical API/Web path changed: \`${{ steps.change_scope.outputs.critical_api_web_path_changed }}\`"
             if [[ "${{ steps.change_scope.outputs.changed_api_or_web }}" == "true" ]]; then
               echo "- Baseline web tests: ran"
             else
               echo "- Baseline web tests: skipped (no API/web changes)"
             fi
-            if [[ "${{ steps.change_scope.outputs.critical_path_changed }}" == "true" ]]; then
+            if [[ "${{ steps.change_scope.outputs.critical_api_web_path_changed }}" == "true" ]]; then
               echo "- Critical gates (assertive + mutation): ran"
             else
-              echo "- Critical gates (assertive + mutation): skipped (no critical-path changes)"
+              echo "- Critical gates (assertive + mutation): skipped (no critical API/web boundary changes)"
             fi
           } >> "$GITHUB_STEP_SUMMARY"
