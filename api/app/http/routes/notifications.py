@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.http.deps import auth_rate_limit, get_current_user
+from app.http.deps import auth_rate_limit, get_current_approved_user
 from app.core.config import get_settings
 from app.core.time import utc_now
 from app.db.models import User
@@ -16,7 +16,7 @@ settings = get_settings()
 
 
 @router.get("/email/status", response_model=EmailStatusResponse)
-async def get_email_status(_: User = Depends(get_current_user)) -> EmailStatusResponse:
+async def get_email_status(_: User = Depends(get_current_approved_user)) -> EmailStatusResponse:
     return EmailStatusResponse(
         enabled=settings.email_provider != "disabled",
         provider=settings.email_provider,
@@ -32,7 +32,7 @@ async def get_email_status(_: User = Depends(get_current_user)) -> EmailStatusRe
 )
 async def send_test_email(
     payload: EmailTestRequest,
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_approved_user),
 ) -> EmailTestResponse:
     if settings.email_provider == "disabled":
         raise HTTPException(
