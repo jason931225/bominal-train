@@ -341,7 +341,7 @@ PY
   set_env_key "$API_ENV" "SUPABASE_AUTH_API_KEY" "$supabase_auth_api_key"
   set_env_key "$API_ENV" "INTERNAL_API_KEY" "$internal_api_key"
   set_env_key "$API_ENV" "MASTER_KEY" "$master_key"
-  set_env_key "$API_ENV" "PAYMENT_ENABLED" "false"
+  set_env_key "$API_ENV" "PAYMENT_ENABLED" "true"
   set_env_key "$API_ENV" "PASSKEY_ENABLED" "true"
   set_env_key "$API_ENV" "PASSKEY_RP_ID" "$passkey_rp_id"
   set_env_key "$API_ENV" "PASSKEY_ORIGIN" "$passkey_origin"
@@ -354,7 +354,7 @@ PY
 
   set_env_key "$WEB_ENV" "NEXT_PUBLIC_API_BASE_URL" "$next_public_api_base_url"
   set_env_key "$WEB_ENV" "API_SERVER_URL" "$api_server_url"
-  set_env_key "$WEB_ENV" "NEXT_PUBLIC_TRAIN_AUTO_PAY_ENABLED" "false"
+  set_env_key "$WEB_ENV" "NEXT_PUBLIC_TRAIN_AUTO_PAY_ENABLED" "true"
   set_env_key "$WEB_ENV" "NEXT_PUBLIC_FONT_BASE_URL" "$font_base"
   set_env_key "$WEB_ENV" "NODE_ENV" "production"
 
