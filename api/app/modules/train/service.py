@@ -5,6 +5,7 @@ import hashlib
 import json
 import time
 from datetime import datetime, timedelta, timezone
+from typing import Any
 from uuid import UUID, uuid4
 
 from fastapi import HTTPException, status
@@ -66,10 +67,21 @@ from app.services.wallet import get_payment_card_for_execution
 
 settings = get_settings()
 TASK_VISIBILITY_RETENTION_DAYS = 365
-TICKET_SYNC_MIN_SECONDS = 10
 MANUAL_RETRY_COOLDOWN_SECONDS = 15
 MANUAL_RETRY_LAST_AT_KEY = "manual_retry_last_at"
 NEXT_RUN_AT_KEY = "next_run_at"
+SYNC_PROVIDER_META_STABLE_KEYS = frozenset(
+    {
+        "provider",
+        "reservation_id",
+        "reservations_ok",
+        "reservations_error",
+        "ticket_info_ok",
+        "ticket_info_error",
+        "error",
+        "pay_sync_error",
+    }
+)
 
 
 def _parse_iso_datetime(value: str | None) -> datetime | None:
@@ -541,6 +553,7 @@ def _sorted_ranked_trains(payload: TrainTaskCreateRequest) -> list[dict]:
                 "departure_at": item.departure_at.isoformat(),
                 "rank": item.rank,
                 "provider": provider,
+                **({"arrival_at": item.arrival_at.isoformat()} if item.arrival_at is not None else {}),
             }
         )
     return ranked
@@ -742,11 +755,51 @@ def _ticket_summary_from_artifact(artifact: Artifact | None) -> dict | None:
     if artifact is None:
         return None
     payload = artifact.data_json_safe or {}
+    reservation_snapshot = payload.get("reservation_snapshot")
+
+    ticket_train_no_raw = payload.get("train_no")
+    if (ticket_train_no_raw is None or str(ticket_train_no_raw).strip() == "") and isinstance(reservation_snapshot, dict):
+        ticket_train_no_raw = reservation_snapshot.get("train_no")
+    ticket_train_no = str(ticket_train_no_raw).strip() if ticket_train_no_raw is not None else ""
+    if ticket_train_no == "":
+        ticket_train_no = None
+
+    ticket_seats: list[str] = []
+    seen_seats: set[str] = set()
+    tickets_raw = payload.get("tickets")
+    if isinstance(tickets_raw, list):
+        for row in tickets_raw:
+            if not isinstance(row, dict):
+                continue
+            seat_no_raw = row.get("seat_no")
+            if seat_no_raw is None:
+                continue
+            seat_no = str(seat_no_raw).strip()
+            if seat_no == "":
+                continue
+            car_no_raw = row.get("car_no")
+            car_no = str(car_no_raw).strip() if car_no_raw is not None else ""
+            label = f"{car_no}-{seat_no}" if car_no else seat_no
+            if label in seen_seats:
+                continue
+            seen_seats.add(label)
+            ticket_seats.append(label)
+
+    ticket_seat_count = None
+    seat_count_raw = payload.get("seat_count")
+    if isinstance(seat_count_raw, int) and not isinstance(seat_count_raw, bool):
+        ticket_seat_count = max(0, seat_count_raw)
+    elif ticket_seats:
+        ticket_seat_count = len(ticket_seats)
+
     return {
         "ticket_status": payload.get("status"),
         "ticket_paid": payload.get("paid"),
         "ticket_payment_deadline_at": _parse_iso_datetime(str(payload.get("payment_deadline_at") or "")),
         "ticket_reservation_id": payload.get("reservation_id"),
+        "ticket_train_no": ticket_train_no,
+        "ticket_seat_count": ticket_seat_count,
+        "ticket_seats": ticket_seats or None,
     }
 
 
@@ -755,7 +808,25 @@ def _is_manual_payment_pending(ticket_summary: dict | None) -> bool:
         return False
     ticket_status = str(ticket_summary.get("ticket_status") or "")
     ticket_paid = ticket_summary.get("ticket_paid")
-    return ticket_status == "awaiting_payment" and ticket_paid is not True
+    return ticket_status in {"awaiting_payment", "waiting"} and ticket_paid is not True
+
+
+def _is_waitlisted_unpaid(ticket_summary: dict | None) -> bool:
+    if not ticket_summary:
+        return False
+    ticket_status = str(ticket_summary.get("ticket_status") or "")
+    ticket_paid = ticket_summary.get("ticket_paid")
+    return ticket_status == "waiting" and ticket_paid is not True
+
+
+def _should_refresh_pending_ticket_status(ticket_summary: dict | None) -> bool:
+    if not ticket_summary:
+        return False
+    ticket_status = str(ticket_summary.get("ticket_status") or "")
+    ticket_paid = ticket_summary.get("ticket_paid")
+    # "waiting" tickets are polled by worker every 5 minutes. Skip read-path
+    # provider sync calls for waitlisted tasks to avoid noisy DB writes.
+    return ticket_status in {"awaiting_payment", "reserved"} and ticket_paid is not True
 
 
 def _is_active_for_listing(task: Task, ticket_summary: dict | None) -> bool:
@@ -811,6 +882,9 @@ def task_to_summary(
         ticket_paid=ticket_summary.get("ticket_paid"),
         ticket_payment_deadline_at=ticket_summary.get("ticket_payment_deadline_at"),
         ticket_reservation_id=ticket_summary.get("ticket_reservation_id"),
+        ticket_train_no=ticket_summary.get("ticket_train_no"),
+        ticket_seat_count=ticket_summary.get("ticket_seat_count"),
+        ticket_seats=ticket_summary.get("ticket_seats"),
     )
 
 
@@ -1137,47 +1211,10 @@ async def list_tasks(
     latest_attempts = await _latest_attempt_map(db, [task.id for task in tasks])
     ticket_artifacts = await _latest_ticket_artifact_map(db, [task.id for task in tasks])
 
-    should_refresh_completed = refresh_completed and status_filter in {"completed", "all"}
-    should_refresh_pending_active = status_filter in {"active", "all"}
-    if (should_refresh_completed or should_refresh_pending_active) and ticket_artifacts:
-        redis = await get_redis_client()
-        limiter = RedisTokenBucketLimiter(redis)
-        updated = False
-        client_cache: dict[str, object] = {}
-        for task in tasks:
-            artifact = ticket_artifacts.get(task.id)
-            if artifact is None:
-                continue
-            ticket_summary = _ticket_summary_from_artifact(artifact)
-            if should_refresh_pending_active and _is_manual_payment_pending(ticket_summary):
-                updated = (
-                    await _refresh_ticket_artifact_status(
-                        db,
-                        user=user,
-                        artifact=artifact,
-                        limiter=limiter,
-                        force=False,
-                        client_cache=client_cache,
-                    )
-                    or updated
-                )
-                continue
-            if should_refresh_completed and task.state in TERMINAL_TASK_STATES:
-                updated = (
-                    await _refresh_ticket_artifact_status(
-                        db,
-                        user=user,
-                        artifact=artifact,
-                        limiter=limiter,
-                        force=False,
-                        client_cache=client_cache,
-                    )
-                    or updated
-                )
-
-        if updated:
-            await db.commit()
-            ticket_artifacts = await _latest_ticket_artifact_map(db, [task.id for task in tasks])
+    # Read paths are intentionally DB-only snapshots.
+    # Provider sync occurs in worker/manual actions so list queries stay cheap
+    # and state updates remain strictly state-change driven.
+    _ = refresh_completed
 
     ticket_summaries: dict[UUID, dict | None] = {
         task.id: _ticket_summary_from_artifact(ticket_artifacts.get(task.id)) for task in tasks
@@ -1221,12 +1258,11 @@ async def get_task_for_user(db: AsyncSession, *, task_id: UUID, user: User) -> T
 
 
 def _should_refresh_ticket_artifact(artifact_data: dict, *, force: bool) -> bool:
-    if force:
-        return True
-    synced_at = _parse_iso_datetime(str(artifact_data.get("last_provider_sync_at") or ""))
-    if synced_at is None:
-        return True
-    return (utc_now() - synced_at) >= timedelta(seconds=TICKET_SYNC_MIN_SECONDS)
+    _ = artifact_data
+    _ = force
+    # Refresh cooldown intentionally removed: sync execution is state-change
+    # driven by worker/manual actions rather than read-path timing windows.
+    return True
 
 
 def _latest_ticket_artifact_for_task(task: Task) -> Artifact | None:
@@ -1234,6 +1270,63 @@ def _latest_ticket_artifact_for_task(task: Task) -> Artifact | None:
     if not ticket_artifacts:
         return None
     return max(ticket_artifacts, key=lambda artifact: artifact.created_at)
+
+
+def _compact_provider_sync_payload(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    compact: dict[str, Any] = {}
+    for key in SYNC_PROVIDER_META_STABLE_KEYS:
+        if key in value:
+            compact[key] = value[key]
+    return compact or None
+
+
+def _merge_provider_http_once(*, current_payload: dict[str, Any] | None, incoming_payload: Any) -> dict[str, Any] | None:
+    existing = dict(current_payload or {})
+    if not isinstance(incoming_payload, dict):
+        return existing or None
+    for key, value in incoming_payload.items():
+        key_str = str(key)
+        # Keep first-seen trace per operation to avoid high-churn rewrites
+        # caused by volatile provider tracing fields.
+        if key_str not in existing and value is not None:
+            existing[key_str] = value
+    return existing or None
+
+
+def _ticket_state_change_fingerprint(payload: dict[str, Any]) -> tuple[Any, ...]:
+    provider_sync = payload.get("provider_sync") if isinstance(payload.get("provider_sync"), dict) else {}
+
+    normalized_seats: list[tuple[str, str]] = []
+    tickets = payload.get("tickets")
+    if isinstance(tickets, list):
+        for row in tickets:
+            if not isinstance(row, dict):
+                continue
+            car = str(row.get("car_no") or "")
+            seat = str(row.get("seat_no") or "")
+            if seat:
+                normalized_seats.append((car, seat))
+    normalized_seats.sort()
+
+    return (
+        str(payload.get("status") or "").strip().lower(),
+        payload.get("paid"),
+        payload.get("waiting"),
+        payload.get("expired"),
+        bool(payload.get("cancelled")),
+        str(payload.get("payment_deadline_at") or ""),
+        payload.get("seat_count"),
+        tuple(normalized_seats),
+        str(payload.get("reservation_id") or ""),
+        str(payload.get("payment_id") or ""),
+        str(payload.get("ticket_no") or ""),
+        str(provider_sync.get("error") or ""),
+        str(provider_sync.get("reservations_error") or ""),
+        str(provider_sync.get("ticket_info_error") or ""),
+        str(provider_sync.get("pay_sync_error") or ""),
+    )
 
 
 async def _refresh_ticket_artifact_status(
@@ -1262,8 +1355,10 @@ async def _refresh_ticket_artifact_status(
         try:
             client = await _get_logged_in_provider_client(db, user=user, provider=provider)
         except HTTPException as exc:
-            sync_meta = dict(current_data.get("provider_sync") or {})
+            sync_meta = dict(_compact_provider_sync_payload(current_data.get("provider_sync")) or {})
             sync_meta["error"] = exc.detail
+            if sync_meta == (current_data.get("provider_sync") or {}):
+                return False
             current_data["provider_sync"] = sync_meta
             current_data["last_provider_sync_at"] = utc_now().isoformat()
             artifact.data_json_safe = validate_safe_metadata(current_data)
@@ -1279,8 +1374,10 @@ async def _refresh_ticket_artifact_status(
             limiter=limiter,
         )
     except Exception as exc:
-        sync_meta = dict(current_data.get("provider_sync") or {})
+        sync_meta = dict(_compact_provider_sync_payload(current_data.get("provider_sync")) or {})
         sync_meta["error"] = f"provider_sync_error:{type(exc).__name__}"
+        if sync_meta == (current_data.get("provider_sync") or {}):
+            return False
         current_data["provider_sync"] = sync_meta
         current_data["last_provider_sync_at"] = utc_now().isoformat()
         artifact.data_json_safe = validate_safe_metadata(current_data)
@@ -1289,6 +1386,12 @@ async def _refresh_ticket_artifact_status(
     merged_status = snapshot.get("status", current_data.get("status"))
     if current_data.get("cancelled"):
         merged_status = "cancelled"
+
+    merged_provider_sync = _compact_provider_sync_payload(snapshot.get("provider_sync"))
+    merged_provider_http = _merge_provider_http_once(
+        current_payload=dict(current_data.get("provider_http") or {}),
+        incoming_payload=snapshot.get("provider_http"),
+    )
 
     merged_data = {
         **current_data,
@@ -1300,17 +1403,16 @@ async def _refresh_ticket_artifact_status(
         "seat_count": snapshot.get("seat_count", current_data.get("seat_count")),
         "tickets": snapshot.get("tickets", current_data.get("tickets", [])),
         "reservation_snapshot": snapshot.get("reservation_snapshot", current_data.get("reservation_snapshot")),
-        "provider_sync": snapshot.get("provider_sync", current_data.get("provider_sync")),
-        "last_provider_sync_at": snapshot.get("synced_at", utc_now().isoformat()),
     }
-    snapshot_http = snapshot.get("provider_http")
-    if isinstance(snapshot_http, dict):
-        merged_data["provider_http"] = {
-            **dict(current_data.get("provider_http") or {}),
-            **snapshot_http,
-        }
+    if merged_provider_sync is not None:
+        merged_data["provider_sync"] = merged_provider_sync
+    if merged_provider_http is not None:
+        merged_data["provider_http"] = merged_provider_http
 
-    if merged_data != current_data:
+    current_fingerprint = _ticket_state_change_fingerprint(current_data)
+    merged_fingerprint = _ticket_state_change_fingerprint(merged_data)
+    if merged_fingerprint != current_fingerprint:
+        merged_data["last_provider_sync_at"] = snapshot.get("synced_at", utc_now().isoformat())
         artifact.data_json_safe = validate_safe_metadata(merged_data)
         return True
     return False
@@ -1318,26 +1420,6 @@ async def _refresh_ticket_artifact_status(
 
 async def get_task_detail(db: AsyncSession, *, task_id: UUID, user: User) -> TaskDetailOut:
     task = await get_task_for_user(db, task_id=task_id, user=user)
-    redis = await get_redis_client()
-    limiter = RedisTokenBucketLimiter(redis)
-    updated = False
-    client_cache: dict[str, object] = {}
-    for artifact in task.artifacts:
-            updated = (
-                await _refresh_ticket_artifact_status(
-                    db,
-                    user=user,
-                    artifact=artifact,
-                    limiter=limiter,
-                    force=False,
-                    client_cache=client_cache,
-                )
-                or updated
-            )
-
-    if updated:
-        await db.commit()
-        task = await get_task_for_user(db, task_id=task_id, user=user)
 
     attempts = sorted(task.attempts, key=lambda row: row.started_at)
     artifacts = sorted(task.artifacts, key=lambda row: row.created_at)
@@ -1405,7 +1487,12 @@ async def resume_task(db: AsyncSession, *, task_id: UUID, user: User) -> TaskAct
     await db.commit()
     await db.refresh(task)
 
-    await enqueue_train_task(str(task.id))
+    enqueued = await enqueue_train_task(str(task.id))
+    if enqueued is False:
+        # Deterministic job-id dedupe can reject immediate re-enqueue when a
+        # stale queued job key exists; fall back to a near-immediate deferred
+        # enqueue (non-deterministic id) so manual retry actually executes.
+        await enqueue_train_task(str(task.id), defer_seconds=0.01)
 
     return TaskActionResponse(task=task_to_summary(task))
 
@@ -1442,7 +1529,11 @@ async def retry_task_now(db: AsyncSession, *, task_id: UUID, user: User) -> Task
     await db.commit()
     await db.refresh(task)
 
-    await enqueue_train_task(str(task.id))
+    enqueued = await enqueue_train_task(str(task.id))
+    if enqueued is False:
+        # Retry now must still run even if deterministic job-id dedupe collides
+        # with an existing queued record for this task.
+        await enqueue_train_task(str(task.id), defer_seconds=0.01)
 
     return TaskActionResponse(task=task_to_summary(task))
 

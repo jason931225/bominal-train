@@ -20,18 +20,11 @@ class _Limiter:
 
 
 class _Client:
-    def __init__(self, *, reservations_outcome, ticket_outcome=None, ticket_exc: Exception | None = None):
+    def __init__(self, *, reservations_outcome):
         self._reservations_outcome = reservations_outcome
-        self._ticket_outcome = ticket_outcome
-        self._ticket_exc = ticket_exc
 
     async def get_reservations(self, **_kwargs):  # noqa: ANN003
         return self._reservations_outcome
-
-    async def ticket_info(self, **_kwargs):  # noqa: ANN003
-        if self._ticket_exc is not None:
-            raise self._ticket_exc
-        return self._ticket_outcome
 
 
 def test_status_from_snapshot_branch_matrix():
@@ -72,8 +65,7 @@ async def test_fetch_ticket_sync_snapshot_uses_reservation_fallback_ticket_rows_
         ok=True,
         data={"reservations": [reservation], "http_trace": {"authorization": "Bearer secret"}},
     )
-    ticket_outcome = ProviderOutcome(ok=True, data={"tickets": [], "http_trace": {"cookie": "secret-cookie"}})
-    client = _Client(reservations_outcome=reservations_outcome, ticket_outcome=ticket_outcome)
+    client = _Client(reservations_outcome=reservations_outcome)
     limiter = _Limiter(waited_ms=12)
 
     snapshot = await ticket_sync.fetch_ticket_sync_snapshot(
@@ -96,9 +88,8 @@ async def test_fetch_ticket_sync_snapshot_uses_reservation_fallback_ticket_rows_
     assert snapshot["seat_count"] == 2
     assert snapshot["tickets"]
     assert snapshot["provider_sync"]["reservations_rate_limit_wait_ms"] == 12
-    assert snapshot["provider_sync"]["ticket_info_rate_limit_wait_ms"] == 12
     assert "provider_http" in snapshot
-    assert limiter.calls == 2
+    assert limiter.calls == 1
 
 
 @pytest.mark.asyncio
@@ -109,10 +100,7 @@ async def test_fetch_ticket_sync_snapshot_handles_provider_failures_and_transpor
         error_message_safe="reservation failed",
         data={"http_trace": {"token": "abc"}},
     )
-    client = _Client(
-        reservations_outcome=reservations_outcome,
-        ticket_exc=RuntimeError("transport down"),
-    )
+    client = _Client(reservations_outcome=reservations_outcome)
 
     snapshot = await ticket_sync.fetch_ticket_sync_snapshot(
         client=client,
@@ -125,30 +113,3 @@ async def test_fetch_ticket_sync_snapshot_handles_provider_failures_and_transpor
     assert snapshot["status"] == "reservation_not_found"
     assert snapshot["provider_sync"]["reservations_ok"] is False
     assert snapshot["provider_sync"]["reservations_error"] == "reservation failed"
-    assert "provider_ticket_info_transport_error:RuntimeError" in snapshot["provider_sync"]["ticket_info_error"]
-
-
-@pytest.mark.asyncio
-async def test_fetch_ticket_sync_snapshot_records_ticket_info_error_from_failed_outcome():
-    reservations_outcome = ProviderOutcome(ok=True, data={"reservations": []})
-    ticket_outcome = ProviderOutcome(
-        ok=False,
-        error_code="ticket_info_failed",
-        error_message_safe="ticket info failed",
-        data={},
-    )
-    client = _Client(
-        reservations_outcome=reservations_outcome,
-        ticket_outcome=ticket_outcome,
-    )
-
-    snapshot = await ticket_sync.fetch_ticket_sync_snapshot(
-        client=client,
-        provider="SRT",
-        reservation_id="PNR-NO-TICKET",
-        user_id=uuid4(),
-        limiter=None,
-    )
-
-    assert snapshot["provider_sync"]["ticket_info_ok"] is False
-    assert snapshot["provider_sync"]["ticket_info_error"] == "ticket info failed"

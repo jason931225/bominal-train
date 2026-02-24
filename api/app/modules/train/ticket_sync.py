@@ -86,36 +86,11 @@ async def fetch_ticket_sync_snapshot(
             provider_http["get_reservations"] = redact_sensitive(trace)
 
     reservation_row = find_reservation_by_number(reservation_rows, reservation_id)
-
-    ticket_outcome = None
+    # Single reservation sweep contract:
+    # - do not issue per-reservation ticket_info calls
+    # - derive ticket/seat state from reservation list payload only
     ticket_rows: list[dict[str, Any]] = []
-    if limiter is not None:
-        limit = await limiter.acquire_provider_call(
-            provider=provider,
-            user_bucket_key=str(user_id),
-            host_bucket_key="default-host",
-        )
-        sync_meta["ticket_info_rate_limit_wait_ms"] = limit.waited_ms
-
-    try:
-        ticket_outcome = await client.ticket_info(
-            reservation_id=reservation_id,
-            user_id=str(user_id),
-        )
-    except Exception as exc:
-        sync_meta["ticket_info_error"] = f"provider_ticket_info_transport_error:{type(exc).__name__}"
-    else:
-        sync_meta["ticket_info_ok"] = bool(ticket_outcome.ok)
-        if ticket_outcome.ok:
-            ticket_rows = [row for row in ticket_outcome.data.get("tickets", []) if isinstance(row, dict)]
-        else:
-            sync_meta["ticket_info_error"] = ticket_outcome.error_message_safe or ticket_outcome.error_code
-
-        trace = ticket_outcome.data.get("http_trace") if ticket_outcome else None
-        if trace:
-            provider_http["ticket_info"] = redact_sensitive(trace)
-
-    if not ticket_rows and reservation_row:
+    if reservation_row:
         ticket_rows = [row for row in reservation_row.get("tickets", []) if isinstance(row, dict)]
 
     reservation_found = reservation_row is not None

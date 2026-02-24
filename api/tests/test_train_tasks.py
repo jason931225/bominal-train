@@ -1368,20 +1368,20 @@ async def test_worker_relogs_and_retries_pay_on_provider_auth_error(db_session_f
                 },
             )
 
-        async def get_reservations(self, **kwargs):
-            return ProviderOutcome(
-                ok=True,
-                data={
-                    "reservations": [
-                        {
-                            "reservation_id": "rsv-pay-relogin-1",
-                            "provider": "SRT",
-                            "paid": True,
-                            "waiting": False,
-                            "payment_deadline_at": (_utc_now() + timedelta(hours=2)).isoformat(),
-                            "seat_count": 1,
-                            "tickets": [{"car_no": "2", "seat_no": "4A"}],
-                        }
+            async def get_reservations(self, **kwargs):
+                return ProviderOutcome(
+                    ok=True,
+                    data={
+                        "reservations": [
+                            {
+                                "reservation_id": "rsv-pay-relogin-1",
+                                "provider": "SRT",
+                                "paid": False,
+                                "waiting": False,
+                                "payment_deadline_at": (_utc_now() + timedelta(hours=2)).isoformat(),
+                                "seat_count": 1,
+                                "tickets": [{"car_no": "2", "seat_no": "4A"}],
+                            }
                     ],
                     "http_trace": {"endpoint": "get_reservations", "status_code": 200},
                 },
@@ -1499,53 +1499,205 @@ async def test_worker_relogs_and_retries_pay_on_provider_auth_error(db_session_f
 
 
 @pytest.mark.asyncio
-async def test_task_detail_refreshes_ticket_artifact_status_from_provider(db_session, monkeypatch):
-    fake_redis = fakeredis.aioredis.FakeRedis()
+async def test_compact_and_prune_task_attempts_dedupes_and_applies_retention(db_session, monkeypatch):
+    now = _utc_now()
+    monkeypatch.setattr(train_worker.settings, "train_sync_keep_latest_only", True)
+    monkeypatch.setattr(train_worker.settings, "train_compact_repetitive_attempts", True)
+    monkeypatch.setattr(train_worker.settings, "train_attempt_retention_days", 30)
 
-    class _NoLimitResult:
-        waited_ms = 0
-        rounds = 1
+    user = User(
+        email="attempt-cleanup@example.com",
+        password_hash="x",
+        display_name="Attempt Cleanup User",
+        role_id=2,
+    )
+    db_session.add(user)
+    await db_session.flush()
 
-    async def _no_limit(self, **kwargs):
-        return _NoLimitResult()
+    active_task = Task(
+        user_id=user.id,
+        module="train",
+        state="POLLING",
+        deadline_at=now + timedelta(hours=2),
+        spec_json={"provider": "SRT"},
+        idempotency_key="attempt-cleanup-active",
+    )
+    old_terminal_task = Task(
+        user_id=user.id,
+        module="train",
+        state="FAILED",
+        deadline_at=now - timedelta(days=40),
+        spec_json={"provider": "SRT"},
+        idempotency_key="attempt-cleanup-old-terminal",
+        failed_at=now - timedelta(days=40),
+        updated_at=now - timedelta(days=40),
+    )
+    recent_terminal_task = Task(
+        user_id=user.id,
+        module="train",
+        state="FAILED",
+        deadline_at=now - timedelta(days=1),
+        spec_json={"provider": "SRT"},
+        idempotency_key="attempt-cleanup-recent-terminal",
+        failed_at=now - timedelta(days=1),
+        updated_at=now - timedelta(days=1),
+    )
+    db_session.add_all([active_task, old_terminal_task, recent_terminal_task])
+    await db_session.flush()
 
-    class FakeClient:
-        async def get_reservations(self, **kwargs):
-            return ProviderOutcome(
-                ok=True,
-                data={
-                    "reservations": [
-                        {
-                            "reservation_id": "PNR-9001",
-                            "provider": "SRT",
-                            "paid": False,
-                            "waiting": False,
-                            "payment_deadline_at": (_utc_now() + timedelta(hours=2)).isoformat(),
-                            "seat_count": 1,
-                            "tickets": [{"car_no": "3", "seat_no": "7A"}],
-                        }
-                    ],
-                    "http_trace": {"endpoint": "get_reservations", "status_code": 200},
-                },
+    def _attempt(
+        *,
+        task_id,
+        action: str,
+        started_at: datetime,
+        finished_at: datetime,
+        ok: bool,
+        retryable: bool,
+        error_code: str | None,
+        error_message_safe: str | None,
+    ) -> TaskAttempt:
+        return TaskAttempt(
+            task_id=task_id,
+            action=action,
+            provider="SRT",
+            ok=ok,
+            retryable=retryable,
+            error_code=error_code,
+            error_message_safe=error_message_safe,
+            duration_ms=50,
+            meta_json_safe={},
+            started_at=started_at,
+            finished_at=finished_at,
+        )
+
+    sync1 = _attempt(
+        task_id=active_task.id,
+        action="SYNC",
+        started_at=now - timedelta(minutes=8),
+        finished_at=now - timedelta(minutes=8),
+        ok=True,
+        retryable=True,
+        error_code=None,
+        error_message_safe=None,
+    )
+    sync2 = _attempt(
+        task_id=active_task.id,
+        action="SYNC",
+        started_at=now - timedelta(minutes=2),
+        finished_at=now - timedelta(minutes=2),
+        ok=True,
+        retryable=True,
+        error_code=None,
+        error_message_safe=None,
+    )
+    search1 = _attempt(
+        task_id=active_task.id,
+        action="SEARCH",
+        started_at=now - timedelta(minutes=7),
+        finished_at=now - timedelta(minutes=7),
+        ok=False,
+        retryable=True,
+        error_code="seat_unavailable",
+        error_message_safe="No reservable seats are available for this schedule.",
+    )
+    search2 = _attempt(
+        task_id=active_task.id,
+        action="SEARCH",
+        started_at=now - timedelta(minutes=6),
+        finished_at=now - timedelta(minutes=6),
+        ok=False,
+        retryable=True,
+        error_code="seat_unavailable",
+        error_message_safe="No reservable seats are available for this schedule.",
+    )
+    search3 = _attempt(
+        task_id=active_task.id,
+        action="SEARCH",
+        started_at=now - timedelta(minutes=5),
+        finished_at=now - timedelta(minutes=5),
+        ok=False,
+        retryable=False,
+        error_code="provider_unreachable",
+        error_message_safe="provider outage",
+    )
+    search4 = _attempt(
+        task_id=active_task.id,
+        action="SEARCH",
+        started_at=now - timedelta(minutes=4),
+        finished_at=now - timedelta(minutes=4),
+        ok=False,
+        retryable=False,
+        error_code="provider_unreachable",
+        error_message_safe="provider outage",
+    )
+    old_terminal_attempt = _attempt(
+        task_id=old_terminal_task.id,
+        action="SEARCH",
+        started_at=now - timedelta(days=40),
+        finished_at=now - timedelta(days=40),
+        ok=False,
+        retryable=True,
+        error_code="seat_unavailable",
+        error_message_safe="No reservable seats are available for this schedule.",
+    )
+    recent_terminal_attempt = _attempt(
+        task_id=recent_terminal_task.id,
+        action="SEARCH",
+        started_at=now - timedelta(hours=12),
+        finished_at=now - timedelta(hours=12),
+        ok=False,
+        retryable=True,
+        error_code="seat_unavailable",
+        error_message_safe="No reservable seats are available for this schedule.",
+    )
+    db_session.add_all([sync1, sync2, search1, search2, search3, search4, old_terminal_attempt, recent_terminal_attempt])
+    await db_session.commit()
+
+    stats = await train_worker.compact_and_prune_task_attempts(db_session)
+    assert stats["deleted_sync_rows"] >= 1
+    assert stats["deleted_repetitive_rows"] >= 1
+    assert stats["deleted_retention_rows"] >= 1
+
+    active_attempts = (
+        (
+            await db_session.execute(
+                select(TaskAttempt)
+                .where(TaskAttempt.task_id == active_task.id)
+                .order_by(TaskAttempt.action.asc(), TaskAttempt.started_at.asc(), TaskAttempt.id.asc())
             )
+        )
+        .scalars()
+        .all()
+    )
+    active_sync_attempts = [attempt for attempt in active_attempts if attempt.action == "SYNC"]
+    assert len(active_sync_attempts) == 1
+    assert active_sync_attempts[0].id == sync2.id
 
-        async def ticket_info(self, **kwargs):
-            return ProviderOutcome(
-                ok=True,
-                data={
-                    "reservation_id": "PNR-9001",
-                    "tickets": [{"car_no": "3", "seat_no": "7A"}],
-                    "http_trace": {"endpoint": "ticket_info", "status_code": 200},
-                },
-            )
+    active_search_attempts = [attempt for attempt in active_attempts if attempt.action == "SEARCH"]
+    assert len(active_search_attempts) == 3
+    assert {attempt.id for attempt in active_search_attempts} == {search1.id, search3.id, search4.id}
 
-    async def _fake_client(db, *, user, provider):
-        return FakeClient()
+    old_terminal_attempts = (
+        (
+            await db_session.execute(select(TaskAttempt).where(TaskAttempt.task_id == old_terminal_task.id))
+        )
+        .scalars()
+        .all()
+    )
+    assert old_terminal_attempts == []
 
-    monkeypatch.setattr("app.modules.train.service.get_redis_client", make_fake_get_redis_client(fake_redis))
-    monkeypatch.setattr("app.modules.train.service.RedisTokenBucketLimiter.acquire_provider_call", _no_limit)
-    monkeypatch.setattr("app.modules.train.service._get_logged_in_provider_client", _fake_client)
+    recent_terminal_attempts = (
+        (
+            await db_session.execute(select(TaskAttempt).where(TaskAttempt.task_id == recent_terminal_task.id))
+        )
+        .scalars()
+        .all()
+    )
+    assert len(recent_terminal_attempts) == 1
 
+
+@pytest.mark.asyncio
+async def test_task_detail_returns_cached_artifact_without_provider_refresh(db_session, monkeypatch):
     user = User(
         email="detail-refresh@example.com",
         password_hash="x",
@@ -1581,63 +1733,78 @@ async def test_task_detail_refreshes_ticket_artifact_status_from_provider(db_ses
     db_session.add(artifact)
     await db_session.commit()
 
+    refresh_calls: list[str] = []
+
+    async def _refresh_stub(*_args, **kwargs):  # noqa: ANN002, ANN003
+        refresh_calls.append(str(kwargs["artifact"].id))
+        return True
+
+    monkeypatch.setattr("app.modules.train.service._refresh_ticket_artifact_status", _refresh_stub)
+
     detail = await get_task_detail(db_session, task_id=task.id, user=user)
     assert detail.artifacts
     ticket = detail.artifacts[0].data_json_safe
-    assert ticket.get("status") == "awaiting_payment"
-    assert ticket.get("seat_count") == 1
-    assert ticket.get("tickets", [{}])[0].get("seat_no") == "7A"
-    assert ticket.get("provider_http", {}).get("get_reservations", {}).get("endpoint") == "get_reservations"
+    assert ticket.get("status") == "reserved"
+    assert refresh_calls == []
 
 
 @pytest.mark.asyncio
-async def test_list_tasks_refreshes_completed_ticket_status_on_page_load(client, db_session, monkeypatch):
+async def test_task_detail_does_not_refresh_waitlisted_polling_ticket_on_page_load(db_session, monkeypatch):
     fake_redis = fakeredis.aioredis.FakeRedis()
-
-    class _NoLimitResult:
-        waited_ms = 0
-        rounds = 1
-
-    async def _no_limit(self, **kwargs):
-        return _NoLimitResult()
-
-    class FakeClient:
-        async def get_reservations(self, **kwargs):
-            return ProviderOutcome(
-                ok=True,
-                data={
-                    "reservations": [
-                        {
-                            "reservation_id": "PNR-LIST-1",
-                            "provider": "SRT",
-                            "paid": False,
-                            "waiting": False,
-                            "payment_deadline_at": (_utc_now() + timedelta(hours=3)).isoformat(),
-                            "seat_count": 1,
-                            "tickets": [{"car_no": "4", "seat_no": "8A"}],
-                        }
-                    ],
-                    "http_trace": {"endpoint": "get_reservations", "status_code": 200},
-                },
-            )
-
-        async def ticket_info(self, **kwargs):
-            return ProviderOutcome(
-                ok=True,
-                data={
-                    "reservation_id": "PNR-LIST-1",
-                    "tickets": [{"car_no": "4", "seat_no": "8A"}],
-                    "http_trace": {"endpoint": "ticket_info", "status_code": 200},
-                },
-            )
-
-    async def _fake_client(db, *, user, provider):
-        return FakeClient()
-
     monkeypatch.setattr("app.modules.train.service.get_redis_client", make_fake_get_redis_client(fake_redis))
-    monkeypatch.setattr("app.modules.train.service.RedisTokenBucketLimiter.acquire_provider_call", _no_limit)
-    monkeypatch.setattr("app.modules.train.service._get_logged_in_provider_client", _fake_client)
 
+    user = User(
+        email="detail-waitlisted@example.com",
+        password_hash="x",
+        display_name="Detail Waitlisted User",
+        role_id=2,
+    )
+    db_session.add(user)
+    await db_session.flush()
+
+    task = Task(
+        user_id=user.id,
+        module="train",
+        state="POLLING",
+        deadline_at=_utc_now() + timedelta(hours=4),
+        spec_json={"module": "train"},
+        idempotency_key="detail-waitlisted",
+    )
+    db_session.add(task)
+    await db_session.flush()
+
+    artifact = Artifact(
+        task_id=task.id,
+        module="train",
+        kind="ticket",
+        data_json_safe={
+            "provider": "SRT",
+            "reservation_id": "PNR-WAIT-1",
+            "paid": False,
+            "status": "waiting",
+            "waiting": True,
+        },
+    )
+    db_session.add(artifact)
+    await db_session.commit()
+
+    refresh_calls: list[str] = []
+
+    async def _refresh_stub(*_args, **kwargs):  # noqa: ANN002, ANN003
+        refresh_calls.append(str(kwargs["artifact"].id))
+        return True
+
+    monkeypatch.setattr("app.modules.train.service._refresh_ticket_artifact_status", _refresh_stub)
+
+    detail = await get_task_detail(db_session, task_id=task.id, user=user)
+
+    assert detail.task.state == "POLLING"
+    assert detail.artifacts[0].data_json_safe.get("status") == "waiting"
+    assert refresh_calls == []
+
+
+@pytest.mark.asyncio
+async def test_list_tasks_does_not_refresh_completed_ticket_status_on_page_load(client, db_session, monkeypatch):
     email = "list-refresh@example.com"
     cookie = await _register_and_login(client, db_session, email=email)
 
@@ -1669,13 +1836,22 @@ async def test_list_tasks_refreshes_completed_ticket_status_on_page_load(client,
     )
     await db_session.commit()
 
+    refresh_calls: list[str] = []
+
+    async def _refresh_stub(*_args, **kwargs):  # noqa: ANN002, ANN003
+        refresh_calls.append(str(kwargs["artifact"].id))
+        return True
+
+    monkeypatch.setattr("app.modules.train.service._refresh_ticket_artifact_status", _refresh_stub)
+
     completed_response = await client.get(
         "/api/train/tasks?status=completed&refresh_completed=true",
         cookies={"bominal_session": cookie},
     )
     assert completed_response.status_code == 200
     completed_rows = completed_response.json()["tasks"]
-    assert all(row["id"] != str(task.id) for row in completed_rows)
+    assert any(row["id"] == str(task.id) for row in completed_rows)
+    assert refresh_calls == []
 
     active_response = await client.get(
         "/api/train/tasks?status=active",
@@ -1683,10 +1859,7 @@ async def test_list_tasks_refreshes_completed_ticket_status_on_page_load(client,
     )
     assert active_response.status_code == 200
     active_rows = active_response.json()["tasks"]
-    task_row = next(row for row in active_rows if row["id"] == str(task.id))
-    assert task_row["ticket_status"] == "awaiting_payment"
-    assert task_row["ticket_paid"] is False
-    assert task_row["ticket_reservation_id"] == "PNR-LIST-1"
+    assert all(row["id"] != str(task.id) for row in active_rows)
 
 
 @pytest.mark.asyncio
@@ -2498,6 +2671,47 @@ async def test_retry_task_now_allows_polling_and_clears_next_run_at(db_session, 
 
 
 @pytest.mark.asyncio
+async def test_retry_task_now_falls_back_to_short_deferred_enqueue_on_collision(db_session, monkeypatch):
+    enqueue_calls: list[tuple[str, float]] = []
+
+    async def _enqueue(task_id: str, defer_seconds: float = 0.0) -> bool:
+        enqueue_calls.append((task_id, float(defer_seconds)))
+        if defer_seconds == 0.0:
+            return False
+        return True
+
+    monkeypatch.setattr("app.modules.train.service.enqueue_train_task", _enqueue)
+
+    user = User(
+        email="retry-fallback@example.com",
+        password_hash="x",
+        display_name="Retry Fallback User",
+        role_id=2,
+    )
+    db_session.add(user)
+    await db_session.flush()
+
+    task = Task(
+        user_id=user.id,
+        module="train",
+        state="POLLING",
+        deadline_at=_utc_now() + timedelta(minutes=10),
+        spec_json={"provider": "SRT"},
+        idempotency_key="retry-fallback",
+    )
+    db_session.add(task)
+    await db_session.commit()
+
+    response = await retry_task_now(db_session, task_id=task.id, user=user)
+
+    assert response.task.state == "QUEUED"
+    assert enqueue_calls == [
+        (str(task.id), 0.0),
+        (str(task.id), 0.01),
+    ]
+
+
+@pytest.mark.asyncio
 async def test_retry_task_now_rejects_paused(db_session, monkeypatch):
     async def _noop_enqueue(task_id: str, defer_seconds: float = 0.0) -> None:
         return None
@@ -2903,7 +3117,16 @@ async def test_task_list_classifies_completed_awaiting_payment_as_active(db_sess
         spec_json={"provider": "SRT"},
         idempotency_key="awaiting-payment-paid",
     )
-    db_session.add_all([pending_task, paid_task])
+    waiting_task = Task(
+        user_id=user.id,
+        module="train",
+        state="COMPLETED",
+        deadline_at=_utc_now() + timedelta(minutes=20),
+        completed_at=_utc_now(),
+        spec_json={"provider": "SRT"},
+        idempotency_key="waiting-active",
+    )
+    db_session.add_all([pending_task, paid_task, waiting_task])
     await db_session.flush()
 
     db_session.add_all(
@@ -2928,6 +3151,17 @@ async def test_task_list_classifies_completed_awaiting_payment_as_active(db_sess
                     "reservation_id": "PAID-RES-1",
                 },
             ),
+            Artifact(
+                task_id=waiting_task.id,
+                module="train",
+                kind="ticket",
+                data_json_safe={
+                    "status": "waiting",
+                    "paid": False,
+                    "waiting": True,
+                    "reservation_id": "WAITING-RES-1",
+                },
+            ),
         ]
     )
     await db_session.commit()
@@ -2935,16 +3169,18 @@ async def test_task_list_classifies_completed_awaiting_payment_as_active(db_sess
     active_response = await list_tasks(db_session, user=user, status_filter="active")
     active_ids = {item.id for item in active_response.tasks}
     assert pending_task.id in active_ids
+    assert waiting_task.id in active_ids
     assert paid_task.id not in active_ids
 
     completed_response = await list_tasks(db_session, user=user, status_filter="completed")
     completed_ids = {item.id for item in completed_response.tasks}
     assert pending_task.id not in completed_ids
+    assert waiting_task.id not in completed_ids
     assert paid_task.id in completed_ids
 
 
 @pytest.mark.asyncio
-async def test_active_task_list_refreshes_awaiting_payment_ticket_status(db_session, monkeypatch):
+async def test_active_task_list_does_not_refresh_awaiting_payment_ticket_status(db_session, monkeypatch):
     fake_redis = fakeredis.aioredis.FakeRedis()
     monkeypatch.setattr("app.modules.train.service.get_redis_client", make_fake_get_redis_client(fake_redis))
 
@@ -2995,7 +3231,63 @@ async def test_active_task_list_refreshes_awaiting_payment_ticket_status(db_sess
 
     response = await list_tasks(db_session, user=user, status_filter="active")
     assert any(item.id == task.id for item in response.tasks)
-    assert refresh_calls >= 1
+    assert refresh_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_active_task_list_does_not_refresh_waitlisted_ticket_status(db_session, monkeypatch):
+    fake_redis = fakeredis.aioredis.FakeRedis()
+    monkeypatch.setattr("app.modules.train.service.get_redis_client", make_fake_get_redis_client(fake_redis))
+
+    user = User(
+        email="waitlisted-no-refresh@example.com",
+        password_hash="x",
+        display_name="Waitlisted No Refresh User",
+        role_id=2,
+    )
+    db_session.add(user)
+    await db_session.flush()
+
+    task = Task(
+        user_id=user.id,
+        module="train",
+        state="COMPLETED",
+        deadline_at=_utc_now() + timedelta(minutes=30),
+        completed_at=_utc_now(),
+        spec_json={"provider": "SRT"},
+        idempotency_key="waitlisted-no-refresh",
+    )
+    db_session.add(task)
+    await db_session.flush()
+
+    db_session.add(
+        Artifact(
+            task_id=task.id,
+            module="train",
+            kind="ticket",
+            data_json_safe={
+                "provider": "SRT",
+                "reservation_id": "WAIT-NO-REFRESH-1",
+                "status": "waiting",
+                "waiting": True,
+                "paid": False,
+            },
+        )
+    )
+    await db_session.commit()
+
+    refresh_calls = 0
+
+    async def _fake_refresh(db, *, user, artifact, limiter, force=False, client_cache=None):
+        nonlocal refresh_calls
+        refresh_calls += 1
+        return False
+
+    monkeypatch.setattr("app.modules.train.service._refresh_ticket_artifact_status", _fake_refresh)
+
+    response = await list_tasks(db_session, user=user, status_filter="active")
+    assert any(item.id == task.id for item in response.tasks)
+    assert refresh_calls == 0
 
 
 @pytest.mark.asyncio

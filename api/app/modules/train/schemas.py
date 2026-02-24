@@ -119,6 +119,7 @@ class TrainPassengers(BaseModel):
 class RankedTrainSelection(BaseModel):
     schedule_id: str = Field(min_length=4, max_length=128)
     departure_at: datetime
+    arrival_at: datetime | None = None
     rank: int = Field(ge=1, le=99)
     provider: TrainProvider | None = None
 
@@ -179,6 +180,9 @@ class TaskSummaryOut(BaseModel):
     ticket_paid: bool | None = None
     ticket_payment_deadline_at: datetime | None = None
     ticket_reservation_id: str | None = None
+    ticket_train_no: str | None = None
+    ticket_seat_count: int | None = None
+    ticket_seats: list[str] | None = None
 
 
 class TaskAttemptOut(BaseModel):

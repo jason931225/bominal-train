@@ -36,6 +36,27 @@ def build_task_state_event_payload(
     }
 
 
+def build_task_ticket_status_event_payload(
+    *,
+    user_id: UUID | str,
+    task_id: UUID | str,
+    state: str,
+    ticket_status: str | None,
+    previous_ticket_status: str | None,
+    updated_at: datetime | None = None,
+) -> dict[str, str]:
+    event_time = updated_at or utc_now()
+    return {
+        "type": "task_ticket_status_changed",
+        "user_id": str(user_id),
+        "task_id": str(task_id),
+        "state": state,
+        "ticket_status": str(ticket_status or ""),
+        "previous_ticket_status": str(previous_ticket_status or ""),
+        "updated_at": event_time.isoformat(),
+    }
+
+
 def should_publish_task_state_event(*, state: str) -> bool:
     # Suppress high-frequency internal worker states to keep SSE traffic and
     # downstream dashboard refresh load bounded in production.
@@ -68,5 +89,36 @@ async def publish_task_state_event(
     except Exception:
         logger.warning(
             "Failed to publish train task state event",
+            extra={"task_id": str(task_id), "state": state},
+        )
+
+
+async def publish_task_ticket_status_event(
+    *,
+    user_id: UUID | str,
+    task_id: UUID | str,
+    state: str,
+    ticket_status: str | None,
+    previous_ticket_status: str | None,
+    updated_at: datetime | None = None,
+) -> None:
+    payload = build_task_ticket_status_event_payload(
+        user_id=user_id,
+        task_id=task_id,
+        state=state,
+        ticket_status=ticket_status,
+        previous_ticket_status=previous_ticket_status,
+        updated_at=updated_at,
+    )
+    channel = task_events_channel(user_id)
+    try:
+        redis = await asyncio.wait_for(get_redis_client(), timeout=EVENT_PUBLISH_TIMEOUT_SECONDS)
+        await asyncio.wait_for(
+            redis.publish(channel, json.dumps(payload, separators=(",", ":"))),
+            timeout=EVENT_PUBLISH_TIMEOUT_SECONDS,
+        )
+    except Exception:
+        logger.warning(
+            "Failed to publish train task ticket-status event",
             extra={"task_id": str(task_id), "state": state},
         )

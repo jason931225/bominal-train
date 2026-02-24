@@ -171,13 +171,20 @@ def test_provider_credential_helpers_and_recent_verification_logic(monkeypatch):
 def test_ranked_train_and_spec_helpers_cover_provider_validation_and_deadline_rules():
     dep_time_1 = datetime(2026, 2, 23, 8, 0, tzinfo=KST)
     dep_time_2 = datetime(2026, 2, 23, 8, 30, tzinfo=KST)
+    arr_time_2 = datetime(2026, 2, 23, 11, 10, tzinfo=KST)
     payload = TrainTaskCreateRequest(
         provider=None,
         dep="수서",
         arr="부산",
         date=date(2026, 2, 23),
         selected_trains_ranked=[
-            RankedTrainSelection(schedule_id="KTX-100", departure_at=dep_time_2, rank=2, provider="KTX"),
+            RankedTrainSelection(
+                schedule_id="KTX-100",
+                departure_at=dep_time_2,
+                arrival_at=arr_time_2,
+                rank=2,
+                provider="KTX",
+            ),
             RankedTrainSelection(schedule_id="SRT-200", departure_at=dep_time_1, rank=1, provider="SRT"),
         ],
         passengers=TrainPassengers(adults=1, children=0),
@@ -188,6 +195,8 @@ def test_ranked_train_and_spec_helpers_cover_provider_validation_and_deadline_ru
 
     ranked = train_service._sorted_ranked_trains(payload)
     assert [row["schedule_id"] for row in ranked] == ["SRT-200", "KTX-100"]
+    assert ranked[0].get("arrival_at") is None
+    assert ranked[1].get("arrival_at") == arr_time_2.isoformat()
 
     providers = train_service._resolve_task_providers(ranked)
     assert providers == ["KTX", "SRT"]
@@ -273,6 +282,13 @@ def test_ticket_summary_and_active_listing_helpers():
             "paid": False,
             "payment_deadline_at": deadline.isoformat(),
             "reservation_id": "PNR-1",
+            "train_no": "301",
+            "seat_count": 2,
+            "tickets": [
+                {"car_no": "8", "seat_no": "12A"},
+                {"car_no": "8", "seat_no": "12A"},
+                {"seat_no": "14A"},
+            ],
         },
     )
     summary = train_service._ticket_summary_from_artifact(artifact)
@@ -281,11 +297,19 @@ def test_ticket_summary_and_active_listing_helpers():
         "ticket_paid": False,
         "ticket_payment_deadline_at": deadline,
         "ticket_reservation_id": "PNR-1",
+        "ticket_train_no": "301",
+        "ticket_seat_count": 2,
+        "ticket_seats": ["8-12A", "14A"],
     }
 
     assert train_service._is_manual_payment_pending(summary) is True
+    assert train_service._is_manual_payment_pending({"ticket_status": "waiting", "ticket_paid": False}) is True
     assert train_service._is_manual_payment_pending({"ticket_status": "paid", "ticket_paid": True}) is False
     assert train_service._is_manual_payment_pending(None) is False
+    assert train_service._is_waitlisted_unpaid({"ticket_status": "waiting", "ticket_paid": False}) is True  # noqa: SLF001
+    assert train_service._is_waitlisted_unpaid({"ticket_status": "awaiting_payment", "ticket_paid": False}) is False  # noqa: SLF001
+    assert train_service._should_refresh_pending_ticket_status({"ticket_status": "awaiting_payment", "ticket_paid": False}) is True  # noqa: SLF001
+    assert train_service._should_refresh_pending_ticket_status({"ticket_status": "waiting", "ticket_paid": False}) is False  # noqa: SLF001
 
     active_task = _make_task(state="POLLING")
     completed_task = _make_task(state="COMPLETED")
@@ -300,19 +324,13 @@ def test_terminal_visibility_refresh_and_latest_ticket_helpers(monkeypatch):
 
     assert train_service._should_refresh_ticket_artifact({}, force=True) is True
     assert train_service._should_refresh_ticket_artifact({}, force=False) is True
-    assert (
-        train_service._should_refresh_ticket_artifact(
-            {"last_provider_sync_at": (fixed_now - timedelta(seconds=5)).isoformat()},
-            force=False,
-        )
-        is False
+    assert train_service._should_refresh_ticket_artifact(
+        {"last_provider_sync_at": (fixed_now - timedelta(seconds=5)).isoformat()},
+        force=False,
     )
-    assert (
-        train_service._should_refresh_ticket_artifact(
-            {"last_provider_sync_at": (fixed_now - timedelta(seconds=11)).isoformat()},
-            force=False,
-        )
-        is True
+    assert train_service._should_refresh_ticket_artifact(
+        {"last_provider_sync_at": (fixed_now - timedelta(seconds=11)).isoformat()},
+        force=False,
     )
 
     non_terminal = _make_task(state="QUEUED")

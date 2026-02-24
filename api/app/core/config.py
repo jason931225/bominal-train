@@ -157,6 +157,19 @@ class Settings(BaseSettings):
         default=False,
         alias="TRAIN_PERSIST_ALL_ATTEMPTS",
     )
+    train_attempt_retention_days: int = Field(
+        default=30,
+        alias="TRAIN_ATTEMPT_RETENTION_DAYS",
+        ge=1,
+    )
+    train_compact_repetitive_attempts: bool = Field(
+        default=True,
+        alias="TRAIN_COMPACT_REPETITIVE_ATTEMPTS",
+    )
+    train_sync_keep_latest_only: bool = Field(
+        default=True,
+        alias="TRAIN_SYNC_KEEP_LATEST_ONLY",
+    )
     restaurant_auth_refresh_retries: int = Field(default=2, alias="RESTAURANT_AUTH_REFRESH_RETRIES")
     restaurant_payment_lease_ttl_seconds: int = Field(default=120, alias="RESTAURANT_PAYMENT_LEASE_TTL_SECONDS")
     restaurant_bootstrap_timeout_seconds: float = Field(default=20.0, alias="RESTAURANT_BOOTSTRAP_TIMEOUT_SECONDS")

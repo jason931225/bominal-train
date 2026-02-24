@@ -341,6 +341,8 @@ PY
   set_env_key "$API_ENV" "SUPABASE_AUTH_API_KEY" "$supabase_auth_api_key"
   set_env_key "$API_ENV" "INTERNAL_API_KEY" "$internal_api_key"
   set_env_key "$API_ENV" "MASTER_KEY" "$master_key"
+  set_env_key "$API_ENV" "TRAIN_POLL_FORCE_MAX_RATE" "false"
+  set_env_key "$API_ENV" "TRAIN_PERSIST_ALL_ATTEMPTS" "false"
   set_env_key "$API_ENV" "PAYMENT_ENABLED" "true"
   set_env_key "$API_ENV" "PASSKEY_ENABLED" "true"
   set_env_key "$API_ENV" "PASSKEY_RP_ID" "$passkey_rp_id"

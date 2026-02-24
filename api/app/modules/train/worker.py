@@ -5,12 +5,12 @@ import logging
 import math
 import random
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -24,6 +24,7 @@ from app.modules.train.constants import (
     ATTEMPT_ACTION_PAY,
     ATTEMPT_ACTION_RESERVE,
     ATTEMPT_ACTION_SEARCH,
+    ATTEMPT_ACTION_SYNC,
     SECRET_KIND_KTX_CREDENTIALS,
     SECRET_KIND_SRT_CREDENTIALS,
     TASK_MODULE,
@@ -32,7 +33,7 @@ from app.modules.train.constants import (
 )
 from app.modules.train.providers import get_provider_client
 from app.modules.train.providers.base import ProviderOutcome, ProviderSchedule
-from app.modules.train.events import publish_task_state_event
+from app.modules.train.events import publish_task_state_event, publish_task_ticket_status_event
 from app.modules.train.queue import enqueue_train_task
 from app.modules.train.rate_limiter import RedisTokenBucketLimiter
 from app.modules.train.ticket_sync import fetch_ticket_sync_snapshot
@@ -75,6 +76,18 @@ POLL_CURVE_ANCHOR_72H_MEAN_SECONDS = 2.0
 POLL_GAMMA_SHAPE = 4.0
 POLL_DELAY_MIN_SECONDS = 0.1
 WAITING_STATUS_POLL_SECONDS = 5 * 60
+SYNC_PROVIDER_META_STABLE_KEYS = frozenset(
+    {
+        "provider",
+        "reservation_id",
+        "reservations_ok",
+        "reservations_error",
+        "ticket_info_ok",
+        "ticket_info_error",
+        "error",
+        "pay_sync_error",
+    }
+)
 
 
 @dataclass(slots=True)
@@ -107,6 +120,7 @@ class ProviderExecutionResult:
     attempts: list[PendingAttempt]
     candidate: ReservationCandidate | None
     retryable: bool
+    schedule_backfill: list[dict[str, Any]] = field(default_factory=list)
 
 
 def _as_aware_utc(value: datetime) -> datetime:
@@ -405,6 +419,131 @@ def _normalize_ranked_selection(spec_json: dict[str, Any]) -> list[dict[str, Any
     return normalized
 
 
+def _apply_ranked_schedule_backfill(
+    spec_json: dict[str, Any],
+    provider_results: list[ProviderExecutionResult],
+) -> tuple[dict[str, Any], bool]:
+    ranked_raw = spec_json.get("selected_trains_ranked")
+    if not isinstance(ranked_raw, list):
+        return spec_json, False
+
+    by_schedule_and_provider: dict[tuple[str, str], dict[str, str]] = {}
+    by_schedule: dict[str, dict[str, str]] = {}
+    for result in provider_results:
+        for row in result.schedule_backfill:
+            schedule_id = str(row.get("schedule_id") or "").strip()
+            provider = str(row.get("provider") or "").strip()
+            departure_at = str(row.get("departure_at") or "").strip()
+            arrival_at = str(row.get("arrival_at") or "").strip()
+            if not schedule_id or not departure_at or not arrival_at:
+                continue
+            payload = {
+                "departure_at": departure_at,
+                "arrival_at": arrival_at,
+            }
+            by_schedule_and_provider[(schedule_id, provider)] = payload
+            if schedule_id not in by_schedule:
+                by_schedule[schedule_id] = payload
+
+    if not by_schedule:
+        return spec_json, False
+
+    default_provider = str(spec_json.get("provider") or "").strip()
+    changed = False
+    updated_ranked: list[Any] = []
+    for row in ranked_raw:
+        if not isinstance(row, dict):
+            updated_ranked.append(row)
+            continue
+
+        schedule_id = str(row.get("schedule_id") or "").strip()
+        if not schedule_id:
+            updated_ranked.append(row)
+            continue
+
+        provider = str(row.get("provider") or default_provider).strip()
+        resolved = by_schedule_and_provider.get((schedule_id, provider)) or by_schedule.get(schedule_id)
+        if not resolved:
+            updated_ranked.append(row)
+            continue
+
+        departure_at = str(row.get("departure_at") or "").strip()
+        arrival_at = str(row.get("arrival_at") or "").strip()
+        if departure_at == resolved["departure_at"] and arrival_at == resolved["arrival_at"]:
+            updated_ranked.append(row)
+            continue
+
+        next_row = dict(row)
+        next_row["departure_at"] = resolved["departure_at"]
+        next_row["arrival_at"] = resolved["arrival_at"]
+        updated_ranked.append(next_row)
+        changed = True
+
+    if not changed:
+        return spec_json, False
+
+    next_spec = dict(spec_json)
+    next_spec["selected_trains_ranked"] = updated_ranked
+    return next_spec, True
+
+
+def _ticket_artifact_schedule_backfill_rows(artifact: Artifact) -> list[dict[str, str]]:
+    data = dict(artifact.data_json_safe or {})
+    default_provider = str(data.get("provider") or "").strip()
+
+    rows: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+
+    def _push(row: dict[str, Any], *, provider_fallback: str) -> None:
+        schedule_id = str(row.get("schedule_id") or "").strip()
+        departure_at = str(row.get("departure_at") or "").strip()
+        arrival_at = str(row.get("arrival_at") or "").strip()
+        provider = str(row.get("provider") or provider_fallback).strip()
+        if not schedule_id or not departure_at or not arrival_at:
+            return
+        dedupe_key = (schedule_id, provider)
+        if dedupe_key in seen:
+            return
+        seen.add(dedupe_key)
+        rows.append(
+            {
+                "provider": provider,
+                "schedule_id": schedule_id,
+                "departure_at": departure_at,
+                "arrival_at": arrival_at,
+            }
+        )
+
+    _push(data, provider_fallback=default_provider)
+
+    reservation_snapshot = data.get("reservation_snapshot")
+    if isinstance(reservation_snapshot, dict):
+        _push(reservation_snapshot, provider_fallback=default_provider)
+
+    return rows
+
+
+def _apply_ticket_artifact_schedule_backfill(
+    spec_json: dict[str, Any],
+    artifact: Artifact,
+) -> tuple[dict[str, Any], bool]:
+    schedule_backfill = _ticket_artifact_schedule_backfill_rows(artifact)
+    if not schedule_backfill:
+        return spec_json, False
+    return _apply_ranked_schedule_backfill(
+        spec_json,
+        [
+            ProviderExecutionResult(
+                provider=str(schedule_backfill[0].get("provider") or ""),
+                attempts=[],
+                candidate=None,
+                retryable=True,
+                schedule_backfill=schedule_backfill,
+            )
+        ],
+    )
+
+
 async def _save_attempt(
     db: AsyncSession,
     *,
@@ -449,6 +588,16 @@ async def _persist_attempts(db: AsyncSession, *, task: Task, attempts: list[Pend
             str(error_message_safe or ""),
         )
 
+    def _assign_attempt_to_row(existing: TaskAttempt, current: PendingAttempt) -> None:
+        existing.ok = current.ok
+        existing.retryable = current.retryable
+        existing.error_code = current.error_code
+        existing.error_message_safe = current.error_message_safe
+        existing.duration_ms = current.duration_ms
+        existing.meta_json_safe = validate_safe_metadata(current.meta_json_safe) if current.meta_json_safe else None
+        existing.started_at = current.started_at
+        existing.finished_at = utc_now()
+
     def _should_persist_attempt(current: PendingAttempt, previous: TaskAttempt | None) -> bool:
         if settings.train_persist_all_attempts:
             return True
@@ -458,6 +607,8 @@ async def _persist_attempts(db: AsyncSession, *, task: Task, attempts: list[Pend
             return True
         if previous is None:
             return True
+        if current.action == ATTEMPT_ACTION_SYNC:
+            return False
         return _attempt_signature(
             ok=current.ok,
             retryable=current.retryable,
@@ -486,6 +637,10 @@ async def _persist_attempts(db: AsyncSession, *, task: Task, attempts: list[Pend
     for attempt in sorted(attempts, key=lambda row: row.started_at):
         key = (attempt.action, attempt.provider)
         previous = latest_by_key.get(key)
+        if attempt.action == ATTEMPT_ACTION_SYNC and previous is not None:
+            _assign_attempt_to_row(previous, attempt)
+            latest_by_key[key] = previous
+            continue
         if not _should_persist_attempt(attempt, previous):
             continue
         persisted = await _save_attempt(
@@ -502,6 +657,123 @@ async def _persist_attempts(db: AsyncSession, *, task: Task, attempts: list[Pend
             started_at=attempt.started_at,
         )
         latest_by_key[key] = persisted
+
+
+def _attempt_transition_signature(attempt: TaskAttempt) -> tuple[bool, bool, str, str]:
+    return (
+        bool(attempt.ok),
+        bool(attempt.retryable),
+        str(attempt.error_code or ""),
+        str(attempt.error_message_safe or ""),
+    )
+
+
+async def compact_and_prune_task_attempts(db: AsyncSession) -> dict[str, int]:
+    """Compact high-churn attempt history for Supabase-free-tier efficiency."""
+    stats = {
+        "deleted_sync_rows": 0,
+        "deleted_repetitive_rows": 0,
+        "deleted_retention_rows": 0,
+    }
+    dirty = False
+
+    if settings.train_sync_keep_latest_only:
+        sync_rows = (
+            await db.execute(
+                select(TaskAttempt.id, TaskAttempt.task_id, TaskAttempt.provider)
+                .where(TaskAttempt.action == ATTEMPT_ACTION_SYNC)
+                .order_by(
+                    TaskAttempt.task_id.asc(),
+                    TaskAttempt.provider.asc(),
+                    TaskAttempt.finished_at.desc(),
+                    TaskAttempt.id.desc(),
+                )
+            )
+        ).all()
+        seen_sync_keys: set[tuple[UUID, str]] = set()
+        stale_sync_ids: list[UUID] = []
+        for row in sync_rows:
+            key = (row.task_id, str(row.provider))
+            if key in seen_sync_keys:
+                stale_sync_ids.append(row.id)
+                continue
+            seen_sync_keys.add(key)
+        if stale_sync_ids:
+            deleted = await db.execute(delete(TaskAttempt).where(TaskAttempt.id.in_(stale_sync_ids)))
+            stats["deleted_sync_rows"] = int(deleted.rowcount or 0)
+            dirty = dirty or stats["deleted_sync_rows"] > 0
+
+    if settings.train_compact_repetitive_attempts:
+        repetitive_rows = (
+            await db.execute(
+                select(TaskAttempt)
+                .where(TaskAttempt.action.in_((ATTEMPT_ACTION_SEARCH, ATTEMPT_ACTION_RESERVE)))
+                .order_by(
+                    TaskAttempt.task_id.asc(),
+                    TaskAttempt.action.asc(),
+                    TaskAttempt.provider.asc(),
+                    TaskAttempt.started_at.asc(),
+                    TaskAttempt.id.asc(),
+                )
+            )
+        ).scalars().all()
+
+        stale_repetitive_ids: list[UUID] = []
+        grouped_rows: list[TaskAttempt] = []
+        grouped_key: tuple[UUID, str, str] | None = None
+
+        def _flush_group(rows: list[TaskAttempt]) -> None:
+            if len(rows) <= 2:
+                return
+            keep_ids: set[UUID] = {rows[0].id, rows[-1].id}
+            previous_signature = _attempt_transition_signature(rows[0])
+            for row in rows[1:-1]:
+                signature = _attempt_transition_signature(row)
+                if signature != previous_signature:
+                    keep_ids.add(row.id)
+                previous_signature = signature
+            for row in rows:
+                if row.id not in keep_ids:
+                    stale_repetitive_ids.append(row.id)
+
+        for row in repetitive_rows:
+            key = (row.task_id, row.action, row.provider)
+            if grouped_key is None:
+                grouped_key = key
+                grouped_rows = [row]
+                continue
+            if key != grouped_key:
+                _flush_group(grouped_rows)
+                grouped_key = key
+                grouped_rows = [row]
+                continue
+            grouped_rows.append(row)
+        if grouped_rows:
+            _flush_group(grouped_rows)
+
+        if stale_repetitive_ids:
+            deleted = await db.execute(delete(TaskAttempt).where(TaskAttempt.id.in_(stale_repetitive_ids)))
+            stats["deleted_repetitive_rows"] = int(deleted.rowcount or 0)
+            dirty = dirty or stats["deleted_repetitive_rows"] > 0
+
+    retention_days = int(settings.train_attempt_retention_days)
+    if retention_days > 0:
+        cutoff = _utc_now_aware() - timedelta(days=retention_days)
+        terminal_cutoff = func.coalesce(Task.completed_at, Task.failed_at, Task.cancelled_at, Task.updated_at)
+        stale_task_ids = select(Task.id).where(
+            or_(
+                and_(Task.hidden_at.is_not(None), Task.hidden_at < cutoff),
+                and_(Task.state.in_(TERMINAL_TASK_STATES), terminal_cutoff < cutoff),
+            )
+        )
+        deleted = await db.execute(delete(TaskAttempt).where(TaskAttempt.task_id.in_(stale_task_ids)))
+        stats["deleted_retention_rows"] = int(deleted.rowcount or 0)
+        dirty = dirty or stats["deleted_retention_rows"] > 0
+
+    if dirty:
+        await db.commit()
+
+    return stats
 
 
 async def _enqueue_terminal_notification(
@@ -631,13 +903,16 @@ async def _mark_completed(db: AsyncSession, task: Task) -> None:
 
 
 async def _schedule_retry(db: AsyncSession, task: Task, delay_seconds: float) -> None:
-    next_spec = dict(task.spec_json or {})
-    next_spec["next_run_at"] = (utc_now() + timedelta(seconds=delay_seconds)).isoformat()
-    task.spec_json = next_spec
-    task.state = "POLLING"
-    task.updated_at = utc_now()
-    await db.commit()
-    await publish_task_state_event(user_id=task.user_id, task_id=task.id, state=task.state, updated_at=task.updated_at)
+    # State-change-only persistence: keep retry scheduling mostly stateless
+    # (ARQ defer queue), and only touch DB when lifecycle state changes.
+    if task.state != "POLLING":
+        next_spec = dict(task.spec_json or {})
+        next_spec["next_run_at"] = (utc_now() + timedelta(seconds=delay_seconds)).isoformat()
+        task.spec_json = next_spec
+        task.state = "POLLING"
+        task.updated_at = utc_now()
+        await db.commit()
+        await publish_task_state_event(user_id=task.user_id, task_id=task.id, state=task.state, updated_at=task.updated_at)
     await enqueue_train_task(str(task.id), defer_seconds=delay_seconds)
 
 
@@ -816,6 +1091,17 @@ async def _provider_search_and_reserve(
     schedule_map = {
         row.schedule_id: row for row in search_outcome.data.get("schedules", []) if isinstance(row, ProviderSchedule)
     }
+    schedule_backfill = [
+        {
+            "provider": provider,
+            "schedule_id": candidate.schedule_id,
+            "departure_at": candidate.departure_at.isoformat(),
+            "arrival_at": candidate.arrival_at.isoformat(),
+        }
+        for row in ranked_for_provider
+        for candidate in [schedule_map.get(str(row.get("schedule_id") or ""))]
+        if candidate is not None
+    ]
 
     selected_schedule: ProviderSchedule | None = None
     selected_rank: int | None = None
@@ -848,7 +1134,13 @@ async def _provider_search_and_reserve(
                 started_at=search_started,
             )
         )
-        return ProviderExecutionResult(provider=provider, attempts=attempts, candidate=None, retryable=True)
+        return ProviderExecutionResult(
+            provider=provider,
+            attempts=attempts,
+            candidate=None,
+            retryable=True,
+            schedule_backfill=schedule_backfill,
+        )
 
     attempts.append(
         PendingAttempt(
@@ -1016,7 +1308,13 @@ async def _provider_search_and_reserve(
     )
 
     if not reserve_ok:
-        return ProviderExecutionResult(provider=provider, attempts=attempts, candidate=None, retryable=reserve_retryable)
+        return ProviderExecutionResult(
+            provider=provider,
+            attempts=attempts,
+            candidate=None,
+            retryable=reserve_retryable,
+            schedule_backfill=schedule_backfill,
+        )
 
     return ProviderExecutionResult(
         provider=provider,
@@ -1031,6 +1329,7 @@ async def _provider_search_and_reserve(
             client=client,
         ),
         retryable=False,
+        schedule_backfill=schedule_backfill,
     )
 
 
@@ -1287,6 +1586,7 @@ def _build_ticket_data(
         payload["provider_http"] = provider_http
 
     if sync_snapshot:
+        compact_sync_meta = _compact_provider_sync_payload(sync_snapshot.get("provider_sync"))
         for key in (
             "status",
             "paid",
@@ -1296,17 +1596,20 @@ def _build_ticket_data(
             "tickets",
             "seat_count",
             "reservation_snapshot",
-            "provider_sync",
         ):
             value = sync_snapshot.get(key)
             if value is not None:
                 payload[key] = value
+        if compact_sync_meta is not None:
+            payload["provider_sync"] = compact_sync_meta
         sync_http = sync_snapshot.get("provider_http")
         if isinstance(sync_http, dict):
-            payload["provider_http"] = {
-                **payload.get("provider_http", {}),
-                **redact_sensitive(sync_http),
-            }
+            merged_http = _merge_provider_http_once(
+                current_payload=dict(payload.get("provider_http") or {}),
+                incoming_payload=redact_sensitive(sync_http),
+            )
+            if merged_http is not None:
+                payload["provider_http"] = merged_http
     return validate_safe_metadata(payload)
 
 
@@ -1320,8 +1623,38 @@ def _is_waiting_snapshot(snapshot: dict[str, Any] | None) -> bool:
     return bool(snapshot.get("waiting"))
 
 
-def _merge_ticket_sync_snapshot(artifact: Artifact, *, sync_snapshot: dict[str, Any]) -> None:
+def _normalize_ticket_status(value: Any) -> str | None:
+    normalized = str(value or "").strip().lower()
+    return normalized or None
+
+
+def _compact_provider_sync_payload(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    compact: dict[str, Any] = {}
+    for key in SYNC_PROVIDER_META_STABLE_KEYS:
+        if key in value:
+            compact[key] = value[key]
+    return compact or None
+
+
+def _merge_provider_http_once(*, current_payload: dict[str, Any] | None, incoming_payload: Any) -> dict[str, Any] | None:
+    existing = dict(current_payload or {})
+    if not isinstance(incoming_payload, dict):
+        return existing or None
+    for key, value in incoming_payload.items():
+        key_str = str(key)
+        if key_str not in existing and value is not None:
+            existing[key_str] = value
+    return existing or None
+
+
+def _merge_ticket_sync_snapshot(
+    artifact: Artifact, *, sync_snapshot: dict[str, Any]
+) -> tuple[str | None, str | None, bool]:
     merged = dict(artifact.data_json_safe or {})
+    previous_status = _normalize_ticket_status(merged.get("status"))
+    compact_sync_meta = _compact_provider_sync_payload(sync_snapshot.get("provider_sync"))
     for key in (
         "status",
         "paid",
@@ -1331,19 +1664,27 @@ def _merge_ticket_sync_snapshot(artifact: Artifact, *, sync_snapshot: dict[str, 
         "tickets",
         "seat_count",
         "reservation_snapshot",
-        "provider_sync",
     ):
         value = sync_snapshot.get(key)
         if value is not None:
             merged[key] = value
+    if compact_sync_meta is not None:
+        merged["provider_sync"] = compact_sync_meta
 
     sync_http = sync_snapshot.get("provider_http")
     if isinstance(sync_http, dict):
-        merged["provider_http"] = {
-            **dict(merged.get("provider_http") or {}),
-            **redact_sensitive(sync_http),
-        }
-    artifact.data_json_safe = validate_safe_metadata(merged)
+        merged_http = _merge_provider_http_once(
+            current_payload=dict(merged.get("provider_http") or {}),
+            incoming_payload=redact_sensitive(sync_http),
+        )
+        if merged_http is not None:
+            merged["provider_http"] = merged_http
+
+    changed = merged != dict(artifact.data_json_safe or {})
+    if changed:
+        artifact.data_json_safe = validate_safe_metadata(merged)
+    current_status = _normalize_ticket_status(merged.get("status"))
+    return previous_status, current_status, changed
 
 
 def _is_shutdown_requested(ctx: dict) -> bool:
@@ -1441,6 +1782,12 @@ async def _run_train_task_inner(
 
         open_ticket_artifact = _find_open_ticket_artifact(existing_ticket_artifacts)
         if open_ticket_artifact is not None:
+            spec, backfilled = _apply_ticket_artifact_schedule_backfill(spec, open_ticket_artifact)
+            if backfilled:
+                task.spec_json = spec
+                ranked = _normalize_ranked_selection(spec)
+                seconds_until_departure = _seconds_until_next_departure(ranked)
+
             if not auto_pay_enabled:
                 await _mark_completed(db, task)
                 return
@@ -1468,6 +1815,9 @@ async def _run_train_task_inner(
                     await _mark_failed(db, task)
                 return
 
+            open_sync_started_at = utc_now()
+            open_sync_started_monotonic = time.perf_counter()
+            open_sync_error_message_safe: str | None = None
             try:
                 open_sync_snapshot = await fetch_ticket_sync_snapshot(
                     client=client,
@@ -1476,13 +1826,53 @@ async def _run_train_task_inner(
                     user_id=task.user_id,
                     limiter=limiter,
                 )
-            except Exception:
+            except Exception as exc:
                 open_sync_snapshot = {}
+                open_sync_error_message_safe = f"provider_sync_error:{type(exc).__name__}"
+
+            open_sync_status = str(open_sync_snapshot.get("status") or "").strip().lower()
+            open_sync_meta: dict[str, Any] = {"stage": "ticket_sync_poll"}
+            if open_sync_status:
+                open_sync_meta["ticket_status"] = open_sync_status
+            if "waiting" in open_sync_snapshot:
+                open_sync_meta["waiting"] = bool(open_sync_snapshot.get("waiting"))
+            if "paid" in open_sync_snapshot:
+                open_sync_meta["paid"] = bool(open_sync_snapshot.get("paid"))
+
+            await _persist_attempts(
+                db,
+                task=task,
+                attempts=[
+                    PendingAttempt(
+                        action=ATTEMPT_ACTION_SYNC,
+                        provider=provider,
+                        ok=open_sync_error_message_safe is None,
+                        retryable=open_sync_error_message_safe is not None or not bool(open_sync_snapshot.get("paid")),
+                        error_code="provider_sync_error" if open_sync_error_message_safe is not None else None,
+                        error_message_safe=open_sync_error_message_safe,
+                        duration_ms=max(0, int((time.perf_counter() - open_sync_started_monotonic) * 1000)),
+                        meta_json_safe=open_sync_meta,
+                        started_at=open_sync_started_at,
+                    )
+                ],
+            )
 
             if open_sync_snapshot:
-                _merge_ticket_sync_snapshot(open_ticket_artifact, sync_snapshot=open_sync_snapshot)
-                task.updated_at = utc_now()
-                await db.commit()
+                previous_ticket_status, current_ticket_status, ticket_snapshot_changed = _merge_ticket_sync_snapshot(
+                    open_ticket_artifact, sync_snapshot=open_sync_snapshot
+                )
+                if ticket_snapshot_changed:
+                    task.updated_at = utc_now()
+                    await db.commit()
+                if previous_ticket_status != current_ticket_status:
+                    await publish_task_ticket_status_event(
+                        user_id=task.user_id,
+                        task_id=task.id,
+                        state=task.state,
+                        previous_ticket_status=previous_ticket_status,
+                        ticket_status=current_ticket_status,
+                        updated_at=task.updated_at,
+                    )
 
                 if bool(open_sync_snapshot.get("paid")):
                     await _mark_completed(db, task)
@@ -1528,9 +1918,21 @@ async def _run_train_task_inner(
                     failed_pay_sync_snapshot = {}
 
                 if failed_pay_sync_snapshot:
-                    _merge_ticket_sync_snapshot(open_ticket_artifact, sync_snapshot=failed_pay_sync_snapshot)
-                    task.updated_at = utc_now()
-                    await db.commit()
+                    previous_ticket_status, current_ticket_status, ticket_snapshot_changed = _merge_ticket_sync_snapshot(
+                        open_ticket_artifact, sync_snapshot=failed_pay_sync_snapshot
+                    )
+                    if ticket_snapshot_changed:
+                        task.updated_at = utc_now()
+                        await db.commit()
+                    if previous_ticket_status != current_ticket_status:
+                        await publish_task_ticket_status_event(
+                            user_id=task.user_id,
+                            task_id=task.id,
+                            state=task.state,
+                            previous_ticket_status=previous_ticket_status,
+                            ticket_status=current_ticket_status,
+                            updated_at=task.updated_at,
+                        )
 
                     if _is_waiting_snapshot(failed_pay_sync_snapshot) and _utc_now_aware() < _as_aware_utc(task.deadline_at):
                         await _schedule_retry(db, task, WAITING_STATUS_POLL_SECONDS)
@@ -1633,6 +2035,12 @@ async def _run_train_task_inner(
 
         if jobs:
             provider_results.extend(await asyncio.gather(*jobs))
+
+        spec, backfilled = _apply_ranked_schedule_backfill(spec, provider_results)
+        if backfilled:
+            task.spec_json = spec
+            ranked = _normalize_ranked_selection(spec)
+            seconds_until_departure = _seconds_until_next_departure(ranked)
 
         for result in provider_results:
             await _persist_attempts(db, task=task, attempts=result.attempts)
@@ -1741,9 +2149,21 @@ async def _run_train_task_inner(
                 failed_pay_sync_snapshot = {}
 
             if failed_pay_sync_snapshot:
-                _merge_ticket_sync_snapshot(ticket_artifact, sync_snapshot=failed_pay_sync_snapshot)
-                task.updated_at = utc_now()
-                await db.commit()
+                previous_ticket_status, current_ticket_status, ticket_snapshot_changed = _merge_ticket_sync_snapshot(
+                    ticket_artifact, sync_snapshot=failed_pay_sync_snapshot
+                )
+                if ticket_snapshot_changed:
+                    task.updated_at = utc_now()
+                    await db.commit()
+                if previous_ticket_status != current_ticket_status:
+                    await publish_task_ticket_status_event(
+                        user_id=task.user_id,
+                        task_id=task.id,
+                        state=task.state,
+                        previous_ticket_status=previous_ticket_status,
+                        ticket_status=current_ticket_status,
+                        updated_at=task.updated_at,
+                    )
 
                 if _is_waiting_snapshot(failed_pay_sync_snapshot) and _utc_now_aware() < _as_aware_utc(task.deadline_at):
                     await _schedule_retry(db, task, WAITING_STATUS_POLL_SECONDS)

@@ -71,6 +71,19 @@ def _sse(event: str, data: str) -> str:
     return f"event: {event}\ndata: {data}\n\n"
 
 
+def _event_name_for_payload(payload_text: str) -> str:
+    try:
+        payload = json.loads(payload_text)
+    except Exception:
+        return "task_state"
+    if not isinstance(payload, dict):
+        return "task_state"
+    payload_type = str(payload.get("type") or "")
+    if payload_type == "task_ticket_status_changed":
+        return "task_ticket_status"
+    return "task_state"
+
+
 async def _task_events_stream(
     request: Request,
     *,
@@ -103,7 +116,7 @@ async def _task_events_stream(
                 payload_text = payload_raw.decode("utf-8", errors="replace")
             else:
                 payload_text = str(payload_raw)
-            yield _sse("task_state", payload_text)
+            yield _sse(_event_name_for_payload(payload_text), payload_text)
     finally:
         try:
             await pubsub.unsubscribe(channel)
@@ -114,7 +127,9 @@ async def _task_events_stream(
 def _is_attention_task(task: TaskSummaryOut) -> bool:
     if task.state in ATTENTION_REFRESH_TASK_STATES:
         return True
-    return task.ticket_status == "awaiting_payment" and task.ticket_paid is not True
+    if task.ticket_status in {"awaiting_payment", "waiting"} and task.ticket_paid is not True:
+        return True
+    return False
 
 
 async def _build_attention_snapshot_payload(*, user: User) -> str | None:
