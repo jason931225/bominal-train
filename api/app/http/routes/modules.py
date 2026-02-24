@@ -1,11 +1,13 @@
 from fastapi import APIRouter, Depends
 
-from app.http.deps import get_current_user
+from app.core.config import get_settings
+from app.http.deps import get_current_approved_user
 from app.db.models import User
 from app.modules.restaurant.capabilities import RESTAURANT_CAPABILITIES_EXPOSED
 from app.schemas.module import ModuleListResponse, ModuleOut
 
 router = APIRouter()
+settings = get_settings()
 
 TRAIN_CAPABILITIES_EXPOSED: tuple[str, ...] = (
     "train.search",
@@ -13,21 +15,24 @@ TRAIN_CAPABILITIES_EXPOSED: tuple[str, ...] = (
     "train.tasks.control",
     "train.credentials.manage",
     "train.tickets.manage",
-    "wallet.payment_card",
 )
 
 CALENDAR_CAPABILITIES_EXPOSED: tuple[str, ...] = ()
 
 
 @router.get("/modules", response_model=ModuleListResponse)
-async def list_modules(_: User = Depends(get_current_user)) -> ModuleListResponse:
+async def list_modules(_: User = Depends(get_current_approved_user)) -> ModuleListResponse:
+    train_capabilities = list(TRAIN_CAPABILITIES_EXPOSED)
+    if settings.payment_enabled:
+        train_capabilities.append("wallet.payment_card")
+
     modules = [
         ModuleOut(
             slug="train",
             name="Train",
             coming_soon=False,
             enabled=True,
-            capabilities=list(TRAIN_CAPABILITIES_EXPOSED),
+            capabilities=train_capabilities,
         ),
         ModuleOut(
             slug="restaurant",

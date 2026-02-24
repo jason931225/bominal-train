@@ -6,6 +6,7 @@ from starlette.requests import Request
 
 from app.core.internal_identity import InternalIdentityError
 from app.db.models import Role, User
+from app.http.deps import ACCESS_REVIEW_PENDING_DETAIL
 
 
 async def _register_and_login(client, *, email: str, display_name: str) -> str:
@@ -47,6 +48,78 @@ async def test_authenticated_routes_require_session_cookie(client):
     for path in unauthenticated_paths:
         response = await client.get(path)
         assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_pending_user_is_limited_to_review_safe_endpoints(client, db_session):
+    email = "review-pending-access@example.com"
+    session_cookie = await _register_and_login(
+        client,
+        email=email,
+        display_name="Review Pending Access User",
+    )
+    cookies = {"bominal_session": session_cookie}
+
+    me_response = await client.get("/api/auth/me", cookies=cookies)
+    assert me_response.status_code == 200
+    assert me_response.json()["user"]["access_status"] == "pending"
+
+    blocked_requests: list[tuple[str, str, dict[str, str] | None]] = [
+        ("get", "/api/modules", None),
+        ("get", "/api/train/stations", None),
+        ("get", "/api/notifications/email/status", None),
+        ("patch", "/api/auth/account", {"display_name": "Updated"}),
+        ("post", "/api/auth/account/verify-password", {"current_password": "SuperSecret123"}),
+        ("post", "/api/auth/account/email-change/confirm", {"email": email, "code": "000000"}),
+        ("get", "/api/auth/passkeys", None),
+        ("post", "/api/auth/passkeys/register/options", None),
+    ]
+
+    for method, path, payload in blocked_requests:
+        response = await client.request(method, path, cookies=cookies, json=payload)
+        assert response.status_code == 403, f"{method.upper()} {path} expected 403, got {response.status_code}"
+        assert response.json()["detail"] == ACCESS_REVIEW_PENDING_DETAIL
+
+    logout_response = await client.post("/api/auth/logout", cookies=cookies)
+    assert logout_response.status_code == 200
+
+    relogin_response = await client.post(
+        "/api/auth/login",
+        json={"email": email, "password": "SuperSecret123", "remember_me": False},
+    )
+    assert relogin_response.status_code == 200
+    refreshed_cookie = relogin_response.cookies.get("bominal_session")
+    assert refreshed_cookie
+
+    delete_response = await client.delete(
+        "/api/auth/account",
+        cookies={"bominal_session": refreshed_cookie},
+    )
+    assert delete_response.status_code == 200
+    user = (await db_session.execute(select(User).where(User.email == email))).scalar_one_or_none()
+    assert user is None
+
+
+@pytest.mark.asyncio
+async def test_payment_routes_blocked_when_payment_disabled(client, db_session, monkeypatch):
+    session_cookie = await _register_and_login(
+        client,
+        email="payment-off-access@example.com",
+        display_name="Payment Off Access User",
+    )
+
+    user = (await db_session.execute(select(User).where(User.email == "payment-off-access@example.com"))).scalar_one()
+    user.access_status = "approved"
+    await db_session.commit()
+
+    monkeypatch.setattr("app.http.deps.settings.payment_enabled", False)
+    monkeypatch.setattr("app.modules.train.service.settings.payment_enabled", False)
+    pay_response = await client.post(
+        "/api/train/tasks/00000000-0000-0000-0000-000000000001/pay",
+        cookies={"bominal_session": session_cookie},
+    )
+    assert pay_response.status_code == 403
+    assert pay_response.json()["detail"] == "Payment features are currently disabled"
 
 
 @pytest.mark.asyncio
