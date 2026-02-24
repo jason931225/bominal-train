@@ -75,6 +75,7 @@ Pointer format convention (mandatory):
 - [PTR-DOCS-003] `docs/security/compliance-matrix.md` - PCI/OWASP compliance mapping.
 - [PTR-DOCS-004] `docs/releases/README.md` - versioning policy.
 - [PTR-DOCS-005] `docs/releases/version-map.json` - version map.
+- [PTR-DOCS-006] `docs/artifacts/2026-02-24-gcp-free-tier-offering.md` - user-captured snapshot of GCP free tier products and limits.
 
 ### Validation
 

@@ -59,11 +59,33 @@ function dispatchEventPayload(store: TrainTaskEventsStore, event: MessageEvent<s
   }
 }
 
+function resolveEventsBaseUrl(): string {
+  if (!clientApiEventsBaseUrl) {
+    return clientApiBaseUrl;
+  }
+  if (typeof window === "undefined") {
+    return clientApiEventsBaseUrl;
+  }
+  // In same-origin cookie mode (`clientApiBaseUrl === ""`), avoid cross-host SSE
+  // (for example 127.0.0.1 page with localhost events base), which drops cookies.
+  if (!clientApiBaseUrl) {
+    try {
+      const candidate = new URL(clientApiEventsBaseUrl, window.location.origin);
+      if (candidate.hostname !== window.location.hostname) {
+        return clientApiBaseUrl;
+      }
+    } catch {
+      return clientApiBaseUrl;
+    }
+  }
+  return clientApiEventsBaseUrl;
+}
+
 function ensureSource(store: TrainTaskEventsStore): void {
   if (store.source || typeof window === "undefined" || !("EventSource" in window)) {
     return;
   }
-  const eventsBase = clientApiEventsBaseUrl || clientApiBaseUrl;
+  const eventsBase = resolveEventsBaseUrl();
   const source = new EventSource(`${eventsBase}/api/train/tasks/events`, { withCredentials: true });
   const onTaskState = (event: MessageEvent<string>) => dispatchEventPayload(store, event);
   const onAttentionSnapshot = (event: MessageEvent<string>) => dispatchEventPayload(store, event);

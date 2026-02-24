@@ -150,7 +150,7 @@ async def test_verify_provider_credentials_handles_missing_cached_timeout_errors
     monkeypatch.setattr(train_service, "_is_recent_verification", lambda _v: True)
     cached = await train_service._verify_provider_credentials(db, user=user, provider="SRT")
     assert cached.verified is True
-    assert cached.username == "u"
+    assert cached.detail is None
 
     monkeypatch.setattr(train_service, "_is_recent_verification", lambda _v: False)
 
@@ -224,8 +224,6 @@ async def test_verify_provider_credentials_non_ok_and_guarded_status_wrappers(mo
         return train_service.ProviderCredentialStatus(
             configured=True,
             verified=False,
-            username="u",
-            verified_at=None,
             detail="fallback",
         )
 

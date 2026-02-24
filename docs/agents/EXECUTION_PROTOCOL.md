@@ -31,6 +31,9 @@ Before completion claims:
 
 - Use behavior-level assertions.
 - Require negative/boundary checks for critical areas.
+- Enforce hybrid coverage floors as minimum guardrails:
+  - API line coverage >= 75%
+  - Web lines/functions/branches/statements >= 70%
 - Coverage-ignore directives are exception-only and require inline rationale.
 - Treat `npm warn deprecated` as actionable.
 
@@ -41,6 +44,7 @@ Require stronger verification for:
 - crypto/redaction and sensitive data boundaries
 - payment/CDE boundaries
 - deploy/rollback paths
+- For these paths, require assertiveness and mutation-style verification in addition to baseline test/coverage gates.
 
 ## Coordination Model
 

@@ -333,8 +333,6 @@ async def test_create_task_branch_coverage_for_station_credential_dedupe_and_cre
         return train_service.ProviderCredentialStatus(
             configured=True,
             verified=True,
-            username="ok",
-            verified_at=None,
             detail=None,
         )
 
