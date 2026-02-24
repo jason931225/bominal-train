@@ -5,7 +5,7 @@ import hashlib
 import json
 import time
 from datetime import datetime, timedelta, timezone
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import HTTPException, status
 from sqlalchemy import Select, and_, delete, func, or_, select
@@ -53,6 +53,9 @@ from app.modules.train.schemas import (
     TrainSearchResponse,
     TrainStationOut,
     TrainStationsResponse,
+    TrainTaskDuplicateCheckResponse,
+    TrainTaskDuplicateMatchOut,
+    TrainTaskDuplicateSummaryOut,
     TrainTaskCreateRequest,
     TrainTaskCreateResponse,
 )
@@ -594,6 +597,147 @@ def compute_idempotency_key(user_id: UUID, spec_json: dict) -> str:
     return hashlib.sha256(f"{user_id}:{serialized}".encode("utf-8")).hexdigest()
 
 
+def _force_unique_active_idempotency_key(user_id: UUID, spec_json: dict) -> str:
+    base_key = compute_idempotency_key(user_id, spec_json)
+    return hashlib.sha256(f"{base_key}:{uuid4().hex}".encode("utf-8")).hexdigest()
+
+
+def _departure_key_map_from_spec(spec_json: dict) -> dict[int, datetime]:
+    ranked = spec_json.get("selected_trains_ranked", [])
+    if not isinstance(ranked, list):
+        return {}
+
+    keys: dict[int, datetime] = {}
+    for row in ranked:
+        if not isinstance(row, dict):
+            continue
+        departure_raw = str(row.get("departure_at") or "")
+        departure_at = _parse_iso_datetime(departure_raw)
+        if departure_at is None:
+            continue
+        aware = _as_aware_utc_datetime(departure_at).replace(microsecond=0)
+        keys[int(aware.timestamp())] = aware
+    return keys
+
+
+def _duplicate_category_for_task(task: Task, ticket_summary: dict | None) -> str | None:
+    summary = ticket_summary or {}
+    ticket_status = str(summary.get("ticket_status") or "")
+    ticket_paid = summary.get("ticket_paid")
+
+    if ticket_status == "waiting" and ticket_paid is not True:
+        return "waiting"
+    if ticket_status in {"awaiting_payment", "reserved"} and ticket_paid is not True:
+        return "already_reserved"
+    if task.state in ACTIVE_TASK_STATES:
+        return "polling"
+    return None
+
+
+async def _duplicate_match_rows_for_spec(
+    db: AsyncSession,
+    *,
+    user: User,
+    spec_json: dict,
+) -> list[tuple[Task, str, datetime, str | None]]:
+    incoming_dep = str(spec_json.get("dep") or "")
+    incoming_arr = str(spec_json.get("arr") or "")
+    incoming_date = str(spec_json.get("date") or "")
+    incoming_departure_keys = _departure_key_map_from_spec(spec_json)
+    if not incoming_dep or not incoming_arr or not incoming_date or not incoming_departure_keys:
+        return []
+
+    stmt = (
+        select(Task)
+        .where(Task.user_id == user.id)
+        .where(Task.module == TASK_MODULE)
+        .where(Task.hidden_at.is_(None))
+        .where(Task.state.in_(ACTIVE_TASK_STATES | {"COMPLETED"}))
+        .order_by(Task.created_at.desc(), Task.id.desc())
+    )
+    tasks = (await db.execute(stmt)).scalars().all()
+    if not tasks:
+        return []
+
+    ticket_artifacts = await _latest_ticket_artifact_map(db, [task.id for task in tasks])
+    ticket_summaries: dict[UUID, dict | None] = {
+        task.id: _ticket_summary_from_artifact(ticket_artifacts.get(task.id))
+        for task in tasks
+    }
+
+    matches: list[tuple[Task, str, datetime, str | None]] = []
+    for task in tasks:
+        task_spec = dict(task.spec_json or {})
+        if str(task_spec.get("dep") or "") != incoming_dep:
+            continue
+        if str(task_spec.get("arr") or "") != incoming_arr:
+            continue
+        if str(task_spec.get("date") or "") != incoming_date:
+            continue
+
+        task_departure_keys = _departure_key_map_from_spec(task_spec)
+        overlap = set(task_departure_keys).intersection(incoming_departure_keys)
+        if not overlap:
+            continue
+
+        category = _duplicate_category_for_task(task, ticket_summaries.get(task.id))
+        if category is None:
+            continue
+
+        matched_key = min(overlap)
+        departure_at = task_departure_keys[matched_key]
+        ticket_status = str((ticket_summaries.get(task.id) or {}).get("ticket_status") or "") or None
+        matches.append((task, category, departure_at, ticket_status))
+
+    return matches
+
+
+def _duplicate_check_response_from_rows(
+    rows: list[tuple[Task, str, datetime, str | None]],
+) -> TrainTaskDuplicateCheckResponse:
+    summary = TrainTaskDuplicateSummaryOut()
+    matches: list[TrainTaskDuplicateMatchOut] = []
+
+    for task, category, departure_at, ticket_status in rows:
+        if category == "already_reserved":
+            summary.already_reserved += 1
+        elif category == "waiting":
+            summary.waiting += 1
+        elif category == "polling":
+            summary.polling += 1
+
+        matches.append(
+            TrainTaskDuplicateMatchOut(
+                task_id=task.id,
+                state=task.state,
+                category=category,  # type: ignore[arg-type]
+                departure_at=departure_at,
+                ticket_status=ticket_status,
+            )
+        )
+
+    return TrainTaskDuplicateCheckResponse(
+        has_duplicate=bool(matches),
+        summary=summary,
+        matches=matches,
+    )
+
+
+async def check_task_duplicates(
+    db: AsyncSession,
+    *,
+    user: User,
+    payload: TrainTaskCreateRequest,
+) -> TrainTaskDuplicateCheckResponse:
+    if not station_exists(payload.dep) or not station_exists(payload.arr):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unknown station name")
+
+    ranked_trains = _sorted_ranked_trains(payload)
+    spec_json = normalize_task_spec(payload, ranked_trains=ranked_trains)
+    rows = await _duplicate_match_rows_for_spec(db, user=user, spec_json=spec_json)
+    return _duplicate_check_response_from_rows(rows)
+
+
 def _ticket_summary_from_artifact(artifact: Artifact | None) -> dict | None:
     if artifact is None:
         return None
@@ -804,18 +948,26 @@ async def create_task(db: AsyncSession, *, user: User, payload: TrainTaskCreateR
     deadline_at = compute_deadline_from_spec(spec_json)
     idempotency_key = compute_idempotency_key(user.id, spec_json)
 
-    existing_stmt = (
-        select(Task)
-        .where(Task.user_id == user.id)
-        .where(Task.module == TASK_MODULE)
-        .where(Task.idempotency_key == idempotency_key)
-        .where(Task.state.in_(ACTIVE_TASK_STATES))
-        .order_by(Task.created_at.desc())
-        .limit(1)
-    )
-    existing = (await db.execute(existing_stmt)).scalar_one_or_none()
-    if existing is not None:
-        return TrainTaskCreateResponse(task=task_to_summary(existing), queued=False, deduplicated=True)
+    if not payload.confirm_duplicate:
+        existing_stmt = (
+            select(Task)
+            .where(Task.user_id == user.id)
+            .where(Task.module == TASK_MODULE)
+            .where(Task.idempotency_key == idempotency_key)
+            .where(Task.state.in_(ACTIVE_TASK_STATES))
+            .order_by(Task.created_at.desc())
+            .limit(1)
+        )
+        existing = (await db.execute(existing_stmt)).scalar_one_or_none()
+        if existing is not None:
+            return TrainTaskCreateResponse(task=task_to_summary(existing), queued=False, deduplicated=True)
+
+        duplicate_rows = await _duplicate_match_rows_for_spec(db, user=user, spec_json=spec_json)
+        if duplicate_rows:
+            duplicate_task = duplicate_rows[0][0]
+            return TrainTaskCreateResponse(task=task_to_summary(duplicate_task), queued=False, deduplicated=True)
+    else:
+        idempotency_key = _force_unique_active_idempotency_key(user.id, spec_json)
 
     task = Task(
         user_id=user.id,

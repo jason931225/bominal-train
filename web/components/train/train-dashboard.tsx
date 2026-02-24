@@ -60,6 +60,47 @@ type CredentialFormState = {
 
 type CredentialProvider = "KTX" | "SRT";
 type ScheduleSortOrder = "asc" | "desc";
+type DuplicateMatchCategory = "already_reserved" | "waiting" | "polling";
+
+type TrainTaskDuplicateMatch = {
+  task_id: string;
+  state: TrainTaskState;
+  category: DuplicateMatchCategory;
+  departure_at: string;
+  ticket_status?: string | null;
+};
+
+type TrainTaskDuplicateSummary = {
+  already_reserved: number;
+  waiting: number;
+  polling: number;
+};
+
+type TrainTaskDuplicateCheckResponse = {
+  has_duplicate: boolean;
+  summary: TrainTaskDuplicateSummary;
+  matches: TrainTaskDuplicateMatch[];
+};
+
+type TrainTaskCreatePayload = {
+  dep: string;
+  arr: string;
+  date: string;
+  selected_trains_ranked: Array<{
+    schedule_id: string;
+    departure_at: string;
+    rank: number;
+    provider: "SRT" | "KTX";
+  }>;
+  passengers: {
+    adults: number;
+    children: number;
+  };
+  seat_class: TrainSeatClass;
+  auto_pay: boolean;
+  notify: boolean;
+  confirm_duplicate?: boolean;
+};
 
 const CREDENTIAL_STATUS_TIMEOUT_MS = 10000;
 const DEFAULT_DEP_STATION = "수서";
@@ -85,6 +126,8 @@ const VALID_TASK_EVENT_STATES = new Set<TrainTaskState>([
   "FAILED",
 ]);
 const TASK_LIST_REFRESH_EVENT_STATES = new Set<TrainTaskState>(["COMPLETED", "CANCELLED", "EXPIRED", "FAILED"]);
+const SOLD_OUT_LIKE_ERROR_CODES = new Set(["seat_unavailable", "sold_out"]);
+const DUPLICATE_CATEGORY_ORDER: DuplicateMatchCategory[] = ["already_reserved", "waiting", "polling"];
 const TRAIN_AUTO_PAY_FEATURE_ENABLED = ["1", "true", "yes", "on"].includes(
   (process.env.NEXT_PUBLIC_TRAIN_AUTO_PAY_ENABLED ?? "false").trim().toLowerCase(),
 );
@@ -649,6 +692,23 @@ export function taskListRenderKey(tasks: TrainTaskSummary[]): string {
   return tasks.map((task) => taskSummaryRenderKey(task)).join(";");
 }
 
+export function normalizeTaskErrorMessage(value: string): string {
+  return value
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/?[^>]+>/g, "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join(" ");
+}
+
+function isDuplicateCheckResponse(value: unknown): value is TrainTaskDuplicateCheckResponse {
+  if (!isRecord(value)) return false;
+  if (typeof value.has_duplicate !== "boolean") return false;
+  if (!isRecord(value.summary) || !Array.isArray(value.matches)) return false;
+  return true;
+}
+
 export function taskPrimaryDepartureAtMs(task: TrainTaskSummary): number | null {
   if (!isRecord(task.spec_json)) {
     return null;
@@ -760,6 +820,7 @@ export function TrainDashboard() {
     autoPay: false,
     notify: false,
   });
+  const [duplicateWarning, setDuplicateWarning] = useState<TrainTaskDuplicateCheckResponse | null>(null);
   const [searching, setSearching] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const [mobileSearchCollapsed, setMobileSearchCollapsed] = useState(false);
@@ -962,6 +1023,61 @@ export function TrainDashboard() {
     // Some helpers return translation keys for known statuses.
     if (value.startsWith("train.")) return t(value);
     return value;
+  };
+
+  const duplicateCategoryLabel = (category: DuplicateMatchCategory): string => {
+    if (category === "already_reserved") return t("train.duplicateCheck.category.already_reserved");
+    if (category === "waiting") return t("train.duplicateCheck.category.waiting");
+    return t("train.duplicateCheck.category.polling");
+  };
+
+  const duplicateCategoryClass = (category: DuplicateMatchCategory): string => {
+    if (category === "already_reserved") {
+      return "border-emerald-200 bg-emerald-50 text-emerald-700";
+    }
+    if (category === "waiting") {
+      return "border-amber-200 bg-amber-50 text-amber-700";
+    }
+    return "border-sky-200 bg-sky-50 text-sky-700";
+  };
+
+  const taskErrorPresentation = (
+    task: TrainTaskSummary,
+  ): { message: string; className: string } | null => {
+    if (task.last_attempt_ok !== false) return null;
+
+    const normalizedRawMessage = normalizeTaskErrorMessage(task.last_attempt_error_message_safe ?? "");
+    const fallbackCode = task.last_attempt_error_code ?? "";
+    const lowerMessage = normalizedRawMessage.toLowerCase();
+    const lowerCode = fallbackCode.toLowerCase();
+
+    const isSeatUnavailable =
+      SOLD_OUT_LIKE_ERROR_CODES.has(lowerCode) ||
+      lowerMessage.includes("no available seats") ||
+      lowerMessage.includes("no reservable seats") ||
+      (lowerMessage.includes("좌석") && lowerMessage.includes("없"));
+
+    if (isSeatUnavailable) {
+      return {
+        message: t("train.taskError.seatUnavailable"),
+        className: "border-amber-200 bg-amber-50 text-amber-700",
+      };
+    }
+
+    const reservationChanged =
+      lowerMessage.includes("reservation status") ||
+      lowerMessage.includes("예약상태가 변경되었습니다");
+    if (reservationChanged) {
+      return {
+        message: t("train.taskError.reservationChanged"),
+        className: "border-sky-200 bg-sky-50 text-sky-700",
+      };
+    }
+
+    return {
+      message: normalizedRawMessage || fallbackCode || t("train.taskError.unknown"),
+      className: "border-rose-200 bg-rose-50 text-rose-700",
+    };
   };
 
   const seedDummyTaskCards = () => {
@@ -1333,51 +1449,117 @@ export function TrainDashboard() {
     });
   };
 
-  const createTask = async () => {
-    setCreatingTask(true);
-    setErrorMessage(null);
-    setNotice(null);
+  const buildCreatePayload = useCallback(
+    (confirmDuplicate: boolean): TrainTaskCreatePayload => {
+      const ranked = selectedSchedules.map((schedule, index) => ({
+        schedule_id: schedule.schedule_id,
+        departure_at: schedule.departure_at,
+        rank: index + 1,
+        provider: schedule.provider,
+      }));
+      return {
+        dep: searchForm.dep,
+        arr: searchForm.arr,
+        date: searchForm.date,
+        selected_trains_ranked: ranked,
+        passengers: {
+          adults: createForm.adults,
+          children: createForm.children,
+        },
+        seat_class: createForm.seatClass,
+        auto_pay: createForm.autoPay && autoPayAvailable,
+        notify: createForm.notify,
+        confirm_duplicate: confirmDuplicate,
+      };
+    },
+    [
+      autoPayAvailable,
+      createForm.adults,
+      createForm.autoPay,
+      createForm.children,
+      createForm.notify,
+      createForm.seatClass,
+      searchForm.arr,
+      searchForm.date,
+      searchForm.dep,
+      selectedSchedules,
+    ],
+  );
 
-    const ranked = selectedSchedules.map((schedule, index) => ({
-      schedule_id: schedule.schedule_id,
-      departure_at: schedule.departure_at,
-      rank: index + 1,
-      provider: schedule.provider,
-    }));
-
-    try {
+  const submitCreateTask = useCallback(
+    async (payload: TrainTaskCreatePayload): Promise<boolean> => {
       const response = await fetch(`${clientApiBaseUrl}/api/train/tasks`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          dep: searchForm.dep,
-          arr: searchForm.arr,
-          date: searchForm.date,
-          selected_trains_ranked: ranked,
-          passengers: {
-            adults: createForm.adults,
-            children: createForm.children,
-          },
-          seat_class: createForm.seatClass,
-          auto_pay: createForm.autoPay && autoPayAvailable,
-          notify: createForm.notify,
-        }),
+        body: JSON.stringify(payload),
       });
-
       if (!response.ok) {
         const detail = await parseApiErrorMessage(response, t("train.error.createTask"));
         setErrorMessage(detail);
-        return;
+        return false;
       }
 
-      const payload = (await response.json()) as {
+      const createResponsePayload = (await response.json()) as {
         task: TrainTaskSummary;
         deduplicated: boolean;
       };
 
-      setNotice(payload.deduplicated ? t("train.notice.taskDeduplicated") : t("train.notice.taskCreatedQueued"));
+      setNotice(createResponsePayload.deduplicated ? t("train.notice.taskDeduplicated") : t("train.notice.taskCreatedQueued"));
       await reloadTasks({ forceCompleted: true });
+      return true;
+    },
+    [reloadTasks, t],
+  );
+
+  const createTask = async () => {
+    setCreatingTask(true);
+    setErrorMessage(null);
+    setNotice(null);
+    setDuplicateWarning(null);
+    const payload = buildCreatePayload(false);
+
+    try {
+      let duplicatePayload: TrainTaskDuplicateCheckResponse | null = null;
+      try {
+        const duplicateResponse = await fetch(`${clientApiBaseUrl}/api/train/tasks/duplicate-check`, {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (duplicateResponse.ok) {
+          const duplicateJson = (await duplicateResponse.json().catch(() => null)) as unknown;
+          if (isDuplicateCheckResponse(duplicateJson)) {
+            duplicatePayload = duplicateJson;
+          }
+        }
+      } catch {
+        // Duplicate warning preflight is best-effort; creation can continue on transport failures.
+      }
+
+      if (duplicatePayload?.has_duplicate) {
+        setDuplicateWarning(duplicatePayload);
+        return;
+      }
+
+      await submitCreateTask(payload);
+    } catch {
+      setErrorMessage(t("train.error.createTask"));
+    } finally {
+      setCreatingTask(false);
+    }
+  };
+
+  const createTaskWithDuplicateOverride = async () => {
+    setCreatingTask(true);
+    setErrorMessage(null);
+    setNotice(null);
+    try {
+      const ok = await submitCreateTask(buildCreatePayload(true));
+      if (ok) {
+        setDuplicateWarning(null);
+      }
     } catch {
       setErrorMessage(t("train.error.createTask"));
     } finally {
@@ -1492,6 +1674,69 @@ export function TrainDashboard() {
         <p className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">{renderError(errorMessage)}</p>
       ) : null}
       {notice ? <p className="rounded-xl bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{notice}</p> : null}
+      {duplicateWarning ? (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/50 px-4 py-8">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="duplicate-warning-title"
+            className="w-full max-w-2xl rounded-2xl border border-blossom-200 bg-white p-5 shadow-xl"
+          >
+            <h3 id="duplicate-warning-title" className="text-lg font-semibold text-slate-800">
+              {t("train.duplicateCheck.title")}
+            </h3>
+            <p className="mt-2 text-sm text-slate-600">{t("train.duplicateCheck.body")}</p>
+            <ul className="mt-4 grid gap-2 md:grid-cols-3">
+              {DUPLICATE_CATEGORY_ORDER.map((category) => {
+                const count = duplicateWarning.summary[category];
+                if (count < 1) return null;
+                return (
+                  <li
+                    key={category}
+                    className={`rounded-xl border px-3 py-2 text-sm font-medium ${duplicateCategoryClass(category)}`}
+                  >
+                    {duplicateCategoryLabel(category)} ({count})
+                  </li>
+                );
+              })}
+            </ul>
+            <div className="mt-4 max-h-56 space-y-2 overflow-y-auto rounded-xl border border-blossom-100 bg-blossom-50/40 p-3">
+              {duplicateWarning.matches.slice(0, 8).map((match) => (
+                <div key={match.task_id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-white px-3 py-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-slate-700">{duplicateCategoryLabel(match.category)}</p>
+                    <p className="text-xs text-slate-500">{formatDateTimeKst(match.departure_at, locale)}</p>
+                  </div>
+                  <Link
+                    href={`/modules/train/tasks/${match.task_id}`}
+                    className="text-xs font-medium text-blossom-600 hover:text-blossom-700"
+                  >
+                    {t("train.action.detail")}
+                  </Link>
+                </div>
+              ))}
+            </div>
+            <div className="mt-5 flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setDuplicateWarning(null)}
+                className={SMALL_BUTTON_CLASS}
+                disabled={creatingTask}
+              >
+                {t("common.cancel")}
+              </button>
+              <button
+                type="button"
+                onClick={() => void createTaskWithDuplicateOverride()}
+                className={PRIMARY_BUTTON_CLASS}
+                disabled={creatingTask}
+              >
+                {creatingTask ? t("train.creatingTask") : t("train.duplicateCheck.createAnyway")}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <div ref={searchPanelRef} className="rounded-2xl border border-blossom-100 bg-white p-6 shadow-petal">
         <div className="flex items-center justify-between gap-3">
@@ -2348,107 +2593,121 @@ export function TrainDashboard() {
               const info = taskInfoFromSpec(task);
               const showRetryNow = task.state === "QUEUED" || task.state === "POLLING";
               const ticketBadge = getTaskTicketBadge(task);
-              const isSeatUnavailable = task.last_attempt_error_code === "seat_unavailable";
-              const lastError =
-                task.last_attempt_ok === false
-                  ? task.last_attempt_error_message_safe || task.last_attempt_error_code || "Unknown error"
-                  : null;
+              const taskError = taskErrorPresentation(task);
               return (
-                <li key={task.id} className="rounded-xl border border-blossom-100 p-3">
-                <div className="flex items-center justify-between gap-2">
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="font-medium text-slate-700">{task.state}</p>
-                      {ticketBadge ? (
-                        <span
-                          className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${ticketBadge.className}`}
-                        >
-                          {renderMaybeKey(ticketBadge.label)}
-                        </span>
+                <li key={task.id} className="overflow-hidden rounded-2xl border border-blossom-200 bg-gradient-to-r from-white via-blossom-50/40 to-white shadow-sm">
+                  <div className="flex items-start justify-between gap-3 border-b border-dashed border-blossom-200 px-4 py-3">
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-blossom-500">
+                        {t("train.ticketStyle.activeTask")}
+                      </p>
+                      <div className="mt-1 flex flex-wrap items-center gap-2">
+                        <p className="font-medium text-slate-700">{task.state}</p>
+                        {ticketBadge ? (
+                          <span
+                            className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${ticketBadge.className}`}
+                          >
+                            {renderMaybeKey(ticketBadge.label)}
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+                    <Link href={`/modules/train/tasks/${task.id}`} className="text-xs font-medium text-blossom-600 hover:text-blossom-700">
+                      {t("train.action.detail")}
+                    </Link>
+                  </div>
+
+                  <div className="grid gap-3 px-4 py-3 md:grid-cols-2">
+                    <div className="rounded-xl border border-blossom-100 bg-white/90 px-3 py-2">
+                      <p className="text-xs text-slate-500">{t("train.label.route")}</p>
+                      <p className="mt-0.5 text-sm font-medium text-slate-700">
+                        {formatStationLabel(info.dep, locale)} {"->"} {formatStationLabel(info.arr, locale)}
+                      </p>
+                      <p className="mt-2 text-xs text-slate-500">{t("train.label.schedule")}</p>
+                      <p className="mt-0.5 text-sm text-slate-700">{info.scheduleLabel}</p>
+                    </div>
+                    <div className="rounded-xl border border-blossom-100 bg-white/90 px-3 py-2">
+                      <p className="text-xs text-slate-500">{t("train.label.passengers")}</p>
+                      <p className="mt-0.5 text-sm text-slate-700">{info.passengerLabel}</p>
+                      <p className="mt-2 text-xs text-slate-500">{t("train.lastAttempt")}</p>
+                      <p className="mt-0.5 text-sm text-slate-700">
+                        {task.last_attempt_at ? formatDateTimeKst(task.last_attempt_at, locale) : "-"}
+                      </p>
+                      {task.state === "POLLING" && task.next_run_at ? (
+                        <>
+                          <p className="mt-2 text-xs text-slate-500">{t("train.label.nextCheck")}</p>
+                          <p className="mt-0.5 text-sm text-slate-700">{formatDateTimeKst(task.next_run_at, locale)}</p>
+                        </>
                       ) : null}
                     </div>
-                    <p className="text-xs text-slate-500">
-                      {t("train.lastAttempt")} {task.last_attempt_at ? formatDateTimeKst(task.last_attempt_at, locale) : "-"}
-                    </p>
-	                    <p className="mt-1 text-xs text-slate-600">
-	                      {t("train.label.schedule")} {info.scheduleLabel}
-	                    </p>
-	                    {task.state === "POLLING" && task.next_run_at ? (
-	                      <p className="text-xs text-slate-500">Next check: {formatDateTimeKst(task.next_run_at, locale)}</p>
-	                    ) : null}
-	                    {lastError ? (
-	                      <p className={`text-xs ${isSeatUnavailable ? "text-amber-700" : "text-rose-600"}`} title={lastError}>
-	                        Last error: {lastError}
-	                      </p>
-	                    ) : null}
-	                    <p className="text-xs text-slate-600">
-	                      {t("train.label.route")} {formatStationLabel(info.dep, locale)} {"->"} {formatStationLabel(info.arr, locale)}
-	                    </p>
-                    <p className="text-xs text-slate-600">
-                      {t("train.label.passengers")} {info.passengerLabel}
-                    </p>
                   </div>
-                  <Link href={`/modules/train/tasks/${task.id}`} className="text-xs font-medium text-blossom-600 hover:text-blossom-700">
-                    {t("train.action.detail")}
-                  </Link>
-                </div>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {showRetryNow ? (
-                    <button
-                      type="button"
-                      onClick={() => sendTaskAction(task.id, "retry")}
-                      disabled={!task.retry_now_allowed}
-                      title={task.retry_now_allowed ? "Retry now" : retryNowDisabledTitle(task)}
-                      className={task.retry_now_allowed ? SMALL_BUTTON_CLASS : SMALL_DISABLED_BUTTON_CLASS}
-                    >
-                      Retry now
-                    </button>
+
+                  {taskError ? (
+                    <div className="px-4 pb-3">
+                      <p className={`rounded-xl border px-3 py-2 text-xs ${taskError.className}`}>
+                        <span className="font-medium">{t("train.label.lastError")} </span>
+                        <span>{taskError.message}</span>
+                      </p>
+                    </div>
                   ) : null}
-                  {task.state !== "PAUSED" ? (
+
+                  <div className="flex flex-wrap gap-2 border-t border-dashed border-blossom-200 px-4 py-3">
+                    {showRetryNow ? (
+                      <button
+                        type="button"
+                        onClick={() => sendTaskAction(task.id, "retry")}
+                        disabled={!task.retry_now_allowed}
+                        title={task.retry_now_allowed ? "Retry now" : retryNowDisabledTitle(task)}
+                        className={task.retry_now_allowed ? SMALL_BUTTON_CLASS : SMALL_DISABLED_BUTTON_CLASS}
+                      >
+                        Retry now
+                      </button>
+                    ) : null}
+                    {task.state !== "PAUSED" ? (
+                      <button
+                        type="button"
+                        onClick={() => sendTaskAction(task.id, "pause")}
+                        className={SMALL_BUTTON_CLASS}
+                      >
+                        {t("train.action.pause")}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => sendTaskAction(task.id, "resume")}
+                        className={SMALL_BUTTON_CLASS}
+                      >
+                        {t("train.action.resume")}
+                      </button>
+                    )}
+                    {isAwaitingPaymentTask(task) ? (
+                      <button
+                        type="button"
+                        onClick={() => void payAwaitingPaymentTask(task.id)}
+                        disabled={payingTaskId === task.id}
+                        className={payingTaskId === task.id ? SMALL_DISABLED_BUTTON_CLASS : SMALL_SUCCESS_BUTTON_CLASS}
+                      >
+                        {payingTaskId === task.id ? t("train.action.paying") : t("train.action.pay")}
+                      </button>
+                    ) : null}
+                    {isAwaitingPaymentTask(task) ? (
+                      <button
+                        type="button"
+                        onClick={() => void cancelTaskTicket(task.id)}
+                        disabled={cancellingTaskId === task.id || payingTaskId === task.id}
+                        className={SMALL_DANGER_BUTTON_CLASS}
+                      >
+                        {cancellingTaskId === task.id ? t("train.action.cancelling") : t("train.action.cancelReservation")}
+                      </button>
+                    ) : null}
                     <button
                       type="button"
-                      onClick={() => sendTaskAction(task.id, "pause")}
-                      className={SMALL_BUTTON_CLASS}
-                    >
-                      {t("train.action.pause")}
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => sendTaskAction(task.id, "resume")}
-                      className={SMALL_BUTTON_CLASS}
-                    >
-                      {t("train.action.resume")}
-                    </button>
-                  )}
-                  {isAwaitingPaymentTask(task) ? (
-                    <button
-                      type="button"
-                      onClick={() => void payAwaitingPaymentTask(task.id)}
-                      disabled={payingTaskId === task.id}
-                      className={payingTaskId === task.id ? SMALL_DISABLED_BUTTON_CLASS : SMALL_SUCCESS_BUTTON_CLASS}
-                    >
-                      {payingTaskId === task.id ? t("train.action.paying") : t("train.action.pay")}
-                    </button>
-                  ) : null}
-                  {isAwaitingPaymentTask(task) ? (
-                    <button
-                      type="button"
-                      onClick={() => void cancelTaskTicket(task.id)}
-                      disabled={cancellingTaskId === task.id || payingTaskId === task.id}
+                      onClick={() => sendTaskAction(task.id, "cancel")}
                       className={SMALL_DANGER_BUTTON_CLASS}
                     >
-                      {cancellingTaskId === task.id ? t("train.action.cancelling") : t("train.action.cancelReservation")}
+                      {t("train.action.cancel")}
                     </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    onClick={() => sendTaskAction(task.id, "cancel")}
-                    className={SMALL_DANGER_BUTTON_CLASS}
-                  >
-                    {t("train.action.cancel")}
-                  </button>
-                </div>
+                  </div>
                 </li>
               );
             })}

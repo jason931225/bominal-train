@@ -819,6 +819,68 @@ async def test_run_train_task_inner_open_ticket_branch_matrix(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_run_train_task_inner_open_ticket_waiting_status_schedules_five_minute_poll(monkeypatch):
+    fixed_now = datetime(2026, 2, 22, 12, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(train_worker, "_utc_now_aware", lambda: fixed_now)
+    monkeypatch.setattr(train_worker, "utc_now", lambda: fixed_now)
+    monkeypatch.setattr(train_worker, "_normalize_ranked_selection", lambda _spec: _ranked())
+    monkeypatch.setattr(train_worker, "_seconds_until_next_departure", lambda _rows: 3600.0)
+    monkeypatch.setattr(train_worker, "validate_safe_metadata", lambda payload: payload)
+    monkeypatch.setattr(train_worker, "redact_sensitive", lambda payload: payload)
+
+    task = _task(auto_pay=True)
+    open_artifact = _open_ticket_artifact()
+
+    async def _load_open_ticket(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        return [open_artifact]
+
+    async def _login_success(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        return SimpleNamespace(), None, False
+
+    async def _sync_waiting(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        return {
+            "status": "waiting",
+            "waiting": True,
+            "paid": False,
+            "tickets": [],
+        }
+
+    async def _provider_credentials(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        return {"username": "u", "password": "p"}
+
+    async def _payment_card(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        return {"token": "tok"}
+
+    async def _pay_must_not_run(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        raise AssertionError("pay should not run while reservation is waiting")
+
+    retry_delays: list[float] = []
+    failed_calls: list[str] = []
+
+    async def _schedule_retry(_db, _task, delay):  # noqa: ANN001
+        retry_delays.append(float(delay))
+
+    async def _mark_failed(_db, failed_task):  # noqa: ANN001
+        failed_calls.append(str(failed_task.id))
+
+    monkeypatch.setattr(train_worker, "_load_ticket_artifacts", _load_open_ticket)
+    monkeypatch.setattr(train_worker, "_login_provider_client_for_worker", _login_success)
+    monkeypatch.setattr(train_worker, "_load_provider_credentials", _provider_credentials)
+    monkeypatch.setattr(train_worker, "get_payment_card_for_execution", _payment_card)
+    monkeypatch.setattr(train_worker, "fetch_ticket_sync_snapshot", _sync_waiting)
+    monkeypatch.setattr(train_worker, "_attempt_pay_reservation", _pay_must_not_run)
+    monkeypatch.setattr(train_worker, "_schedule_retry", _schedule_retry)
+    monkeypatch.setattr(train_worker, "_mark_failed", _mark_failed)
+
+    await train_worker._run_train_task_inner({}, str(task.id), _db_factory(_RunDB(task)), object(), _Limiter())  # noqa: SLF001
+
+    assert retry_delays == [300.0]
+    assert failed_calls == []
+    assert open_artifact.data_json_safe.get("status") == "waiting"
+    assert open_artifact.data_json_safe.get("waiting") is True
+
+
+@pytest.mark.asyncio
 async def test_run_train_task_inner_provider_loop_and_post_reserve_branches(monkeypatch):
     fixed_now = datetime(2026, 2, 22, 12, 0, tzinfo=timezone.utc)
     monkeypatch.setattr(train_worker, "_poll_delay_seconds", lambda *_args, **_kwargs: 1.0)
@@ -1063,6 +1125,85 @@ async def test_run_train_task_inner_provider_loop_and_post_reserve_branches(monk
         _Limiter(),
     )
     assert str(task_post_pay_sync_exception.id) in completed_calls
+
+
+@pytest.mark.asyncio
+async def test_run_train_task_inner_post_reserve_waiting_pay_failure_schedules_five_minute_poll(monkeypatch):
+    fixed_now = datetime(2026, 2, 22, 12, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(train_worker, "_utc_now_aware", lambda: fixed_now)
+    monkeypatch.setattr(train_worker, "utc_now", lambda: fixed_now)
+    monkeypatch.setattr(train_worker, "_poll_delay_seconds", lambda *_args, **_kwargs: 1.0)
+    monkeypatch.setattr(train_worker, "validate_safe_metadata", lambda payload: payload)
+    monkeypatch.setattr(train_worker, "redact_sensitive", lambda payload: payload)
+    monkeypatch.setattr(train_worker, "_normalize_ranked_selection", lambda _spec: _ranked("SRT"))
+    monkeypatch.setattr(train_worker, "_seconds_until_next_departure", lambda _rows: 3600.0)
+
+    async def _persist_noop(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        return None
+
+    async def _load_no_tickets(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        return []
+
+    async def _provider_credentials(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        return {"username": "u", "password": "p"}
+
+    async def _payment_card(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        return {"token": "tok"}
+
+    winner = _schedule(provider="SRT", schedule_id="SRT-1", rank=1)
+
+    async def _provider_winner(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        return train_worker.ProviderExecutionResult(provider="SRT", attempts=[], candidate=winner, retryable=False)
+
+    async def _attempt_pay_failed(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        return (
+            train_worker.PendingAttempt("pay", "SRT", False, False, "pay_failed", "x", 1, {}, fixed_now),
+            ProviderOutcome(ok=False, retryable=False, error_code="pay_failed"),
+        )
+
+    sync_calls = {"n": 0}
+
+    async def _sync_reservation_then_waiting(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        sync_calls["n"] += 1
+        if sync_calls["n"] == 1:
+            return {}
+        return {
+            "status": "waiting",
+            "waiting": True,
+            "paid": False,
+            "tickets": [],
+        }
+
+    retry_delays: list[float] = []
+    failed_calls: list[str] = []
+
+    async def _schedule_retry(_db, _task, delay):  # noqa: ANN001
+        retry_delays.append(float(delay))
+
+    async def _mark_failed(_db, failed_task):  # noqa: ANN001
+        failed_calls.append(str(failed_task.id))
+
+    monkeypatch.setattr(train_worker, "_persist_attempts", _persist_noop)
+    monkeypatch.setattr(train_worker, "_load_ticket_artifacts", _load_no_tickets)
+    monkeypatch.setattr(train_worker, "_provider_search_and_reserve", _provider_winner)
+    monkeypatch.setattr(train_worker, "_load_provider_credentials", _provider_credentials)
+    monkeypatch.setattr(train_worker, "get_payment_card_for_execution", _payment_card)
+    monkeypatch.setattr(train_worker, "_attempt_pay_reservation", _attempt_pay_failed)
+    monkeypatch.setattr(train_worker, "fetch_ticket_sync_snapshot", _sync_reservation_then_waiting)
+    monkeypatch.setattr(train_worker, "_schedule_retry", _schedule_retry)
+    monkeypatch.setattr(train_worker, "_mark_failed", _mark_failed)
+
+    task = _task(auto_pay=True)
+    db = _RunDB(task)
+    await train_worker._run_train_task_inner({}, str(task.id), _db_factory(db), object(), _Limiter())  # noqa: SLF001
+
+    assert retry_delays == [300.0]
+    assert failed_calls == []
+    assert db.added
+    ticket = db.added[0]
+    assert isinstance(ticket, Artifact)
+    assert ticket.data_json_safe.get("status") == "waiting"
+    assert ticket.data_json_safe.get("waiting") is True
 
 
 @pytest.mark.asyncio

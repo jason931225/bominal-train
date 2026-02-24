@@ -460,6 +460,16 @@
       "continuingWithoutProvider": "Continuing without {provider}. {provider} search is disabled.",
       "signedOutProvider": "{provider} signed out."
     },
+    "duplicateCheck": {
+      "title": "You have an existing reservation for this schedule.",
+      "body": "Are you sure you want to create another task for the same departure time?",
+      "createAnyway": "Create anyway",
+      "category": {
+        "already_reserved": "Reserved ticket",
+        "waiting": "Waiting list",
+        "polling": "Polling task"
+      }
+    },
     "attemptTable": {
       "action": "Action",
       "provider": "Provider",
@@ -517,6 +527,8 @@
       "schedule": "Schedule:",
       "route": "Route:",
       "passengers": "Passengers:",
+      "nextCheck": "Next check:",
+      "lastError": "Last error:",
       "taskId": "Task ID:"
     },
     "empty": {
@@ -539,6 +551,14 @@
       "loginFailed": "{provider} login failed.",
       "verifyFailed": "Could not verify {provider} credentials.",
       "signOutFailed": "Could not sign out {provider}."
+    },
+    "taskError": {
+      "seatUnavailable": "No reservable seats are available for this schedule.",
+      "reservationChanged": "Reservation status changed. Please verify your reservation details.",
+      "unknown": "Unknown error"
+    },
+    "ticketStyle": {
+      "activeTask": "Train task"
     },
     "task": {
       "actionFailed": "Could not update task."

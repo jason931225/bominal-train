@@ -140,6 +140,13 @@ describe("TrainDashboard action flows", () => {
           artifacts: [{ id: "ticket-artifact-1", module: "train", kind: "ticket", data_json_safe: {}, created_at: "2026-02-22T11:00:00+09:00" }],
         });
       }
+      if (url.includes("/api/train/tasks/duplicate-check") && method === "POST") {
+        return jsonResponse({
+          has_duplicate: false,
+          summary: { already_reserved: 0, waiting: 0, polling: 0 },
+          matches: [],
+        });
+      }
       if (url.includes("/api/train/tasks/") && method === "POST") {
         return jsonResponse({ ok: true, detail: "ok" });
       }
@@ -259,6 +266,16 @@ describe("TrainDashboard action flows", () => {
         last_attempt_error_message_safe: null,
         last_attempt_error_code: "seat_unavailable",
       }),
+      makeTask("active-soldout", "RUNNING", {
+        last_attempt_ok: false,
+        last_attempt_error_message_safe: null,
+        last_attempt_error_code: "sold_out",
+      }),
+      makeTask("active-html", "POLLING", {
+        last_attempt_ok: false,
+        last_attempt_error_message_safe: "예약상태가 변경되었습니다.<br>승차권내역 및 예약내역을 반드시 확인하여 주십시오.",
+        last_attempt_error_code: "provider_error",
+      }),
       makeTask("active-unknown", "RUNNING", {
         last_attempt_ok: false,
         last_attempt_error_message_safe: null,
@@ -273,10 +290,121 @@ describe("TrainDashboard action flows", () => {
 
     await renderDashboard();
 
-    expect(screen.getByText("Last error: Friendly failure")).toBeInTheDocument();
-    expect(screen.getByText("Last error: seat_unavailable")).toBeInTheDocument();
-    expect(screen.getByText("Last error: Unknown error")).toBeInTheDocument();
+    const seatUnavailableErrors = screen.getAllByText("No reservable seats are available for this schedule.");
+    const seatUnavailableError = seatUnavailableErrors[0];
+    const soldOutError = seatUnavailableErrors[1];
+    expect(seatUnavailableError).toBeInTheDocument();
+    expect(soldOutError).toBeInTheDocument();
+    expect(seatUnavailableErrors.length).toBeGreaterThanOrEqual(3);
+    expect(seatUnavailableError.closest("p")).toHaveClass("text-amber-700");
+    expect(soldOutError.closest("p")).toHaveClass("text-amber-700");
+    expect(screen.getByText("Reservation status changed. Please verify your reservation details.")).toBeInTheDocument();
+    expect(screen.queryByText(/<br>/)).not.toBeInTheDocument();
+    expect(screen.getByText("Unknown error")).toBeInTheDocument();
     expect(screen.getByText(/Completed:\s*-/)).toBeInTheDocument();
+  });
+
+  it("requires explicit confirmation before creating duplicate reservations for the same schedule", async () => {
+    schedules = [makeSchedule()];
+    let duplicateCheckCalled = 0;
+    let createTaskCalled = 0;
+
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? "GET";
+
+      if (url.includes("/api/train/credentials/status")) {
+        return jsonResponse({
+          ktx: { configured: true, verified: true, username: "01012345678", verified_at: null, detail: null },
+          srt: { configured: true, verified: true, username: "srt-user", verified_at: null, detail: null },
+        });
+      }
+      if (url.includes("/api/wallet/payment-card")) {
+        return jsonResponse({
+          configured: true,
+          card_masked: "****-****-****-1234",
+          expiry_month: 12,
+          expiry_year: 2030,
+          updated_at: "2026-02-22T10:00:00+09:00",
+          cvv_cached_until: null,
+          detail: null,
+        });
+      }
+      if (url.includes("/api/train/stations")) {
+        return jsonResponse({
+          stations: [
+            { name: "수서", srt_code: "0551", srt_supported: true },
+            { name: "부산", srt_code: "0020", srt_supported: true },
+          ],
+        });
+      }
+      if (url.includes("/api/train/tasks?")) {
+        const parsed = new URL(url, "http://localhost");
+        const status = parsed.searchParams.get("status");
+        if (status === "active") return jsonResponse({ tasks: activeTasks });
+        if (status === "completed") return jsonResponse({ tasks: completedTasks });
+      }
+      if (url.includes("/api/train/search") && method === "POST") {
+        return jsonResponse({ schedules });
+      }
+      if (url.includes("/api/train/tasks/duplicate-check") && method === "POST") {
+        duplicateCheckCalled += 1;
+        return jsonResponse({
+          has_duplicate: true,
+          summary: { already_reserved: 1, waiting: 1, polling: 1 },
+          matches: [
+            {
+              task_id: "11111111-1111-1111-1111-111111111111",
+              state: "COMPLETED",
+              category: "already_reserved",
+              departure_at: "2026-02-22T12:30:00+09:00",
+              ticket_status: "ticket_issued",
+            },
+            {
+              task_id: "22222222-2222-2222-2222-222222222222",
+              state: "RUNNING",
+              category: "waiting",
+              departure_at: "2026-02-22T12:30:00+09:00",
+              ticket_status: "awaiting_payment",
+            },
+            {
+              task_id: "33333333-3333-3333-3333-333333333333",
+              state: "POLLING",
+              category: "polling",
+              departure_at: "2026-02-22T12:30:00+09:00",
+              ticket_status: null,
+            },
+          ],
+        });
+      }
+      if (url.includes("/api/train/tasks") && method === "POST") {
+        createTaskCalled += 1;
+        return jsonResponse({
+          task: makeTask("created-after-confirm", "QUEUED"),
+          deduplicated: false,
+        });
+      }
+      return jsonResponse({ detail: "not found" }, 404);
+    });
+
+    await renderDashboard();
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    await flushAsyncEffects();
+    fireEvent.click(screen.getByRole("button", { name: "SRT 301" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create Task" }));
+    await flushAsyncEffects();
+
+    expect(duplicateCheckCalled).toBe(1);
+    expect(createTaskCalled).toBe(0);
+    expect(screen.getByRole("heading", { name: "You have an existing reservation for this schedule." })).toBeInTheDocument();
+    expect(screen.getByText("Reserved ticket (1)")).toBeInTheDocument();
+    expect(screen.getByText("Waiting list (1)")).toBeInTheDocument();
+    expect(screen.getByText("Polling task (1)")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Create anyway" }));
+    await flushAsyncEffects();
+    expect(createTaskCalled).toBe(1);
+    expect(screen.getByText("Task created and queued.")).toBeInTheDocument();
   });
 
   it("handles search, task creation, and active task action controls", async () => {
@@ -866,6 +994,13 @@ describe("TrainDashboard action flows", () => {
         searchCount += 1;
         if (searchCount === 1) return jsonResponse({ detail: "search detail failure" }, 400);
         return jsonResponse({ schedules: schedulesLocal });
+      }
+      if (url.includes("/api/train/tasks/duplicate-check") && method === "POST") {
+        return jsonResponse({
+          has_duplicate: false,
+          summary: { already_reserved: 0, waiting: 0, polling: 0 },
+          matches: [],
+        });
       }
       if (url.includes("/api/train/tasks") && method === "POST") {
         createCount += 1;

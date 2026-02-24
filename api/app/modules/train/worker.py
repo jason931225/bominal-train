@@ -74,6 +74,7 @@ POLL_CURVE_ANCHOR_48H_MEAN_SECONDS = 1.5
 POLL_CURVE_ANCHOR_72H_MEAN_SECONDS = 2.0
 POLL_GAMMA_SHAPE = 4.0
 POLL_DELAY_MIN_SECONDS = 0.1
+WAITING_STATUS_POLL_SECONDS = 5 * 60
 
 
 @dataclass(slots=True)
@@ -837,7 +838,7 @@ async def _provider_search_and_reserve(
                 ok=False,
                 retryable=True,
                 error_code="seat_unavailable",
-                error_message_safe="No available seats in selected trains right now",
+                error_message_safe="No reservable seats are available for this schedule.",
                 duration_ms=search_duration,
                 meta_json_safe={
                     "rate_limit_wait_ms": limit_result.waited_ms,
@@ -1309,6 +1310,42 @@ def _build_ticket_data(
     return validate_safe_metadata(payload)
 
 
+def _is_waiting_snapshot(snapshot: dict[str, Any] | None) -> bool:
+    if not snapshot:
+        return False
+    if bool(snapshot.get("paid")):
+        return False
+    if str(snapshot.get("status") or "").lower() == "waiting":
+        return True
+    return bool(snapshot.get("waiting"))
+
+
+def _merge_ticket_sync_snapshot(artifact: Artifact, *, sync_snapshot: dict[str, Any]) -> None:
+    merged = dict(artifact.data_json_safe or {})
+    for key in (
+        "status",
+        "paid",
+        "waiting",
+        "expired",
+        "payment_deadline_at",
+        "tickets",
+        "seat_count",
+        "reservation_snapshot",
+        "provider_sync",
+    ):
+        value = sync_snapshot.get(key)
+        if value is not None:
+            merged[key] = value
+
+    sync_http = sync_snapshot.get("provider_http")
+    if isinstance(sync_http, dict):
+        merged["provider_http"] = {
+            **dict(merged.get("provider_http") or {}),
+            **redact_sensitive(sync_http),
+        }
+    artifact.data_json_safe = validate_safe_metadata(merged)
+
+
 def _is_shutdown_requested(ctx: dict) -> bool:
     """Check if worker shutdown has been requested."""
     shutdown_event = ctx.get("shutdown_event")
@@ -1431,6 +1468,32 @@ async def _run_train_task_inner(
                     await _mark_failed(db, task)
                 return
 
+            try:
+                open_sync_snapshot = await fetch_ticket_sync_snapshot(
+                    client=client,
+                    provider=provider,
+                    reservation_id=reservation_id,
+                    user_id=task.user_id,
+                    limiter=limiter,
+                )
+            except Exception:
+                open_sync_snapshot = {}
+
+            if open_sync_snapshot:
+                _merge_ticket_sync_snapshot(open_ticket_artifact, sync_snapshot=open_sync_snapshot)
+                task.updated_at = utc_now()
+                await db.commit()
+
+                if bool(open_sync_snapshot.get("paid")):
+                    await _mark_completed(db, task)
+                    return
+                if _is_waiting_snapshot(open_sync_snapshot):
+                    if _utc_now_aware() < _as_aware_utc(task.deadline_at):
+                        await _schedule_retry(db, task, WAITING_STATUS_POLL_SECONDS)
+                    else:
+                        await _mark_failed(db, task)
+                    return
+
             task.state = "PAYING"
             task.updated_at = utc_now()
             await db.commit()
@@ -1453,6 +1516,26 @@ async def _run_train_task_inner(
             await _persist_attempts(db, task=task, attempts=[pay_attempt])
 
             if not pay_outcome.ok:
+                try:
+                    failed_pay_sync_snapshot = await fetch_ticket_sync_snapshot(
+                        client=client,
+                        provider=provider,
+                        reservation_id=reservation_id,
+                        user_id=task.user_id,
+                        limiter=limiter,
+                    )
+                except Exception:
+                    failed_pay_sync_snapshot = {}
+
+                if failed_pay_sync_snapshot:
+                    _merge_ticket_sync_snapshot(open_ticket_artifact, sync_snapshot=failed_pay_sync_snapshot)
+                    task.updated_at = utc_now()
+                    await db.commit()
+
+                    if _is_waiting_snapshot(failed_pay_sync_snapshot) and _utc_now_aware() < _as_aware_utc(task.deadline_at):
+                        await _schedule_retry(db, task, WAITING_STATUS_POLL_SECONDS)
+                        return
+
                 if pay_outcome.retryable and _utc_now_aware() < _as_aware_utc(task.deadline_at):
                     await _schedule_retry(
                         db,
@@ -1646,6 +1729,26 @@ async def _run_train_task_inner(
         await _persist_attempts(db, task=task, attempts=[pay_attempt])
 
         if not pay_outcome.ok:
+            try:
+                failed_pay_sync_snapshot = await fetch_ticket_sync_snapshot(
+                    client=winner.client,
+                    provider=winner.provider,
+                    reservation_id=winner.reservation_id,
+                    user_id=task.user_id,
+                    limiter=limiter,
+                )
+            except Exception:
+                failed_pay_sync_snapshot = {}
+
+            if failed_pay_sync_snapshot:
+                _merge_ticket_sync_snapshot(ticket_artifact, sync_snapshot=failed_pay_sync_snapshot)
+                task.updated_at = utc_now()
+                await db.commit()
+
+                if _is_waiting_snapshot(failed_pay_sync_snapshot) and _utc_now_aware() < _as_aware_utc(task.deadline_at):
+                    await _schedule_retry(db, task, WAITING_STATUS_POLL_SECONDS)
+                    return
+
             if pay_outcome.retryable and _utc_now_aware() < _as_aware_utc(task.deadline_at):
                 await _schedule_retry(
                     db,
