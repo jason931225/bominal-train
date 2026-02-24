@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import AsyncIterator
 from uuid import UUID
 
@@ -11,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.http.deps import get_current_user
 from app.core.redis import get_redis_client
 from app.db.models import User
-from app.db.session import get_db
+from app.db.session import SessionLocal, get_db
 from app.modules.train.events import task_events_channel
 from app.modules.train.schemas import (
     KTXCredentialStatusResponse,
@@ -59,19 +60,29 @@ from app.modules.train.service import (
 
 router = APIRouter(prefix="/api/train", tags=["train"])
 TRAIN_TASK_EVENTS_PING_SECONDS = 10.0
+TRAIN_TASK_ATTENTION_SNAPSHOT_LIMIT = 200
+ATTENTION_REFRESH_TASK_STATES = frozenset({"COMPLETED", "CANCELLED", "EXPIRED", "FAILED"})
+logger = logging.getLogger(__name__)
 
 
 def _sse(event: str, data: str) -> str:
     return f"event: {event}\ndata: {data}\n\n"
 
 
-async def _task_events_stream(request: Request, *, user_id: UUID) -> AsyncIterator[str]:
+async def _task_events_stream(
+    request: Request,
+    *,
+    user_id: UUID,
+    attention_snapshot_payload: str | None = None,
+) -> AsyncIterator[str]:
     redis = await get_redis_client()
     pubsub = redis.pubsub()
     channel = task_events_channel(user_id)
     await pubsub.subscribe(channel)
     try:
         yield _sse("connected", json.dumps({"channel": channel}, separators=(",", ":")))
+        if attention_snapshot_payload is not None:
+            yield _sse("attention_snapshot", attention_snapshot_payload)
         while True:
             if await request.is_disconnected():
                 break
@@ -96,6 +107,32 @@ async def _task_events_stream(request: Request, *, user_id: UUID) -> AsyncIterat
             await pubsub.unsubscribe(channel)
         finally:
             await pubsub.aclose()
+
+
+def _is_attention_task(task: TaskSummaryOut) -> bool:
+    if task.state in ATTENTION_REFRESH_TASK_STATES:
+        return True
+    return task.ticket_status == "awaiting_payment" and task.ticket_paid is not True
+
+
+async def _build_attention_snapshot_payload(*, user: User) -> str | None:
+    try:
+        async with SessionLocal() as db:
+            task_list = await list_tasks(
+                db,
+                user=user,
+                status_filter="all",
+                limit=TRAIN_TASK_ATTENTION_SNAPSHOT_LIMIT,
+                refresh_completed=False,
+            )
+        snapshot_tasks = [task.model_dump(mode="json") for task in task_list.tasks if _is_attention_task(task)]
+        return json.dumps(
+            {"type": "attention_snapshot", "tasks": snapshot_tasks},
+            separators=(",", ":"),
+        )
+    except Exception:
+        logger.warning("Failed to build train attention snapshot payload", extra={"user_id": str(user.id)})
+        return None
 
 
 @router.get("/stations", response_model=TrainStationsResponse)
@@ -201,8 +238,14 @@ async def stream_train_task_events(
     request: Request,
     user: User = Depends(get_current_user),
 ) -> StreamingResponse:
+    attention_snapshot_payload = await _build_attention_snapshot_payload(user=user)
+
     return StreamingResponse(
-        _task_events_stream(request, user_id=user.id),
+        _task_events_stream(
+            request,
+            user_id=user.id,
+            attention_snapshot_payload=attention_snapshot_payload,
+        ),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

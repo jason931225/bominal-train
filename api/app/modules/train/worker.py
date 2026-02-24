@@ -244,6 +244,12 @@ def _is_non_payment_expiry_reserve_error(outcome: ProviderOutcome) -> bool:
     )
 
 
+def _is_transient_sold_out_reserve_error(outcome: ProviderOutcome) -> bool:
+    if outcome.ok:
+        return False
+    return str(outcome.error_code or "").lower() == "sold_out"
+
+
 def _seconds_until_next_departure(ranked: list[dict[str, Any]]) -> float | None:
     now = _utc_now_aware()
     deltas: list[float] = []
@@ -350,6 +356,12 @@ def _poll_delay_seconds(search_attempt_count: int, *, seconds_until_departure: f
     """
     # search_attempt_count is intentionally retained for signature compatibility.
     _ = search_attempt_count
+    if settings.train_poll_force_max_rate:
+        # Maximum poll rate means shortest configured delay.
+        max_interval = max(settings.train_poll_max_seconds, POLL_DELAY_MIN_SECONDS)
+        min_interval = max(settings.train_poll_min_seconds, POLL_DELAY_MIN_SECONDS)
+        return max(POLL_DELAY_MIN_SECONDS, min(max_interval, float(min_interval)))
+
     max_interval = max(settings.train_poll_max_seconds, POLL_DELAY_MIN_SECONDS)
     t = float(seconds_until_departure if seconds_until_departure is not None else POLL_CURVE_T0_SECONDS)
 
@@ -437,6 +449,8 @@ async def _persist_attempts(db: AsyncSession, *, task: Task, attempts: list[Pend
         )
 
     def _should_persist_attempt(current: PendingAttempt, previous: TaskAttempt | None) -> bool:
+        if settings.train_persist_all_attempts:
+            return True
         # Payment/cancel actions are intentional user-visible transitions and
         # should always remain fully auditable.
         if current.action in {ATTEMPT_ACTION_PAY, ATTEMPT_ACTION_CANCEL}:
@@ -969,6 +983,9 @@ async def _provider_search_and_reserve(
     non_payment_expiry_retry = (not auto_pay_enabled and not reserve_ok and _is_non_payment_expiry_reserve_error(reserve_outcome))
     if non_payment_expiry_retry:
         reserve_retryable = True
+    sold_out_retry = not reserve_ok and _is_transient_sold_out_reserve_error(reserve_outcome)
+    if sold_out_retry:
+        reserve_retryable = True
 
     attempts.append(
         PendingAttempt(
@@ -991,6 +1008,7 @@ async def _provider_search_and_reserve(
                 "initial_error_code": initial_reserve_error_code,
                 "initial_error_message": initial_reserve_error_message,
                 "non_payment_expiry_retry": non_payment_expiry_retry,
+                "sold_out_retry": sold_out_retry,
             },
             started_at=reserve_started,
         )

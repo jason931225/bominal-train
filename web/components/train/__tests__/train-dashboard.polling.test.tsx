@@ -44,7 +44,7 @@ class MockEventSource {
   }
 
   static emit(type: string, payload: Record<string, unknown>) {
-    const event = new MessageEvent<string>("message", { data: JSON.stringify(payload) });
+    const event = new MessageEvent<string>(type, { data: JSON.stringify(payload) });
     for (const instance of MockEventSource.instances) {
       const callbacks = instance.listeners.get(type);
       if (!callbacks) continue;
@@ -227,15 +227,32 @@ describe("TrainDashboard polling behavior", () => {
     setIntervalSpy.mockRestore();
   });
 
-  it("refreshes task lists when task-state events are streamed", async () => {
+  it("refreshes task lists only for terminal state events", async () => {
     await renderDashboard();
-    expect(activeCalls).toBe(1);
-    expect(completedCalls).toBe(1);
+    const baselineActiveCalls = activeCalls;
+    const baselineCompletedCalls = completedCalls;
 
     MockEventSource.emit("task_state", { task_id: "active-1", state: "POLLING" });
     await flushAsyncEffects();
-    expect(activeCalls).toBe(2);
-    expect(completedCalls).toBe(2);
+    expect(activeCalls).toBe(baselineActiveCalls);
+    expect(completedCalls).toBe(baselineCompletedCalls);
+
+    MockEventSource.emit("task_state", { task_id: "active-1", state: "COMPLETED" });
+    await flushAsyncEffects();
+    expect(activeCalls).toBe(baselineActiveCalls + 1);
+    expect(completedCalls).toBe(baselineCompletedCalls + 1);
+  });
+
+  it("reconciles task lists when receiving non-terminal events for unknown task ids", async () => {
+    await renderDashboard();
+    const baselineActiveCalls = activeCalls;
+    const baselineCompletedCalls = completedCalls;
+
+    MockEventSource.emit("task_state", { task_id: "unknown-task", state: "QUEUED" });
+    await flushAsyncEffects();
+
+    expect(activeCalls).toBe(baselineActiveCalls + 1);
+    expect(completedCalls).toBe(baselineCompletedCalls + 1);
   });
 
   it("forces completed refresh when visibility changes back to visible", async () => {

@@ -289,6 +289,12 @@ def test_proxy_helpers_cover_empty_host_config_and_unknown_domain_set():
     assert host_map == {}
 
 
+def test_train_proxy_host_map_handles_dynamic_netfunnel_hosts():
+    host_path_map = transport_module._TRAIN_EGRESS_PROXY_PATH_BY_HOST
+    assert transport_module._resolve_proxy_path_prefix("smart.letskorail.com", host_path_map=host_path_map) == "korail"
+    assert transport_module._resolve_proxy_path_prefix("nf5.letskorail.com", host_path_map=host_path_map) == "netfunnel"
+
+
 def test_proxy_url_rewrite_rejects_relative_urls_when_proxying():
     with pytest.raises(RuntimeError, match="absolute URL host"):
         _rewrite_url_for_egress_proxy(
