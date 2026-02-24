@@ -133,6 +133,7 @@ class TrainTaskCreateRequest(BaseModel):
     seat_class: SeatClass
     auto_pay: bool = True
     notify: bool = False
+    confirm_duplicate: bool = False
 
     @field_validator("selected_trains_ranked")
     @classmethod
@@ -222,6 +223,29 @@ class TrainTaskCreateResponse(BaseModel):
     task: TaskSummaryOut
     queued: bool
     deduplicated: bool
+
+
+DuplicateMatchCategory = Literal["already_reserved", "waiting", "polling"]
+
+
+class TrainTaskDuplicateMatchOut(BaseModel):
+    task_id: UUID
+    state: TaskState
+    category: DuplicateMatchCategory
+    departure_at: datetime
+    ticket_status: str | None = None
+
+
+class TrainTaskDuplicateSummaryOut(BaseModel):
+    already_reserved: int = 0
+    waiting: int = 0
+    polling: int = 0
+
+
+class TrainTaskDuplicateCheckResponse(BaseModel):
+    has_duplicate: bool
+    summary: TrainTaskDuplicateSummaryOut
+    matches: list[TrainTaskDuplicateMatchOut]
 
 
 class TaskActionResponse(BaseModel):

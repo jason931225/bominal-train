@@ -81,7 +81,7 @@ async def test_persist_attempts_skips_duplicate_retry_noise(monkeypatch):
         ok=False,
         retryable=True,
         error_code="seat_unavailable",
-        error_message_safe="No available seats in selected trains right now",
+        error_message_safe="No reservable seats are available for this schedule.",
     )
     db = _DB(previous_attempt=previous)
     task = _task()
@@ -116,7 +116,7 @@ async def test_persist_attempts_skips_duplicate_retry_noise(monkeypatch):
                 ok=False,
                 retryable=True,
                 error_code="seat_unavailable",
-                error_message_safe="No available seats in selected trains right now",
+                error_message_safe="No reservable seats are available for this schedule.",
             )
         ],
     )
@@ -148,7 +148,7 @@ async def test_persist_attempts_stores_transition_when_retry_signature_changes(m
         ok=False,
         retryable=True,
         error_code="seat_unavailable",
-        error_message_safe="No available seats in selected trains right now",
+        error_message_safe="No reservable seats are available for this schedule.",
     )
     db = _DB(previous_attempt=previous)
     task = _task()
@@ -190,7 +190,7 @@ async def test_persist_attempts_stores_duplicate_retry_noise_when_override_enabl
         ok=False,
         retryable=True,
         error_code="seat_unavailable",
-        error_message_safe="No available seats in selected trains right now",
+        error_message_safe="No reservable seats are available for this schedule.",
     )
     db = _DB(previous_attempt=previous)
     task = _task()
@@ -218,7 +218,7 @@ async def test_persist_attempts_stores_duplicate_retry_noise_when_override_enabl
                 ok=False,
                 retryable=True,
                 error_code="seat_unavailable",
-                error_message_safe="No available seats in selected trains right now",
+                error_message_safe="No reservable seats are available for this schedule.",
             )
         ],
     )

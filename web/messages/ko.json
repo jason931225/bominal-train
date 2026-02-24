@@ -458,6 +458,16 @@
       "continuingWithoutProvider": "{provider} 없이 계속합니다. {provider} 검색은 비활성화됩니다.",
       "signedOutProvider": "{provider}에서 로그아웃했습니다."
     },
+    "duplicateCheck": {
+      "title": "같은 시간대의 기존 예약 작업이 있습니다.",
+      "body": "동일한 출발 시간으로 작업을 하나 더 생성할까요?",
+      "createAnyway": "그래도 생성",
+      "category": {
+        "already_reserved": "예약 완료",
+        "waiting": "대기 예약",
+        "polling": "조회 중 작업"
+      }
+    },
     "attemptTable": {
       "action": "동작",
       "provider": "운영사",
@@ -516,6 +526,8 @@
       "schedule": "일정:",
       "route": "경로:",
       "passengers": "인원:",
+      "nextCheck": "다음 확인:",
+      "lastError": "최근 오류:",
       "taskId": "작업 ID:"
     },
     "empty": {
@@ -538,6 +550,14 @@
       "loginFailed": "{provider} 로그인에 실패했습니다.",
       "verifyFailed": "{provider} 계정 연결을 확인할 수 없습니다.",
       "signOutFailed": "{provider}에서 로그아웃할 수 없습니다."
+    },
+    "taskError": {
+      "seatUnavailable": "이 시간표는 예약 가능한 좌석이 없습니다.",
+      "reservationChanged": "예약 상태가 변경되었습니다. 예약 내역을 다시 확인해 주세요.",
+      "unknown": "알 수 없는 오류"
+    },
+    "ticketStyle": {
+      "activeTask": "열차 작업"
     },
     "task": {
       "actionFailed": "작업 상태를 변경할 수 없습니다."

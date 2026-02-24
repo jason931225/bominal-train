@@ -30,10 +30,12 @@ from app.modules.train.schemas import (
     TrainStationsResponse,
     TrainSearchRequest,
     TrainSearchResponse,
+    TrainTaskDuplicateCheckResponse,
     TrainTaskCreateRequest,
     TrainTaskCreateResponse,
 )
 from app.modules.train.service import (
+    check_task_duplicates,
     clear_ktx_credentials,
     clear_srt_credentials,
     cancel_provider_reservation,
@@ -205,6 +207,15 @@ async def search_train(
     db: AsyncSession = Depends(get_db),
 ) -> TrainSearchResponse:
     return await search_schedules(db, payload=payload, user=user)
+
+
+@router.post("/tasks/duplicate-check", response_model=TrainTaskDuplicateCheckResponse)
+async def check_train_task_duplicates(
+    payload: TrainTaskCreateRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> TrainTaskDuplicateCheckResponse:
+    return await check_task_duplicates(db, user=user, payload=payload)
 
 
 @router.post("/tasks", response_model=TrainTaskCreateResponse)

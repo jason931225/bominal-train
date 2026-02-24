@@ -113,6 +113,7 @@ async def test_provider_search_and_reserve_handles_no_seat_and_reserve_exception
     assert no_seat.candidate is None
     assert no_seat.retryable is True
     assert no_seat.attempts[-1].error_code == "seat_unavailable"
+    assert no_seat.attempts[-1].error_message_safe == "No reservable seats are available for this schedule."
 
     class _ReserveBoomClient:
         async def login(self, **_kwargs):  # noqa: ANN003
