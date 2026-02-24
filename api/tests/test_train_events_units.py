@@ -18,7 +18,7 @@ class _FakeRedisPublisher:
 
 
 class _FakePubSub:
-    def __init__(self, messages: list[bytes]) -> None:
+    def __init__(self, messages: list[object]) -> None:
         self._messages = list(messages)
         self.subscribed_channel: str | None = None
         self.unsubscribed_channel: str | None = None
@@ -31,7 +31,12 @@ class _FakePubSub:
         _ = ignore_subscribe_messages
         _ = timeout
         if self._messages:
-            return {"type": "message", "data": self._messages.pop(0)}
+            payload = self._messages.pop(0)
+            if payload is None:
+                return None
+            if isinstance(payload, dict):
+                return payload
+            return {"type": "message", "data": payload}
         return None
 
     async def unsubscribe(self, channel: str) -> None:
@@ -145,6 +150,68 @@ async def test_stream_train_task_events_emits_connected_and_task_state(monkeypat
     assert chunks[0].startswith("event: connected")
     assert "event: task_state" in chunks[1]
     assert '"state":"RUNNING"' in chunks[1]
+    assert pubsub.subscribed_channel == channel
+    assert pubsub.unsubscribed_channel == channel
+    assert pubsub.closed is True
+
+
+@pytest.mark.asyncio
+async def test_stream_train_task_events_emits_keepalive_and_skips_empty_payload(monkeypatch):
+    user = SimpleNamespace(id=uuid4())
+    channel = train_events.task_events_channel(user.id)
+    pubsub = _FakePubSub(
+        messages=[
+            None,
+            {"type": "message", "data": None},
+            '{"task_id":"def","state":"FAILED"}',
+        ]
+    )
+
+    async def _fake_get_redis_client():
+        return _FakeRedisSubscriber(pubsub)
+
+    monkeypatch.setattr("app.modules.train.router.get_redis_client", _fake_get_redis_client)
+
+    request = _FakeRequest(disconnect_after=4)
+    response = await stream_train_task_events(request=request, user=user)
+
+    chunks: list[str] = []
+    async for chunk in response.body_iterator:
+        chunks.append(_as_text(chunk))
+        if len(chunks) >= 3:
+            break
+
+    await response.body_iterator.aclose()
+
+    assert chunks[0].startswith("event: connected")
+    assert chunks[1].startswith(": keepalive")
+    assert "event: task_state" in chunks[2]
+    assert '"state":"FAILED"' in chunks[2]
+    assert pubsub.subscribed_channel == channel
+    assert pubsub.unsubscribed_channel == channel
+    assert pubsub.closed is True
+
+
+@pytest.mark.asyncio
+async def test_stream_train_task_events_disconnects_cleanly_when_client_is_gone(monkeypatch):
+    user = SimpleNamespace(id=uuid4())
+    channel = train_events.task_events_channel(user.id)
+    pubsub = _FakePubSub(messages=[])
+
+    async def _fake_get_redis_client():
+        return _FakeRedisSubscriber(pubsub)
+
+    monkeypatch.setattr("app.modules.train.router.get_redis_client", _fake_get_redis_client)
+
+    request = _FakeRequest(disconnect_after=0)
+    response = await stream_train_task_events(request=request, user=user)
+    iterator = response.body_iterator
+
+    first_chunk = _as_text(await anext(iterator))
+    assert first_chunk.startswith("event: connected")
+    with pytest.raises(StopAsyncIteration):
+        await anext(iterator)
+
     assert pubsub.subscribed_channel == channel
     assert pubsub.unsubscribed_channel == channel
     assert pubsub.closed is True
