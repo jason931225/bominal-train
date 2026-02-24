@@ -13,6 +13,11 @@ from app.services.wallet import LEGACY_PAYMENT_CVV_REDIS_KEY_PREFIX, PAYMENT_CVV
 from tests.conftest import MockRedisContextManager
 
 
+@pytest.fixture(autouse=True)
+def _disable_access_approval_for_auth_flow(monkeypatch):
+    monkeypatch.setattr("app.http.deps.settings.access_approval_required", False)
+
+
 def _extract_otp_code(template_payload) -> str:
     for block in template_payload.blocks:
         if block.type == "otp":

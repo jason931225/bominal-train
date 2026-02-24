@@ -577,6 +577,7 @@ def normalize_task_spec(payload: TrainTaskCreateRequest, *, ranked_trains: list[
     dep_srt_code = station_code_for_name(payload.dep)
     arr_srt_code = station_code_for_name(payload.arr)
     providers = _resolve_task_providers(ranked_trains)
+    effective_auto_pay = bool(settings.payment_enabled and payload.auto_pay)
     return {
         "module": TASK_MODULE,
         "provider": providers[0] if len(providers) == 1 else None,
@@ -592,7 +593,7 @@ def normalize_task_spec(payload: TrainTaskCreateRequest, *, ranked_trains: list[
             "children": payload.passengers.children,
         },
         "seat_class": payload.seat_class,
-        "auto_pay": payload.auto_pay,
+        "auto_pay": effective_auto_pay,
         "notify": payload.notify,
     }
 
@@ -1321,6 +1322,9 @@ async def cancel_task(db: AsyncSession, *, task_id: UUID, user: User) -> TaskAct
 
 
 async def pay_task(db: AsyncSession, *, task_id: UUID, user: User) -> TaskActionResponse:
+    if not settings.payment_enabled:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Payment features are currently disabled")
+
     task = await get_task_for_user(db, task_id=task_id, user=user)
     if task.state in {"EXPIRED", "CANCELLED"}:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This task can no longer be paid")

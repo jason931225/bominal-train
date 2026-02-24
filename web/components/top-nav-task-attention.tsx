@@ -16,7 +16,6 @@ import {
 } from "@/lib/train/dummy-task-cards";
 import type { TrainTaskSummary } from "@/lib/types";
 
-const ATTENTION_POLL_MS = 60000;
 const ATTENTION_TASK_FETCH_LIMIT = 200;
 const ATTENTION_STORAGE_PREFIX = "bominal_train_attention_seen_v1";
 const TERMINAL_TASK_STATES = new Set(["COMPLETED", "CANCELLED", "EXPIRED", "FAILED"]);
@@ -205,10 +204,32 @@ export function TopNavTaskAttention({
 
   useEffect(() => {
     void loadAttentionTasks();
-    const interval = window.setInterval(() => {
+
+    if (typeof window === "undefined" || !("EventSource" in window)) {
+      return undefined;
+    }
+
+    const eventSource = new EventSource(`${clientApiBaseUrl}/api/train/tasks/events`, {
+      withCredentials: true,
+    });
+
+    const onTaskState = () => {
+      if (document.visibilityState === "hidden") return;
       void loadAttentionTasks();
-    }, ATTENTION_POLL_MS);
-    return () => window.clearInterval(interval);
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void loadAttentionTasks();
+      }
+    };
+
+    eventSource.addEventListener("task_state", onTaskState);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      eventSource.removeEventListener("task_state", onTaskState);
+      eventSource.close();
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
   }, [loadAttentionTasks]);
 
   useEffect(() => {

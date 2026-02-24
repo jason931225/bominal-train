@@ -19,6 +19,8 @@ type UserSummary = {
   email: string;
   display_name: string | null;
   role: string;
+  access_status: "pending" | "approved" | "rejected" | string;
+  access_reviewed_at: string | null;
   created_at: string;
   last_seen_at: string | null;
   session_count: number;
@@ -31,6 +33,8 @@ type UserDetail = {
   display_name: string | null;
   phone_number: string | null;
   role: string;
+  access_status: "pending" | "approved" | "rejected" | string;
+  access_reviewed_at: string | null;
   created_at: string;
   updated_at: string;
   email_verified_at: string | null;
@@ -50,6 +54,7 @@ type UserListResponse = {
 export function UserManagement() {
   const { locale, t } = useLocale();
   const [users, setUsers] = useState<UserSummary[]>([]);
+  const [pendingUsers, setPendingUsers] = useState<UserSummary[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [pageSize] = useState(10);
@@ -81,9 +86,27 @@ export function UserManagement() {
     }
   }, [page, pageSize, search]);
 
+  const fetchPendingUsers = useCallback(async () => {
+    try {
+      const params = new URLSearchParams({
+        page: "1",
+        page_size: "25",
+        access_status: "pending",
+      });
+      const res = await fetch(`${clientApiBaseUrl}/api/admin/users?${params}`, { credentials: "include" });
+      if (res.ok) {
+        const data: UserListResponse = await res.json();
+        setPendingUsers(data.users);
+      }
+    } catch (e) {
+      console.error("Failed to fetch pending users", e);
+    }
+  }, []);
+
   useEffect(() => {
     fetchUsers();
-  }, [fetchUsers]);
+    fetchPendingUsers();
+  }, [fetchUsers, fetchPendingUsers]);
 
   const fetchUserDetail = async (userId: string) => {
     try {
@@ -110,12 +133,39 @@ export function UserManagement() {
         const roleLabel = newRole === "admin" ? t("admin.users.roles.admin") : t("admin.users.roles.user");
         setMessage({ type: "success", text: t("admin.users.roleUpdated", { role: roleLabel }) });
         fetchUsers();
+        fetchPendingUsers();
         if (selectedUser?.id === userId) {
           fetchUserDetail(userId);
         }
       } else {
         const data = await res.json();
         setMessage({ type: "error", text: data.detail || t("admin.users.failedUpdateRole") });
+      }
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const updateAccess = async (userId: string, statusValue: "pending" | "approved" | "rejected") => {
+    setActionLoading(true);
+    try {
+      const res = await fetch(`${clientApiBaseUrl}/api/admin/users/${userId}/access`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ access_status: statusValue }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setMessage({ type: "success", text: data.message });
+        fetchUsers();
+        fetchPendingUsers();
+        if (selectedUser?.id === userId) {
+          fetchUserDetail(userId);
+        }
+      } else {
+        const data = await res.json();
+        setMessage({ type: "error", text: data.detail || t("admin.users.failedUpdateAccess") });
       }
     } finally {
       setActionLoading(false);
@@ -187,10 +237,63 @@ export function UserManagement() {
     return role;
   };
 
+  const accessBadgeClass = (accessStatus: string) => {
+    const statusKey = accessStatus.toLowerCase();
+    if (statusKey === "approved") return `${UI_CHIP_BASE} bg-emerald-100 text-emerald-700 border border-emerald-200`;
+    if (statusKey === "rejected") return `${UI_CHIP_BASE} bg-rose-100 text-rose-700 border border-rose-200`;
+    return `${UI_CHIP_BASE} bg-amber-100 text-amber-800 border border-amber-200`;
+  };
+
+  const accessLabel = (accessStatus: string) => {
+    const statusKey = accessStatus.toLowerCase();
+    if (statusKey === "approved") return t("admin.users.access.approved");
+    if (statusKey === "rejected") return t("admin.users.access.rejected");
+    return t("admin.users.access.pending");
+  };
+
   return (
     <section className={UI_CARD_MD}>
       <p className={UI_KICKER}>{t("admin.users.kicker")}</p>
       <h2 className={`mt-2 ${UI_TITLE_MD}`}>{t("admin.users.title")}</h2>
+
+      <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-semibold text-amber-900">{t("admin.users.pending.title")}</p>
+          <span className="text-xs text-amber-700">{t("admin.users.pending.count", { count: pendingUsers.length })}</span>
+        </div>
+        {pendingUsers.length === 0 ? (
+          <p className="mt-2 text-sm text-amber-800">{t("admin.users.pending.empty")}</p>
+        ) : (
+          <div className="mt-3 space-y-2">
+            {pendingUsers.map((pendingUser) => (
+              <div key={pendingUser.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-white px-3 py-2">
+                <div>
+                  <p className="text-sm font-medium text-slate-800">{pendingUser.email}</p>
+                  {pendingUser.display_name ? <p className="text-xs text-slate-500">{pendingUser.display_name}</p> : null}
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => updateAccess(pendingUser.id, "approved")}
+                    disabled={actionLoading}
+                    className={UI_BUTTON_OUTLINE_SM}
+                  >
+                    {t("admin.users.actions.approve")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => updateAccess(pendingUser.id, "rejected")}
+                    disabled={actionLoading}
+                    className={UI_BUTTON_DANGER_SM}
+                  >
+                    {t("admin.users.actions.reject")}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* Message */}
       {message && (
@@ -232,6 +335,7 @@ export function UserManagement() {
             <tr>
               <th className="px-4 py-3">{t("admin.users.table.user")}</th>
               <th className="px-4 py-3">{t("admin.users.table.role")}</th>
+              <th className="px-4 py-3 hidden sm:table-cell">{t("admin.users.table.access")}</th>
               <th className="px-4 py-3 hidden sm:table-cell">{t("admin.users.table.sessions")}</th>
               <th className="px-4 py-3 hidden md:table-cell">{t("admin.users.table.lastSeen")}</th>
               <th className="px-4 py-3">{t("admin.users.table.actions")}</th>
@@ -240,13 +344,13 @@ export function UserManagement() {
           <tbody className="divide-y divide-blossom-50">
             {loading ? (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-slate-400">
+                <td colSpan={6} className="px-4 py-8 text-center text-slate-400">
                   {t("admin.users.loading")}
                 </td>
               </tr>
             ) : users.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-slate-400">
+                <td colSpan={6} className="px-4 py-8 text-center text-slate-400">
                   {t("admin.users.noUsersFound")}
                 </td>
               </tr>
@@ -261,6 +365,9 @@ export function UserManagement() {
                   </td>
                   <td className="px-4 py-3">
                     <span className={roleChipClass(user.role)}>{roleLabel(user.role)}</span>
+                  </td>
+                  <td className="px-4 py-3 hidden sm:table-cell">
+                    <span className={accessBadgeClass(user.access_status)}>{accessLabel(user.access_status)}</span>
                   </td>
                   <td className="px-4 py-3 hidden sm:table-cell text-slate-500">
                     {user.session_count}
@@ -349,6 +456,12 @@ export function UserManagement() {
                 </dd>
               </div>
               <div>
+                <dt className="text-slate-400">{t("admin.users.table.access")}</dt>
+                <dd>
+                  <span className={accessBadgeClass(selectedUser.access_status)}>{accessLabel(selectedUser.access_status)}</span>
+                </dd>
+              </div>
+              <div>
                 <dt className="text-slate-400">{t("admin.users.detail.emailVerified")}</dt>
                 <dd className="text-slate-700">
                   {selectedUser.email_verified_at ? formatDate(selectedUser.email_verified_at) : t("admin.users.detail.notVerified")}
@@ -404,6 +517,24 @@ export function UserManagement() {
                 >
                   {t("admin.users.actions.revokeSessions", { count: selectedUser.active_session_count })}
                 </button>
+                {selectedUser.access_status !== "approved" ? (
+                  <button
+                    onClick={() => updateAccess(selectedUser.id, "approved")}
+                    disabled={actionLoading}
+                    className={UI_BUTTON_OUTLINE_SM}
+                  >
+                    {t("admin.users.actions.approve")}
+                  </button>
+                ) : null}
+                {selectedUser.access_status !== "rejected" ? (
+                  <button
+                    onClick={() => updateAccess(selectedUser.id, "rejected")}
+                    disabled={actionLoading}
+                    className={UI_BUTTON_DANGER_SM}
+                  >
+                    {t("admin.users.actions.reject")}
+                  </button>
+                ) : null}
               </div>
 
               <div className="pt-2">

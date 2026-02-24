@@ -38,6 +38,8 @@ def _redis_appendonly_is_disabled(value: dict) -> bool:
 async def _enforce_production_security_guards() -> None:
     if not settings.is_production:
         return
+    if not settings.payment_enabled:
+        return
 
     from app.core.redis import get_cde_redis_client
 

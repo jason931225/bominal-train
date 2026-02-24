@@ -6,7 +6,7 @@ import { ModuleTile } from "@/components/module-tile";
 import { serverApiBaseUrl } from "@/lib/api-base";
 import { localeFromAcceptLanguage, localeFromUser, t } from "@/lib/i18n";
 import { UI_BODY_MUTED, UI_CARD_MD, UI_CARD_LG, UI_KICKER, UI_TITLE_LG } from "@/lib/ui";
-import { requireUser } from "@/lib/server-auth";
+import { requireApprovedUser } from "@/lib/server-auth";
 import type { BominalModule, ModulesResponse } from "@/lib/types";
 
 const FALLBACK_MODULES: BominalModule[] = [
@@ -63,7 +63,7 @@ export default async function DashboardPage({
 }: {
   searchParams?: Promise<{ denied?: string }>;
 }) {
-  const user = await requireUser();
+  const user = await requireApprovedUser();
   const resolvedSearchParams = (await searchParams) ?? {};
   const headerStore = await headers();
   const locale = localeFromUser(user) ?? localeFromAcceptLanguage(headerStore.get("accept-language"));

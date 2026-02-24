@@ -18,6 +18,7 @@ from app.services.identity import get_or_create_local_user_from_supabase_claims
 
 settings = get_settings()
 ACCESS_REVIEW_PENDING_DETAIL = "Application is under review"
+PAYMENT_DISABLED_DETAIL = "Payment features are currently disabled"
 
 
 def _unauthorized() -> HTTPException:
@@ -179,3 +180,8 @@ def require_role(role_name: str):
         return user
 
     return dependency
+
+
+async def require_payment_enabled() -> None:
+    if not settings.payment_enabled:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=PAYMENT_DISABLED_DETAIL)

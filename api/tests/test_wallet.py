@@ -15,6 +15,13 @@ from app.services.wallet import (
 from tests.conftest import MockRedisContextManager
 
 
+@pytest.fixture(autouse=True)
+def _enable_payment_routes_for_wallet_tests(monkeypatch):
+    monkeypatch.setattr("app.http.deps.settings.payment_enabled", True)
+    monkeypatch.setattr("app.services.wallet.settings.payment_enabled", True)
+    monkeypatch.setattr("app.modules.train.service.settings.payment_enabled", True)
+
+
 async def _register_and_login(client, db_session, *, email: str) -> str:
     register_res = await client.post(
         "/api/auth/register",

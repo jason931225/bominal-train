@@ -93,6 +93,12 @@ async def test_pay_task_early_validation_branches(monkeypatch):
     db = _DB()
     user = SimpleNamespace(id=uuid4())
 
+    monkeypatch.setattr(train_service.settings, "payment_enabled", False)
+    with pytest.raises(HTTPException) as disabled:
+        await train_service.pay_task(db, task_id=uuid4(), user=user)
+    assert disabled.value.status_code == 403
+    monkeypatch.setattr(train_service.settings, "payment_enabled", True)
+
     expired_task = _task(state="EXPIRED")
     async def _task_expired(*_args, **_kwargs):  # noqa: ANN002, ANN003
         return expired_task
@@ -160,6 +166,7 @@ async def test_pay_task_early_validation_branches(monkeypatch):
 async def test_pay_task_paid_missing_card_and_payment_failure_paths(monkeypatch):
     user = SimpleNamespace(id=uuid4())
     db = _DB()
+    monkeypatch.setattr(train_service.settings, "payment_enabled", True)
     task = _task(state="COMPLETED")
     artifact = Artifact(
         task_id=uuid4(),
@@ -327,6 +334,7 @@ async def test_cancel_ticket_branch_matrix(monkeypatch):
 @pytest.mark.asyncio
 async def test_pay_task_success_sync_error_and_sync_merge_paths(monkeypatch):
     user = SimpleNamespace(id=uuid4())
+    monkeypatch.setattr(train_service.settings, "payment_enabled", True)
     now = datetime(2026, 2, 22, 12, 0, tzinfo=timezone.utc)
     task = _task(state="FAILED")
     artifact = Artifact(

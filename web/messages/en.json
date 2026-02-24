@@ -126,6 +126,16 @@
     "welcome": "Hi {name}, welcome to bominal.",
     "body": "Your modular workspace is ready. Pick a module to explore the shell while feature work is on the way."
   },
+  "review": {
+    "kicker": "Access review",
+    "title": "Your application is under review",
+    "body": "Your account is signed in, but access is restricted until an admin approves your application.",
+    "signedInAs": "Signed in as {email}",
+    "deleteAccount": "Delete account",
+    "deleting": "Deleting account...",
+    "deleteConfirm": "Delete this account now? This cannot be undone.",
+    "deleteFailed": "Could not delete account."
+  },
   "modules": {
     "available": "Available",
     "comingSoon": "Coming soon",
@@ -272,9 +282,20 @@
       "table": {
         "user": "User",
         "role": "Role",
+        "access": "Access",
         "sessions": "Sessions",
         "lastSeen": "Last Seen",
         "actions": "Actions"
+      },
+      "access": {
+        "pending": "Pending",
+        "approved": "Approved",
+        "rejected": "Rejected"
+      },
+      "pending": {
+        "title": "Pending Applications",
+        "count": "{count} pending",
+        "empty": "No pending applications."
       },
       "pagination": {
         "showing": "Showing {from}-{to} of {total}",
@@ -293,6 +314,8 @@
         "view": "View",
         "promoteToAdmin": "Promote to Admin",
         "demoteToUser": "Demote to User",
+        "approve": "Approve",
+        "reject": "Reject",
         "revokeSessions": "Revoke Sessions ({count})",
         "deleteUserPermanently": "Delete User Permanently"
       },
@@ -301,6 +324,7 @@
       "never": "Never",
       "roleUpdated": "Role updated to {role}",
       "failedUpdateRole": "Failed to update role",
+      "failedUpdateAccess": "Failed to update access status",
       "confirmRevokeSessions": "This will log the user out of all devices. Continue?",
       "failedRevokeSessions": "Failed to revoke sessions",
       "confirmDeleteUser1": "PERMANENTLY DELETE user {email}? This cannot be undone!",
@@ -452,7 +476,7 @@
       "prev": "Prev",
       "next": "Next"
     },
-    "pollingHint": "Polling every 10s while active.",
+    "pollingHint": "Live updates on task state changes.",
     "confirm": {
       "cancelTask": "Cancel this active task?",
       "cancelTicket": "Cancel this reservation ticket?",

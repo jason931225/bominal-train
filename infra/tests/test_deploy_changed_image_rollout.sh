@@ -181,8 +181,8 @@ run_case 0 0 0 1 "$UNCHANGED_CALLS" "$UNCHANGED_OUT"
 run_case 1 0 0 1 "$API_ONLY_CALLS" "$API_ONLY_OUT"
 run_case 0 0 0 0 "$MISSING_WORKER_CALLS" "$MISSING_WORKER_OUT"
 
-if ! rg -q "up -d --wait postgres redis$" "$UNCHANGED_CALLS"; then
-  echo "FAIL: unchanged-image case did not run base db/redis stage" >&2
+if ! rg -q "up -d --wait redis$" "$UNCHANGED_CALLS"; then
+  echo "FAIL: unchanged-image case did not run base redis stage" >&2
   cat "$UNCHANGED_CALLS" >&2
   exit 1
 fi

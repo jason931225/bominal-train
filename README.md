@@ -127,7 +127,6 @@ Compatibility notice:
 1) Create prod env files from templates:
 
 ```bash
-cp infra/env/prod/postgres.env.example infra/env/prod/postgres.env
 cp infra/env/prod/api.env.example infra/env/prod/api.env
 cp infra/env/prod/web.env.example infra/env/prod/web.env
 cp infra/env/prod/caddy.env.example infra/env/prod/caddy.env
@@ -138,8 +137,7 @@ Optional:
 - Canonical `infra/scripts/deploy.sh` does not require `deploy.env`.
 
 2) Edit those files and replace every `CHANGE_ME...` value. Required manual deploy values:
-   - `infra/env/prod/postgres.env`: `POSTGRES_PASSWORD`
-   - `infra/env/prod/api.env`: `INTERNAL_API_KEY`, `MASTER_KEY`, DB password portions of `DATABASE_URL` and `SYNC_DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_JWT_ISSUER`, `RESEND_API_KEY`, sender-domain placeholder in `EMAIL_FROM_ADDRESS`, plus passkey origin settings (`PASSKEY_RP_ID`, `PASSKEY_ORIGIN`)
+   - `infra/env/prod/api.env`: `INTERNAL_API_KEY`, `MASTER_KEY`, `DATABASE_URL`, `SYNC_DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_JWT_ISSUER`, `SUPABASE_AUTH_API_KEY` (or `SUPABASE_SERVICE_ROLE_KEY` fallback), `RESEND_API_KEY`, sender-domain placeholder in `EMAIL_FROM_ADDRESS`, plus passkey origin settings (`PASSKEY_RP_ID`, `PASSKEY_ORIGIN`)
   - `infra/env/prod/web.env`:
     - keep `NEXT_PUBLIC_API_BASE_URL` empty so browser auth requests stay same-origin (required for `SameSite=Lax` session cookies)
     - set `API_SERVER_URL=http://api:8000` for server-side Next.js fetches in monolithic API runtime
@@ -149,11 +147,12 @@ Optional:
    - Optional, mode-dependent:
      - `AUTH_MODE=legacy`: Supabase JWT fields can be left empty
      - `AUTH_MODE=dual`: `SUPABASE_URL`, `SUPABASE_JWT_ISSUER` are still required (and `SUPABASE_JWKS_URL` if overriding default)
+     - `SUPABASE_AUTH_ENABLED=true`: set `SUPABASE_AUTH_API_KEY` (or `SUPABASE_SERVICE_ROLE_KEY`) and `SUPABASE_AUTH_TIMEOUT_SECONDS`
      - `SUPABASE_STORAGE_ENABLED=true`: `SUPABASE_SERVICE_ROLE_KEY`
      - `EMAIL_PROVIDER=disabled`: Resend credentials may remain unset
      - `EMAIL_PROVIDER=smtp`: `SMTP_HOST`, `SMTP_PORT`, and SMTP credentials/TLS flags as needed
 
-   Production note: set `DATABASE_URL` / `SYNC_DATABASE_URL` to your managed Postgres endpoint (for example Supabase Postgres). Local dev remains Docker-local Postgres/Redis by default.
+   Production note: `DATABASE_URL` / `SYNC_DATABASE_URL` must target Supabase Postgres (`*.supabase.co`) with TLS required (`sslmode=require` or equivalent). Local dev remains Docker-local Postgres/Redis by default.
 
 3) Deploy (recommended):
 
@@ -375,7 +374,7 @@ docker compose -f infra/docker-compose.yml exec web npx tsc --noEmit
 Run this checklist before first deployment:
 
 1. **Env sanity**
-   - `infra/env/prod/postgres.env`, `infra/env/prod/api.env`, `infra/env/prod/web.env`, `infra/env/prod/caddy.env` exist.
+   - `infra/env/prod/api.env`, `infra/env/prod/web.env`, `infra/env/prod/caddy.env` exist.
    - No `CHANGE_ME` placeholders remain.
    - `APP_ENV=production` in `infra/env/prod/api.env`.
    - `MASTER_KEY` is set to a real 32-byte base64 key (generate with `openssl rand -base64 32`).

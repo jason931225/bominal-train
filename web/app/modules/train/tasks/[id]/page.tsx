@@ -1,8 +1,8 @@
 import { TrainTaskDetail } from "@/components/train/train-task-detail";
-import { requireUser } from "@/lib/server-auth";
+import { requireApprovedUser } from "@/lib/server-auth";
 
 export default async function TrainTaskDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  await requireUser();
+  await requireApprovedUser();
   const resolvedParams = await params;
   return <TrainTaskDetail taskId={resolvedParams.id} />;
 }

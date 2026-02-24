@@ -1,8 +1,8 @@
 import { PaymentSettingsPanel } from "@/components/wallet/payment-settings-panel";
-import { requireUser } from "@/lib/server-auth";
+import { requireApprovedUser } from "@/lib/server-auth";
 
 export default async function PaymentSettingsPage() {
-  await requireUser();
+  await requireApprovedUser();
 
   return (
     <section>
