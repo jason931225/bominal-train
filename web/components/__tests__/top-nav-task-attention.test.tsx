@@ -1,10 +1,15 @@
 import React from "react";
 
-import { act, render, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { LocaleProvider } from "@/components/locale-provider";
 import { TopNavTaskAttention } from "@/components/top-nav-task-attention";
+import {
+  clearStoredDummyTaskCards,
+  setDummyTaskCardsModeEnabled,
+  storeDummyTaskCards,
+} from "@/lib/train/dummy-task-cards";
 import { clearTaskListBootstrapSnapshot } from "@/lib/train/task-list-bootstrap";
 import type { TrainTaskSummary } from "@/lib/types";
 
@@ -71,6 +76,42 @@ function makeTaskListResponse(id: string = "t-1"): Response {
   });
 }
 
+function makeEmptyTaskListResponse(): Response {
+  return new Response(JSON.stringify({ tasks: [] }), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+function createMemoryStorage(): Storage {
+  const store = new Map<string, string>();
+  return {
+    get length() {
+      return store.size;
+    },
+    clear() {
+      store.clear();
+    },
+    getItem(key: string) {
+      return store.has(key) ? store.get(key)! : null;
+    },
+    key(index: number) {
+      return Array.from(store.keys())[index] ?? null;
+    },
+    removeItem(key: string) {
+      store.delete(key);
+    },
+    setItem(key: string, value: string) {
+      store.set(String(key), String(value));
+    },
+  } as Storage;
+}
+
+function resetDummyStorage() {
+  setDummyTaskCardsModeEnabled(false);
+  clearStoredDummyTaskCards();
+}
+
 function createDeferred<T>(): {
   promise: Promise<T>;
   resolve: (value: T) => void;
@@ -123,14 +164,29 @@ function makeAttentionTask(id: string): TrainTaskSummary {
 }
 
 describe("TopNavTaskAttention", () => {
+  const originalLocalStorage = Object.getOwnPropertyDescriptor(window, "localStorage");
+  const originalSessionStorage = Object.getOwnPropertyDescriptor(window, "sessionStorage");
   const fetchMock = vi.fn<typeof fetch>();
   let visibilityState: DocumentVisibilityState = "visible";
+
+  const installStorageMocks = () => {
+    Object.defineProperty(window, "localStorage", {
+      configurable: true,
+      value: createMemoryStorage(),
+    });
+    Object.defineProperty(window, "sessionStorage", {
+      configurable: true,
+      value: createMemoryStorage(),
+    });
+  };
 
   beforeEach(() => {
     MockEventSource.instances = [];
     visibilityState = "visible";
     vi.clearAllMocks();
     clearTaskListBootstrapSnapshot();
+    installStorageMocks();
+    resetDummyStorage();
     vi.stubGlobal("EventSource", MockEventSource as unknown as typeof EventSource);
     vi.stubGlobal("fetch", fetchMock);
     Object.defineProperty(document, "visibilityState", {
@@ -142,7 +198,17 @@ describe("TopNavTaskAttention", () => {
   });
 
   afterEach(() => {
+    resetDummyStorage();
     vi.unstubAllGlobals();
+  });
+
+  afterAll(() => {
+    if (originalLocalStorage) {
+      Object.defineProperty(window, "localStorage", originalLocalStorage);
+    }
+    if (originalSessionStorage) {
+      Object.defineProperty(window, "sessionStorage", originalSessionStorage);
+    }
   });
 
   it("boots from SSE snapshot without initial list fetch and refreshes on terminal state events", async () => {
@@ -187,6 +253,27 @@ describe("TopNavTaskAttention", () => {
     expect(fetchMock).toHaveBeenCalledTimes(0);
   });
 
+  it("refreshes attention on pending ticket-status changes", async () => {
+    render(
+      <LocaleProvider initialLocale="en">
+        <TopNavTaskAttention userId="user-1" displayName="Jason" />
+      </LocaleProvider>,
+    );
+
+    await act(async () => {
+      MockEventSource.emit("task_ticket_status", {
+        task_id: "t-1",
+        state: "POLLING",
+        previous_ticket_status: "waiting",
+        ticket_status: "awaiting_payment",
+      });
+    });
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+  });
+
   it("coalesces burst terminal-state refresh events into a single queued follow-up request", async () => {
     render(
       <LocaleProvider initialLocale="en">
@@ -229,5 +316,30 @@ describe("TopNavTaskAttention", () => {
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(0);
+  });
+
+  it("ignores persisted dummy tasks until dummy mode is explicitly enabled", async () => {
+    fetchMock.mockImplementation(() => Promise.resolve(makeEmptyTaskListResponse()));
+    storeDummyTaskCards([makeAttentionTask("dummy-attention")]);
+
+    render(
+      <LocaleProvider initialLocale="en">
+        <TopNavTaskAttention userId="user-4" displayName="Jason" />
+      </LocaleProvider>,
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Alerts" }));
+    expect(screen.getAllByText("No tasks currently need attention.").length).toBeGreaterThan(0);
+
+    setDummyTaskCardsModeEnabled(true);
+    storeDummyTaskCards([makeAttentionTask("dummy-attention")]);
+
+    await waitFor(() => {
+      expect(screen.getAllByText("수서 -> 부산").length).toBeGreaterThan(0);
+    });
   });
 });

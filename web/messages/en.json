@@ -337,8 +337,12 @@
     "kicker": "Train",
     "searchSchedules": "Search schedules",
     "stationDateTime": "Station / Date / Time",
+    "station": "Station",
     "departureStation": "Departure station",
     "arrivalStation": "Arrival station",
+    "fromShort": "From",
+    "toShort": "To",
+    "timeShort": "Time",
     "swapStations": "Swap departure and arrival stations",
     "passengerSeatClass": "Passenger / Seat Class",
     "selectSchedules": "Select schedules ({date})",
@@ -370,6 +374,7 @@
     "skippedDisabled": "Skipped (disabled)",
     "change": "Change",
     "connect": "Connect",
+    "ignore": "Ignore",
     "verifying": "Verifying...",
     "connectProvider": "Connect {provider}",
     "continueWithoutProvider": "Continue without {provider}",
@@ -413,7 +418,6 @@
     "generalSoldOut": "General sold out",
     "specialAvailable": "Special available",
     "specialSoldOut": "Special sold out",
-    "selectToCreateTask": "Select schedules from the table to create a strict Task.",
     "up": "Up",
     "down": "Down",
     "selectSchedulesFirst": "Select schedules first",
@@ -422,6 +426,15 @@
     "notify": "Notify",
     "creatingTask": "Creating Task...",
     "createTask": "Create Task",
+    "continueTask": "Continue",
+    "reviewTask": {
+      "title": "Review task before starting",
+      "body": "Confirm the details below to start this task.",
+      "confirm": "Confirm",
+      "selectedSchedules": "Selected schedules",
+      "enabled": "Enabled",
+      "disabled": "Disabled"
+    },
     "walletRequiredAutoPay": "Wallet required for auto-pay.",
     "configureIn": "Configure in",
     "noSchedulesYet": "No schedules returned yet. Adjust filters and search again.",
@@ -435,6 +448,7 @@
       "cancelled": "Cancelled",
       "reservationNotFound": "Reservation Not Found",
       "awaitingPayment": "Awaiting Payment",
+      "waitlisted": "Waitlisted",
       "confirmed": "Confirmed"
     },
     "error": {
@@ -463,10 +477,11 @@
     "duplicateCheck": {
       "title": "You have an existing reservation for this schedule.",
       "body": "Are you sure you want to create another task for the same departure time?",
+      "leaveDetailTitle": "Open task detail?",
       "createAnyway": "Create anyway",
       "category": {
         "already_reserved": "Reserved ticket",
-        "waiting": "Waiting list",
+        "waiting": "Waitlisted",
         "polling": "Polling task"
       }
     },
@@ -498,18 +513,22 @@
       "cancelTicket": "Cancel this reservation ticket?",
       "payNow": "Process payment for this awaiting reservation now?",
       "signOutProvider": "Sign out {provider} credentials?",
-      "hideTask": "Hide this task from your list?"
+      "hideTask": "Hide this task from your list?",
+      "leaveDuplicateWarningDetail": "Open task detail now? You will leave this screen and need to search again."
     },
     "action": {
       "cancelling": "Cancelling...",
       "cancelReservation": "Cancel reservation",
       "cancel": "Cancel",
       "payNow": "Pay now",
+      "retry": "Retry",
       "pause": "Pause",
       "resume": "Resume",
       "pay": "Pay",
       "paying": "Paying...",
-      "detail": "Detail"
+      "detail": "Detail",
+      "showScheduleOptions": "Show schedule options",
+      "hideScheduleOptions": "Hide schedule options"
     },
     "hint": {
       "paymentSettingsRequired": "Payment settings required"
@@ -527,9 +546,17 @@
       "schedule": "Schedule:",
       "route": "Route:",
       "passengers": "Passengers:",
+      "train": "Train:",
+      "seats": "Seats:",
+      "message": "Message:",
       "nextCheck": "Next check:",
       "lastError": "Last error:",
       "taskId": "Task ID:"
+    },
+    "progress": {
+      "nextAttempt": "Next attempt",
+      "remaining": "{time} remaining",
+      "running": "Checking now"
     },
     "empty": {
       "activeTasks": "No active tasks.",
@@ -558,7 +585,8 @@
       "unknown": "Unknown error"
     },
     "ticketStyle": {
-      "activeTask": "Train task"
+      "activeTask": "Train task",
+      "completedTask": "Completed task"
     },
     "task": {
       "actionFailed": "Could not update task."

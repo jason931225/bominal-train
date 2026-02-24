@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocale } from "@/components/locale-provider";
 import { ROUTES } from "@/lib/routes";
 import {
+  readDummyTaskCardsModeEnabled,
   readDummyTaskCards,
   TRAIN_DUMMY_TASKS_ENABLED,
   TRAIN_DUMMY_TASKS_EVENT,
@@ -24,19 +25,28 @@ import type { TrainTaskSummary } from "@/lib/types";
 const ATTENTION_STORAGE_PREFIX = "bominal_train_attention_seen_v1";
 const TERMINAL_TASK_STATES = new Set(["COMPLETED", "CANCELLED", "EXPIRED", "FAILED"]);
 const ATTENTION_REFRESH_EVENT_STATES = new Set(["COMPLETED", "CANCELLED", "EXPIRED", "FAILED"]);
+const PENDING_TICKET_STATUSES = new Set(["awaiting_payment", "waiting"]);
 const MOBILE_DRAWER_HIDDEN_TRANSLATE = "calc(-100dvh - 24px)";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function isAwaitingPayment(task: Pick<TrainTaskSummary, "ticket_status" | "ticket_paid">): boolean {
-  return task.ticket_status === "awaiting_payment" && task.ticket_paid !== true;
+function isPendingTicket(task: Pick<TrainTaskSummary, "ticket_status" | "ticket_paid">): boolean {
+  const status = String(task.ticket_status || "").trim().toLowerCase();
+  return PENDING_TICKET_STATUSES.has(status) && task.ticket_paid !== true;
+}
+
+function pendingBadgeKey(task: Pick<TrainTaskSummary, "ticket_status" | "ticket_paid">): string | null {
+  if (!isPendingTicket(task)) return null;
+  return String(task.ticket_status || "").trim().toLowerCase() === "waiting"
+    ? "train.badge.waitlisted"
+    : "train.badge.awaitingPayment";
 }
 
 function needsAttention(task: TrainTaskSummary): boolean {
   if (TERMINAL_TASK_STATES.has(task.state)) return true;
-  return isAwaitingPayment(task);
+  return isPendingTicket(task);
 }
 
 function extractTaskIdFromPath(pathname: string | null): string | null {
@@ -191,7 +201,7 @@ export function TopNavTaskAttention({
       merged.set(task.id, task);
     }
 
-    if (TRAIN_DUMMY_TASKS_ENABLED) {
+    if (TRAIN_DUMMY_TASKS_ENABLED && readDummyTaskCardsModeEnabled()) {
       for (const task of readDummyTaskCards()) {
         merged.set(task.id, task);
       }
@@ -256,6 +266,14 @@ export function TopNavTaskAttention({
         return;
       }
       if (document.visibilityState === "hidden") return;
+      if (event.type === "task_ticket_status") {
+        const currentStatus = String(payload.ticket_status || "").trim().toLowerCase();
+        const previousStatus = String(payload.previous_ticket_status || "").trim().toLowerCase();
+        if (PENDING_TICKET_STATUSES.has(currentStatus) || PENDING_TICKET_STATUSES.has(previousStatus)) {
+          void loadAttentionTasks({ forceRemote: true });
+        }
+        return;
+      }
       if (event.type !== "task_state") {
         return;
       }
@@ -265,7 +283,7 @@ export function TopNavTaskAttention({
     });
     const onVisibilityChange = () => {
       if (document.visibilityState === "visible") {
-        void loadAttentionTasks({ forceRemote: true });
+        void loadAttentionTasks();
       }
     };
     const fallbackTimer = window.setTimeout(() => {
@@ -448,6 +466,7 @@ export function TopNavTaskAttention({
           <ul className="max-h-80 space-y-2 overflow-auto pr-1">
             {unseenTasks.map((task) => {
               const isSelected = selectedTaskIds.has(task.id);
+              const taskPendingBadgeKey = pendingBadgeKey(task);
               return (
                 <li key={task.id}>
                   {selectionMode ? (
@@ -463,9 +482,9 @@ export function TopNavTaskAttention({
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex items-center justify-start gap-1.5">
                           <span className="text-xs font-semibold text-slate-700">{task.state}</span>
-                          {isAwaitingPayment(task) ? (
+                          {taskPendingBadgeKey ? (
                             <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
-                              {t("train.badge.awaitingPayment")}
+                              {t(taskPendingBadgeKey)}
                             </span>
                           ) : null}
                         </div>
@@ -495,9 +514,9 @@ export function TopNavTaskAttention({
                     >
                       <div className="flex items-center justify-start gap-1.5">
                         <span className="text-xs font-semibold text-slate-700">{task.state}</span>
-                        {isAwaitingPayment(task) ? (
+                        {taskPendingBadgeKey ? (
                           <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
-                            {t("train.badge.awaitingPayment")}
+                            {t(taskPendingBadgeKey)}
                           </span>
                         ) : null}
                       </div>

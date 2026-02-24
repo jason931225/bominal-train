@@ -121,6 +121,9 @@ export type TrainTaskSummary = {
   ticket_paid?: boolean | null;
   ticket_payment_deadline_at?: string | null;
   ticket_reservation_id?: string | null;
+  ticket_train_no?: string | null;
+  ticket_seat_count?: number | null;
+  ticket_seats?: string[] | null;
 };
 
 export type TrainTaskAttempt = {
