@@ -212,7 +212,7 @@ git commit -m "fix: enforce secret kek_version validation at decrypt boundary"
 
 **Files:**
 - Modify: `api/app/core/crypto/envelope.py`
-- Modify: `docs/SECURITY.md`
+- Modify: `docs/humans/security/SECURITY.md`
 
 **Step 1: Write failing test for serialization compatibility contract note (doc gate)**
 
@@ -241,7 +241,7 @@ Expected: PASS.
 **Step 5: Commit**
 
 ```bash
-git add api/app/core/crypto/envelope.py api/tests/test_crypto_envelope.py docs/SECURITY.md
+git add api/app/core/crypto/envelope.py api/tests/test_crypto_envelope.py docs/humans/security/SECURITY.md
 git commit -m "hardening: reduce sensitive-memory lifetime and document crypto serialization contract"
 ```
 

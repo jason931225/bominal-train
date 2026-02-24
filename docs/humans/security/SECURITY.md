@@ -295,8 +295,8 @@ Manual review must verify:
 
 This policy extends:
 
-- `docs/GUARDRAILS.md` (hard constraints)
-- `docs/PERMISSIONS.md` (approval boundaries)
+- `docs/agents/GUARDRAILS.md` (hard constraints)
+- `docs/agents/PERMISSIONS.md` (approval boundaries)
 
 Guardrails override implementation shortcuts. If this policy conflicts with feature velocity, security prevails.
 

@@ -77,7 +77,7 @@ Capture and replay the minimum verified HTTP contract required to progress from 
 ## Artifacts and Pointers
 
 - `docs/README.md` canonical pointers.
-- `docs/EXECUTION_PROTOCOL.md` lock/request protocol.
+- `docs/agents/EXECUTION_PROTOCOL.md` lock/request protocol.
 - Provider-specific HAR and capture artifacts under approved internal storage paths only.
 
 ## Change History

@@ -9,7 +9,7 @@ Status: Completed in implementation (2026-02-14).
 
 **Goal:** Finalize canonical docs governance for restructure work: active plan index, archive hygiene, pointer completeness, and policy consistency across AGENTS + docs.
 
-**Architecture:** Treat `docs/README.md` as the canonical pointer registry and enforce active/archive separation for plans. Keep policy constraints synchronized across `AGENTS.md`, `docs/EXECUTION_PROTOCOL.md`, and operational docs through validator-driven updates.
+**Architecture:** Treat `docs/README.md` as the canonical pointer registry and enforce active/archive separation for plans. Keep policy constraints synchronized across `AGENTS.md`, `docs/agents/EXECUTION_PROTOCOL.md`, and operational docs through validator-driven updates.
 
 **Tech Stack:** Markdown docs, shell validators in `infra/tests`.
 
@@ -51,10 +51,10 @@ git commit -m "docs: normalize active plan pointers and intent routing"
 
 **Files:**
 - Modify: `AGENTS.md`
-- Modify: `docs/EXECUTION_PROTOCOL.md`
-- Modify: `docs/DOCUMENTATION_WORKFLOW.md`
-- Modify: `docs/PERMISSIONS.md`
-- Modify: `docs/GUARDRAILS.md`
+- Modify: `docs/agents/EXECUTION_PROTOCOL.md`
+- Modify: `docs/governance/DOCUMENTATION_POLICY.md`
+- Modify: `docs/agents/PERMISSIONS.md`
+- Modify: `docs/agents/GUARDRAILS.md`
 
 **Step 1: Write failing consistency checks**
 
@@ -77,7 +77,7 @@ Expected: PASS.
 **Step 4: Commit**
 
 ```bash
-git add AGENTS.md docs/EXECUTION_PROTOCOL.md docs/DOCUMENTATION_WORKFLOW.md docs/PERMISSIONS.md docs/GUARDRAILS.md
+git add AGENTS.md docs/agents/EXECUTION_PROTOCOL.md docs/governance/DOCUMENTATION_POLICY.md docs/agents/PERMISSIONS.md docs/agents/GUARDRAILS.md
 git commit -m "docs: align governance protocol language across canonical docs"
 ```
 

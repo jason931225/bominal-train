@@ -7,7 +7,7 @@ These rules are hard constraints. If a request conflicts with guardrails, refuse
 ## Priority and Scope
 
 - Guardrails override all other docs and workflows.
-- `docs/PERMISSIONS.md` defines what may be allowed; this file defines what is never allowed without explicit approval.
+- `docs/agents/PERMISSIONS.md` defines what may be allowed; this file defines what is never allowed without explicit approval.
 
 ## Hard Rules
 

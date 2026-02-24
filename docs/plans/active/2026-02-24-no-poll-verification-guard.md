@@ -25,9 +25,9 @@ Success criteria:
 - Test and guard scripts:
   - web unit tests and optional static guard script
 - Docs:
-  - `docs/ARCHITECTURE.md`
-  - `docs/CONTRIBUTING.md`
-  - `docs/RUNBOOK.md`
+  - `docs/humans/engineering/ARCHITECTURE.md`
+  - `docs/humans/engineering/CONTRIBUTING.md`
+  - `docs/humans/operations/RUNBOOK.md`
   - `CHANGELOG.md`
 
 ## Out of Scope

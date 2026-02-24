@@ -23,7 +23,7 @@ Mirror the train-provider style with:
 - `docs/playbooks/provider-adapter-contract-template.md`
 - `docs/README.md`
 - `docs/INTENT_ROUTING.md`
-- `docs/ARCHITECTURE.md`
+- `docs/humans/engineering/ARCHITECTURE.md`
 
 ## Execution status (2026-02-17)
 

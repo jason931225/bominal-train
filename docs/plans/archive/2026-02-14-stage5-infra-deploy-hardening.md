@@ -129,8 +129,8 @@ git commit -m "infra(deploy): gate deploy on resource and swap preflight"
 **Files:**
 - Modify: `infra/scripts/deploy.sh`
 - Create: `infra/tests/test_deploy_smoke_rollback.sh`
-- Modify: `docs/DEPLOYMENT.md`
-- Modify: `docs/RUNBOOK.md`
+- Modify: `docs/humans/operations/DEPLOYMENT.md`
+- Modify: `docs/humans/operations/RUNBOOK.md`
 
 **Step 1: Write failing smoke/rollback tests**
 
@@ -156,7 +156,7 @@ Expected: PASS.
 **Step 5: Commit**
 
 ```bash
-git add infra/scripts/deploy.sh infra/tests/test_deploy_smoke_rollback.sh docs/DEPLOYMENT.md docs/RUNBOOK.md
+git add infra/scripts/deploy.sh infra/tests/test_deploy_smoke_rollback.sh docs/humans/operations/DEPLOYMENT.md docs/humans/operations/RUNBOOK.md
 git commit -m "infra/deploy: add smoke-failure rollback trigger and docs"
 ```
 

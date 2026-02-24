@@ -123,8 +123,8 @@ Implemented:
   - `docs/deprecations/2026-02-14-inventory.md`
 - Compatibility notices for deprecated deploy artifact:
   - `README.md`
-  - `docs/DEPLOYMENT.md`
-  - `docs/RUNBOOK.md`
+  - `docs/humans/operations/DEPLOYMENT.md`
+  - `docs/humans/operations/RUNBOOK.md`
 - Deprecated artifact removal:
   - removed `infra/docker-compose.deploy.yml.deprecated`
 - Guarded regression check for active references:
@@ -137,9 +137,9 @@ Status: **Completed in implementation**.
 Implemented:
 - Canonical policy docs and validators are in place:
   - `docs/README.md`
-  - `docs/EXECUTION_PROTOCOL.md`
-  - `docs/PERMISSIONS.md`
-  - `docs/GUARDRAILS.md`
+  - `docs/agents/EXECUTION_PROTOCOL.md`
+  - `docs/agents/PERMISSIONS.md`
+  - `docs/agents/GUARDRAILS.md`
   - `docs/INTENT_ROUTING.md`
   - `infra/tests/test_docs_pointers.sh`
   - `infra/tests/test_docs_consistency.sh`

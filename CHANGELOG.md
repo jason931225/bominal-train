@@ -13,6 +13,8 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+- [0000000] Added audience-split documentation governance model with canonical `docs/governance/**`, `docs/humans/**`, and `docs/agents/**` trees, plus new start/index entrypoints and policy standards (`docs/START_HERE.md`, `docs/governance/*`, `docs/humans/*`, `docs/agents/*`, `docs/README.md`, `docs/INTENT_ROUTING.md`, `AGENTS.md`).
+- [0000000] Added docs-structure enforcement gate for the audience-split model and wired it into infra quality checks (`infra/tests/test_docs_audience_split.sh`, `.github/workflows/ci-infra-quality-gates.yml`, `infra/tests/test_docs_pointers.sh`, `infra/tests/test_docs_consistency.sh`).
 - [0000000] Added interactive production env bootstrap script that prompts for required secrets/config, writes prod env files from templates with backups, validates key contracts (`MASTER_KEY`, HTTPS origins, unresolved placeholders), and documents canonical usage for deploy readiness (`infra/scripts/bootstrap-prod-env.sh`, `docs/DEPLOYMENT.md`, `README.md`).
 - [0000000] Added active independent best-practice review plan and canonical pointer registration for full-stack engineering quality audit work (`docs/plans/active/2026-02-24-independent-code-best-practice-review.md`, `docs/plans/active/README.md`, `docs/README.md`).
 - [0000000] Added split-runtime integration coverage proving `main_train` enforces review gating (`pending -> 403`, `approved -> 200`) for authenticated train endpoints (`api/tests/test_api_runtime_split.py`).
@@ -68,6 +70,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Changed
 
+- [0000000] Changed repository governance/workflow practice from lock/request ledger coordination to branch/PR coordination with risk-gated approvals and agent overlays, and retargeted canonical doc references to audience-split paths across playbooks/plans/tests/scripts (`docs/governance/CHANGE_MANAGEMENT.md`, `docs/agents/EXECUTION_PROTOCOL.md`, `docs/agents/PERMISSIONS.md`, `docs/playbooks/*`, `docs/plans/*`, `infra/tests/*`).
 - [0000000] Replaced blanket 100%-coverage/assertion-heavy governance language with risk-based test-quality standards focused on critical paths, and corrected AGENTS local compose command examples plus production env placeholder guidance (`docs/EXECUTION_PROTOCOL.md`, `docs/DOCUMENTATION_WORKFLOW.md`, `docs/CONTRIBUTING.md`, `AGENTS.md`).
 - [0000000] Hardened endpoint authorization so under-review users are blocked from approved-only auth mutation/passkey routes and from authenticated module/train/wallet/notification surfaces across monolith and split API entrypoints, while preserving review-safe actions (`/api/auth/me`, `/api/auth/logout`, `/api/auth/account` delete) (`api/app/http/routes/auth.py`, `api/app/http/routes/modules.py`, `api/app/http/routes/notifications.py`, `api/app/http/routes/wallet.py`, `api/app/main_gateway.py`, `api/app/main_train.py`, `api/app/main_restaurant.py`, `api/tests/test_api_access_control.py`, `api/tests/test_api_runtime_split.py`).
 - [f34f647] Changed login UX to email-first continue flow with automatic passkey attempt and deterministic fallback to password sign-in, and moved sensitive account-field verification to passkey-first with password modal fallback while requiring current password to add new passkeys (`web/components/login-form.tsx`, `web/components/__tests__/login-form.test.tsx`, `web/components/account/account-settings-panel.tsx`, `web/lib/passkey.ts`, `web/lib/__tests__/passkey.test.ts`, `web/messages/en.json`, `web/messages/ko.json`).
@@ -151,6 +154,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Removed
 
+- [0000000] Removed legacy top-level canonical docs and dynamic lock/request ledgers in favor of audience-split policy/procedure overlays, and removed obsolete overhaul reference directories/ledger validator (`docs/ARCHITECTURE.md`, `docs/CONTRIBUTING.md`, `docs/DEPLOYMENT.md`, `docs/RUNBOOK.md`, `docs/SECURITY.md`, `docs/EXECUTION_PROTOCOL.md`, `docs/PERMISSIONS.md`, `docs/GUARDRAILS.md`, `docs/DOCUMENTATION_WORKFLOW.md`, `docs/DEPRECATION_WORKFLOW.md`, `docs/LOCK.md`, `docs/REQUEST.md`, `docs/overhaul1`, `docs/overhaul2`, `infra/tests/test_execution_ledgers.sh`).
 - [f3cbeda] Removed completed governance plan document (`docs/plans/2026-02-12-doc-governance-guardrails-grand-plan.md`).
 - [5039127] Removed deprecated deploy compose artifact (`infra/docker-compose.deploy.yml.deprecated`) after guarded dependency scan.
 

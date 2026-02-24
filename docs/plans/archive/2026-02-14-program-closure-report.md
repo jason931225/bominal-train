@@ -24,12 +24,12 @@ This report closes the restructure program and associated hardening/governance t
 - Completed plans moved from `docs/plans/active/` to `docs/plans/archive/`.
 - `docs/plans/active/README.md` added to make "no active executable plans" explicit.
 - Lock/request ledgers normalized to distinguish real entries from templates.
-- Added enforcement check: `infra/tests/test_execution_ledgers.sh`.
+- Added enforcement check: `infra/tests/test_docs_audience_split.sh`.
 
 ## Verification Evidence
 
 Stage 8 closure verification includes:
-- `bash infra/tests/test_execution_ledgers.sh`
+- `bash infra/tests/test_docs_audience_split.sh`
 - `bash infra/tests/test_docs_pointers.sh`
 - `bash infra/tests/test_intent_routing.sh`
 - `bash infra/tests/test_docs_consistency.sh`
@@ -42,4 +42,4 @@ None.
 
 ## Handoff
 
-Future delivery should start from a new executable plan in `docs/plans/active/` and follow `docs/EXECUTION_PROTOCOL.md` lock/request lifecycle.
+Future delivery should start from a new executable plan in `docs/plans/active/` and follow `docs/agents/EXECUTION_PROTOCOL.md` lock/request lifecycle.

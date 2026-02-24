@@ -147,7 +147,7 @@ git commit -m "test/restaurant: add queue producer and routing guard coverage"
 ### Task 4: Documentation and full verification
 
 **Files:**
-- Modify: `docs/ARCHITECTURE.md`
+- Modify: `docs/humans/engineering/ARCHITECTURE.md`
 - Modify: `README.md`
 
 **Step 1: Update docs for queue-domain contracts**
@@ -177,7 +177,7 @@ Expected: all PASS.
 **Step 5: Commit**
 
 ```bash
-git add docs/ARCHITECTURE.md README.md
+git add docs/humans/engineering/ARCHITECTURE.md README.md
 git commit -m "docs: record queue-domain isolation contracts"
 ```
 

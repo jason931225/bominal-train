@@ -99,9 +99,9 @@ jobs:
         run: |
           bash infra/tests/test_docs_pointers.sh
 
-      - name: Validate execution ledgers
+      - name: Validate audience-split docs layout
         run: |
-          bash infra/tests/test_execution_ledgers.sh
+          bash infra/tests/test_docs_audience_split.sh
 
       - name: Validate changelog structure
         run: |

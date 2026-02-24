@@ -51,7 +51,7 @@ Implemented in:
 - `web/components/admin/recent-failures-table.tsx`
 - `infra/scripts/local-check.sh`
 
-Supporting docs were updated in `README.md` and `docs/CONTRIBUTING.md`.
+Supporting docs were updated in `README.md` and `docs/humans/engineering/CONTRIBUTING.md`.
 
 ## Changelog References
 
