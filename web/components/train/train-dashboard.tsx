@@ -13,6 +13,17 @@ import {
   storeDummyTaskCards,
   TRAIN_DUMMY_TASKS_ENABLED,
 } from "@/lib/train/dummy-task-cards";
+import { getTrainStationsCached } from "@/lib/train/stations-cache";
+import { subscribeTrainTaskEvents } from "@/lib/train/task-events";
+import {
+  ACTIVE_TASK_FETCH_LIMIT,
+  COMPLETED_TASK_FETCH_LIMIT,
+  fetchTaskListBootstrap,
+  fetchTasksByStatus as fetchTasksByStatusFromApi,
+  SESSION_EXPIRED_MESSAGE,
+  TASK_LIST_ERROR_MESSAGE,
+  type TaskListStatus,
+} from "@/lib/train/task-list-bootstrap";
 import { formatStationLabel } from "@/lib/train/stations-i18n";
 import type {
   TrainArtifact,
@@ -22,7 +33,7 @@ import type {
   TrainStation,
   TrainTaskState,
   TrainTaskSummary,
-  WalletPaymentCardStatus,
+  WalletPaymentCardConfigured,
 } from "@/lib/types";
 
 type SearchFormState = {
@@ -48,16 +59,11 @@ type CredentialFormState = {
 };
 
 type CredentialProvider = "KTX" | "SRT";
-type TaskListStatus = "active" | "completed";
 type ScheduleSortOrder = "asc" | "desc";
 
 const CREDENTIAL_STATUS_TIMEOUT_MS = 10000;
 const DEFAULT_DEP_STATION = "수서";
 const DEFAULT_ARR_STATION = "마산";
-const TASK_LIST_ERROR_MESSAGE = "task_list_error";
-const SESSION_EXPIRED_MESSAGE = "session_expired";
-const ACTIVE_TASK_FETCH_LIMIT = 60;
-const COMPLETED_TASK_FETCH_LIMIT = 80;
 const ACTIVE_TASK_STATES_FOR_LIST = new Set<TrainTaskState>([
   "QUEUED",
   "RUNNING",
@@ -66,6 +72,19 @@ const ACTIVE_TASK_STATES_FOR_LIST = new Set<TrainTaskState>([
   "PAYING",
   "PAUSED",
 ]);
+const VALID_TASK_EVENT_STATES = new Set<TrainTaskState>([
+  "QUEUED",
+  "RUNNING",
+  "POLLING",
+  "RESERVING",
+  "PAYING",
+  "PAUSED",
+  "COMPLETED",
+  "CANCELLED",
+  "EXPIRED",
+  "FAILED",
+]);
+const TASK_LIST_REFRESH_EVENT_STATES = new Set<TrainTaskState>(["COMPLETED", "CANCELLED", "EXPIRED", "FAILED"]);
 const TRAIN_AUTO_PAY_FEATURE_ENABLED = ["1", "true", "yes", "on"].includes(
   (process.env.NEXT_PUBLIC_TRAIN_AUTO_PAY_ENABLED ?? "false").trim().toLowerCase(),
 );
@@ -121,8 +140,8 @@ const SMALL_SUCCESS_BUTTON_CLASS =
 const SMALL_DISABLED_BUTTON_CLASS =
   "inline-flex h-8 items-center justify-center rounded-full border border-slate-200 bg-slate-100 px-2.5 text-xs font-medium text-slate-500 shadow-sm transition focus:outline-none focus:ring-2 focus:ring-slate-100";
 const EMPTY_CREDENTIAL_STATUS: TrainCredentialStatusResponse = {
-  ktx: { configured: false, verified: false, username: null, verified_at: null, detail: null },
-  srt: { configured: false, verified: false, username: null, verified_at: null, detail: null },
+  ktx: { configured: false, verified: false, detail: null },
+  srt: { configured: false, verified: false, detail: null },
 };
 
 export function isUnpaidAwaitingPaymentTicket(task: Pick<TrainTaskSummary, "ticket_status" | "ticket_paid">): boolean {
@@ -134,6 +153,37 @@ export function isActiveTaskForList(task: TrainTaskSummary): boolean {
     return true;
   }
   return task.state === "COMPLETED" && isUnpaidAwaitingPaymentTicket(task);
+}
+
+function readTaskEventState(value: unknown): TrainTaskState | null {
+  if (typeof value !== "string") return null;
+  return VALID_TASK_EVENT_STATES.has(value as TrainTaskState) ? (value as TrainTaskState) : null;
+}
+
+function applyTaskEventState(
+  tasks: TrainTaskSummary[],
+  options: {
+    taskId: string;
+    state: TrainTaskState;
+    updatedAt: string | null;
+  },
+): TrainTaskSummary[] {
+  const { taskId, state, updatedAt } = options;
+  let changed = false;
+  const next = tasks.map((task) => {
+    if (task.id !== taskId) return task;
+    changed = true;
+    return {
+      ...task,
+      state,
+      updated_at: updatedAt ?? task.updated_at,
+    };
+  });
+  return changed ? next : tasks;
+}
+
+function hasTaskById(tasks: TrainTaskSummary[], taskId: string): boolean {
+  return tasks.some((task) => task.id === taskId);
 }
 
 export function buildDummyTaskCards(now: Date = new Date()): { active: TrainTaskSummary[]; completed: TrainTaskSummary[] } {
@@ -323,26 +373,7 @@ export async function fetchTasksByStatus(
   status: TaskListStatus,
   options?: { refreshCompleted?: boolean; limit?: number },
 ) {
-  const query = new URLSearchParams({ status });
-  if (status === "completed" && options?.refreshCompleted) {
-    query.set("refresh_completed", "true");
-  }
-  query.set("limit", String(options?.limit ?? (status === "active" ? ACTIVE_TASK_FETCH_LIMIT : COMPLETED_TASK_FETCH_LIMIT)));
-
-  const response = await fetch(`${clientApiBaseUrl}/api/train/tasks?${query.toString()}`, {
-    credentials: "include",
-    cache: "no-store",
-  });
-
-  if (!response.ok) {
-    if (response.status === 401) {
-      throw new Error(SESSION_EXPIRED_MESSAGE);
-    }
-    throw new Error(TASK_LIST_ERROR_MESSAGE);
-  }
-
-  const payload = (await response.json()) as { tasks: TrainTaskSummary[] };
-  return payload.tasks;
+  return fetchTasksByStatusFromApi(status, options);
 }
 
 export async function parseApiErrorMessage(response: Response, fallback: string): Promise<string> {
@@ -744,7 +775,7 @@ export function TrainDashboard() {
   const [stations, setStations] = useState<TrainStation[]>([]);
   const [stationsLoading, setStationsLoading] = useState(false);
   const [credentialStatus, setCredentialStatus] = useState<TrainCredentialStatusResponse | null>(null);
-  const [paymentCardStatus, setPaymentCardStatus] = useState<WalletPaymentCardStatus | null>(null);
+  const [paymentCardConfigured, setPaymentCardConfigured] = useState(false);
   const [credentialLoading, setCredentialLoading] = useState(false);
   const [credentialSubmitting, setCredentialSubmitting] = useState(false);
   const [credentialProvider, setCredentialProvider] = useState<CredentialProvider | null>(null);
@@ -756,6 +787,12 @@ export function TrainDashboard() {
   const [dummyTaskCardsMode, setDummyTaskCardsMode] = useState(false);
   const [scheduleSortOrder, setScheduleSortOrder] = useState<ScheduleSortOrder>("asc");
   const tasksLoadInFlight = useRef(false);
+  const activeTasksRef = useRef<TrainTaskSummary[]>([]);
+  const completedTasksRef = useRef<TrainTaskSummary[]>([]);
+  const queuedTaskReload = useRef<{ pending: boolean; refreshCompleted: boolean }>({
+    pending: false,
+    refreshCompleted: false,
+  });
   const dummyTaskCardsModeRef = useRef(false);
   const searchPanelRef = useRef<HTMLDivElement | null>(null);
   const schedulePanelRef = useRef<HTMLDivElement | null>(null);
@@ -819,7 +856,7 @@ export function TrainDashboard() {
     () => sortTasksByScheduleProximity(completedTasks, scheduleSortOrder),
     [completedTasks, scheduleSortOrder],
   );
-  const autoPayAvailable = TRAIN_AUTO_PAY_FEATURE_ENABLED && Boolean(paymentCardStatus?.configured);
+  const autoPayAvailable = TRAIN_AUTO_PAY_FEATURE_ENABLED && paymentCardConfigured;
   const isProviderVerified = (provider: CredentialProvider): boolean =>
     provider === "SRT" ? srtVerified : ktxVerified;
   const isProviderSelected = (provider: CredentialProvider): boolean =>
@@ -834,6 +871,14 @@ export function TrainDashboard() {
       },
     }));
   };
+
+  useEffect(() => {
+    activeTasksRef.current = activeTasks;
+  }, [activeTasks]);
+
+  useEffect(() => {
+    completedTasksRef.current = completedTasks;
+  }, [completedTasks]);
   const toggleProviderSelection = (provider: CredentialProvider) => {
     setProviderSelected(provider, !isProviderSelected(provider));
   };
@@ -864,16 +909,21 @@ export function TrainDashboard() {
 
   const reloadTasks = useCallback(async (options?: { refreshCompleted?: boolean; forceCompleted?: boolean }) => {
     if (dummyTaskCardsModeRef.current) return;
-    if (tasksLoadInFlight.current) return;
+    if (tasksLoadInFlight.current) {
+      queuedTaskReload.current = {
+        pending: true,
+        refreshCompleted: queuedTaskReload.current.refreshCompleted || Boolean(options?.refreshCompleted),
+      };
+      return;
+    }
     tasksLoadInFlight.current = true;
     try {
-      const [active, completed] = await Promise.all([
-        fetchTasksByStatus("active", { limit: ACTIVE_TASK_FETCH_LIMIT }),
-        fetchTasksByStatus("completed", {
-          refreshCompleted: options?.refreshCompleted,
-          limit: COMPLETED_TASK_FETCH_LIMIT,
-        }),
-      ]);
+      const { active, completed } = await fetchTaskListBootstrap({
+        refreshCompleted: options?.refreshCompleted,
+        force: true,
+        activeLimit: ACTIVE_TASK_FETCH_LIMIT,
+        completedLimit: COMPLETED_TASK_FETCH_LIMIT,
+      });
       const nextActiveKey = taskListRenderKey(active);
       setActiveTasks((current) => (taskListRenderKey(current) === nextActiveKey ? current : active));
       const nextCompletedKey = taskListRenderKey(completed);
@@ -894,6 +944,11 @@ export function TrainDashboard() {
       });
     } finally {
       tasksLoadInFlight.current = false;
+      if (queuedTaskReload.current.pending) {
+        const queued = queuedTaskReload.current;
+        queuedTaskReload.current = { pending: false, refreshCompleted: false };
+        void reloadTasks({ refreshCompleted: queued.refreshCompleted, forceCompleted: true });
+      }
     }
   }, []);
 
@@ -968,17 +1023,17 @@ export function TrainDashboard() {
     }
   }, [t]);
 
-  const loadPaymentCardStatus = useCallback(async () => {
+  const loadPaymentCardConfigured = useCallback(async () => {
     try {
-      const response = await fetch(`${clientApiBaseUrl}/api/wallet/payment-card`, {
+      const response = await fetch(`${clientApiBaseUrl}/api/wallet/payment-card/configured`, {
         credentials: "include",
         cache: "no-store",
       });
       if (!response.ok) {
         throw new Error("failed");
       }
-      const payload = (await response.json()) as WalletPaymentCardStatus;
-      setPaymentCardStatus(payload);
+      const payload = (await response.json()) as WalletPaymentCardConfigured;
+      setPaymentCardConfigured(Boolean(payload.configured));
     } catch {
       setErrorMessage((current) => current ?? t("train.error.walletStatusLoad"));
     }
@@ -990,11 +1045,11 @@ export function TrainDashboard() {
 
   useEffect(() => {
     if (!TRAIN_AUTO_PAY_FEATURE_ENABLED) {
-      setPaymentCardStatus(null);
+      setPaymentCardConfigured(false);
       return;
     }
-    void loadPaymentCardStatus();
-  }, [loadPaymentCardStatus]);
+    void loadPaymentCardConfigured();
+  }, [loadPaymentCardConfigured]);
 
   useEffect(() => {
     if (!searchUnlocked) {
@@ -1017,15 +1072,6 @@ export function TrainDashboard() {
       return { ...current, autoPay: nextAutoPay };
     });
   }, [autoPayAvailable]);
-
-  useEffect(() => {
-    if (!activeCredentialProvider || !credentialStatus) return;
-    const statusInfo = activeCredentialProvider === "KTX" ? credentialStatus.ktx : credentialStatus.srt;
-    setCredentialForm({
-      username: statusInfo.username || "",
-      password: "",
-    });
-  }, [activeCredentialProvider, credentialStatus]);
 
   useEffect(() => {
     if (!credentialStatus) return;
@@ -1056,15 +1102,27 @@ export function TrainDashboard() {
     };
 
     void reloadTasks({ refreshCompleted: true, forceCompleted: true });
-    let eventSource: EventSource | null = null;
-
-    if (typeof window !== "undefined" && "EventSource" in window) {
-      eventSource = new EventSource(`${clientApiBaseUrl}/api/train/tasks/events`, { withCredentials: true });
-      const onTaskState = () => {
+    const unsubscribeTaskEvents = subscribeTrainTaskEvents((payload, event) => {
+      if (event.type !== "task_state") return;
+      const state = readTaskEventState(payload.state);
+      if (!state) return;
+      if (TASK_LIST_REFRESH_EVENT_STATES.has(state)) {
+        void refreshIfVisible({ forceCompleted: true, refreshCompleted: true });
+        return;
+      }
+      const taskId = typeof payload.task_id === "string" ? payload.task_id : null;
+      if (!taskId) return;
+      const knownTask =
+        hasTaskById(activeTasksRef.current, taskId) || hasTaskById(completedTasksRef.current, taskId);
+      if (!knownTask) {
+        // Task list can be stale across tabs/sessions; reconcile once on unknown events.
         void refreshIfVisible({ forceCompleted: true });
-      };
-      eventSource.addEventListener("task_state", onTaskState);
-    }
+        return;
+      }
+      const updatedAt = typeof payload.updated_at === "string" ? payload.updated_at : null;
+      setActiveTasks((current) => applyTaskEventState(current, { taskId, state, updatedAt }));
+      setCompletedTasks((current) => applyTaskEventState(current, { taskId, state, updatedAt }));
+    });
 
     const onVisibilityChange = () => {
       if (document.visibilityState === "visible") {
@@ -1074,7 +1132,7 @@ export function TrainDashboard() {
 
     document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
-      eventSource?.close();
+      unsubscribeTaskEvents();
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, [reloadTasks]);
@@ -1084,24 +1142,19 @@ export function TrainDashboard() {
     const loadStations = async () => {
       setStationsLoading(true);
       try {
-        const response = await fetch(`${clientApiBaseUrl}/api/train/stations`, {
-          credentials: "include",
-          cache: "no-store",
-        });
-        if (!response.ok) {
-          return;
-        }
-        const payload = (await response.json()) as { stations: TrainStation[] };
+        const loadedStations = await getTrainStationsCached();
         if (!alive) {
           return;
         }
-        setStations(payload.stations);
-        if (payload.stations.length > 0) {
+        setStations(loadedStations);
+        if (loadedStations.length > 0) {
           setSearchForm((current) => ({
             ...current,
-            ...resolveSearchStations(current.dep, current.arr, payload.stations),
+            ...resolveSearchStations(current.dep, current.arr, loadedStations),
           }));
         }
+      } catch {
+        // Keep default stations when station list cannot be loaded.
       } finally {
         if (alive) {
           setStationsLoading(false);
@@ -1484,13 +1537,11 @@ export function TrainDashboard() {
                     const statusInfo = provider === "KTX" ? credentialStatus?.ktx : credentialStatus?.srt;
                     const isVerified = Boolean(statusInfo?.verified);
                     const isSkipped = omittedProviders.has(provider) && !isVerified;
-                    const username = statusInfo?.username || "-";
                     return (
                       <div key={provider} className="rounded-xl border border-blossom-100 bg-white px-3 py-3">
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
                             <p className="text-xs uppercase tracking-[0.14em] text-blossom-500">{provider}</p>
-                            <p className="mt-1 break-all text-sm font-medium text-slate-700">{username}</p>
                             <p className={`text-xs ${isVerified ? "text-emerald-600" : "text-amber-700"}`}>
                               {isVerified
                                 ? t("train.connected")
@@ -1505,7 +1556,7 @@ export function TrainDashboard() {
                               onClick={() => {
                                 setCredentialProvider(provider);
                                 setCredentialForm({
-                                  username: statusInfo?.username ?? "",
+                                  username: "",
                                   password: "",
                                 });
                               }}
@@ -1823,8 +1874,8 @@ export function TrainDashboard() {
                 <p className="text-xs font-medium uppercase tracking-[0.14em] text-blossom-500">
                   {t("train.passengerSeatClass")}
                 </p>
-                <div className="mt-3 space-y-3">
-                  <label className="text-sm text-slate-700">
+                <div className="mt-4 space-y-4">
+                  <label className="block text-sm text-slate-700">
                     {t("train.seatClass")}
                     <select
                       value={createForm.seatClass}
@@ -1840,7 +1891,7 @@ export function TrainDashboard() {
                     </select>
                   </label>
 
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div className="rounded-xl border border-blossom-100 bg-white/80 px-3 py-3">
                       <p className="text-sm text-slate-700">{t("train.adults")}</p>
                       <div className="mt-2 flex items-center justify-between gap-3 md:hidden">

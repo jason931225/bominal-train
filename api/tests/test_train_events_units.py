@@ -9,6 +9,14 @@ from app.modules.train import events as train_events
 from app.modules.train.router import stream_train_task_events
 
 
+@pytest.fixture(autouse=True)
+def _disable_attention_snapshot(monkeypatch):
+    async def _no_snapshot(*, user):  # noqa: ANN001
+        return None
+
+    monkeypatch.setattr("app.modules.train.router._build_attention_snapshot_payload", _no_snapshot)
+
+
 class _FakeRedisPublisher:
     def __init__(self) -> None:
         self.calls: list[tuple[str, str]] = []

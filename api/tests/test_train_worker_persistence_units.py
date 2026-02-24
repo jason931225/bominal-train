@@ -7,7 +7,14 @@ import pytest
 
 from app.db.models import Task, TaskAttempt
 from app.modules.train.constants import ATTEMPT_ACTION_CANCEL, ATTEMPT_ACTION_PAY, ATTEMPT_ACTION_SEARCH
+from app.modules.train import worker as train_worker
 from app.modules.train.worker import PendingAttempt, _persist_attempts
+
+
+@pytest.fixture(autouse=True)
+def _default_attempt_persistence_override(monkeypatch):
+    # Keep unit expectations deterministic regardless of env/test runtime flags.
+    monkeypatch.setattr(train_worker.settings, "train_persist_all_attempts", False)
 
 
 class _Result:
@@ -174,6 +181,49 @@ async def test_persist_attempts_stores_transition_when_retry_signature_changes(m
     )
 
     assert persisted == [(ATTEMPT_ACTION_SEARCH, False, False, "provider_unreachable")]
+
+
+@pytest.mark.asyncio
+async def test_persist_attempts_stores_duplicate_retry_noise_when_override_enabled(monkeypatch):
+    previous = _persisted_attempt(
+        action=ATTEMPT_ACTION_SEARCH,
+        ok=False,
+        retryable=True,
+        error_code="seat_unavailable",
+        error_message_safe="No available seats in selected trains right now",
+    )
+    db = _DB(previous_attempt=previous)
+    task = _task()
+    persisted: list[tuple[str, bool, bool, str | None]] = []
+
+    async def _fake_save_attempt(_db, *, task, action, provider, ok, retryable, error_code, error_message_safe, duration_ms, meta_json_safe, started_at):  # noqa: ANN001, ANN003
+        persisted.append((action, ok, retryable, error_code))
+        return _persisted_attempt(
+            action=action,
+            ok=ok,
+            retryable=retryable,
+            error_code=error_code,
+            error_message_safe=error_message_safe,
+        )
+
+    monkeypatch.setattr(train_worker.settings, "train_persist_all_attempts", True)
+    monkeypatch.setattr("app.modules.train.worker._save_attempt", _fake_save_attempt)
+
+    await _persist_attempts(
+        db,
+        task=task,
+        attempts=[
+            _attempt(
+                action=ATTEMPT_ACTION_SEARCH,
+                ok=False,
+                retryable=True,
+                error_code="seat_unavailable",
+                error_message_safe="No available seats in selected trains right now",
+            )
+        ],
+    )
+
+    assert persisted == [(ATTEMPT_ACTION_SEARCH, False, True, "seat_unavailable")]
 
 
 @pytest.mark.asyncio

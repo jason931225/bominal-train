@@ -250,8 +250,6 @@ async def _verify_provider_credentials(
         return ProviderCredentialStatus(
             configured=True,
             verified=True,
-            username=creds["username"],
-            verified_at=verified_at,
             detail=None,
         )
 
@@ -269,14 +267,11 @@ async def _verify_provider_credentials(
             return ProviderCredentialStatus(
                 configured=True,
                 verified=True,
-                username=creds["username"],
-                verified_at=verified_at,
                 detail=None,
             )
         return ProviderCredentialStatus(
             configured=True,
             verified=False,
-            username=creds["username"],
             detail=f"{provider} login timed out. Try again.",
         )
     except Exception:
@@ -284,14 +279,11 @@ async def _verify_provider_credentials(
             return ProviderCredentialStatus(
                 configured=True,
                 verified=True,
-                username=creds["username"],
-                verified_at=verified_at,
                 detail=None,
             )
         return ProviderCredentialStatus(
             configured=True,
             verified=False,
-            username=creds["username"],
             detail=f"{provider} login check failed",
         )
 
@@ -300,15 +292,11 @@ async def _verify_provider_credentials(
             return ProviderCredentialStatus(
                 configured=True,
                 verified=True,
-                username=creds["username"],
-                verified_at=verified_at,
                 detail=None,
             )
         return ProviderCredentialStatus(
             configured=True,
             verified=False,
-            username=creds["username"],
-            verified_at=verified_at,
             detail=login_outcome.error_message_safe or f"{provider} login failed",
         )
 
@@ -327,8 +315,6 @@ async def _verify_provider_credentials(
     return ProviderCredentialStatus(
         configured=True,
         verified=True,
-        username=creds["username"],
-        verified_at=fresh_verified_at,
         detail=None,
     )
 
@@ -345,8 +331,6 @@ async def _status_from_saved_credentials(
         return ProviderCredentialStatus(
             configured=False,
             verified=False,
-            username=None,
-            verified_at=None,
             detail="Credentials are missing",
         )
 
@@ -355,8 +339,6 @@ async def _status_from_saved_credentials(
     return ProviderCredentialStatus(
         configured=True,
         verified=verified,
-        username=creds["username"],
-        verified_at=verified_at,
         detail=None if verified else fallback_detail,
     )
 
@@ -432,7 +414,7 @@ async def set_srt_credentials(
     }
     await _save_provider_credentials(db, user_id=user.id, provider="SRT", payload=secret_payload)
     await db.commit()
-    return SRTCredentialStatusResponse(configured=True, verified=True, username=username, verified_at=now)
+    return SRTCredentialStatusResponse(configured=True, verified=True, detail=None)
 
 
 async def set_ktx_credentials(
@@ -468,7 +450,7 @@ async def set_ktx_credentials(
     }
     await _save_provider_credentials(db, user_id=user.id, provider="KTX", payload=secret_payload)
     await db.commit()
-    return KTXCredentialStatusResponse(configured=True, verified=True, username=username, verified_at=now)
+    return KTXCredentialStatusResponse(configured=True, verified=True, detail=None)
 
 
 async def _clear_provider_credentials(
@@ -486,8 +468,6 @@ async def _clear_provider_credentials(
     return ProviderCredentialStatus(
         configured=False,
         verified=False,
-        username=None,
-        verified_at=None,
         detail=f"{provider} credentials signed out",
     )
 
@@ -1259,11 +1239,17 @@ async def pause_task(db: AsyncSession, *, task_id: UUID, user: User) -> TaskActi
 
 async def resume_task(db: AsyncSession, *, task_id: UUID, user: User) -> TaskActionResponse:
     task = await get_task_for_user(db, task_id=task_id, user=user)
-    if task.state != "PAUSED":
+    if task.state in TERMINAL_TASK_STATES:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot resume terminal task")
+    if task.state != "PAUSED" and task.paused_at is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Task is not paused")
 
+    next_spec = dict(task.spec_json or {})
+    next_spec.pop(NEXT_RUN_AT_KEY, None)
+    task.spec_json = next_spec
     task.state = "QUEUED"
     task.paused_at = None
+    task.updated_at = utc_now()
     await db.commit()
     await db.refresh(task)
 

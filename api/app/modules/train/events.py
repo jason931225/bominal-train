@@ -37,8 +37,8 @@ def build_task_state_event_payload(
 
 
 def should_publish_task_state_event(*, state: str) -> bool:
-    # Suppress high-frequency internal worker states so SSE updates represent
-    # user-visible transitions instead of retry-loop churn.
+    # Suppress high-frequency internal worker states to keep SSE traffic and
+    # downstream dashboard refresh load bounded in production.
     return state not in SUPPRESSED_TASK_EVENT_STATES
 
 

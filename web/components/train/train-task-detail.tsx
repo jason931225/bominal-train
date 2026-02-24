@@ -2,16 +2,19 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useLocale } from "@/components/locale-provider";
 import { clientApiBaseUrl } from "@/lib/api-base";
 import { ROUTES } from "@/lib/routes";
+import { subscribeTrainTaskEvents } from "@/lib/train/task-events";
 import { UI_BUTTON_DANGER_SM, UI_BUTTON_OUTLINE_SM } from "@/lib/ui";
 import type { TrainArtifact, TrainTaskAttempt, TrainTaskSummary } from "@/lib/types";
 
 const ATTEMPTS_PAGE_SIZE_OPTIONS = [10, 20, 50, 100, "all"] as const;
 type AttemptsPageSize = (typeof ATTEMPTS_PAGE_SIZE_OPTIONS)[number];
+const ATTEMPT_SORT_OPTIONS = ["newest", "oldest"] as const;
+type AttemptSortOrder = (typeof ATTEMPT_SORT_OPTIONS)[number];
 const SMALL_BUTTON_CLASS = UI_BUTTON_OUTLINE_SM;
 const SMALL_DANGER_BUTTON_CLASS = UI_BUTTON_DANGER_SM;
 const SMALL_SUCCESS_BUTTON_CLASS =
@@ -82,9 +85,12 @@ function retryNowDisabledTitle(task: TrainTaskSummary, locale: string): string {
 export function TrainTaskDetail({ taskId }: { taskId: string }) {
   const router = useRouter();
   const { locale, t } = useLocale();
+  const detailLoadInFlightRef = useRef(false);
+  const queuedDetailReloadRef = useRef(false);
   const [task, setTask] = useState<TrainTaskSummary | null>(null);
   const [attempts, setAttempts] = useState<TrainTaskAttempt[]>([]);
-  const [attemptsPageSize, setAttemptsPageSize] = useState<AttemptsPageSize>(20);
+  const [attemptsPageSize, setAttemptsPageSize] = useState<AttemptsPageSize>(10);
+  const [attemptSortOrder, setAttemptSortOrder] = useState<AttemptSortOrder>("newest");
   const [attemptsPage, setAttemptsPage] = useState(1);
   const [artifacts, setArtifacts] = useState<TrainArtifact[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -117,63 +123,81 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
     const cancelled = readBoolean(ticketArtifact.data_json_safe.cancelled) ?? false;
     return status === "awaiting_payment" && paid !== true && !cancelled;
   }, [ticketArtifact]);
+  const sortedAttempts = useMemo(() => {
+    return [...attempts].sort((left, right) => {
+      const leftStarted = Date.parse(left.started_at);
+      const rightStarted = Date.parse(right.started_at);
+      const leftFinished = Date.parse(left.finished_at);
+      const rightFinished = Date.parse(right.finished_at);
+
+      const leftTime = Number.isNaN(leftStarted) ? (Number.isNaN(leftFinished) ? 0 : leftFinished) : leftStarted;
+      const rightTime = Number.isNaN(rightStarted) ? (Number.isNaN(rightFinished) ? 0 : rightFinished) : rightStarted;
+
+      if (leftTime === rightTime) {
+        const stableTieBreak = left.id.localeCompare(right.id);
+        return attemptSortOrder === "newest" ? -stableTieBreak : stableTieBreak;
+      }
+      return attemptSortOrder === "newest" ? rightTime - leftTime : leftTime - rightTime;
+    });
+  }, [attemptSortOrder, attempts]);
   const totalAttemptPages = useMemo(() => {
     if (attemptsPageSize === "all") return 1;
-    return Math.max(1, Math.ceil(attempts.length / attemptsPageSize));
-  }, [attempts.length, attemptsPageSize]);
+    return Math.max(1, Math.ceil(sortedAttempts.length / attemptsPageSize));
+  }, [attemptsPageSize, sortedAttempts.length]);
   const pagedAttempts = useMemo(() => {
-    if (attemptsPageSize === "all") return attempts;
+    if (attemptsPageSize === "all") return sortedAttempts;
     const start = (attemptsPage - 1) * attemptsPageSize;
-    return attempts.slice(start, start + attemptsPageSize);
-  }, [attempts, attemptsPage, attemptsPageSize]);
+    return sortedAttempts.slice(start, start + attemptsPageSize);
+  }, [attemptsPage, attemptsPageSize, sortedAttempts]);
 
   const loadDetail = useCallback(async () => {
-    try {
-      const response = await fetch(`${clientApiBaseUrl}/api/train/tasks/${taskId}`, {
-        credentials: "include",
-        cache: "no-store",
-      });
-      if (!response.ok) {
-        const payload = (await response.json().catch(() => null)) as { detail?: string } | null;
-        setError(payload?.detail ?? t("train.error.taskDetailLoad"));
-        return;
-      }
+    if (detailLoadInFlightRef.current) {
+      queuedDetailReloadRef.current = true;
+      return;
+    }
+    detailLoadInFlightRef.current = true;
 
-      const payload = (await response.json()) as {
-        task: TrainTaskSummary;
-        attempts: TrainTaskAttempt[];
-        artifacts: TrainArtifact[];
-      };
-      setTask(payload.task);
-      setAttempts(payload.attempts);
-      setArtifacts(payload.artifacts);
-      setError(null);
-    } catch {
-      setError(t("train.error.taskDetailLoad"));
+    try {
+      do {
+        queuedDetailReloadRef.current = false;
+        try {
+          const response = await fetch(`${clientApiBaseUrl}/api/train/tasks/${taskId}`, {
+            credentials: "include",
+            cache: "no-store",
+          });
+          if (!response.ok) {
+            const payload = (await response.json().catch(() => null)) as { detail?: string } | null;
+            setError(payload?.detail ?? t("train.error.taskDetailLoad"));
+          } else {
+            const payload = (await response.json()) as {
+              task: TrainTaskSummary;
+              attempts: TrainTaskAttempt[];
+              artifacts: TrainArtifact[];
+            };
+            setTask(payload.task);
+            setAttempts(payload.attempts);
+            setArtifacts(payload.artifacts);
+            setError(null);
+          }
+        } catch {
+          setError(t("train.error.taskDetailLoad"));
+        }
+      } while (queuedDetailReloadRef.current);
+    } finally {
+      detailLoadInFlightRef.current = false;
+      queuedDetailReloadRef.current = false;
     }
   }, [taskId, t]);
 
   useEffect(() => {
     void loadDetail();
-    if (typeof window === "undefined" || !("EventSource" in window)) {
-      return undefined;
-    }
-
-    const eventSource = new EventSource(`${clientApiBaseUrl}/api/train/tasks/events`, { withCredentials: true });
-    const onTaskState = (event: MessageEvent<string>) => {
-      try {
-        const payload = JSON.parse(event.data) as { task_id?: string };
-        if (payload.task_id === taskId) {
-          void loadDetail();
-        }
-      } catch {
-        // Ignore malformed event payloads.
+    const unsubscribeTaskEvents = subscribeTrainTaskEvents((payload, event) => {
+      if (event.type !== "task_state") return;
+      if (payload.task_id === taskId) {
+        void loadDetail();
       }
-    };
-    eventSource.addEventListener("task_state", onTaskState as EventListener);
-    return () => {
-      eventSource.close();
-    };
+    });
+    return unsubscribeTaskEvents;
   }, [loadDetail, taskId]);
 
   useEffect(() => {
@@ -468,32 +492,54 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
       <div className="rounded-2xl border border-blossom-100 bg-white p-6 shadow-petal">
         <h2 className="text-lg font-semibold text-slate-800">{t("train.attemptsTimeline")}</h2>
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm">
-          <label className="inline-flex items-center gap-2 text-slate-700">
-            <span>{t("train.attemptPagination.actionsPerPage")}</span>
-            <select
-              value={String(attemptsPageSize)}
-              onChange={(event) => {
-                const next = event.target.value === "all" ? "all" : Number.parseInt(event.target.value, 10);
-                if (
-                  next === "all" ||
-                  next === 10 ||
-                  next === 20 ||
-                  next === 50 ||
-                  next === 100
-                ) {
-                  setAttemptsPageSize(next);
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="inline-flex items-center gap-2 text-slate-700">
+              <span>{t("train.attemptPagination.actionsPerPage")}</span>
+              <select
+                value={String(attemptsPageSize)}
+                onChange={(event) => {
+                  const next = event.target.value === "all" ? "all" : Number.parseInt(event.target.value, 10);
+                  if (
+                    next === "all" ||
+                    next === 10 ||
+                    next === 20 ||
+                    next === 50 ||
+                    next === 100
+                  ) {
+                    setAttemptsPageSize(next);
+                    setAttemptsPage(1);
+                  }
+                }}
+                className="rounded-lg border border-blossom-200 bg-white px-2 py-1 text-sm text-slate-700"
+              >
+                {ATTEMPTS_PAGE_SIZE_OPTIONS.map((option) => (
+                  <option key={String(option)} value={String(option)}>
+                    {option === "all" ? t("train.attemptPagination.all") : option}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="inline-flex items-center gap-2 text-slate-700">
+              <span>{t("train.attemptPagination.sort")}</span>
+              <select
+                value={attemptSortOrder}
+                onChange={(event) => {
+                  const next = event.target.value === "oldest" ? "oldest" : "newest";
+                  setAttemptSortOrder(next);
                   setAttemptsPage(1);
-                }
-              }}
-              className="rounded-lg border border-blossom-200 bg-white px-2 py-1 text-sm text-slate-700"
-            >
-              {ATTEMPTS_PAGE_SIZE_OPTIONS.map((option) => (
-                <option key={String(option)} value={String(option)}>
-                  {option === "all" ? t("train.attemptPagination.all") : option}
-                </option>
-              ))}
-            </select>
-          </label>
+                }}
+                className="rounded-lg border border-blossom-200 bg-white px-2 py-1 text-sm text-slate-700"
+              >
+                {ATTEMPT_SORT_OPTIONS.map((option) => (
+                  <option key={option} value={option}>
+                    {option === "newest"
+                      ? t("train.attemptPagination.newestFirst")
+                      : t("train.attemptPagination.oldestFirst")}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
           <div className="inline-flex items-center gap-2">
             <span className="text-xs text-slate-500">
               {t("train.attemptPagination.page")} {attemptsPage} / {totalAttemptPages}
@@ -526,6 +572,8 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
                 <th className="pb-2 pr-3">{t("train.attemptTable.retryable")}</th>
                 <th className="pb-2 pr-3">{t("train.attemptTable.duration")}</th>
                 <th className="pb-2 pr-3">{t("train.attemptTable.started")}</th>
+                <th className="pb-2 pr-3">{t("train.attemptTable.finished")}</th>
+                <th className="pb-2 pr-3">{t("train.attemptTable.errorCode")}</th>
                 <th className="pb-2">{t("train.attemptTable.error")}</th>
               </tr>
             </thead>
@@ -538,12 +586,24 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
                   <td className="py-2 pr-3">{attempt.retryable ? "yes" : "no"}</td>
                   <td className="py-2 pr-3">{attempt.duration_ms}ms</td>
                   <td className="py-2 pr-3">{formatDateTimeKstSeconds(attempt.started_at, locale)}</td>
-                  <td className="py-2">{attempt.error_message_safe || "-"}</td>
+                  <td className="py-2 pr-3">{formatDateTimeKstSeconds(attempt.finished_at, locale)}</td>
+                  <td className="py-2 pr-3">{attempt.error_code || "-"}</td>
+                  <td className="py-2">
+                    <p>{attempt.error_message_safe || "-"}</p>
+                    {attempt.meta_json_safe ? (
+                      <details className="mt-1">
+                        <summary className="cursor-pointer text-xs text-slate-500">{t("train.attemptTable.metadata")}</summary>
+                        <pre className="mt-1 overflow-auto rounded bg-slate-50 p-2 text-xs text-slate-700">
+                          {JSON.stringify(attempt.meta_json_safe, null, 2)}
+                        </pre>
+                      </details>
+                    ) : null}
+                  </td>
                 </tr>
               ))}
               {pagedAttempts.length === 0 ? (
                 <tr>
-                  <td className="py-2 text-slate-500" colSpan={7}>
+                  <td className="py-2 text-slate-500" colSpan={9}>
                     {t("train.empty.attempts")}
                   </td>
                 </tr>

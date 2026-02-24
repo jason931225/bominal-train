@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { LocaleProvider } from "@/components/locale-provider";
 import { TopNavTaskAttention } from "@/components/top-nav-task-attention";
+import { clearTaskListBootstrapSnapshot } from "@/lib/train/task-list-bootstrap";
 import type { TrainTaskSummary } from "@/lib/types";
 
 vi.mock("next/navigation", async () => {
@@ -52,7 +53,7 @@ class MockEventSource {
   }
 
   static emit(type: string, payload: Record<string, unknown>) {
-    const event = new MessageEvent<string>("message", { data: JSON.stringify(payload) });
+    const event = new MessageEvent<string>(type, { data: JSON.stringify(payload) });
     for (const instance of MockEventSource.instances) {
       const callbacks = instance.listeners.get(type);
       if (!callbacks) continue;
@@ -61,6 +62,27 @@ class MockEventSource {
       }
     }
   }
+}
+
+function makeTaskListResponse(id: string = "t-1"): Response {
+  return new Response(JSON.stringify({ tasks: [makeAttentionTask(id)] }), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+function createDeferred<T>(): {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+  reject: (reason?: unknown) => void;
+} {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
 }
 
 function makeAttentionTask(id: string): TrainTaskSummary {
@@ -108,6 +130,7 @@ describe("TopNavTaskAttention", () => {
     MockEventSource.instances = [];
     visibilityState = "visible";
     vi.clearAllMocks();
+    clearTaskListBootstrapSnapshot();
     vi.stubGlobal("EventSource", MockEventSource as unknown as typeof EventSource);
     vi.stubGlobal("fetch", fetchMock);
     Object.defineProperty(document, "visibilityState", {
@@ -115,19 +138,14 @@ describe("TopNavTaskAttention", () => {
       get: () => visibilityState,
     });
 
-    fetchMock.mockResolvedValue(
-      new Response(JSON.stringify({ tasks: [makeAttentionTask("t-1")] }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }),
-    );
+    fetchMock.mockImplementation(() => Promise.resolve(makeTaskListResponse("t-1")));
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
-  it("loads once, uses SSE refresh, and does not register interval polling", async () => {
+  it("boots from SSE snapshot without initial list fetch and refreshes on terminal state events", async () => {
     const setIntervalSpy = vi.spyOn(window, "setInterval");
 
     render(
@@ -136,12 +154,15 @@ describe("TopNavTaskAttention", () => {
       </LocaleProvider>,
     );
 
-    await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledTimes(1);
-    });
     expect(setIntervalSpy.mock.calls.some(([, delay]) => delay === 60000)).toBe(false);
     expect(MockEventSource.instances).toHaveLength(1);
-    expect(MockEventSource.instances[0]?.url).toBe("/api/train/tasks/events");
+    expect(MockEventSource.instances[0]?.url).toMatch(/\/api\/train\/tasks\/events$/);
+    expect(fetchMock).toHaveBeenCalledTimes(0);
+
+    await act(async () => {
+      MockEventSource.emit("attention_snapshot", { tasks: [makeAttentionTask("t-1")] });
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(0);
 
     await act(async () => {
       MockEventSource.emit("task_state", { task_id: "t-1", state: "COMPLETED" });
@@ -152,6 +173,49 @@ describe("TopNavTaskAttention", () => {
     });
   });
 
+  it("ignores non-terminal state events for attention refresh", async () => {
+    render(
+      <LocaleProvider initialLocale="en">
+        <TopNavTaskAttention userId="user-1" displayName="Jason" />
+      </LocaleProvider>,
+    );
+
+    await act(async () => {
+      MockEventSource.emit("task_state", { task_id: "t-1", state: "RUNNING" });
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(0);
+  });
+
+  it("coalesces burst terminal-state refresh events into a single queued follow-up request", async () => {
+    render(
+      <LocaleProvider initialLocale="en">
+        <TopNavTaskAttention userId="user-3" displayName="Jason" />
+      </LocaleProvider>,
+    );
+
+    const deferredFetch = createDeferred<Response>();
+    fetchMock.mockImplementationOnce(() => deferredFetch.promise);
+
+    await act(async () => {
+      MockEventSource.emit("task_state", { task_id: "t-3", state: "COMPLETED" });
+      MockEventSource.emit("task_state", { task_id: "t-3", state: "FAILED" });
+      MockEventSource.emit("task_state", { task_id: "t-3", state: "EXPIRED" });
+    });
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    await act(async () => {
+      deferredFetch.resolve(makeTaskListResponse("t-3"));
+    });
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(4);
+    });
+  });
+
   it("skips SSE-triggered refresh while document is hidden", async () => {
     render(
       <LocaleProvider initialLocale="en">
@@ -159,15 +223,11 @@ describe("TopNavTaskAttention", () => {
       </LocaleProvider>,
     );
 
-    await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledTimes(1);
-    });
-
     visibilityState = "hidden";
     await act(async () => {
       MockEventSource.emit("task_state", { task_id: "t-2", state: "FAILED" });
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(0);
   });
 });

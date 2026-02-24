@@ -14,7 +14,7 @@ from app.core.crypto.service import get_envelope_crypto
 from app.core.redis import get_cde_redis_pool
 from app.core.time import utc_now
 from app.db.models import Secret, User
-from app.schemas.wallet import PaymentCardSetRequest, PaymentCardStatusResponse
+from app.schemas.wallet import PaymentCardConfiguredResponse, PaymentCardSetRequest, PaymentCardStatusResponse
 
 settings = get_settings()
 
@@ -217,6 +217,32 @@ async def get_payment_card_status(
         updated_at=secret.updated_at,
         cvv_cached_until=cvv_cached_until,
     )
+
+
+async def get_payment_card_configured(
+    db: AsyncSession,
+    *,
+    user: User,
+) -> PaymentCardConfiguredResponse:
+    secret = await _latest_payment_secret_for_user(db, user_id=user.id)
+    if secret is None:
+        return PaymentCardConfiguredResponse(configured=False)
+
+    try:
+        payload = decrypt_secret(secret)
+    except Exception:
+        return PaymentCardConfiguredResponse(configured=False)
+
+    card_number = str(payload.get("card_number") or "")
+    expiry_month = payload.get("expiry_month")
+    expiry_year = payload.get("expiry_year")
+    try:
+        int(expiry_month)
+        int(expiry_year)
+    except (TypeError, ValueError):
+        return PaymentCardConfiguredResponse(configured=False)
+
+    return PaymentCardConfiguredResponse(configured=bool(card_number.strip()))
 
 
 async def get_payment_card_for_execution(
