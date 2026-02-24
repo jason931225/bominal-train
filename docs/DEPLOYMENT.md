@@ -253,9 +253,7 @@ Only the last 10 deployment records are kept.
 ### 1) Create env files
 
 ```bash
-cp infra/env/prod/api.env.example infra/env/prod/api.env
-cp infra/env/prod/web.env.example infra/env/prod/web.env
-cp infra/env/prod/caddy.env.example infra/env/prod/caddy.env
+bash infra/scripts/bootstrap-prod-env.sh
 ```
 
 Optional:
@@ -264,7 +262,13 @@ Optional:
 
 ### 2) Configure secrets
 
-Replace all `CHANGE_ME...` values. Required manual deploy values:
+`infra/scripts/bootstrap-prod-env.sh` is the canonical bootstrap path. It:
+- prompts interactively for required sensitive values,
+- writes `infra/env/prod/api.env`, `infra/env/prod/web.env`, and `infra/env/prod/caddy.env`,
+- optionally writes `infra/env/prod/deploy.env`,
+- validates critical contracts (Supabase URLs, `MASTER_KEY` format, unresolved placeholders).
+
+If you choose manual editing instead, required values are:
 - `infra/env/prod/api.env`: `INTERNAL_API_KEY`, `MASTER_KEY`, `DATABASE_URL`, `SYNC_DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_JWT_ISSUER`, `SUPABASE_AUTH_API_KEY` (or `SUPABASE_SERVICE_ROLE_KEY` fallback), `RESEND_API_KEY`, sender-domain placeholder in `EMAIL_FROM_ADDRESS`, plus passkey origin settings (`PASSKEY_RP_ID`, `PASSKEY_ORIGIN`)
 - `infra/env/prod/web.env`: `NEXT_PUBLIC_API_BASE_URL`, `API_SERVER_URL` (`http://api:8000` for monolithic API runtime)
 - `infra/env/prod/caddy.env`: `CADDY_SITE_ADDRESS`, `CADDY_ACME_EMAIL`
@@ -358,13 +362,11 @@ git submodule update --init --recursive
 Create prod env files:
 
 ```bash
-for f in infra/env/prod/*.example; do cp "$f" "${f%.example}"; done
+bash infra/scripts/bootstrap-prod-env.sh
 ```
 
-Edit each file and replace all `CHANGE_ME` values:
-- `infra/env/prod/api.env` - MASTER_KEY, INTERNAL_API_KEY, DATABASE_URL, SYNC_DATABASE_URL, SUPABASE_URL, SUPABASE_JWT_ISSUER, SUPABASE_AUTH_API_KEY (or SUPABASE_SERVICE_ROLE_KEY), RESEND_API_KEY, EMAIL_FROM_ADDRESS sender domain, PASSKEY_RP_ID, PASSKEY_ORIGIN
-- `infra/env/prod/web.env` - keep `NEXT_PUBLIC_API_BASE_URL` empty for same-origin browser API calls
-- `infra/env/prod/caddy.env` - CADDY_SITE_ADDRESS, CADDY_ACME_EMAIL
+The script prompts for required values and writes production env files safely.
+Review the generated files before deploy and ensure they are not committed.
 
 Generate secrets:
 
