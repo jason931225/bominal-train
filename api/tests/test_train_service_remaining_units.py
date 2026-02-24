@@ -316,8 +316,8 @@ async def test_service_remaining_list_refresh_and_refresh_ticket_branches(monkey
         refresh_completed=True,
     )
     assert len(response.tasks) == 3
-    assert len(refresh_calls) == 2
-    assert db.commits == 1
+    assert refresh_calls == []
+    assert db.commits == 0
 
     # _refresh_ticket_artifact_status branch matrix.
     monkeypatch.setattr(train_service, "_refresh_ticket_artifact_status", original_refresh)
@@ -387,12 +387,31 @@ async def test_service_remaining_list_refresh_and_refresh_ticket_branches(monkey
             "seat_count": None,
             "tickets": None,
             "reservation_snapshot": None,
-            "provider_sync": None,
+            "provider_sync": {
+                "provider": "SRT",
+                "reservation_id": "PNR-5",
+                "reservations_ok": True,
+                "ticket_info_ok": True,
+            },
+            "provider_http": {"get_reservations": {"status_code": 200}},
             "last_provider_sync_at": fixed_sync_at.isoformat(),
         }
     )
     async def _sync_unchanged(*_args, **_kwargs):  # noqa: ANN002, ANN003
-        return {"status": "paid", "synced_at": fixed_sync_at.isoformat()}
+        return {
+            "status": "paid",
+            "synced_at": fixed_sync_at.isoformat(),
+            # Volatile fields should not trigger artifact rewrites on read paths.
+            "provider_sync": {
+                "provider": "SRT",
+                "reservation_id": "PNR-5",
+                "reservations_ok": True,
+                "ticket_info_ok": True,
+                "reservations_rate_limit_wait_ms": 37,
+                "ticket_info_rate_limit_wait_ms": 41,
+            },
+            "provider_http": {"get_reservations": {"status_code": 201}},
+        }
 
     monkeypatch.setattr(train_service, "fetch_ticket_sync_snapshot", _sync_unchanged)
     refreshed_unchanged = await train_service._refresh_ticket_artifact_status(  # noqa: SLF001

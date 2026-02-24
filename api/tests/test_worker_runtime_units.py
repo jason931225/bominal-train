@@ -45,8 +45,16 @@ async def test_on_startup_populates_context_and_registers_handlers(monkeypatch):
     async def _fake_enqueue_recoverable_tasks(_db):  # noqa: ANN001
         return 3
 
+    async def _fake_compact_and_prune_task_attempts(_db):  # noqa: ANN001
+        return {
+            "deleted_sync_rows": 0,
+            "deleted_repetitive_rows": 0,
+            "deleted_retention_rows": 0,
+        }
+
     monkeypatch.setattr(worker_mod, "SessionLocal", lambda: _SessionCtx())
     monkeypatch.setattr(worker_mod, "enqueue_recoverable_tasks", _fake_enqueue_recoverable_tasks)
+    monkeypatch.setattr(worker_mod, "compact_and_prune_task_attempts", _fake_compact_and_prune_task_attempts)
     monkeypatch.setattr(worker_mod.asyncio, "get_running_loop", lambda: loop)
 
     def _fake_create_task(coro):  # noqa: ANN001

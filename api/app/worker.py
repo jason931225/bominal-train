@@ -17,7 +17,7 @@ from app.db.models import Task
 from app.db.session import SessionLocal
 from app.modules.train.constants import TASK_MODULE, TERMINAL_TASK_STATES
 from app.modules.train.queue import enqueue_train_task
-from app.modules.train.worker import enqueue_recoverable_tasks, run_train_task
+from app.modules.train.worker import compact_and_prune_task_attempts, enqueue_recoverable_tasks, run_train_task
 from app.services.email_worker import deliver_email_job
 
 settings = get_settings()
@@ -30,6 +30,7 @@ _shutdown_event: asyncio.Event | None = None
 HEARTBEAT_KEY = b"bominal:worker:heartbeat"
 HEARTBEAT_TTL_SECONDS = 30
 HEARTBEAT_INTERVAL_SECONDS = 10
+ATTEMPT_HYGIENE_INTERVAL_SECONDS = 24 * 60 * 60
 
 
 def _register_in_flight(task_id: str) -> None:
@@ -92,7 +93,14 @@ async def on_startup(ctx: dict) -> None:
     # Recover tasks from previous worker run
     async with SessionLocal() as db:
         recovered = await enqueue_recoverable_tasks(db)
+        attempt_cleanup_stats = await compact_and_prune_task_attempts(db)
     logger.info("Recovered %s active train tasks into queue", recovered)
+    logger.info(
+        "Train attempt history cleanup: sync=%s repetitive=%s retention=%s",
+        attempt_cleanup_stats["deleted_sync_rows"],
+        attempt_cleanup_stats["deleted_repetitive_rows"],
+        attempt_cleanup_stats["deleted_retention_rows"],
+    )
     
     # Set up graceful shutdown signal handlers
     loop = asyncio.get_running_loop()
@@ -101,6 +109,7 @@ async def on_startup(ctx: dict) -> None:
 
     # Heartbeat task for ops visibility.
     ctx["heartbeat_task"] = asyncio.create_task(_heartbeat_loop(_shutdown_event))
+    ctx["attempt_hygiene_task"] = asyncio.create_task(_attempt_hygiene_loop(_shutdown_event))
     
     logger.info("Worker started with graceful shutdown handlers")
 
@@ -132,6 +141,27 @@ async def _heartbeat_loop(shutdown_event: asyncio.Event) -> None:
             continue
 
 
+async def _attempt_hygiene_loop(shutdown_event: asyncio.Event) -> None:
+    while not shutdown_event.is_set():
+        try:
+            async with SessionLocal() as db:
+                stats = await compact_and_prune_task_attempts(db)
+            if any(int(value) > 0 for value in stats.values()):
+                logger.info(
+                    "Train attempt cleanup pruned rows: sync=%s repetitive=%s retention=%s",
+                    stats["deleted_sync_rows"],
+                    stats["deleted_repetitive_rows"],
+                    stats["deleted_retention_rows"],
+                )
+        except Exception:
+            logger.debug("Train attempt cleanup loop failed", exc_info=True)
+
+        try:
+            await asyncio.wait_for(shutdown_event.wait(), timeout=ATTEMPT_HYGIENE_INTERVAL_SECONDS)
+        except asyncio.TimeoutError:
+            continue
+
+
 async def on_shutdown(ctx: dict) -> None:
     """Clean up on worker shutdown - ensure in-flight tasks are recoverable."""
     logger.info("Worker shutdown initiated, %d tasks in-flight", len(_in_flight_tasks))
@@ -143,6 +173,11 @@ async def on_shutdown(ctx: dict) -> None:
         # Keep shutdown recovery moving even if heartbeat cancellation propagates.
         with suppress(asyncio.CancelledError, Exception):
             await heartbeat_task
+    attempt_hygiene_task = ctx.get("attempt_hygiene_task")
+    if attempt_hygiene_task is not None:
+        attempt_hygiene_task.cancel()
+        with suppress(asyncio.CancelledError, Exception):
+            await attempt_hygiene_task
     
     # Give in-flight tasks a brief moment to complete naturally
     if _in_flight_tasks:

@@ -156,6 +156,52 @@ def _open_ticket_artifact(*, provider: str = "SRT", reservation_id: str = "PNR-1
     )
 
 
+def test_apply_ranked_schedule_backfill_updates_exact_rows():
+    spec = {
+        "provider": "SRT",
+        "selected_trains_ranked": [
+            {
+                "provider": "SRT",
+                "rank": 1,
+                "schedule_id": "SRT-1",
+                "departure_at": "2026-02-23T09:00:00+00:00",
+            },
+            {
+                "provider": "KTX",
+                "rank": 2,
+                "schedule_id": "KTX-2",
+                "departure_at": "2026-02-23T10:00:00+00:00",
+                "arrival_at": "2026-02-23T12:00:00+00:00",
+            },
+        ],
+    }
+    provider_results = [
+        train_worker.ProviderExecutionResult(
+            provider="SRT",
+            attempts=[],
+            candidate=None,
+            retryable=True,
+            schedule_backfill=[
+                {
+                    "provider": "SRT",
+                    "schedule_id": "SRT-1",
+                    "departure_at": "2026-02-23T09:01:00+00:00",
+                    "arrival_at": "2026-02-23T11:11:00+00:00",
+                }
+            ],
+        )
+    ]
+
+    merged, changed = train_worker._apply_ranked_schedule_backfill(spec, provider_results)  # noqa: SLF001
+
+    assert changed is True
+    selected = merged["selected_trains_ranked"]
+    assert selected[0]["departure_at"] == "2026-02-23T09:01:00+00:00"
+    assert selected[0]["arrival_at"] == "2026-02-23T11:11:00+00:00"
+    # Existing populated rows remain unchanged.
+    assert selected[1]["arrival_at"] == "2026-02-23T12:00:00+00:00"
+
+
 def test_worker_helper_branches_cover_remaining_non_async_paths(monkeypatch):
     assert train_worker._seat_preference_order("special") == ("special",)  # noqa: SLF001
     unknown_provider_schedule = ProviderSchedule(
@@ -219,6 +265,13 @@ def test_worker_helper_branches_cover_remaining_non_async_paths(monkeypatch):
         }
     )
     assert normalized == []
+
+    unchanged, changed = train_worker._apply_ranked_schedule_backfill(  # noqa: SLF001
+        {"selected_trains_ranked": []},
+        [],
+    )
+    assert changed is False
+    assert unchanged["selected_trains_ranked"] == []
 
     shutdown_event = SimpleNamespace(is_set=lambda: True)
     assert train_worker._is_shutdown_requested({"shutdown_event": shutdown_event}) is True  # noqa: SLF001
@@ -453,6 +506,14 @@ async def test_provider_search_and_reserve_remaining_relogin_and_missing_id_bran
         limiter=_Limiter(),
     )
     assert missing_id.attempts[-1].error_code == "reservation_id_missing"
+    assert missing_id.schedule_backfill == [
+        {
+            "provider": "SRT",
+            "schedule_id": "SRT-1",
+            "departure_at": "2026-02-23T09:00:00+00:00",
+            "arrival_at": "2026-02-23T11:00:00+00:00",
+        }
+    ]
 
 
 @pytest.mark.asyncio
@@ -829,7 +890,24 @@ async def test_run_train_task_inner_open_ticket_waiting_status_schedules_five_mi
     monkeypatch.setattr(train_worker, "redact_sensitive", lambda payload: payload)
 
     task = _task(auto_pay=True)
+    departure_at = "2026-02-23T09:00:00+00:00"
+    arrival_at = "2026-02-23T11:00:00+00:00"
+    task.spec_json["selected_trains_ranked"] = [
+        {
+            "provider": "SRT",
+            "rank": 1,
+            "schedule_id": "SRT-1",
+            "departure_at": departure_at,
+        }
+    ]
     open_artifact = _open_ticket_artifact()
+    open_artifact.data_json_safe.update(
+        {
+            "schedule_id": "SRT-1",
+            "departure_at": departure_at,
+            "arrival_at": arrival_at,
+        }
+    )
 
     async def _load_open_ticket(*_args, **_kwargs):  # noqa: ANN002, ANN003
         return [open_artifact]
@@ -856,12 +934,16 @@ async def test_run_train_task_inner_open_ticket_waiting_status_schedules_five_mi
 
     retry_delays: list[float] = []
     failed_calls: list[str] = []
+    persisted_attempts: list[train_worker.PendingAttempt] = []
 
     async def _schedule_retry(_db, _task, delay):  # noqa: ANN001
         retry_delays.append(float(delay))
 
     async def _mark_failed(_db, failed_task):  # noqa: ANN001
         failed_calls.append(str(failed_task.id))
+
+    async def _capture_persist(_db, *, task, attempts):  # noqa: ANN001
+        persisted_attempts.extend(attempts)
 
     monkeypatch.setattr(train_worker, "_load_ticket_artifacts", _load_open_ticket)
     monkeypatch.setattr(train_worker, "_login_provider_client_for_worker", _login_success)
@@ -871,6 +953,7 @@ async def test_run_train_task_inner_open_ticket_waiting_status_schedules_five_mi
     monkeypatch.setattr(train_worker, "_attempt_pay_reservation", _pay_must_not_run)
     monkeypatch.setattr(train_worker, "_schedule_retry", _schedule_retry)
     monkeypatch.setattr(train_worker, "_mark_failed", _mark_failed)
+    monkeypatch.setattr(train_worker, "_persist_attempts", _capture_persist)
 
     await train_worker._run_train_task_inner({}, str(task.id), _db_factory(_RunDB(task)), object(), _Limiter())  # noqa: SLF001
 
@@ -878,6 +961,17 @@ async def test_run_train_task_inner_open_ticket_waiting_status_schedules_five_mi
     assert failed_calls == []
     assert open_artifact.data_json_safe.get("status") == "waiting"
     assert open_artifact.data_json_safe.get("waiting") is True
+    assert task.spec_json["selected_trains_ranked"][0]["arrival_at"] == arrival_at
+    sync_attempts = [attempt for attempt in persisted_attempts if attempt.action == "SYNC"]
+    assert len(sync_attempts) == 1
+    assert sync_attempts[0].provider == "SRT"
+    assert sync_attempts[0].ok is True
+    assert sync_attempts[0].meta_json_safe == {
+        "stage": "ticket_sync_poll",
+        "ticket_status": "waiting",
+        "waiting": True,
+        "paid": False,
+    }
 
 
 @pytest.mark.asyncio
