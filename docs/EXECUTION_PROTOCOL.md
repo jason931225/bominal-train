@@ -2,9 +2,12 @@
 
 Canonical protocol for parallel implementation sessions in bominal.
 
-## Required skill
+## Required execution approach
 
-Use `standardized-plan-execution-protocol` as a mandatory requirement before execution.
+For multi-step tasks, use explicit planning and execution workflow:
+- write/refresh a plan
+- execute in bounded steps
+- verify with objective evidence before completion
 
 ## Docs-first prerequisite (mandatory)
 
@@ -23,7 +26,10 @@ Before staging any commit:
 1. Confirm documentation requirements first (docs pointers + policy).
 2. Confirm/refresh the implementation plan for current scope.
 3. Execute tests for the exact touched scope before staging.
-4. Verify 100% automated coverage and test relevance for every staged behavior change before `git add` / commit staging.
+4. Verify test relevance and quality for every staged behavior change before `git add` / commit staging.
+   - Favor behavior-level assertions over implementation-detail assertions.
+   - Require strong negative-path and boundary assertions for critical areas.
+   - Use coverage as a risk signal, not a blanket 100% target.
 5. Treat coverage-ignore annotations as exception-only:
    - `c8 ignore`, `pragma: no cover`, and similar directives require inline rationale and explicit review justification.
    - If deterministic in-repo tests can cover the branch, add tests instead of introducing ignores.
@@ -33,12 +39,11 @@ Before staging any commit:
    - npm/package-manager deprecation warnings
    - toolchain warnings that indicate pending breakage
    If any warning cannot be removed safely in-scope, record explicit rationale and follow-up owner before staging.
-7. Run assertiveness + mutation gates before staging:
-   - `python3 infra/scripts/check_assertive_tests.py api/tests`
-   - `node infra/scripts/check_assertive_tests_web.mjs web`
-   - `bash infra/scripts/run_mutation_api.sh`
-   - `npm run --prefix web test:mutation`
-   Hard-fail on survivors, missing assertions, or vacuous assertions (for example tautological `assert True` / `expect(true).toBe(true)`).
+7. Run targeted quality gates before staging:
+   - Mandatory for critical paths (auth/session, authorization, crypto/redaction, payment/CDE boundaries, deploy/rollback paths):
+     - relevant mutation checks and/or invariant tests
+   - Optional for low-risk UI/content-only changes when behavior risk is low and covered by direct tests.
+   - Avoid vacuous assertions (for example tautological `assert True` / `expect(true).toBe(true)`).
 
 NPM warning policy:
 - `npm warn deprecated` must be treated as actionable.
@@ -113,7 +118,8 @@ For each notable change in behavior, operations, interfaces, docs governance, or
 - No silent conflict resolution.
 - No completion claims without fresh verification evidence.
 - TDD required for production code changes.
-- 100% automated test coverage is the required quality bar before staging commits.
+- High-quality tests for critical areas are the required quality bar before staging commits.
+- Global 100% coverage is not required; apply risk-based thresholds and ratchet over time.
 - Test relevance review is mandatory before staging: every staged behavior change must be covered by at least one directly relevant test (not just incidental suite pass).
 - Warning hygiene is mandatory before staging: do not carry forward avoidable runtime/deprecation warnings in touched scope.
 - For doc-related ambiguity or exceptions: stop and ask for explicit clarification before continuing.

@@ -108,14 +108,14 @@ Any new canonical doc/plan used for implementation must be added there using the
 
 ```bash
 git submodule update --init --recursive
-docker compose -f infra/docker compose.yml up --build
+docker compose -f infra/docker-compose.yml up --build
 ```
 
 Use these for focused verification:
 
 ```bash
-docker compose -f infra/docker compose.yml exec api pytest -q
-docker compose -f infra/docker compose.yml exec web npx tsc --noEmit
+docker compose -f infra/docker-compose.yml exec api pytest -q
+docker compose -f infra/docker-compose.yml exec web npx tsc --noEmit
 ```
 
 ## Change strategy
@@ -132,7 +132,7 @@ docker compose -f infra/docker compose.yml exec web npx tsc --noEmit
 - Relevant backend tests pass.
 - Docker compose stack starts cleanly.
 - No broken auth/session flow regressions.
-- No unresolved placeholders in production env templates.
+- No unresolved placeholders in deployed production env files (templates may keep `CHANGE_ME_*` markers).
 - Docs updated in `docs/` when behavior or operations change.
 
 ## Production Deployment (IMPORTANT)

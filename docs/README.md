@@ -79,6 +79,7 @@ Pointer format convention (mandatory):
 - [PTR-PLAN-018] `docs/plans/2026-02-22-ci-and-prod-deploy-latency-optimization.md` - CI and production deployment latency optimization plan with measured bottleneck hypotheses, deploy profiling, and safe remediation path.
 - [PTR-PLAN-019] `docs/plans/active/2026-02-24-supabase-vm-redis-cutover.md` - active execution plan for Supabase Postgres/Auth cutover, VM Redis alignment, and payment-disabled runtime enforcement.
 - [PTR-PLAN-020] `docs/plans/active/2026-02-24-no-poll-verification-guard.md` - active plan for enforcing event-driven train task updates and preventing periodic polling regressions across dashboard/task-detail/alerts.
+- [PTR-PLAN-021] `docs/plans/active/2026-02-24-independent-code-best-practice-review.md` - active independent best-practice review plan for full-stack code quality, reliability, and maintainability.
 
 ### Playbooks
 
