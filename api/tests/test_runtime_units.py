@@ -493,7 +493,7 @@ async def test_wallet_execution_and_status_branches(monkeypatch):
     monkeypatch.setattr(wallet, "decrypt_secret", lambda _secret: {"card_number": "4111", "pin2": "12", "birth_date": "bad", "expiry_month": 1, "expiry_year": 2099})
     assert await wallet.get_payment_card_for_execution(db=object(), user_id=user_id) is None
 
-    # Happy execution path with cached cvv.
+    # Happy execution path returns only non-CVV payment fields.
     monkeypatch.setattr(
         wallet,
         "decrypt_secret",
@@ -505,30 +505,11 @@ async def test_wallet_execution_and_status_branches(monkeypatch):
             "expiry_year": 2099,
         },
     )
-    monkeypatch.setattr(
-        wallet,
-        "_load_cached_cvv_payload",
-        lambda **_kwargs: None,
-    )
-    async def _cached_cvv_payload(**_kwargs):
-        return {
-            "cvv": "123",
-            "expires_at": datetime.now(timezone.utc) + timedelta(minutes=10),
-        }
-
-    monkeypatch.setattr(wallet, "_load_cached_cvv_payload", _cached_cvv_payload)
     execution = await wallet.get_payment_card_for_execution(db=object(), user_id=user_id)
     assert execution is not None
     assert execution["card_expire"] == "9912"
-
-    async def _cached_cvv_none(**_kwargs):
-        return None
-
-    monkeypatch.setattr(wallet, "_load_cached_cvv_payload", _cached_cvv_none)
-    execution_without_cvv = await wallet.get_payment_card_for_execution(db=object(), user_id=user_id)
-    assert execution_without_cvv is not None
-    assert execution_without_cvv["cvv"] == ""
-    assert execution_without_cvv["cvv_cached_until"] is None
+    assert "cvv" not in execution
+    assert "cvv_cached_until" not in execution
 
     monkeypatch.setattr(
         wallet,
@@ -541,10 +522,6 @@ async def test_wallet_execution_and_status_branches(monkeypatch):
             "expiry_year": 2099,
         },
     )
-    async def _cached_cvv_until(**_kwargs):
-        return datetime.now(timezone.utc)
-
-    monkeypatch.setattr(wallet, "_load_cached_cvv_until", _cached_cvv_until)
     status_ok = await wallet.get_payment_card_status(db=object(), user=SimpleNamespace(id=user_id))
     assert status_ok.configured is True
 
@@ -620,13 +597,9 @@ async def test_wallet_set_payment_card_creates_new_secret(monkeypatch):
     async def _latest_secret_none(*_args, **_kwargs):
         return None
 
-    async def _cache_cvv(**_kwargs):
-        return now + timedelta(minutes=10)
-
     monkeypatch.setattr(wallet, "utc_now", lambda: now)
     monkeypatch.setattr(wallet, "build_encrypted_secret", lambda **_kwargs: encrypted_secret)
     monkeypatch.setattr(wallet, "_latest_payment_secret_for_user", _latest_secret_none)
-    monkeypatch.setattr(wallet, "_cache_cvv", _cache_cvv)
 
     status = await wallet.set_payment_card(db=db, user=user, payload=payload)
     assert db.added == [encrypted_secret]
@@ -683,13 +656,9 @@ async def test_wallet_set_payment_card_updates_existing_secret(monkeypatch):
     async def _latest_secret(*_args, **_kwargs):
         return existing_secret
 
-    async def _cache_cvv(**_kwargs):
-        return now + timedelta(minutes=10)
-
     monkeypatch.setattr(wallet, "utc_now", lambda: now)
     monkeypatch.setattr(wallet, "build_encrypted_secret", lambda **_kwargs: encrypted_secret)
     monkeypatch.setattr(wallet, "_latest_payment_secret_for_user", _latest_secret)
-    monkeypatch.setattr(wallet, "_cache_cvv", _cache_cvv)
 
     status = await wallet.set_payment_card(db=db, user=user, payload=payload)
 
@@ -797,18 +766,19 @@ async def test_purge_all_saved_payment_data_and_clear_payment_card(monkeypatch):
             self.commits += 1
 
     db = _DB()
-    deleted_patterns: list[str] = []
-
-    async def _delete_keys(*, pattern: str) -> int:
-        deleted_patterns.append(pattern)
-        return 2 if "wallet:payment:cvv" in pattern else 3
+    async def _purge_cached_cvv() -> dict[str, int]:
+        return {
+            "redis_cvv_keys_deleted_current": 2,
+            "redis_cvv_keys_deleted_legacy": 3,
+            "redis_cvv_keys_deleted_total": 5,
+        }
 
     cleared: list[object] = []
 
     async def _clear_cached(*, user_id):  # noqa: ANN001
         cleared.append(user_id)
 
-    monkeypatch.setattr(wallet, "_delete_redis_keys_matching", _delete_keys)
+    monkeypatch.setattr(wallet, "purge_cached_payment_cvv_data", _purge_cached_cvv)
     monkeypatch.setattr(wallet, "_clear_cached_cvv", _clear_cached)
 
     result = await wallet.purge_all_saved_payment_data(db)

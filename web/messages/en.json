@@ -227,8 +227,6 @@
     "cardNumber": "Card number",
     "expiryMonth": "Expiry month",
     "expiryYear": "Expiry year",
-    "cvv": "CVV",
-    "cvvPlaceholder": "3-4 digits",
     "dob": "Date of birth",
     "pin2": "Card PIN (first 2 digits)",
     "expiryMonthError": "Expiry month must be between 01 and 12.",

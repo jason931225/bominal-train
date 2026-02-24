@@ -26,7 +26,6 @@ def upgrade() -> None:
         sa.Column("name", sa.String(length=50), nullable=False),
         sa.UniqueConstraint("name", name="uq_roles_name"),
     )
-    op.create_index("ix_roles_name", "roles", ["name"], unique=True)
 
     op.create_table(
         "users",
@@ -40,7 +39,6 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("CURRENT_TIMESTAMP"), nullable=False),
         sa.UniqueConstraint("email", name="uq_users_email"),
     )
-    op.create_index("ix_users_email", "users", ["email"], unique=True)
 
     op.create_table(
         "sessions",
@@ -56,7 +54,6 @@ def upgrade() -> None:
         sa.UniqueConstraint("token_hash", name="uq_sessions_token_hash"),
     )
     op.create_index("ix_sessions_user_id", "sessions", ["user_id"], unique=False)
-    op.create_index("ix_sessions_token_hash", "sessions", ["token_hash"], unique=True)
     op.create_index("ix_sessions_expires_at", "sessions", ["expires_at"], unique=False)
 
     op.create_table(
@@ -107,12 +104,9 @@ def downgrade() -> None:
     op.drop_table("verification_tokens")
 
     op.drop_index("ix_sessions_expires_at", table_name="sessions")
-    op.drop_index("ix_sessions_token_hash", table_name="sessions")
     op.drop_index("ix_sessions_user_id", table_name="sessions")
     op.drop_table("sessions")
 
-    op.drop_index("ix_users_email", table_name="users")
     op.drop_table("users")
 
-    op.drop_index("ix_roles_name", table_name="roles")
     op.drop_table("roles")

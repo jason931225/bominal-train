@@ -40,7 +40,14 @@ make_valid_envs() {
 GCP_PROJECT_ID=test-project
 DATABASE_URL=postgresql+asyncpg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:6543/postgres?ssl=require
 SYNC_DATABASE_URL=postgresql+psycopg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:6543/postgres?sslmode=require
-AUTH_MODE=legacy
+AUTH_MODE=supabase
+SUPABASE_URL=https://test-ref.supabase.co
+SUPABASE_JWT_ISSUER=https://test-ref.supabase.co/auth/v1
+SUPABASE_AUTH_ENABLED=true
+SUPABASE_AUTH_API_KEY=anon-key
+SUPABASE_AUTH_TIMEOUT_SECONDS=12
+SUPABASE_STORAGE_ENABLED=true
+SUPABASE_SERVICE_ROLE_KEY=service-role-key
 EMAIL_PROVIDER=disabled
 INTERNAL_API_KEY=abc123
 MASTER_KEY=base64-secret
@@ -99,6 +106,68 @@ make_valid_registry
 
 # Valid env files with skip smoke checks should pass.
 PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" BOMINAL_ROOT_DIR="$TMP_DIR/repo" "$SCRIPT" --skip-smoke-tests >/dev/null
+
+# Production must enforce AUTH_MODE=supabase.
+make_valid_envs
+cat >"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF'
+GCP_PROJECT_ID=test-project
+DATABASE_URL=postgresql+asyncpg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:6543/postgres?ssl=require
+SYNC_DATABASE_URL=postgresql+psycopg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:6543/postgres?sslmode=require
+AUTH_MODE=dual
+SUPABASE_URL=https://test-ref.supabase.co
+SUPABASE_JWT_ISSUER=https://test-ref.supabase.co/auth/v1
+SUPABASE_AUTH_ENABLED=true
+SUPABASE_AUTH_API_KEY=anon-key
+SUPABASE_AUTH_TIMEOUT_SECONDS=12
+SUPABASE_STORAGE_ENABLED=true
+SUPABASE_SERVICE_ROLE_KEY=service-role-key
+EMAIL_PROVIDER=disabled
+INTERNAL_API_KEY=abc123
+MASTER_KEY=base64-secret
+EOF
+assert_fails "production auth mode must be supabase" env PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" BOMINAL_ROOT_DIR="$TMP_DIR/repo" "$SCRIPT" --skip-smoke-tests
+make_valid_envs
+make_valid_registry
+
+# Production must enforce Supabase auth integration.
+cat >"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF'
+GCP_PROJECT_ID=test-project
+DATABASE_URL=postgresql+asyncpg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:6543/postgres?ssl=require
+SYNC_DATABASE_URL=postgresql+psycopg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:6543/postgres?sslmode=require
+AUTH_MODE=supabase
+SUPABASE_URL=https://test-ref.supabase.co
+SUPABASE_JWT_ISSUER=https://test-ref.supabase.co/auth/v1
+SUPABASE_AUTH_ENABLED=false
+SUPABASE_STORAGE_ENABLED=true
+SUPABASE_SERVICE_ROLE_KEY=service-role-key
+EMAIL_PROVIDER=disabled
+INTERNAL_API_KEY=abc123
+MASTER_KEY=base64-secret
+EOF
+assert_fails "supabase auth must be enabled in production" env PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" BOMINAL_ROOT_DIR="$TMP_DIR/repo" "$SCRIPT" --skip-smoke-tests
+make_valid_envs
+make_valid_registry
+
+# Production must enforce Supabase storage integration.
+cat >"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF'
+GCP_PROJECT_ID=test-project
+DATABASE_URL=postgresql+asyncpg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:6543/postgres?ssl=require
+SYNC_DATABASE_URL=postgresql+psycopg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:6543/postgres?sslmode=require
+AUTH_MODE=supabase
+SUPABASE_URL=https://test-ref.supabase.co
+SUPABASE_JWT_ISSUER=https://test-ref.supabase.co/auth/v1
+SUPABASE_AUTH_ENABLED=true
+SUPABASE_AUTH_API_KEY=anon-key
+SUPABASE_AUTH_TIMEOUT_SECONDS=12
+SUPABASE_STORAGE_ENABLED=false
+SUPABASE_SERVICE_ROLE_KEY=
+EMAIL_PROVIDER=disabled
+INTERNAL_API_KEY=abc123
+MASTER_KEY=base64-secret
+EOF
+assert_fails "supabase storage must be enabled in production" env PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" BOMINAL_ROOT_DIR="$TMP_DIR/repo" "$SCRIPT" --skip-smoke-tests
+make_valid_envs
+make_valid_registry
 
 # Missing required env file should fail.
 rm -f "$TMP_DIR/repo/infra/env/prod/caddy.env"

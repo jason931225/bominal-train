@@ -71,7 +71,6 @@ def upgrade() -> None:
             sa.UniqueConstraint("credential_id"),
         )
         op.create_index("ix_passkey_credentials_user_id", "passkey_credentials", ["user_id"], unique=False)
-        op.create_index("ix_passkey_credentials_credential_id", "passkey_credentials", ["credential_id"], unique=True)
 
     if "auth_challenges" not in tables:
         op.create_table(
@@ -116,7 +115,6 @@ def downgrade() -> None:
     if "passkey_credentials" in tables:
         indexes = _existing_indexes(inspector, "passkey_credentials")
         for name in (
-            "ix_passkey_credentials_credential_id",
             "ix_passkey_credentials_user_id",
         ):
             if name in indexes:

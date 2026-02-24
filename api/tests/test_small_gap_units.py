@@ -137,7 +137,6 @@ def test_config_and_schema_validation_small_gaps():
             card_number="1234 5678 901",
             expiry_month=1,
             expiry_year=2030,
-            cvv="123",
             birth_date=date(1990, 1, 1),
             pin2="12",
         )

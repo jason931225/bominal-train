@@ -227,8 +227,6 @@
     "cardNumber": "카드 번호",
     "expiryMonth": "만료 월",
     "expiryYear": "만료 연도",
-    "cvv": "CVV",
-    "cvvPlaceholder": "3-4자리",
     "dob": "생년월일",
     "pin2": "카드 비밀번호(앞 2자리)",
     "expiryMonthError": "만료 월은 01~12 사이여야 합니다.",

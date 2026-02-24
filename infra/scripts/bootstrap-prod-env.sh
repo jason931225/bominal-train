@@ -276,6 +276,9 @@ PY
   local supabase_auth_api_key
   supabase_auth_api_key="$(prompt_value "SUPABASE_AUTH_API_KEY" "" true true)"
 
+  local supabase_service_role_key
+  supabase_service_role_key="$(prompt_value "SUPABASE_SERVICE_ROLE_KEY" "" true true)"
+
   local internal_api_key
   internal_api_key="$(prompt_value "INTERNAL_API_KEY (leave empty to auto-generate)" "" false true)"
   if [[ -z "$internal_api_key" ]]; then
@@ -339,6 +342,8 @@ PY
   set_env_key "$API_ENV" "SUPABASE_JWT_ISSUER" "$supabase_jwt_issuer"
   set_env_key "$API_ENV" "SUPABASE_AUTH_ENABLED" "true"
   set_env_key "$API_ENV" "SUPABASE_AUTH_API_KEY" "$supabase_auth_api_key"
+  set_env_key "$API_ENV" "SUPABASE_STORAGE_ENABLED" "true"
+  set_env_key "$API_ENV" "SUPABASE_SERVICE_ROLE_KEY" "$supabase_service_role_key"
   set_env_key "$API_ENV" "INTERNAL_API_KEY" "$internal_api_key"
   set_env_key "$API_ENV" "MASTER_KEY" "$master_key"
   set_env_key "$API_ENV" "TRAIN_POLL_FORCE_MAX_RATE" "false"

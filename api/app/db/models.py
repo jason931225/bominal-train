@@ -21,7 +21,7 @@ class Role(Base):
     __tablename__ = "roles"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    name: Mapped[str] = mapped_column(String(50), unique=True, nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
 
     users: Mapped[list["User"]] = relationship(back_populates="role")
 
@@ -31,7 +31,7 @@ class User(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     supabase_user_id: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True, index=True)
-    email: Mapped[str] = mapped_column(String(320), unique=True, nullable=False, index=True)
+    email: Mapped[str] = mapped_column(String(320), unique=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(Text, nullable=False)
     display_name: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True)
     phone_number: Mapped[str | None] = mapped_column(String(32), nullable=True)
@@ -71,7 +71,7 @@ class Session(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
-    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
@@ -117,7 +117,7 @@ class PasskeyCredential(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
-    credential_id: Mapped[str] = mapped_column(String(512), nullable=False, unique=True, index=True)
+    credential_id: Mapped[str] = mapped_column(String(512), nullable=False, unique=True)
     public_key: Mapped[str] = mapped_column(Text, nullable=False)
     sign_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("0"))
     transports: Mapped[list[str] | None] = mapped_column(JSON_TYPE, nullable=True)

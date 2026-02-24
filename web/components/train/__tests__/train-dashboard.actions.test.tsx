@@ -116,7 +116,6 @@ describe("TrainDashboard action flows", () => {
           expiry_month: 12,
           expiry_year: 2030,
           updated_at: "2026-02-22T10:00:00+09:00",
-          cvv_cached_until: null,
           detail: null,
         });
       }
@@ -209,7 +208,6 @@ describe("TrainDashboard action flows", () => {
           expiry_month: 12,
           expiry_year: 2030,
           updated_at: "2026-02-22T10:00:00+09:00",
-          cvv_cached_until: null,
           detail: null,
         });
       }
@@ -577,7 +575,6 @@ describe("TrainDashboard action flows", () => {
           expiry_month: 12,
           expiry_year: 2030,
           updated_at: "2026-02-22T10:00:00+09:00",
-          cvv_cached_until: null,
           detail: null,
         });
       }
@@ -805,7 +802,7 @@ describe("TrainDashboard action flows", () => {
         });
       }
       if (url.includes("/api/wallet/payment-card")) {
-        return jsonResponse({ configured: false, card_masked: null, expiry_month: null, expiry_year: null, updated_at: null, cvv_cached_until: null, detail: null });
+        return jsonResponse({ configured: false, card_masked: null, expiry_month: null, expiry_year: null, updated_at: null, detail: null });
       }
       if (url.includes("/api/train/stations")) {
         return jsonResponse({
@@ -932,7 +929,6 @@ describe("TrainDashboard action flows", () => {
           expiry_month: null,
           expiry_year: null,
           updated_at: null,
-          cvv_cached_until: null,
           detail: null,
         });
       }
@@ -1101,7 +1097,6 @@ describe("TrainDashboard action flows", () => {
           expiry_month: null,
           expiry_year: null,
           updated_at: null,
-          cvv_cached_until: null,
           detail: null,
         });
       }
@@ -1244,7 +1239,7 @@ describe("TrainDashboard action flows", () => {
         });
       }
       if (url.includes("/api/wallet/payment-card")) {
-        return jsonResponse({ configured: false, card_masked: null, expiry_month: null, expiry_year: null, updated_at: null, cvv_cached_until: null, detail: null });
+        return jsonResponse({ configured: false, card_masked: null, expiry_month: null, expiry_year: null, updated_at: null, detail: null });
       }
       if (url.includes("/api/train/stations")) {
         return jsonResponse({
@@ -1387,7 +1382,7 @@ describe("TrainDashboard action flows", () => {
         });
       }
       if (url.includes("/api/wallet/payment-card")) {
-        return jsonResponse({ configured: false, card_masked: null, expiry_month: null, expiry_year: null, updated_at: null, cvv_cached_until: null, detail: null });
+        return jsonResponse({ configured: false, card_masked: null, expiry_month: null, expiry_year: null, updated_at: null, detail: null });
       }
       if (url.includes("/api/train/stations")) {
         return jsonResponse({
@@ -1484,7 +1479,7 @@ describe("TrainDashboard action flows", () => {
         });
       }
       if (url.includes("/api/wallet/payment-card")) {
-        return jsonResponse({ configured: false, card_masked: null, expiry_month: null, expiry_year: null, updated_at: null, cvv_cached_until: null, detail: null });
+        return jsonResponse({ configured: false, card_masked: null, expiry_month: null, expiry_year: null, updated_at: null, detail: null });
       }
       if (url.includes("/api/train/stations")) {
         return jsonResponse({
@@ -1526,7 +1521,7 @@ describe("TrainDashboard action flows", () => {
         });
       }
       if (url.includes("/api/wallet/payment-card")) {
-        return jsonResponse({ configured: false, card_masked: null, expiry_month: null, expiry_year: null, updated_at: null, cvv_cached_until: null, detail: null });
+        return jsonResponse({ configured: false, card_masked: null, expiry_month: null, expiry_year: null, updated_at: null, detail: null });
       }
       if (url.includes("/api/train/stations")) {
         return jsonResponse({
@@ -1583,7 +1578,7 @@ describe("TrainDashboard action flows", () => {
         });
       }
       if (url.includes("/api/wallet/payment-card")) {
-        return jsonResponse({ configured: false, card_masked: null, expiry_month: null, expiry_year: null, updated_at: null, cvv_cached_until: null, detail: null });
+        return jsonResponse({ configured: false, card_masked: null, expiry_month: null, expiry_year: null, updated_at: null, detail: null });
       }
       if (url.includes("/api/train/stations")) {
         return stationDeferred.promise;
@@ -1624,7 +1619,7 @@ describe("TrainDashboard action flows", () => {
         });
       }
       if (url.includes("/api/wallet/payment-card")) {
-        return jsonResponse({ configured: false, card_masked: null, expiry_month: null, expiry_year: null, updated_at: null, cvv_cached_until: null, detail: null });
+        return jsonResponse({ configured: false, card_masked: null, expiry_month: null, expiry_year: null, updated_at: null, detail: null });
       }
       if (url.includes("/api/train/stations")) {
         return jsonResponse({ stations: [] });
@@ -1653,7 +1648,7 @@ describe("TrainDashboard action flows", () => {
         });
       }
       if (url.includes("/api/wallet/payment-card")) {
-        return jsonResponse({ configured: false, card_masked: null, expiry_month: null, expiry_year: null, updated_at: null, cvv_cached_until: null, detail: null });
+        return jsonResponse({ configured: false, card_masked: null, expiry_month: null, expiry_year: null, updated_at: null, detail: null });
       }
       if (url.includes("/api/train/stations")) {
         return jsonResponse({
