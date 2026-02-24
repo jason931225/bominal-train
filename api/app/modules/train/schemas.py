@@ -81,8 +81,6 @@ class ProviderCredentialsSetRequest(BaseModel):
 class ProviderCredentialStatus(BaseModel):
     configured: bool
     verified: bool = False
-    username: str | None = None
-    verified_at: datetime | None = None
     detail: str | None = None
 
 
