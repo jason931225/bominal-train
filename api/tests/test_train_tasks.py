@@ -28,6 +28,9 @@ from tests.conftest import make_fake_get_redis_client
 @pytest.fixture(autouse=True)
 def _enable_payment_for_train_task_tests(monkeypatch):
     monkeypatch.setattr(train_worker.settings, "payment_enabled", True)
+    # Ensure poll-delay behavior tests exercise the jittered model unless a
+    # specific test opts into forced max-rate mode.
+    monkeypatch.setattr(train_worker.settings, "train_poll_force_max_rate", False)
     monkeypatch.setattr("app.modules.train.service.settings.payment_enabled", True)
 
 
@@ -194,8 +197,6 @@ async def test_train_task_creation_accepts_mixed_provider_selection(client, db_s
         return ProviderCredentialStatus(
             configured=True,
             verified=True,
-            username=f"{provider.lower()}-user",
-            verified_at=None,
             detail=None,
         )
 

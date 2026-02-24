@@ -111,7 +111,9 @@ Backend tests:
 (cd api && ./.venv/bin/pytest -q)
 ```
 
-- Coverage thresholds are enforced by repository config and CI gates; treat them as minimums, not as a substitute for meaningful test quality.
+- Backend coverage floor is enforced via pytest config:
+  - line coverage for `api/app` must remain at or above 75%.
+- Treat coverage floors as minimum guardrails, not as a substitute for meaningful behavior verification.
 
 Frontend type check:
 
@@ -125,7 +127,9 @@ Frontend unit tests with coverage gate:
 (cd web && npm run test:ci)
 ```
 
-- Coverage thresholds are enforced by repository config and CI gates; prioritize meaningful behavior verification over blanket threshold chasing.
+- Frontend coverage floors are enforced via Vitest config:
+  - lines/functions/branches/statements must remain at or above 70%.
+- Prioritize meaningful behavior verification over blanket threshold chasing.
 
 Coverage ignore policy (mandatory):
 
@@ -147,6 +151,9 @@ npm run --prefix web test:mutation
 - For low-risk non-critical changes, these gates are recommended but not mandatory.
 - Keep assertions meaningful: avoid vacuous checks (`assert True`, `expect(true).toBe(true)`).
 - Use mutation checks where they provide signal on security- or correctness-critical invariants.
+- CI enforces this as a hybrid policy:
+  - baseline tests + coverage floors run for all API/web changes;
+  - assertiveness + mutation gates are required when changed files match critical-path areas.
 
 Frontend E2E tests (containerized, Chromium-enabled profile):
 
