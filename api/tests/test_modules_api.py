@@ -67,6 +67,26 @@ async def test_modules_response_includes_enabled_and_capabilities(client, db_ses
 
 
 @pytest.mark.asyncio
+async def test_modules_omits_wallet_capability_when_payment_disabled(client, db_session, monkeypatch):
+    session_cookie = await _register_and_login(
+        client,
+        db_session,
+        email=f"module-payment-off-{uuid4().hex[:8]}@example.com",
+        display_name=f"Module Payment Off {uuid4().hex[:6]}",
+    )
+
+    monkeypatch.setattr("app.http.routes.modules.settings.payment_enabled", False)
+
+    response = await client.get("/api/modules", cookies={"bominal_session": session_cookie})
+    assert response.status_code == 200
+
+    modules = response.json()["modules"]
+    by_slug = {module["slug"]: module for module in modules}
+    train = by_slug["train"]
+    assert "wallet.payment_card" not in train["capabilities"]
+
+
+@pytest.mark.asyncio
 async def test_restaurant_capabilities_are_safe_subset(client, db_session):
     session_cookie = await _register_and_login(
         client,

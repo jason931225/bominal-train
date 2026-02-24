@@ -4,13 +4,13 @@ import { redirect } from "next/navigation";
 import { PasswordResetRequestForm } from "@/components/auth/password-reset-request-form";
 import { getServerT } from "@/lib/i18n-server";
 import { ROUTES } from "@/lib/routes";
-import { getOptionalUser } from "@/lib/server-auth";
+import { getOptionalUser, postLoginRouteForUser } from "@/lib/server-auth";
 import { UI_BODY_MUTED, UI_CARD_LG, UI_TITLE_LG } from "@/lib/ui";
 
 export default async function ForgotPasswordPage() {
   const user = await getOptionalUser();
   if (user) {
-    redirect(ROUTES.dashboard);
+    redirect(postLoginRouteForUser(user));
   }
 
   const { t } = await getServerT();

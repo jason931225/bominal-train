@@ -32,6 +32,7 @@ from app.modules.train.constants import (
 )
 from app.modules.train.providers import get_provider_client
 from app.modules.train.providers.base import ProviderOutcome, ProviderSchedule
+from app.modules.train.events import publish_task_state_event
 from app.modules.train.queue import enqueue_train_task
 from app.modules.train.rate_limiter import RedisTokenBucketLimiter
 from app.modules.train.ticket_sync import fetch_ticket_sync_snapshot
@@ -424,8 +425,55 @@ async def _save_attempt(
 
 
 async def _persist_attempts(db: AsyncSession, *, task: Task, attempts: list[PendingAttempt]) -> None:
+    if not attempts:
+        return
+
+    def _attempt_signature(*, ok: bool, retryable: bool, error_code: str | None, error_message_safe: str | None) -> tuple[bool, bool, str, str]:
+        return (
+            bool(ok),
+            bool(retryable),
+            str(error_code or ""),
+            str(error_message_safe or ""),
+        )
+
+    def _should_persist_attempt(current: PendingAttempt, previous: TaskAttempt | None) -> bool:
+        # Payment/cancel actions are intentional user-visible transitions and
+        # should always remain fully auditable.
+        if current.action in {ATTEMPT_ACTION_PAY, ATTEMPT_ACTION_CANCEL}:
+            return True
+        if previous is None:
+            return True
+        return _attempt_signature(
+            ok=current.ok,
+            retryable=current.retryable,
+            error_code=current.error_code,
+            error_message_safe=current.error_message_safe,
+        ) != _attempt_signature(
+            ok=previous.ok,
+            retryable=previous.retryable,
+            error_code=previous.error_code,
+            error_message_safe=previous.error_message_safe,
+        )
+
+    # Persist only state/error transitions for polling-heavy actions.
+    latest_by_key: dict[tuple[str, str], TaskAttempt | None] = {}
+    for action, provider in {(row.action, row.provider) for row in attempts}:
+        stmt = (
+            select(TaskAttempt)
+            .where(TaskAttempt.task_id == task.id)
+            .where(TaskAttempt.action == action)
+            .where(TaskAttempt.provider == provider)
+            .order_by(TaskAttempt.finished_at.desc(), TaskAttempt.id.desc())
+            .limit(1)
+        )
+        latest_by_key[(action, provider)] = (await db.execute(stmt)).scalar_one_or_none()
+
     for attempt in sorted(attempts, key=lambda row: row.started_at):
-        await _save_attempt(
+        key = (attempt.action, attempt.provider)
+        previous = latest_by_key.get(key)
+        if not _should_persist_attempt(attempt, previous):
+            continue
+        persisted = await _save_attempt(
             db,
             task=task,
             action=attempt.action,
@@ -438,6 +486,7 @@ async def _persist_attempts(db: AsyncSession, *, task: Task, attempts: list[Pend
             meta_json_safe=attempt.meta_json_safe,
             started_at=attempt.started_at,
         )
+        latest_by_key[key] = persisted
 
 
 async def _enqueue_terminal_notification(
@@ -544,6 +593,7 @@ async def _mark_expired(db: AsyncSession, task: Task) -> None:
     task.state = "EXPIRED"
     task.updated_at = utc_now()
     await db.commit()
+    await publish_task_state_event(user_id=task.user_id, task_id=task.id, state=task.state, updated_at=task.updated_at)
     await _enqueue_terminal_notification(db, task=task, final_state="EXPIRED")
 
 
@@ -552,6 +602,7 @@ async def _mark_failed(db: AsyncSession, task: Task) -> None:
     task.failed_at = utc_now()
     task.updated_at = utc_now()
     await db.commit()
+    await publish_task_state_event(user_id=task.user_id, task_id=task.id, state=task.state, updated_at=task.updated_at)
     await _enqueue_terminal_notification(db, task=task, final_state="FAILED")
 
 
@@ -560,6 +611,7 @@ async def _mark_completed(db: AsyncSession, task: Task) -> None:
     task.completed_at = utc_now()
     task.updated_at = utc_now()
     await db.commit()
+    await publish_task_state_event(user_id=task.user_id, task_id=task.id, state=task.state, updated_at=task.updated_at)
     await _enqueue_terminal_notification(db, task=task, final_state="COMPLETED")
 
 
@@ -570,6 +622,7 @@ async def _schedule_retry(db: AsyncSession, task: Task, delay_seconds: float) ->
     task.state = "POLLING"
     task.updated_at = utc_now()
     await db.commit()
+    await publish_task_state_event(user_id=task.user_id, task_id=task.id, state=task.state, updated_at=task.updated_at)
     await enqueue_train_task(str(task.id), defer_seconds=delay_seconds)
 
 
@@ -631,6 +684,7 @@ async def _provider_search_and_reserve(
     provider: str,
     ranked_for_provider: list[dict[str, Any]],
     spec: dict[str, Any],
+    auto_pay_enabled: bool,
     task_user_id: UUID,
     credentials: dict[str, str],
     limiter: RedisTokenBucketLimiter,
@@ -912,11 +966,7 @@ async def _provider_search_and_reserve(
     elif relogin_retry_attempted and not reserve_ok:
         reserve_retryable = True
 
-    non_payment_expiry_retry = (
-        not spec.get("auto_pay", True)
-        and not reserve_ok
-        and _is_non_payment_expiry_reserve_error(reserve_outcome)
-    )
+    non_payment_expiry_retry = (not auto_pay_enabled and not reserve_ok and _is_non_payment_expiry_reserve_error(reserve_outcome))
     if non_payment_expiry_retry:
         reserve_retryable = True
 
@@ -1295,16 +1345,20 @@ async def _run_train_task_inner(
             task.state = "PAUSED"
             task.updated_at = now
             await db.commit()
+            await publish_task_state_event(user_id=task.user_id, task_id=task.id, state=task.state, updated_at=task.updated_at)
             return
         if task.cancelled_at is not None:
             task.state = "CANCELLED"
+            task.updated_at = now
             await db.commit()
+            await publish_task_state_event(user_id=task.user_id, task_id=task.id, state=task.state, updated_at=task.updated_at)
             return
         if now >= _as_aware_utc(task.deadline_at):
             await _mark_expired(db, task)
             return
 
-        spec = task.spec_json
+        spec = dict(task.spec_json or {})
+        auto_pay_enabled = bool(settings.payment_enabled and spec.get("auto_pay", True))
         ranked = _normalize_ranked_selection(spec)
         if not ranked:
             await _mark_failed(db, task)
@@ -1332,7 +1386,7 @@ async def _run_train_task_inner(
 
         open_ticket_artifact = _find_open_ticket_artifact(existing_ticket_artifacts)
         if open_ticket_artifact is not None:
-            if not spec.get("auto_pay", True):
+            if not auto_pay_enabled:
                 await _mark_completed(db, task)
                 return
 
@@ -1362,6 +1416,7 @@ async def _run_train_task_inner(
             task.state = "PAYING"
             task.updated_at = utc_now()
             await db.commit()
+            await publish_task_state_event(user_id=task.user_id, task_id=task.id, state=task.state, updated_at=task.updated_at)
 
             provider_credentials = await _load_provider_credentials(
                 db,
@@ -1428,6 +1483,7 @@ async def _run_train_task_inner(
         task.state = "RUNNING"
         task.updated_at = now
         await db.commit()
+        await publish_task_state_event(user_id=task.user_id, task_id=task.id, state=task.state, updated_at=task.updated_at)
 
         provider_results: list[ProviderExecutionResult] = []
         provider_credentials_map: dict[str, dict[str, str]] = {}
@@ -1466,6 +1522,7 @@ async def _run_train_task_inner(
                         provider=provider,
                         ranked_for_provider=ranked_for_provider,
                         spec=spec,
+                        auto_pay_enabled=auto_pay_enabled,
                         task_user_id=task.user_id,
                         credentials=credentials,
                         limiter=limiter,
@@ -1526,6 +1583,7 @@ async def _run_train_task_inner(
         )
         db.add(ticket_artifact)
         await db.commit()
+        await publish_task_state_event(user_id=task.user_id, task_id=task.id, state=task.state, updated_at=task.updated_at)
 
         for loser in losers:
             cancel_attempt, cancel_outcome = await _attempt_cancel_candidate(
@@ -1549,13 +1607,14 @@ async def _run_train_task_inner(
                 await _mark_failed(db, task)
             return
 
-        if not spec.get("auto_pay", True):
+        if not auto_pay_enabled:
             await _mark_completed(db, task)
             return
 
         task.state = "PAYING"
         task.updated_at = utc_now()
         await db.commit()
+        await publish_task_state_event(user_id=task.user_id, task_id=task.id, state=task.state, updated_at=task.updated_at)
 
         pay_attempt, pay_outcome = await _attempt_pay_reservation(
             provider=winner.provider,

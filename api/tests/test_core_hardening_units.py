@@ -64,6 +64,7 @@ def test_settings_model_validation_branches(monkeypatch) -> None:
     monkeypatch.setenv("APP_ENV", "production")
     monkeypatch.setenv("MASTER_KEY", _valid_master_key_b64())
     monkeypatch.setenv("INTERNAL_API_KEY", "internal")
+    monkeypatch.setenv("PAYMENT_ENABLED", "true")
 
     # AUTH_MODE validator
     monkeypatch.setenv("AUTH_MODE", "invalid")
@@ -439,6 +440,7 @@ def test_settings_rejects_upstash_for_cde_and_empty_hosts_in_production(monkeypa
     monkeypatch.setenv("MASTER_KEY", _valid_master_key_b64())
     monkeypatch.setenv("INTERNAL_API_KEY", "internal")
     monkeypatch.setenv("EMAIL_PROVIDER", "disabled")
+    monkeypatch.setenv("PAYMENT_ENABLED", "true")
 
     monkeypatch.setenv("REDIS_URL_CDE", "rediss://cache.example.upstash.io:6379")
     with pytest.raises(ValueError):

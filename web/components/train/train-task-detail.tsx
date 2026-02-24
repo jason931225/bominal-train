@@ -10,7 +10,6 @@ import { ROUTES } from "@/lib/routes";
 import { UI_BUTTON_DANGER_SM, UI_BUTTON_OUTLINE_SM } from "@/lib/ui";
 import type { TrainArtifact, TrainTaskAttempt, TrainTaskSummary } from "@/lib/types";
 
-const POLL_MS = 10000;
 const ATTEMPTS_PAGE_SIZE_OPTIONS = [10, 20, 50, 100, "all"] as const;
 type AttemptsPageSize = (typeof ATTEMPTS_PAGE_SIZE_OPTIONS)[number];
 const SMALL_BUTTON_CLASS = UI_BUTTON_OUTLINE_SM;
@@ -156,11 +155,26 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
 
   useEffect(() => {
     void loadDetail();
-    const interval = window.setInterval(() => {
-      void loadDetail();
-    }, POLL_MS);
-    return () => window.clearInterval(interval);
-  }, [loadDetail]);
+    if (typeof window === "undefined" || !("EventSource" in window)) {
+      return undefined;
+    }
+
+    const eventSource = new EventSource(`${clientApiBaseUrl}/api/train/tasks/events`, { withCredentials: true });
+    const onTaskState = (event: MessageEvent<string>) => {
+      try {
+        const payload = JSON.parse(event.data) as { task_id?: string };
+        if (payload.task_id === taskId) {
+          void loadDetail();
+        }
+      } catch {
+        // Ignore malformed event payloads.
+      }
+    };
+    eventSource.addEventListener("task_state", onTaskState as EventListener);
+    return () => {
+      eventSource.close();
+    };
+  }, [loadDetail, taskId]);
 
   useEffect(() => {
     setAttemptsPage((current) => Math.min(Math.max(1, current), totalAttemptPages));

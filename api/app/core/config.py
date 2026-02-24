@@ -105,6 +105,9 @@ class Settings(BaseSettings):
     supabase_jwks_url: str | None = Field(default=None, alias="SUPABASE_JWKS_URL")
     supabase_jwt_issuer: str | None = Field(default=None, alias="SUPABASE_JWT_ISSUER")
     supabase_jwt_audience: str = Field(default="authenticated", alias="SUPABASE_JWT_AUDIENCE")
+    supabase_auth_enabled: bool = Field(default=False, alias="SUPABASE_AUTH_ENABLED")
+    supabase_auth_api_key: str | None = Field(default=None, alias="SUPABASE_AUTH_API_KEY")
+    supabase_auth_timeout_seconds: float = Field(default=12.0, alias="SUPABASE_AUTH_TIMEOUT_SECONDS")
     supabase_storage_bucket: str = Field(default="artifacts-safe", alias="SUPABASE_STORAGE_BUCKET")
     supabase_service_role_key: str | None = Field(default=None, alias="SUPABASE_SERVICE_ROLE_KEY")
     supabase_storage_enabled: bool = Field(default=False, alias="SUPABASE_STORAGE_ENABLED")
@@ -227,6 +230,7 @@ class Settings(BaseSettings):
         default=None,
         alias="RESTAURANT_PROVIDER_EGRESS_PROXY_URL",
     )
+    payment_enabled: bool = Field(default=True, alias="PAYMENT_ENABLED")
     payment_require_cvv_kek_version: bool = Field(default=False, alias="PAYMENT_REQUIRE_CVV_KEK_VERSION")
 
     email_provider: str = Field(default="smtp", alias="EMAIL_PROVIDER")
@@ -355,7 +359,7 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "MASTER_KEYS_BY_VERSION must include KEK_VERSION or MASTER_KEY must be set"
                 )
-        if is_upstash_redis_url(self.resolved_redis_url_cde):
+        if self.payment_enabled and is_upstash_redis_url(self.resolved_redis_url_cde):
             raise ValueError(
                 "REDIS_URL_CDE (or REDIS_URL fallback) cannot point to Upstash for CDE/CVV usage; "
                 "use a non-durable Redis runtime for CDE data"
@@ -374,6 +378,15 @@ class Settings(BaseSettings):
                 )
         if self.passkey_timeout_ms < 1:
             raise ValueError("PASSKEY_TIMEOUT_MS must be >= 1")
+        if self.supabase_auth_enabled:
+            if not self.supabase_url:
+                raise ValueError("SUPABASE_URL must be set when SUPABASE_AUTH_ENABLED=true")
+            if not self.resolved_supabase_auth_api_key:
+                raise ValueError(
+                    "SUPABASE_AUTH_API_KEY (or SUPABASE_SERVICE_ROLE_KEY fallback) is required when SUPABASE_AUTH_ENABLED=true"
+                )
+            if self.supabase_auth_timeout_seconds <= 0:
+                raise ValueError("SUPABASE_AUTH_TIMEOUT_SECONDS must be > 0 when SUPABASE_AUTH_ENABLED=true")
         if self.passkey_enabled:
             if not (self.passkey_rp_id or self.app_public_base_url):
                 raise ValueError("PASSKEY_RP_ID or APP_PUBLIC_BASE_URL must be set when PASSKEY_ENABLED=true")
@@ -381,16 +394,17 @@ class Settings(BaseSettings):
                 raise ValueError("PASSKEY_ORIGIN or APP_PUBLIC_BASE_URL must be set when PASSKEY_ENABLED=true")
         if self.supabase_storage_enabled and not self.supabase_service_role_key:
             raise ValueError("SUPABASE_SERVICE_ROLE_KEY is required when SUPABASE_STORAGE_ENABLED=true")
-        if self.payment_cvv_ttl_min_seconds < 1:
-            raise ValueError("PAYMENT_CVV_TTL_MIN_SECONDS must be >= 1")
-        if self.payment_cvv_ttl_max_seconds < self.payment_cvv_ttl_min_seconds:
-            raise ValueError("PAYMENT_CVV_TTL_MAX_SECONDS must be >= PAYMENT_CVV_TTL_MIN_SECONDS")
-        if not (self.payment_cvv_ttl_min_seconds <= self.payment_cvv_ttl_seconds <= self.payment_cvv_ttl_max_seconds):
-            raise ValueError(
-                "PAYMENT_CVV_TTL_SECONDS must be within PAYMENT_CVV_TTL_MIN_SECONDS..PAYMENT_CVV_TTL_MAX_SECONDS"
-            )
-        if self.app_env.lower() == "production" and not self.payment_provider_allowed_hosts:
-            raise ValueError("PAYMENT_PROVIDER_ALLOWED_HOSTS must be set in production")
+        if self.payment_enabled:
+            if self.payment_cvv_ttl_min_seconds < 1:
+                raise ValueError("PAYMENT_CVV_TTL_MIN_SECONDS must be >= 1")
+            if self.payment_cvv_ttl_max_seconds < self.payment_cvv_ttl_min_seconds:
+                raise ValueError("PAYMENT_CVV_TTL_MAX_SECONDS must be >= PAYMENT_CVV_TTL_MIN_SECONDS")
+            if not (self.payment_cvv_ttl_min_seconds <= self.payment_cvv_ttl_seconds <= self.payment_cvv_ttl_max_seconds):
+                raise ValueError(
+                    "PAYMENT_CVV_TTL_SECONDS must be within PAYMENT_CVV_TTL_MIN_SECONDS..PAYMENT_CVV_TTL_MAX_SECONDS"
+                )
+            if self.app_env.lower() == "production" and not self.payment_provider_allowed_hosts:
+                raise ValueError("PAYMENT_PROVIDER_ALLOWED_HOSTS must be set in production")
         if self.smtp_use_ssl and self.smtp_starttls:
             raise ValueError("SMTP_USE_SSL and SMTP_STARTTLS cannot both be true")
         if self.email_provider == "resend" and not self.resend_api_key:
@@ -416,6 +430,12 @@ class Settings(BaseSettings):
         if not self.supabase_url:
             return None
         return f"{self.supabase_url.rstrip('/')}/auth/v1/.well-known/jwks.json"
+
+    @property
+    def resolved_supabase_auth_api_key(self) -> str | None:
+        if self.supabase_auth_api_key:
+            return self.supabase_auth_api_key
+        return self.supabase_service_role_key
 
 
 @lru_cache

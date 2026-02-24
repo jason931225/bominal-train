@@ -12,6 +12,11 @@ from app.modules.train import worker as train_worker
 from app.modules.train.providers.base import ProviderOutcome, ProviderSchedule
 
 
+@pytest.fixture(autouse=True)
+def _enable_payment_for_worker_remaining(monkeypatch):
+    monkeypatch.setattr(train_worker.settings, "payment_enabled", True)
+
+
 class _Limiter:
     async def acquire_provider_call(self, **_kwargs):  # noqa: ANN003
         return SimpleNamespace(waited_ms=3, rounds=1)
@@ -303,6 +308,7 @@ async def test_provider_search_and_reserve_remaining_relogin_and_missing_id_bran
         provider="SRT",
         ranked_for_provider=_ranked(),
         spec=spec,
+        auto_pay_enabled=True,
         task_user_id=uuid4(),
         credentials={"username": "u", "password": "p"},
         limiter=_Limiter(),
@@ -321,6 +327,7 @@ async def test_provider_search_and_reserve_remaining_relogin_and_missing_id_bran
         provider="SRT",
         ranked_for_provider=_ranked(),
         spec=spec,
+        auto_pay_enabled=True,
         task_user_id=uuid4(),
         credentials={"username": "u", "password": "p"},
         limiter=_Limiter(),
@@ -360,6 +367,7 @@ async def test_provider_search_and_reserve_remaining_relogin_and_missing_id_bran
         provider="SRT",
         ranked_for_provider=_ranked(),
         spec=spec,
+        auto_pay_enabled=True,
         task_user_id=uuid4(),
         credentials={"username": "u", "password": "p"},
         limiter=_Limiter(),
@@ -387,6 +395,7 @@ async def test_provider_search_and_reserve_remaining_relogin_and_missing_id_bran
         provider="SRT",
         ranked_for_provider=_ranked(),
         spec=spec,
+        auto_pay_enabled=True,
         task_user_id=uuid4(),
         credentials={"username": "u", "password": "p"},
         limiter=_Limiter(),
@@ -416,6 +425,7 @@ async def test_provider_search_and_reserve_remaining_relogin_and_missing_id_bran
         provider="SRT",
         ranked_for_provider=_ranked(),
         spec=spec,
+        auto_pay_enabled=True,
         task_user_id=uuid4(),
         credentials={"username": "u", "password": "p"},
         limiter=_Limiter(),
@@ -437,6 +447,7 @@ async def test_provider_search_and_reserve_remaining_relogin_and_missing_id_bran
         provider="SRT",
         ranked_for_provider=_ranked(),
         spec=spec,
+        auto_pay_enabled=True,
         task_user_id=uuid4(),
         credentials={"username": "u", "password": "p"},
         limiter=_Limiter(),

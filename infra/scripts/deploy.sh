@@ -572,9 +572,9 @@ deploy_services() {
     log_info "Running stack detected. Using rolling-update path."
     calculate_rollout_changes
 
-    log_info "Ensuring database services are healthy..."
-    if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait postgres redis; then
-      log_error "Failed to deploy database services"
+    log_info "Ensuring redis service is healthy..."
+    if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait redis; then
+      log_error "Failed to deploy redis service"
       return 1
     fi
 
@@ -617,7 +617,7 @@ deploy_services() {
   fi
 
   log_warn "No running bominal containers detected. Using first-deploy bootstrap path."
-  if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait postgres redis api worker web caddy; then
+  if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait redis api worker web caddy; then
     log_error "Failed to deploy services in bootstrap path"
     return 1
   fi

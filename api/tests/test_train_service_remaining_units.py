@@ -13,6 +13,11 @@ from app.modules.train.providers.base import ProviderOutcome
 from app.modules.train.schemas import KTXCredentialsSetRequest, TaskSummaryOut
 
 
+@pytest.fixture(autouse=True)
+def _enable_payment_for_service_remaining(monkeypatch):
+    monkeypatch.setattr(train_service.settings, "payment_enabled", True)
+
+
 class _ExecResult:
     def __init__(self, *, scalar=None, scalars=None, rows=None):  # noqa: ANN001
         self._scalar = scalar

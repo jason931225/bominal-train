@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { PageTransition } from "@/components/page-transition";
 import { TopNav } from "@/components/top-nav";
 import type { Locale } from "@/lib/i18n";
+import { ROUTES } from "@/lib/routes";
 import type { BominalUser } from "@/lib/types";
 
 export function AppShell({
@@ -22,6 +23,9 @@ export function AppShell({
   // Root `app/layout.tsx` is persistent across navigations. Use client pathname
   // so landing-vs-app chrome stays correct even on back/forward restores.
   const isLanding = !user && pathname === "/";
+  const isReviewRoute = pathname === ROUTES.applicationReview;
+  const isApprovedUser = !user || String(user.access_status || "").toLowerCase() === "approved";
+  const showTopNav = !isLanding && !isReviewRoute && isApprovedUser;
 
   useEffect(() => {
     const html = document.documentElement;
@@ -95,15 +99,15 @@ export function AppShell({
     };
   }, [isLanding]);
 
-  const mainClassName = isLanding
+  const mainClassName = isLanding || isReviewRoute
     ? "h-[100dvh] w-full overflow-hidden"
     : "mx-auto w-full max-w-5xl px-4 py-8 sm:px-6 sm:py-12";
 
   return (
     <>
-      {isLanding ? null : <TopNav user={user} locale={locale} />}
+      {showTopNav ? <TopNav user={user} locale={locale} /> : null}
       <main className={mainClassName}>
-        {isLanding ? children : <PageTransition>{children}</PageTransition>}
+        {isLanding || isReviewRoute ? children : <PageTransition>{children}</PageTransition>}
       </main>
     </>
   );

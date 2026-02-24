@@ -7,7 +7,53 @@ import { LocaleProvider } from "@/components/locale-provider";
 import { TrainDashboard } from "@/components/train/train-dashboard";
 import type { TrainTaskSummary } from "@/lib/types";
 
-const POLL_MS = 60_000;
+class MockEventSource {
+  static instances: MockEventSource[] = [];
+
+  readonly url: string;
+  readonly withCredentials: boolean;
+  private listeners = new Map<string, Set<(event: MessageEvent<string>) => void>>();
+
+  constructor(url: string, init?: EventSourceInit) {
+    this.url = url;
+    this.withCredentials = Boolean(init?.withCredentials);
+    MockEventSource.instances.push(this);
+  }
+
+  addEventListener(type: string, listener: EventListenerOrEventListenerObject) {
+    const callback =
+      typeof listener === "function"
+        ? (listener as (event: MessageEvent<string>) => void)
+        : (event: MessageEvent<string>) => listener.handleEvent(event as Event);
+    if (!this.listeners.has(type)) {
+      this.listeners.set(type, new Set());
+    }
+    this.listeners.get(type)?.add(callback);
+  }
+
+  removeEventListener(type: string, listener: EventListenerOrEventListenerObject) {
+    const callback =
+      typeof listener === "function"
+        ? (listener as (event: MessageEvent<string>) => void)
+        : (event: MessageEvent<string>) => listener.handleEvent(event as Event);
+    this.listeners.get(type)?.delete(callback);
+  }
+
+  close() {
+    this.listeners.clear();
+  }
+
+  static emit(type: string, payload: Record<string, unknown>) {
+    const event = new MessageEvent<string>("message", { data: JSON.stringify(payload) });
+    for (const instance of MockEventSource.instances) {
+      const callbacks = instance.listeners.get(type);
+      if (!callbacks) continue;
+      for (const callback of callbacks) {
+        callback(event);
+      }
+    }
+  }
+}
 
 function makeTask(id: string, state: TrainTaskSummary["state"]): TrainTaskSummary {
   return {
@@ -66,7 +112,8 @@ describe("TrainDashboard polling behavior", () => {
     visibilityState = "visible";
     searchStatus = 200;
     searchBody = { schedules: [] };
-    vi.useFakeTimers();
+    MockEventSource.instances = [];
+    vi.stubGlobal("EventSource", MockEventSource as unknown as typeof EventSource);
 
     Object.defineProperty(document, "visibilityState", {
       configurable: true,
@@ -153,7 +200,6 @@ describe("TrainDashboard polling behavior", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
-    vi.useRealTimers();
   });
 
   async function flushAsyncEffects() {
@@ -174,33 +220,21 @@ describe("TrainDashboard polling behavior", () => {
     expect(completedCalls).toBeGreaterThanOrEqual(1);
   }
 
-  it("fetches completed tasks every third poll tick while active tasks fetch every tick", async () => {
+  it("does not register interval-based task polling timers", async () => {
+    const setIntervalSpy = vi.spyOn(window, "setInterval");
+    await renderDashboard();
+    expect(setIntervalSpy.mock.calls.some(([, delay]) => delay === 10000 || delay === 60000)).toBe(false);
+    setIntervalSpy.mockRestore();
+  });
+
+  it("refreshes task lists when task-state events are streamed", async () => {
     await renderDashboard();
     expect(activeCalls).toBe(1);
     expect(completedCalls).toBe(1);
 
-    await act(async () => {
-      vi.advanceTimersByTime(POLL_MS);
-      await Promise.resolve();
-      await Promise.resolve();
-    });
+    MockEventSource.emit("task_state", { task_id: "active-1", state: "POLLING" });
+    await flushAsyncEffects();
     expect(activeCalls).toBe(2);
-    expect(completedCalls).toBe(1);
-
-    await act(async () => {
-      vi.advanceTimersByTime(POLL_MS);
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-    expect(activeCalls).toBe(3);
-    expect(completedCalls).toBe(1);
-
-    await act(async () => {
-      vi.advanceTimersByTime(POLL_MS);
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-    expect(activeCalls).toBe(4);
     expect(completedCalls).toBe(2);
   });
 

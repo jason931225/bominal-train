@@ -306,7 +306,6 @@ Checklist:
 1. `docker compose -f infra/docker-compose.prod.yml ps`
 2. `docker compose -f infra/docker-compose.prod.yml logs --tail=200 caddy api worker web`
 3. Verify env files exist:
-   - `infra/env/prod/postgres.env`
    - `infra/env/prod/api.env`
    - `infra/env/prod/web.env`
 4. Re-run deploy script:

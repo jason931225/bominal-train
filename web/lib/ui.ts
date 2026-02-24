@@ -19,6 +19,7 @@ export const UI_BUTTON_BASE =
   "inline-flex items-center justify-center rounded-full font-medium transition focus:outline-none focus:ring-2 disabled:cursor-not-allowed disabled:opacity-60";
 export const UI_BUTTON_PRIMARY = `${UI_BUTTON_BASE} h-10 bg-blossom-500 px-4 text-sm text-white hover:bg-blossom-600 focus:ring-blossom-200`;
 export const UI_BUTTON_OUTLINE = `${UI_BUTTON_BASE} h-10 border border-blossom-200 bg-white px-4 text-sm text-slate-700 hover:bg-blossom-50 focus:ring-blossom-100`;
+export const UI_BUTTON_DANGER = `${UI_BUTTON_BASE} h-10 border border-rose-200 bg-white px-4 text-sm text-rose-700 hover:bg-rose-50 focus:ring-rose-100`;
 export const UI_BUTTON_OUTLINE_SM = `${UI_BUTTON_BASE} h-8 border border-blossom-200 bg-white px-2.5 text-xs text-slate-700 hover:bg-blossom-50 focus:ring-blossom-100`;
 export const UI_BUTTON_DANGER_SM = `${UI_BUTTON_BASE} h-8 border border-rose-200 bg-white px-2.5 text-xs text-rose-700 hover:bg-rose-50 focus:ring-rose-100`;
 

@@ -40,7 +40,6 @@ Each service has a health check in `docker-compose.prod.yml`:
 
 | Service  | Health Check | Start Period |
 |----------|--------------|--------------|
-| postgres | `pg_isready` | 0s |
 | redis    | `redis-cli ping` | 0s |
 | egress-train | `wget --spider` (port 8080/health) | 10s |
 | egress-restaurant | `wget --spider` (port 8080/health) | 10s |
@@ -254,7 +253,6 @@ Only the last 10 deployment records are kept.
 ### 1) Create env files
 
 ```bash
-cp infra/env/prod/postgres.env.example infra/env/prod/postgres.env
 cp infra/env/prod/api.env.example infra/env/prod/api.env
 cp infra/env/prod/web.env.example infra/env/prod/web.env
 cp infra/env/prod/caddy.env.example infra/env/prod/caddy.env
@@ -267,8 +265,7 @@ Optional:
 ### 2) Configure secrets
 
 Replace all `CHANGE_ME...` values. Required manual deploy values:
-- `infra/env/prod/postgres.env`: `POSTGRES_PASSWORD`
-- `infra/env/prod/api.env`: `INTERNAL_API_KEY`, `MASTER_KEY`, DB password portions of `DATABASE_URL` and `SYNC_DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_JWT_ISSUER`, `RESEND_API_KEY`, sender-domain placeholder in `EMAIL_FROM_ADDRESS`, plus passkey origin settings (`PASSKEY_RP_ID`, `PASSKEY_ORIGIN`)
+- `infra/env/prod/api.env`: `INTERNAL_API_KEY`, `MASTER_KEY`, `DATABASE_URL`, `SYNC_DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_JWT_ISSUER`, `SUPABASE_AUTH_API_KEY` (or `SUPABASE_SERVICE_ROLE_KEY` fallback), `RESEND_API_KEY`, sender-domain placeholder in `EMAIL_FROM_ADDRESS`, plus passkey origin settings (`PASSKEY_RP_ID`, `PASSKEY_ORIGIN`)
 - `infra/env/prod/web.env`: `NEXT_PUBLIC_API_BASE_URL`, `API_SERVER_URL` (`http://api:8000` for monolithic API runtime)
 - `infra/env/prod/caddy.env`: `CADDY_SITE_ADDRESS`, `CADDY_ACME_EMAIL`
 - `infra/env/prod/deploy.env` (optional helper): set `GHCR_USERNAME` + `GHCR_TOKEN` when GHCR packages are private
@@ -276,6 +273,7 @@ Replace all `CHANGE_ME...` values. Required manual deploy values:
 Optional, mode-dependent values:
 - `AUTH_MODE=legacy`: Supabase JWT fields can be left empty
 - `AUTH_MODE=dual`: `SUPABASE_URL`, `SUPABASE_JWT_ISSUER` are still required (and `SUPABASE_JWKS_URL` if overriding default)
+- `SUPABASE_AUTH_ENABLED=true`: requires `SUPABASE_AUTH_API_KEY` or `SUPABASE_SERVICE_ROLE_KEY`, plus positive `SUPABASE_AUTH_TIMEOUT_SECONDS`
 
 Production URL scheme enforcement (predeploy gate):
 - `SUPABASE_URL` and `SUPABASE_JWT_ISSUER` must be `https://` when `AUTH_MODE` is `supabase` or `dual`.
@@ -289,8 +287,7 @@ Production URL scheme enforcement (predeploy gate):
 - `TRAIN_PROVIDER_EGRESS_PROXY_URL` / `RESTAURANT_PROVIDER_EGRESS_PROXY_URL`: set to internal egress gateways when outbound provider traffic must be centralized through path-allowlist proxies
 - `NEXT_PUBLIC_FONT_BASE_URL`: optional remote font base URL (must be `https://` when set). Expected files at that base path: `NotoSansKR-Regular.woff2`, `NotoSerifKR-Regular.woff2`, `NotoSerifKR-SemiBold.woff2`, `NotoSerifKR-Bold.woff2`, `DynaPuff-SemiBold.woff2`
 
-Production note: set `DATABASE_URL` / `SYNC_DATABASE_URL` to your managed Postgres endpoint (for example Supabase Postgres). Local dev defaults remain Docker-local Postgres/Redis.
-Postgres 18 note: compose sets `PGDATA=/var/lib/postgresql/data` for backward compatibility with existing `pgdata` volume layout during image upgrades.
+Production note: `DATABASE_URL` / `SYNC_DATABASE_URL` must target Supabase Postgres (`*.supabase.co`) with TLS required (`sslmode=require` or equivalent). Local dev defaults remain Docker-local Postgres/Redis.
 
 Generate secure `MASTER_KEY`:
 
@@ -365,8 +362,7 @@ for f in infra/env/prod/*.example; do cp "$f" "${f%.example}"; done
 ```
 
 Edit each file and replace all `CHANGE_ME` values:
-- `infra/env/prod/postgres.env` - database credentials
-- `infra/env/prod/api.env` - MASTER_KEY, INTERNAL_API_KEY, DATABASE_URL, SUPABASE_URL, SUPABASE_JWT_ISSUER, RESEND_API_KEY, EMAIL_FROM_ADDRESS sender domain, PASSKEY_RP_ID, PASSKEY_ORIGIN
+- `infra/env/prod/api.env` - MASTER_KEY, INTERNAL_API_KEY, DATABASE_URL, SYNC_DATABASE_URL, SUPABASE_URL, SUPABASE_JWT_ISSUER, SUPABASE_AUTH_API_KEY (or SUPABASE_SERVICE_ROLE_KEY), RESEND_API_KEY, EMAIL_FROM_ADDRESS sender domain, PASSKEY_RP_ID, PASSKEY_ORIGIN
 - `infra/env/prod/web.env` - keep `NEXT_PUBLIC_API_BASE_URL` empty for same-origin browser API calls
 - `infra/env/prod/caddy.env` - CADDY_SITE_ADDRESS, CADDY_ACME_EMAIL
 

@@ -79,9 +79,9 @@ wait_healthy() {
 restart_all() {
   log_info "Starting containers (using existing images)..."
   
-  # Start database layer first
-  log_info "Starting database services..."
-  "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait postgres redis
+  # Start Redis first (Postgres is managed externally in production profile).
+  log_info "Starting Redis service..."
+  "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait redis
   
   # Start API + worker services
   log_info "Starting API and worker services..."

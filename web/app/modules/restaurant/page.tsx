@@ -3,10 +3,10 @@ import Link from "next/link";
 import { UI_CARD_LG, UI_KICKER, UI_TITLE_LG } from "@/lib/ui";
 import { getServerT } from "@/lib/i18n-server";
 import { ROUTES } from "@/lib/routes";
-import { requireUser } from "@/lib/server-auth";
+import { requireApprovedUser } from "@/lib/server-auth";
 
 export default async function RestaurantModulePage() {
-  await requireUser();
+  await requireApprovedUser();
   const { t } = await getServerT();
 
   return (
