@@ -232,6 +232,242 @@ async def test_train_task_creation_accepts_mixed_provider_selection(client, db_s
 
 
 @pytest.mark.asyncio
+async def test_train_duplicate_check_classifies_waiting_reserved_polling_and_skips_cancelled_failed(
+    client,
+    db_session,
+    monkeypatch,
+):
+    async def _always_verified(_db, *, user, provider, force_live=False):
+        return ProviderCredentialStatus(
+            configured=True,
+            verified=True,
+            detail=None,
+        )
+
+    monkeypatch.setattr("app.modules.train.service._verify_provider_credentials", _always_verified)
+    cookie = await _register_and_login(client, db_session, email="duplicate-check@example.com")
+    user = (await db_session.execute(select(User).where(User.email == "duplicate-check@example.com"))).scalar_one()
+
+    departure = (_utc_now() + timedelta(hours=2)).isoformat()
+    date_value = _utc_now().date().isoformat()
+
+    def _spec(*, adults: int = 1) -> dict:
+        return {
+            "provider": "SRT",
+            "providers": ["SRT"],
+            "dep": "수서",
+            "arr": "부산",
+            "date": date_value,
+            "selected_trains_ranked": [
+                {
+                    "schedule_id": "srt-dup-1",
+                    "departure_at": departure,
+                    "rank": 1,
+                    "provider": "SRT",
+                }
+            ],
+            "passengers": {"adults": adults, "children": 0},
+            "seat_class": "general",
+            "auto_pay": False,
+            "notify": False,
+        }
+
+    waiting_task = Task(
+        user_id=user.id,
+        module="train",
+        state="COMPLETED",
+        deadline_at=_utc_now() + timedelta(hours=3),
+        spec_json=_spec(adults=1),
+        idempotency_key="dup-check-waiting",
+    )
+    reserved_task = Task(
+        user_id=user.id,
+        module="train",
+        state="COMPLETED",
+        deadline_at=_utc_now() + timedelta(hours=3),
+        spec_json=_spec(adults=1),
+        idempotency_key="dup-check-reserved",
+    )
+    polling_task = Task(
+        user_id=user.id,
+        module="train",
+        state="POLLING",
+        deadline_at=_utc_now() + timedelta(hours=3),
+        spec_json=_spec(adults=1),
+        idempotency_key="dup-check-polling",
+    )
+    cancelled_task = Task(
+        user_id=user.id,
+        module="train",
+        state="CANCELLED",
+        deadline_at=_utc_now() + timedelta(hours=3),
+        spec_json=_spec(adults=1),
+        idempotency_key="dup-check-cancelled",
+        cancelled_at=_utc_now(),
+    )
+    failed_task = Task(
+        user_id=user.id,
+        module="train",
+        state="FAILED",
+        deadline_at=_utc_now() + timedelta(hours=3),
+        spec_json=_spec(adults=1),
+        idempotency_key="dup-check-failed",
+        failed_at=_utc_now(),
+    )
+    db_session.add_all([waiting_task, reserved_task, polling_task, cancelled_task, failed_task])
+    await db_session.flush()
+
+    db_session.add(
+        Artifact(
+            task_id=waiting_task.id,
+            module="train",
+            kind="ticket",
+            data_json_safe={
+                "provider": "SRT",
+                "reservation_id": "WAIT-1",
+                "status": "waiting",
+                "waiting": True,
+                "paid": False,
+            },
+        )
+    )
+    db_session.add(
+        Artifact(
+            task_id=reserved_task.id,
+            module="train",
+            kind="ticket",
+            data_json_safe={
+                "provider": "SRT",
+                "reservation_id": "RES-1",
+                "status": "awaiting_payment",
+                "waiting": False,
+                "paid": False,
+            },
+        )
+    )
+    await db_session.commit()
+
+    response = await client.post(
+        "/api/train/tasks/duplicate-check",
+        cookies={"bominal_session": cookie},
+        json={
+            "provider": "SRT",
+            "dep": "수서",
+            "arr": "부산",
+            "date": date_value,
+            "selected_trains_ranked": [{"schedule_id": "candidate-1", "departure_at": departure, "rank": 1}],
+            "passengers": {"adults": 3, "children": 0},
+            "seat_class": "general",
+            "auto_pay": False,
+            "notify": False,
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["has_duplicate"] is True
+    assert body["summary"]["already_reserved"] == 1
+    assert body["summary"]["waiting"] == 1
+    assert body["summary"]["polling"] == 1
+    categories = {row["category"] for row in body["matches"]}
+    assert categories == {"already_reserved", "waiting", "polling"}
+    matched_ids = {row["task_id"] for row in body["matches"]}
+    assert str(waiting_task.id) in matched_ids
+    assert str(reserved_task.id) in matched_ids
+    assert str(polling_task.id) in matched_ids
+    assert str(cancelled_task.id) not in matched_ids
+    assert str(failed_task.id) not in matched_ids
+
+
+@pytest.mark.asyncio
+async def test_train_task_create_requires_confirm_duplicate_to_create_new_same_time_task(
+    client,
+    db_session,
+    monkeypatch,
+):
+    async def _always_verified(_db, *, user, provider, force_live=False):
+        return ProviderCredentialStatus(
+            configured=True,
+            verified=True,
+            detail=None,
+        )
+
+    async def _noop_enqueue(task_id: str, defer_seconds: float = 0.0) -> None:
+        return None
+
+    monkeypatch.setattr("app.modules.train.service._verify_provider_credentials", _always_verified)
+    monkeypatch.setattr("app.modules.train.service.enqueue_train_task", _noop_enqueue)
+
+    cookie = await _register_and_login(client, db_session, email="duplicate-confirm@example.com")
+    user = (await db_session.execute(select(User).where(User.email == "duplicate-confirm@example.com"))).scalar_one()
+
+    departure = (_utc_now() + timedelta(hours=2)).isoformat()
+    date_value = _utc_now().date().isoformat()
+    existing = Task(
+        user_id=user.id,
+        module="train",
+        state="POLLING",
+        deadline_at=_utc_now() + timedelta(hours=3),
+        spec_json={
+            "provider": "SRT",
+            "providers": ["SRT"],
+            "dep": "수서",
+            "arr": "부산",
+            "date": date_value,
+            "selected_trains_ranked": [
+                {
+                    "schedule_id": "existing-1",
+                    "departure_at": departure,
+                    "rank": 1,
+                    "provider": "SRT",
+                }
+            ],
+            "passengers": {"adults": 1, "children": 0},
+            "seat_class": "general",
+            "auto_pay": False,
+            "notify": False,
+        },
+        idempotency_key="duplicate-confirm-existing",
+    )
+    db_session.add(existing)
+    await db_session.commit()
+
+    payload = {
+        "provider": "SRT",
+        "dep": "수서",
+        "arr": "부산",
+        "date": date_value,
+        "selected_trains_ranked": [
+            {
+                "schedule_id": "new-1",
+                "departure_at": departure,
+                "rank": 1,
+            }
+        ],
+        "passengers": {"adults": 2, "children": 0},
+        "seat_class": "general",
+        "auto_pay": False,
+        "notify": False,
+    }
+
+    dedup = await client.post("/api/train/tasks", cookies={"bominal_session": cookie}, json=payload)
+    assert dedup.status_code == 200
+    dedup_body = dedup.json()
+    assert dedup_body["deduplicated"] is True
+    assert dedup_body["queued"] is False
+    assert dedup_body["task"]["id"] == str(existing.id)
+
+    created = await client.post(
+        "/api/train/tasks",
+        cookies={"bominal_session": cookie},
+        json={**payload, "confirm_duplicate": True},
+    )
+    assert created.status_code == 200
+    created_body = created.json()
+    assert created_body["deduplicated"] is False
+    assert created_body["queued"] is True
+    assert created_body["task"]["id"] != str(existing.id)
+
+@pytest.mark.asyncio
 async def test_train_search_returns_provider_errors_when_all_fail(client, db_session, monkeypatch):
     fake_redis = fakeredis.aioredis.FakeRedis()
 
