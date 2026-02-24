@@ -12,7 +12,7 @@ The Pub/Sub deploy path replaced direct SSH deploy orchestration from GitHub Act
 - `.github/workflows/deploy.yml`
 - `infra/scripts/vm-deploy-agent-pubsub.sh`
 - `infra/systemd/bominal-deploy-agent.service`
-- `docs/DEPLOYMENT.md`
+- `docs/humans/operations/DEPLOYMENT.md`
 
 ## Runtime Notes
 
@@ -22,4 +22,4 @@ The Pub/Sub deploy path replaced direct SSH deploy orchestration from GitHub Act
 ## Archive Notes
 
 - This plan is not an active execution plan.
-- Follow active deployment policy and docs in `docs/DEPLOYMENT.md` and `docs/EXECUTION_PROTOCOL.md` for new deploy work.
+- Follow active deployment policy and docs in `docs/humans/operations/DEPLOYMENT.md` and `docs/agents/EXECUTION_PROTOCOL.md` for new deploy work.

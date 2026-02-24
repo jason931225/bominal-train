@@ -16,13 +16,13 @@ if ! grep -q '^## Canonical Pointer Library' "$README_PATH"; then
   exit 1
 fi
 
-SECTION_CONTENT="$(
+SECTION_CONTENT="$({
   awk '
     /^## Canonical Pointer Library/ {in_section=1; next}
     /^## / && in_section {exit}
     in_section {print}
   ' "$README_PATH"
-)"
+})"
 
 POINTER_LINES="$(printf '%s\n' "$SECTION_CONTENT" | grep -E '^- \[PTR-' || true)"
 if [[ -z "$POINTER_LINES" ]]; then
@@ -60,19 +60,21 @@ done < "$TMP_POINTERS"
 
 required=(
   "AGENTS.md"
-  "docs/EXECUTION_PROTOCOL.md"
-  "docs/PERMISSIONS.md"
-  "docs/GUARDRAILS.md"
+  "docs/START_HERE.md"
+  "docs/README.md"
   "docs/INTENT_ROUTING.md"
-  "docs/DEPRECATION_WORKFLOW.md"
-  "docs/deprecations/registry.json"
-  "docs/LOCK.md"
-  "docs/REQUEST.md"
+  "docs/agents/EXECUTION_PROTOCOL.md"
+  "docs/agents/PERMISSIONS.md"
+  "docs/agents/GUARDRAILS.md"
+  "docs/governance/PRODUCTION_POLICY.md"
+  "docs/governance/DEPRECATION_POLICY.md"
+  "docs/humans/operations/DEPLOYMENT.md"
+  "docs/humans/operations/RUNBOOK.md"
   "docs/plans/active/README.md"
   "CHANGELOG.md"
   "infra/tests/test_intent_routing.sh"
   "infra/tests/test_docs_consistency.sh"
-  "infra/tests/test_execution_ledgers.sh"
+  "infra/tests/test_docs_audience_split.sh"
 )
 
 for req in "${required[@]}"; do

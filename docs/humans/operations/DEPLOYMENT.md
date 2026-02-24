@@ -89,7 +89,7 @@ Optional image override envs (for controlled/manual rollouts):
   - `DEPLOY_MIN_TOTAL_SWAP_MB` (default `900`)
 - Deprecation deploy gate is enforced during predeploy:
   - registry: `docs/deprecations/registry.json`
-  - policy: `docs/DEPRECATION_WORKFLOW.md`
+  - policy: `docs/governance/DEPRECATION_POLICY.md`
   - guard command: `python3 infra/scripts/deprecation_guard.py enforce-deploy ...`
   - host requirement: `python3` available on deploy VM
 - Emergency bypass (approval required):

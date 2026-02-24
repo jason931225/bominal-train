@@ -141,7 +141,7 @@ git commit -m "feat(web): render module capabilities from modules API"
 ### Task 4: Documentation + end-to-end verification
 
 **Files:**
-- Modify: `docs/ARCHITECTURE.md`
+- Modify: `docs/humans/engineering/ARCHITECTURE.md`
 - Modify: `README.md`
 
 **Step 1: Document capability contract**
@@ -169,7 +169,7 @@ Expected: all PASS.
 **Step 4: Commit**
 
 ```bash
-git add docs/ARCHITECTURE.md README.md
+git add docs/humans/engineering/ARCHITECTURE.md README.md
 git commit -m "docs: define module capability exposure contract"
 ```
 

@@ -74,7 +74,7 @@ If touching auth, wallet, or provider credentials:
 
 - verify cookie/security flags remain correct
 - ensure redaction paths still cover new fields
-- document behavior changes in `docs/SECURITY.md`
+- document behavior changes in `docs/humans/security/SECURITY.md`
 
 ## Test and verification
 

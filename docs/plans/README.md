@@ -36,6 +36,6 @@ When no execution plan is open, `docs/plans/active/` should contain only
 
 ## Related Governance
 
-- `docs/EXECUTION_PROTOCOL.md`
-- `docs/DOCUMENTATION_WORKFLOW.md`
+- `docs/agents/EXECUTION_PROTOCOL.md`
+- `docs/governance/DOCUMENTATION_POLICY.md`
 - `docs/README.md`

@@ -52,12 +52,12 @@ git commit -m "docs: add deprecation inventory and ownership metadata"
 
 **Files:**
 - Modify: `README.md`
-- Modify: `docs/DEPLOYMENT.md`
-- Modify: `docs/RUNBOOK.md`
+- Modify: `docs/humans/operations/DEPLOYMENT.md`
+- Modify: `docs/humans/operations/RUNBOOK.md`
 
 **Step 1: Write failing expectation checks (grep-based)**
 
-Run: `rg -n "docker-compose\.deploy\.yml\.deprecated" README.md docs/DEPLOYMENT.md docs/RUNBOOK.md`
+Run: `rg -n "docker-compose\.deploy\.yml\.deprecated" README.md docs/humans/operations/DEPLOYMENT.md docs/humans/operations/RUNBOOK.md`
 Expected: no mention before changes (RED for docs requirement).
 
 **Step 2: Implement compatibility notices**
@@ -69,13 +69,13 @@ Add short transition note:
 
 **Step 3: Verify notices exist**
 
-Run: `rg -n "deprecated" README.md docs/DEPLOYMENT.md docs/RUNBOOK.md`
+Run: `rg -n "deprecated" README.md docs/humans/operations/DEPLOYMENT.md docs/humans/operations/RUNBOOK.md`
 Expected: matching entries present.
 
 **Step 4: Commit**
 
 ```bash
-git add README.md docs/DEPLOYMENT.md docs/RUNBOOK.md
+git add README.md docs/humans/operations/DEPLOYMENT.md docs/humans/operations/RUNBOOK.md
 git commit -m "docs: add compatibility notices for deprecated deploy artifacts"
 ```
 

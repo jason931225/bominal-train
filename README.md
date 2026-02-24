@@ -11,14 +11,13 @@ bominal is a modular product foundation with:
 
 ## Documentation pack
 
+- Start here: `docs/START_HERE.md`
 - Agent guide: `AGENTS.md`
 - Changelog: `CHANGELOG.md`
 - Docs index: `docs/README.md`
-- Architecture: `docs/ARCHITECTURE.md`
-- Contribution workflow: `docs/CONTRIBUTING.md`
-- Deployment: `docs/DEPLOYMENT.md`
-- Operations runbook: `docs/RUNBOOK.md`
-- Security controls: `docs/SECURITY.md`
+- Governance policy: `docs/governance/README.md`
+- Human procedures: `docs/humans/README.md`
+- Agent overlays: `docs/agents/README.md`
 
 ## Security contract (production)
 
@@ -114,7 +113,7 @@ docker compose -f infra/docker-compose.yml restart api worker
 
 Production compose is separated in `infra/docker-compose.prod.yml` (no bind mounts, no dev reload flags).
 
-For production deployments, prefer the zero-downtime procedure in `docs/DEPLOYMENT.md`
+For production deployments, prefer the zero-downtime procedure in `docs/humans/operations/DEPLOYMENT.md`
 (script: `infra/scripts/deploy.sh`). The steps below cover initial
 env-file bootstrap.
 
@@ -122,7 +121,7 @@ Compatibility notice:
 - `infra/docker-compose.deploy.yml.deprecated` is deprecated and no longer part of the canonical deploy workflow.
 - Use `infra/docker-compose.prod.yml` with `infra/scripts/deploy.sh`.
 - Removal gate: remove the deprecated compose artifact after no active callers remain (completed on 2026-02-14).
-- Canonical deprecation lifecycle policy: `docs/DEPRECATION_WORKFLOW.md`.
+- Canonical deprecation lifecycle policy: `docs/governance/DEPRECATION_POLICY.md`.
 
 1) Bootstrap prod env files (interactive, canonical):
 

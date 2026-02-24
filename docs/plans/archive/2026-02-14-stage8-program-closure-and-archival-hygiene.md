@@ -16,7 +16,7 @@ Status: Completed in implementation (2026-02-14).
 ### Task 1: Add closure-stage executable plan and archive report scaffold
 
 **Files:**
-- Create: `docs/plans/active/2026-02-14-stage8-program-closure-and-archival-hygiene.md`
+- Create: `docs/plans/archive/2026-02-14-stage8-program-closure-and-archival-hygiene.md`
 - Create: `docs/plans/archive/2026-02-14-program-closure-report.md`
 
 Steps:
@@ -26,8 +26,8 @@ Steps:
 ### Task 2: Normalize lock/request ledgers for safe templates
 
 **Files:**
-- Modify: `docs/LOCK.md`
-- Modify: `docs/REQUEST.md`
+- Modify: `docs/governance/CHANGE_MANAGEMENT.md`
+- Modify: `docs/governance/CHANGE_MANAGEMENT.md`
 
 Steps:
 1. Add explicit `Current Entries` sections.
@@ -37,7 +37,7 @@ Steps:
 ### Task 3: Add CI guard for ledger-template safety
 
 **Files:**
-- Create: `infra/tests/test_execution_ledgers.sh`
+- Create: `infra/tests/test_docs_audience_split.sh`
 - Modify: `.github/workflows/infra-tests.yml`
 - Modify: `docs/playbooks/daily-operations-chores.md`
 
@@ -81,7 +81,7 @@ Steps:
 ### Task 7: Verify and record changelog
 
 Run:
-- `bash infra/tests/test_execution_ledgers.sh`
+- `bash infra/tests/test_docs_audience_split.sh`
 - `bash infra/tests/test_docs_pointers.sh`
 - `bash infra/tests/test_intent_routing.sh`
 - `bash infra/tests/test_docs_consistency.sh`
