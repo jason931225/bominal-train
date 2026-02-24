@@ -337,8 +337,12 @@
     "kicker": "기차",
     "searchSchedules": "시간표 검색",
     "stationDateTime": "역 / 날짜 / 시간",
+    "station": "운행구간",
     "departureStation": "출발역",
     "arrivalStation": "도착역",
+    "fromShort": "출발",
+    "toShort": "도착",
+    "timeShort": "시간",
     "swapStations": "출발역과 도착역 바꾸기",
     "passengerSeatClass": "인원 / 좌석 등급",
     "selectSchedules": "시간표 선택 ({date})",
@@ -370,6 +374,7 @@
     "skippedDisabled": "미사용(비활성화)",
     "change": "변경",
     "connect": "연결",
+    "ignore": "무시",
     "verifying": "확인 중...",
     "connectProvider": "{provider} 연결",
     "continueWithoutProvider": "{provider} 없이 계속",
@@ -412,7 +417,6 @@
     "generalSoldOut": "일반 매진",
     "specialAvailable": "특실 가능",
     "specialSoldOut": "특실 매진",
-    "selectToCreateTask": "표에서 시간표를 선택해 우선순위가 고정된 작업을 만드세요.",
     "up": "위로",
     "down": "아래로",
     "selectSchedulesFirst": "먼저 시간표를 선택하세요",
@@ -421,6 +425,15 @@
     "notify": "알림",
     "creatingTask": "작업 생성 중...",
     "createTask": "작업 생성",
+    "continueTask": "계속",
+    "reviewTask": {
+      "title": "작업 시작 전 확인",
+      "body": "아래 정보를 확인한 뒤 작업을 시작하세요.",
+      "confirm": "확인",
+      "selectedSchedules": "선택한 시간표",
+      "enabled": "사용",
+      "disabled": "사용 안 함"
+    },
     "walletRequiredAutoPay": "자동 결제를 사용하려면 Wallet 설정이 필요합니다.",
     "configureIn": "설정:",
     "noSchedulesYet": "아직 시간표가 없습니다. 필터를 조정하고 다시 검색하세요.",
@@ -433,6 +446,7 @@
       "cancelled": "취소됨",
       "reservationNotFound": "예약을 찾을 수 없음",
       "awaitingPayment": "결제 대기",
+      "waitlisted": "대기중",
       "confirmed": "확정"
     },
     "error": {
@@ -461,6 +475,7 @@
     "duplicateCheck": {
       "title": "같은 시간대의 기존 예약 작업이 있습니다.",
       "body": "동일한 출발 시간으로 작업을 하나 더 생성할까요?",
+      "leaveDetailTitle": "작업 상세로 이동할까요?",
       "createAnyway": "그래도 생성",
       "category": {
         "already_reserved": "예약 완료",
@@ -497,18 +512,22 @@
       "payNow": "결제 대기 상태인 예약을 지금 결제할까요?",
       "signOutProvider": "{provider} 로그인 정보를 로그아웃할까요?"
       ,
-      "hideTask": "이 작업을 목록에서 숨길까요?"
+      "hideTask": "이 작업을 목록에서 숨길까요?",
+      "leaveDuplicateWarningDetail": "지금 작업 상세로 이동할까요? 현재 화면을 벗어나면 다시 검색해야 합니다."
     },
     "action": {
       "cancelling": "취소 중...",
       "cancelReservation": "예약 취소",
       "cancel": "취소",
       "payNow": "지금 결제",
+      "retry": "재시도",
       "pause": "일시정지",
       "resume": "재개",
       "pay": "결제",
       "paying": "결제 중...",
-      "detail": "상세"
+      "detail": "상세",
+      "showScheduleOptions": "일정 옵션 보기",
+      "hideScheduleOptions": "일정 옵션 숨기기"
     },
     "hint": {
       "paymentSettingsRequired": "결제 설정이 필요합니다"
@@ -526,9 +545,17 @@
       "schedule": "일정:",
       "route": "경로:",
       "passengers": "인원:",
+      "train": "열차:",
+      "seats": "좌석:",
+      "message": "메시지:",
       "nextCheck": "다음 확인:",
       "lastError": "최근 오류:",
       "taskId": "작업 ID:"
+    },
+    "progress": {
+      "nextAttempt": "다음 시도",
+      "remaining": "{time} 남음",
+      "running": "지금 확인 중"
     },
     "empty": {
       "activeTasks": "진행 중인 작업이 없습니다.",
@@ -557,7 +584,8 @@
       "unknown": "알 수 없는 오류"
     },
     "ticketStyle": {
-      "activeTask": "열차 작업"
+      "activeTask": "열차 작업",
+      "completedTask": "완료된 작업"
     },
     "task": {
       "actionFailed": "작업 상태를 변경할 수 없습니다."

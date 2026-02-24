@@ -28,7 +28,7 @@ export const SESSION_EXPIRED_MESSAGE = "session_expired";
 export const ACTIVE_TASK_FETCH_LIMIT = 60;
 export const COMPLETED_TASK_FETCH_LIMIT = 80;
 
-const DEFAULT_BOOTSTRAP_CACHE_TTL_MS = 1500;
+const DEFAULT_BOOTSTRAP_CACHE_TTL_MS = 5000;
 
 let bootstrapSnapshot: TaskListBootstrapSnapshot | null = null;
 let bootstrapInFlight: Promise<TaskListBootstrapSnapshot> | null = null;

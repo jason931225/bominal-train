@@ -5,6 +5,8 @@ type TrainTaskEventPayload = Record<string, unknown> & {
   task_id?: string;
   state?: string;
   updated_at?: string;
+  ticket_status?: string;
+  previous_ticket_status?: string;
   tasks?: unknown[];
 };
 
@@ -15,6 +17,7 @@ type TrainTaskEventsStore = {
   listeners: Set<TrainTaskEventListener>;
   onTaskState: ((event: MessageEvent<string>) => void) | null;
   onAttentionSnapshot: ((event: MessageEvent<string>) => void) | null;
+  onTaskTicketStatus: ((event: MessageEvent<string>) => void) | null;
 };
 
 declare global {
@@ -24,7 +27,7 @@ declare global {
 
 function getStore(): TrainTaskEventsStore {
   if (typeof window === "undefined") {
-    return { source: null, listeners: new Set(), onTaskState: null, onAttentionSnapshot: null };
+    return { source: null, listeners: new Set(), onTaskState: null, onAttentionSnapshot: null, onTaskTicketStatus: null };
   }
   if (!window.__bominalTrainTaskEventsStore) {
     window.__bominalTrainTaskEventsStore = {
@@ -32,6 +35,7 @@ function getStore(): TrainTaskEventsStore {
       listeners: new Set(),
       onTaskState: null,
       onAttentionSnapshot: null,
+      onTaskTicketStatus: null,
     };
   }
   return window.__bominalTrainTaskEventsStore;
@@ -89,12 +93,15 @@ function ensureSource(store: TrainTaskEventsStore): void {
   const source = new EventSource(`${eventsBase}/api/train/tasks/events`, { withCredentials: true });
   const onTaskState = (event: MessageEvent<string>) => dispatchEventPayload(store, event);
   const onAttentionSnapshot = (event: MessageEvent<string>) => dispatchEventPayload(store, event);
+  const onTaskTicketStatus = (event: MessageEvent<string>) => dispatchEventPayload(store, event);
 
   source.addEventListener("task_state", onTaskState as EventListener);
   source.addEventListener("attention_snapshot", onAttentionSnapshot as EventListener);
+  source.addEventListener("task_ticket_status", onTaskTicketStatus as EventListener);
   store.source = source;
   store.onTaskState = onTaskState;
   store.onAttentionSnapshot = onAttentionSnapshot;
+  store.onTaskTicketStatus = onTaskTicketStatus;
 }
 
 function closeSource(store: TrainTaskEventsStore): void {
@@ -107,10 +114,14 @@ function closeSource(store: TrainTaskEventsStore): void {
   if (store.onAttentionSnapshot) {
     store.source.removeEventListener("attention_snapshot", store.onAttentionSnapshot as EventListener);
   }
+  if (store.onTaskTicketStatus) {
+    store.source.removeEventListener("task_ticket_status", store.onTaskTicketStatus as EventListener);
+  }
   store.source.close();
   store.source = null;
   store.onTaskState = null;
   store.onAttentionSnapshot = null;
+  store.onTaskTicketStatus = null;
 }
 
 export function subscribeTrainTaskEvents(listener: TrainTaskEventListener): () => void {

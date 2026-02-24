@@ -175,10 +175,9 @@ describe("TrainDashboard feature-flag and fallback branches", () => {
     await flushAsyncEffects();
     fireEvent.click(screen.getByRole("button", { name: "SRT 301" }));
 
-    const autoPaySwitch = screen.getByRole("switch", { name: "Auto-pay" });
-    fireEvent.click(autoPaySwitch);
-    fireEvent.click(autoPaySwitch);
-    fireEvent.click(screen.getByRole("button", { name: "Create Task" }));
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    expect(screen.getByRole("heading", { name: "Review task before starting" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
     await flushAsyncEffects();
     expect(screen.getByText("Task already active (deduplicated).")).toBeInTheDocument();
     expect(createTaskAutoPay).toBe(true);
@@ -359,7 +358,7 @@ describe("TrainDashboard feature-flag and fallback branches", () => {
     }
   });
 
-  it("shows the wallet-required warning when auto-pay is enabled but no card is configured", async () => {
+  it("keeps auto-pay controls hidden when auto-pay is enabled but no card is configured", async () => {
     vi.stubEnv("NEXT_PUBLIC_TRAIN_AUTO_PAY_ENABLED", "true");
     vi.resetModules();
     const { LocaleProvider } = await import("@/components/locale-provider");
@@ -418,9 +417,9 @@ describe("TrainDashboard feature-flag and fallback branches", () => {
     await flushAsyncEffects();
     fireEvent.click(screen.getByRole("button", { name: "SRT 301" }));
 
-    expect(screen.getByRole("switch", { name: "Auto-pay" })).toBeDisabled();
-    expect(screen.getByText("Wallet required for auto-pay.")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Payment settings" })).toHaveAttribute("href", "/settings/payment");
+    expect(screen.queryByRole("switch", { name: "Auto-pay" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Wallet required for auto-pay.")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Payment settings" })).not.toBeInTheDocument();
   });
 
   it("hides dummy task tools when loaded in production mode", async () => {
