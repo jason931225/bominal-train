@@ -21,6 +21,16 @@ async def test_enforce_production_security_guards_paths(monkeypatch) -> None:
     monkeypatch.setattr(main_mod.settings, "app_env", "development")
     await main_mod._enforce_production_security_guards()
 
+    monkeypatch.setattr(main_mod.settings, "app_env", "production")
+    monkeypatch.setattr(main_mod.settings, "payment_enabled", False)
+
+    async def _should_not_run():
+        raise AssertionError("CDE redis guard should be skipped when payment is disabled")
+
+    monkeypatch.setattr("app.core.redis.get_cde_redis_client", _should_not_run)
+    await main_mod._enforce_production_security_guards()
+    monkeypatch.setattr(main_mod.settings, "payment_enabled", True)
+
     class _RedisOK:
         async def config_get(self, key: str):
             if key == "save":
@@ -30,7 +40,6 @@ async def test_enforce_production_security_guards_paths(monkeypatch) -> None:
     async def _redis_ok_client():
         return _RedisOK()
 
-    monkeypatch.setattr(main_mod.settings, "app_env", "production")
     monkeypatch.setattr("app.core.redis.get_cde_redis_client", _redis_ok_client)
     await main_mod._enforce_production_security_guards()
 

@@ -1,13 +1,18 @@
 from __future__ import annotations
 
+import json
+from collections.abc import AsyncIterator
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Path, Query
+from fastapi import APIRouter, Depends, Path, Query, Request
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.http.deps import get_current_user
+from app.core.redis import get_redis_client
 from app.db.models import User
 from app.db.session import get_db
+from app.modules.train.events import task_events_channel
 from app.modules.train.schemas import (
     KTXCredentialStatusResponse,
     KTXCredentialsSetRequest,
@@ -53,6 +58,44 @@ from app.modules.train.service import (
 )
 
 router = APIRouter(prefix="/api/train", tags=["train"])
+TRAIN_TASK_EVENTS_PING_SECONDS = 10.0
+
+
+def _sse(event: str, data: str) -> str:
+    return f"event: {event}\ndata: {data}\n\n"
+
+
+async def _task_events_stream(request: Request, *, user_id: UUID) -> AsyncIterator[str]:
+    redis = await get_redis_client()
+    pubsub = redis.pubsub()
+    channel = task_events_channel(user_id)
+    await pubsub.subscribe(channel)
+    try:
+        yield _sse("connected", json.dumps({"channel": channel}, separators=(",", ":")))
+        while True:
+            if await request.is_disconnected():
+                break
+            message = await pubsub.get_message(
+                ignore_subscribe_messages=True,
+                timeout=TRAIN_TASK_EVENTS_PING_SECONDS,
+            )
+            if message is None:
+                # Keep SSE connections warm through proxies/LBs.
+                yield ": keepalive\n\n"
+                continue
+            payload_raw = message.get("data")
+            if payload_raw is None:
+                continue
+            if isinstance(payload_raw, bytes):
+                payload_text = payload_raw.decode("utf-8", errors="replace")
+            else:
+                payload_text = str(payload_raw)
+            yield _sse("task_state", payload_text)
+    finally:
+        try:
+            await pubsub.unsubscribe(channel)
+        finally:
+            await pubsub.aclose()
 
 
 @router.get("/stations", response_model=TrainStationsResponse)
@@ -150,6 +193,22 @@ async def list_train_tasks(
         status_filter=status,
         limit=limit,
         refresh_completed=refresh_completed,
+    )
+
+
+@router.get("/tasks/events")
+async def stream_train_task_events(
+    request: Request,
+    user: User = Depends(get_current_user),
+) -> StreamingResponse:
+    return StreamingResponse(
+        _task_events_stream(request, user_id=user.id),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
     )
 
 

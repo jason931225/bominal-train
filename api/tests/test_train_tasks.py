@@ -25,6 +25,12 @@ from app.modules.train.worker import run_train_task
 from tests.conftest import make_fake_get_redis_client
 
 
+@pytest.fixture(autouse=True)
+def _enable_payment_for_train_task_tests(monkeypatch):
+    monkeypatch.setattr(train_worker.settings, "payment_enabled", True)
+    monkeypatch.setattr("app.modules.train.service.settings.payment_enabled", True)
+
+
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 

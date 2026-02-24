@@ -5,7 +5,7 @@ import { LoginForm } from "@/components/login-form";
 import { getServerT } from "@/lib/i18n-server";
 import { ROUTES } from "@/lib/routes";
 import { UI_BODY_MUTED, UI_CARD_LG } from "@/lib/ui";
-import { getOptionalUser } from "@/lib/server-auth";
+import { getOptionalUser, postLoginRouteForUser } from "@/lib/server-auth";
 
 export default async function LoginPage({
   searchParams,
@@ -14,7 +14,7 @@ export default async function LoginPage({
 }) {
   const user = await getOptionalUser();
   if (user) {
-    redirect(ROUTES.dashboard);
+    redirect(postLoginRouteForUser(user));
   }
   const { t } = await getServerT();
   const resolvedSearchParams = (await searchParams) ?? {};

@@ -121,6 +121,13 @@ async def test_payment_routes_blocked_when_payment_disabled(client, db_session, 
     assert pay_response.status_code == 403
     assert pay_response.json()["detail"] == "Payment features are currently disabled"
 
+    wallet_status_response = await client.get(
+        "/api/wallet/payment-card",
+        cookies={"bominal_session": session_cookie},
+    )
+    assert wallet_status_response.status_code == 403
+    assert wallet_status_response.json()["detail"] == "Payment features are currently disabled"
+
 
 @pytest.mark.asyncio
 async def test_admin_route_requires_admin_role(client, db_session):

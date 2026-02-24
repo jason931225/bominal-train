@@ -51,8 +51,6 @@ type CredentialProvider = "KTX" | "SRT";
 type TaskListStatus = "active" | "completed";
 type ScheduleSortOrder = "asc" | "desc";
 
-const POLL_MS_DEFAULT = 60000;
-const POLL_MS_AWAITING_PAYMENT = 10000;
 const CREDENTIAL_STATUS_TIMEOUT_MS = 10000;
 const DEFAULT_DEP_STATION = "수서";
 const DEFAULT_ARR_STATION = "마산";
@@ -60,7 +58,6 @@ const TASK_LIST_ERROR_MESSAGE = "task_list_error";
 const SESSION_EXPIRED_MESSAGE = "session_expired";
 const ACTIVE_TASK_FETCH_LIMIT = 60;
 const COMPLETED_TASK_FETCH_LIMIT = 80;
-const COMPLETED_TASK_REFRESH_INTERVAL_TICKS = 3;
 const ACTIVE_TASK_STATES_FOR_LIST = new Set<TrainTaskState>([
   "QUEUED",
   "RUNNING",
@@ -759,7 +756,6 @@ export function TrainDashboard() {
   const [dummyTaskCardsMode, setDummyTaskCardsMode] = useState(false);
   const [scheduleSortOrder, setScheduleSortOrder] = useState<ScheduleSortOrder>("asc");
   const tasksLoadInFlight = useRef(false);
-  const tasksPollTick = useRef(0);
   const dummyTaskCardsModeRef = useRef(false);
   const searchPanelRef = useRef<HTMLDivElement | null>(null);
   const schedulePanelRef = useRef<HTMLDivElement | null>(null);
@@ -815,10 +811,6 @@ export function TrainDashboard() {
   const searchDisabled = searching || selectedProviderCount === 0 || !searchUnlocked;
   const totalPassengers = createForm.adults + createForm.children;
   const createDisabled = !showRanking || selectedSchedules.length === 0 || creatingTask || totalPassengers < 1;
-  const hasAwaitingPaymentActiveTask = useMemo(
-    () => activeTasks.some((task) => isAwaitingPaymentTask(task)),
-    [activeTasks],
-  );
   const sortedActiveTasks = useMemo(
     () => sortTasksByScheduleProximity(activeTasks, scheduleSortOrder),
     [activeTasks, scheduleSortOrder],
@@ -827,7 +819,6 @@ export function TrainDashboard() {
     () => sortTasksByScheduleProximity(completedTasks, scheduleSortOrder),
     [completedTasks, scheduleSortOrder],
   );
-  const taskListPollMs = hasAwaitingPaymentActiveTask ? POLL_MS_AWAITING_PAYMENT : POLL_MS_DEFAULT;
   const autoPayAvailable = TRAIN_AUTO_PAY_FEATURE_ENABLED && Boolean(paymentCardStatus?.configured);
   const isProviderVerified = (provider: CredentialProvider): boolean =>
     provider === "SRT" ? srtVerified : ktxVerified;
@@ -871,30 +862,22 @@ export function TrainDashboard() {
     });
   };
 
-  const reloadTasks = async (options?: { refreshCompleted?: boolean; forceCompleted?: boolean }) => {
+  const reloadTasks = useCallback(async (options?: { refreshCompleted?: boolean; forceCompleted?: boolean }) => {
     if (dummyTaskCardsModeRef.current) return;
     if (tasksLoadInFlight.current) return;
     tasksLoadInFlight.current = true;
     try {
-      const shouldLoadCompleted =
-        options?.forceCompleted === true ||
-        options?.refreshCompleted === true ||
-        tasksPollTick.current % COMPLETED_TASK_REFRESH_INTERVAL_TICKS === 0;
       const [active, completed] = await Promise.all([
         fetchTasksByStatus("active", { limit: ACTIVE_TASK_FETCH_LIMIT }),
-        shouldLoadCompleted
-          ? fetchTasksByStatus("completed", {
-              refreshCompleted: options?.refreshCompleted,
-              limit: COMPLETED_TASK_FETCH_LIMIT,
-            })
-          : Promise.resolve(null),
+        fetchTasksByStatus("completed", {
+          refreshCompleted: options?.refreshCompleted,
+          limit: COMPLETED_TASK_FETCH_LIMIT,
+        }),
       ]);
       const nextActiveKey = taskListRenderKey(active);
       setActiveTasks((current) => (taskListRenderKey(current) === nextActiveKey ? current : active));
-      if (completed !== null) {
-        const nextCompletedKey = taskListRenderKey(completed);
-        setCompletedTasks((current) => (taskListRenderKey(current) === nextCompletedKey ? current : completed));
-      }
+      const nextCompletedKey = taskListRenderKey(completed);
+      setCompletedTasks((current) => (taskListRenderKey(current) === nextCompletedKey ? current : completed));
       setErrorMessage((current) => {
         if (current === TASK_LIST_ERROR_MESSAGE || current === SESSION_EXPIRED_MESSAGE) {
           return null;
@@ -912,7 +895,7 @@ export function TrainDashboard() {
     } finally {
       tasksLoadInFlight.current = false;
     }
-  };
+  }, []);
 
   const renderError = (value: string): string => {
     if (value === TASK_LIST_ERROR_MESSAGE) return t("train.taskListError");
@@ -1067,31 +1050,34 @@ export function TrainDashboard() {
   }, [hasAnyConnectedProvider, ktxVerified, srtVerified]);
 
   useEffect(() => {
-    const tick = async (options?: { refreshCompleted?: boolean; forceCompleted?: boolean }) => {
-      if (document.visibilityState === "hidden") {
-        return;
-      }
-      tasksPollTick.current += 1;
+    const refreshIfVisible = async (options?: { refreshCompleted?: boolean; forceCompleted?: boolean }) => {
+      if (document.visibilityState === "hidden") return;
       await reloadTasks(options);
     };
 
     void reloadTasks({ refreshCompleted: true, forceCompleted: true });
-    const interval = window.setInterval(() => {
-      void tick();
-    }, taskListPollMs);
+    let eventSource: EventSource | null = null;
+
+    if (typeof window !== "undefined" && "EventSource" in window) {
+      eventSource = new EventSource(`${clientApiBaseUrl}/api/train/tasks/events`, { withCredentials: true });
+      const onTaskState = () => {
+        void refreshIfVisible({ forceCompleted: true });
+      };
+      eventSource.addEventListener("task_state", onTaskState);
+    }
 
     const onVisibilityChange = () => {
       if (document.visibilityState === "visible") {
-        void tick({ forceCompleted: true });
+        void refreshIfVisible({ forceCompleted: true, refreshCompleted: true });
       }
     };
 
     document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
-      window.clearInterval(interval);
+      eventSource?.close();
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-  }, [taskListPollMs]);
+  }, [reloadTasks]);
 
   useEffect(() => {
     let alive = true;

@@ -126,6 +126,16 @@
     "welcome": "{name}님, bominal에 오신 것을 환영합니다.",
     "body": "모듈형 워크스페이스가 준비되었습니다. 기능이 추가되는 동안 쉘을 둘러볼 모듈을 선택해 보세요."
   },
+  "review": {
+    "kicker": "접근 심사",
+    "title": "신청서가 검토 중입니다",
+    "body": "계정에는 로그인되었지만 관리자 승인 전까지는 접근이 제한됩니다.",
+    "signedInAs": "로그인 계정: {email}",
+    "deleteAccount": "계정 삭제",
+    "deleting": "계정 삭제 중...",
+    "deleteConfirm": "지금 이 계정을 삭제할까요? 되돌릴 수 없습니다.",
+    "deleteFailed": "계정을 삭제할 수 없습니다."
+  },
   "modules": {
     "available": "사용 가능",
     "comingSoon": "준비 중",
@@ -272,9 +282,20 @@
       "table": {
         "user": "사용자",
         "role": "권한",
+        "access": "접근",
         "sessions": "세션",
         "lastSeen": "마지막 활동",
         "actions": "작업"
+      },
+      "access": {
+        "pending": "검토 중",
+        "approved": "승인됨",
+        "rejected": "거절됨"
+      },
+      "pending": {
+        "title": "승인 대기 신청",
+        "count": "{count}건 대기",
+        "empty": "대기 중인 신청이 없습니다."
       },
       "pagination": {
         "showing": "{from}-{to} / 총 {total}명",
@@ -293,6 +314,8 @@
         "view": "보기",
         "promoteToAdmin": "관리자로 승격",
         "demoteToUser": "사용자로 강등",
+        "approve": "승인",
+        "reject": "거절",
         "revokeSessions": "세션 해제 ({count})",
         "deleteUserPermanently": "사용자 영구 삭제"
       },
@@ -301,6 +324,7 @@
       "never": "없음",
       "roleUpdated": "권한이 {role}(으)로 변경되었습니다",
       "failedUpdateRole": "권한을 변경할 수 없습니다",
+      "failedUpdateAccess": "접근 상태를 변경할 수 없습니다",
       "confirmRevokeSessions": "모든 기기에서 로그아웃됩니다. 계속할까요?",
       "failedRevokeSessions": "세션을 해제할 수 없습니다",
       "confirmDeleteUser1": "{email} 사용자를 영구 삭제할까요? 되돌릴 수 없습니다!",
@@ -450,7 +474,7 @@
       "prev": "이전",
       "next": "다음"
     },
-    "pollingHint": "진행 중일 때 10초마다 갱신합니다.",
+    "pollingHint": "작업 상태가 변경되면 자동으로 갱신됩니다.",
     "confirm": {
       "cancelTask": "진행 중인 작업을 취소할까요?",
       "cancelTicket": "예약 티켓을 취소할까요?",

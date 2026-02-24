@@ -593,12 +593,12 @@ describe("TrainDashboard action flows", () => {
       if (url.includes("/api/train/tickets/ticket-completed/cancel") && method === "POST") {
         return jsonResponse({ detail: "cancelled" });
       }
-      if (url.includes("/api/train/tasks/running-error/cancel") && method === "POST") {
+      if (url.includes("/api/train/tasks/") && url.includes("/cancel") && method === "POST") {
         cancelTaskAttempt += 1;
         if (cancelTaskAttempt === 1) return jsonResponse({ detail: "cancel action failed" }, 500);
         throw new Error("cancel action network");
       }
-      if (url.includes("/api/train/tasks/running-error/pause") && method === "POST") {
+      if (url.includes("/api/train/tasks/") && url.includes("/pause") && method === "POST") {
         pauseAttempt += 1;
         if (pauseAttempt === 1) return jsonResponse({ detail: "pause failed" }, 500);
         throw new Error("pause network");
@@ -613,7 +613,7 @@ describe("TrainDashboard action flows", () => {
     await renderDashboard();
     expect(screen.getByText("Could not load task lists.")).toBeInTheDocument();
     await act(async () => {
-      vi.advanceTimersByTime(60_000);
+      document.dispatchEvent(new Event("visibilitychange"));
       await Promise.resolve();
     });
     await flushAsyncEffects();
@@ -633,7 +633,7 @@ describe("TrainDashboard action flows", () => {
     fireEvent.keyDown(desktopRows[0], { key: "Enter" });
     fireEvent.keyDown(desktopRows[1], { key: " " });
 
-    const runningCard = screen.getByText("RUNNING").closest("li");
+    const runningCard = screen.getAllByRole("button", { name: "Pause" })[0]?.closest("li");
     expect(runningCard).not.toBeNull();
     fireEvent.click(within(runningCard!).getByRole("button", { name: "Pause" }));
     await flushAsyncEffects();

@@ -103,6 +103,14 @@ export async function requireApprovedUser(): Promise<BominalUser> {
   return user;
 }
 
+export async function requirePendingReviewUser(): Promise<BominalUser> {
+  const user = await requireUser();
+  if (isApprovedUser(user)) {
+    redirect(ROUTES.dashboard);
+  }
+  return user;
+}
+
 /**
  * Require admin role. Redirects to /dashboard if not admin.
  * Use for admin-only pages like maintenance dashboard.

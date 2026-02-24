@@ -36,15 +36,10 @@ EOF
 chmod +x "$TMP_DIR/bin/docker"
 
 make_valid_envs() {
-  cat >"$TMP_DIR/repo/infra/env/prod/postgres.env" <<'EOF'
-POSTGRES_DB=bominal
-POSTGRES_USER=bominal
-POSTGRES_PASSWORD=strong-password
-EOF
   cat >"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF'
 GCP_PROJECT_ID=test-project
-DATABASE_URL=postgresql+asyncpg://bominal:strong-password@postgres:5432/bominal
-SYNC_DATABASE_URL=postgresql+psycopg://bominal:strong-password@postgres:5432/bominal
+DATABASE_URL=postgresql+asyncpg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:6543/postgres?sslmode=require
+SYNC_DATABASE_URL=postgresql+psycopg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:6543/postgres?sslmode=require
 AUTH_MODE=legacy
 EMAIL_PROVIDER=disabled
 INTERNAL_API_KEY=abc123
@@ -117,6 +112,20 @@ assert_fails "placeholder value" env PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECA
 make_valid_envs
 make_valid_registry
 
+# Non-Supabase DB URLs should fail.
+cat >"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF'
+GCP_PROJECT_ID=test-project
+DATABASE_URL=postgresql+asyncpg://bominal:strong-password@postgres:5432/bominal
+SYNC_DATABASE_URL=postgresql+psycopg://bominal:strong-password@postgres:5432/bominal
+AUTH_MODE=legacy
+EMAIL_PROVIDER=disabled
+INTERNAL_API_KEY=abc123
+MASTER_KEY=base64-secret
+EOF
+assert_fails "database urls must target supabase" env PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" BOMINAL_ROOT_DIR="$TMP_DIR/repo" "$SCRIPT" --skip-smoke-tests
+make_valid_envs
+make_valid_registry
+
 # Missing required security key should fail.
 echo "MASTER_KEY=abc" >"$TMP_DIR/repo/infra/env/prod/api.env"
 assert_fails "missing INTERNAL_API_KEY" env PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" BOMINAL_ROOT_DIR="$TMP_DIR/repo" "$SCRIPT" --skip-smoke-tests
@@ -125,8 +134,8 @@ assert_fails "missing INTERNAL_API_KEY" env PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_
 make_valid_envs
 cat >"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF'
 GCP_PROJECT_ID=test-project
-DATABASE_URL=postgresql+asyncpg://bominal:strong-password@postgres:5432/bominal
-SYNC_DATABASE_URL=postgresql+psycopg://bominal:strong-password@postgres:5432/bominal
+DATABASE_URL=postgresql+asyncpg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:6543/postgres?sslmode=require
+SYNC_DATABASE_URL=postgresql+psycopg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:6543/postgres?sslmode=require
 AUTH_MODE=supabase
 SUPABASE_URL=
 SUPABASE_JWT_ISSUER=
@@ -140,8 +149,8 @@ assert_fails "supabase mode requires issuer/url" env PATH="$TMP_DIR/bin:$PATH" P
 make_valid_envs
 cat >"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF'
 GCP_PROJECT_ID=test-project
-DATABASE_URL=postgresql+asyncpg://bominal:strong-password@postgres:5432/bominal
-SYNC_DATABASE_URL=postgresql+psycopg://bominal:strong-password@postgres:5432/bominal
+DATABASE_URL=postgresql+asyncpg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:6543/postgres?sslmode=require
+SYNC_DATABASE_URL=postgresql+psycopg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:6543/postgres?sslmode=require
 AUTH_MODE=supabase
 SUPABASE_URL=http://supabase.local
 SUPABASE_JWT_ISSUER=http://supabase.local/auth/v1
@@ -151,12 +160,31 @@ MASTER_KEY=base64-secret
 EOF
 assert_fails "supabase urls must be https" env PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" BOMINAL_ROOT_DIR="$TMP_DIR/repo" "$SCRIPT" --skip-smoke-tests
 
+# Supabase auth enabled requires auth API key (or service role key).
+make_valid_envs
+cat >"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF'
+GCP_PROJECT_ID=test-project
+DATABASE_URL=postgresql+asyncpg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:6543/postgres?sslmode=require
+SYNC_DATABASE_URL=postgresql+psycopg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:6543/postgres?sslmode=require
+AUTH_MODE=supabase
+SUPABASE_URL=https://test-ref.supabase.co
+SUPABASE_JWT_ISSUER=https://test-ref.supabase.co/auth/v1
+SUPABASE_AUTH_ENABLED=true
+SUPABASE_AUTH_API_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+SUPABASE_AUTH_TIMEOUT_SECONDS=12
+EMAIL_PROVIDER=disabled
+INTERNAL_API_KEY=abc123
+MASTER_KEY=base64-secret
+EOF
+assert_fails "supabase auth enabled requires auth key" env PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" BOMINAL_ROOT_DIR="$TMP_DIR/repo" "$SCRIPT" --skip-smoke-tests
+
 # Resend provider without API key should fail.
 make_valid_envs
 cat >"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF'
 GCP_PROJECT_ID=test-project
-DATABASE_URL=postgresql+asyncpg://bominal:strong-password@postgres:5432/bominal
-SYNC_DATABASE_URL=postgresql+psycopg://bominal:strong-password@postgres:5432/bominal
+DATABASE_URL=postgresql+asyncpg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:6543/postgres?sslmode=require
+SYNC_DATABASE_URL=postgresql+psycopg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:6543/postgres?sslmode=require
 AUTH_MODE=legacy
 EMAIL_PROVIDER=resend
 RESEND_API_KEY=
@@ -177,8 +205,8 @@ assert_fails "web public api base must be https" env PATH="$TMP_DIR/bin:$PATH" P
 make_valid_envs
 cat >"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF'
 GCP_PROJECT_ID=test-project
-DATABASE_URL=postgresql+asyncpg://bominal:strong-password@postgres:5432/bominal
-SYNC_DATABASE_URL=postgresql+psycopg://bominal:strong-password@postgres:5432/bominal
+DATABASE_URL=postgresql+asyncpg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:6543/postgres?sslmode=require
+SYNC_DATABASE_URL=postgresql+psycopg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:6543/postgres?sslmode=require
 AUTH_MODE=legacy
 CORS_ORIGINS=http://example.com
 EMAIL_PROVIDER=disabled
@@ -191,8 +219,8 @@ assert_fails "cors origins must be https" env PATH="$TMP_DIR/bin:$PATH" PREDEPLO
 make_valid_envs
 cat >"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF'
 GCP_PROJECT_ID=test-project
-DATABASE_URL=postgresql+asyncpg://bominal:strong-password@postgres:5432/bominal
-SYNC_DATABASE_URL=postgresql+psycopg://bominal:strong-password@postgres:5432/bominal
+DATABASE_URL=postgresql+asyncpg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:6543/postgres?sslmode=require
+SYNC_DATABASE_URL=postgresql+psycopg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:6543/postgres?sslmode=require
 AUTH_MODE=legacy
 EMAIL_PROVIDER=disabled
 RESEND_API_BASE_URL=http://api.resend.com

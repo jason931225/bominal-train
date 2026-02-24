@@ -3,13 +3,17 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.http.deps import get_current_approved_user
+from app.http.deps import get_current_approved_user, require_payment_enabled
 from app.db.models import User
 from app.db.session import get_db
 from app.schemas.wallet import PaymentCardSetRequest, PaymentCardStatusResponse
 from app.services.wallet import clear_payment_card, get_payment_card_status, set_payment_card
 
-router = APIRouter(prefix="/api/wallet", tags=["wallet"])
+router = APIRouter(
+    prefix="/api/wallet",
+    tags=["wallet"],
+    dependencies=[Depends(require_payment_enabled)],
+)
 
 
 @router.get("/payment-card", response_model=PaymentCardStatusResponse)

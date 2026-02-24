@@ -10,6 +10,11 @@ from app.modules.train import worker as train_worker
 from app.modules.train.providers.base import ProviderOutcome, ProviderSchedule
 
 
+@pytest.fixture(autouse=True)
+def _enable_payment_for_worker_provider_flow(monkeypatch):
+    monkeypatch.setattr(train_worker.settings, "payment_enabled", True)
+
+
 class _Limiter:
     async def acquire_provider_call(self, **_kwargs):  # noqa: ANN003
         return SimpleNamespace(waited_ms=7, rounds=2)
@@ -55,6 +60,7 @@ async def test_provider_search_and_reserve_handles_login_and_search_failure_path
         provider="SRT",
         ranked_for_provider=_ranked(),
         spec=_spec(),
+        auto_pay_enabled=True,
         task_user_id=uuid4(),
         credentials={"username": "u", "password": "p"},
         limiter=_Limiter(),
@@ -75,6 +81,7 @@ async def test_provider_search_and_reserve_handles_login_and_search_failure_path
         provider="SRT",
         ranked_for_provider=_ranked(),
         spec=_spec(),
+        auto_pay_enabled=True,
         task_user_id=uuid4(),
         credentials={"username": "u", "password": "p"},
         limiter=_Limiter(),
@@ -98,6 +105,7 @@ async def test_provider_search_and_reserve_handles_no_seat_and_reserve_exception
         provider="SRT",
         ranked_for_provider=_ranked(),
         spec=_spec(),
+        auto_pay_enabled=True,
         task_user_id=uuid4(),
         credentials={"username": "u", "password": "p"},
         limiter=_Limiter(),
@@ -121,6 +129,7 @@ async def test_provider_search_and_reserve_handles_no_seat_and_reserve_exception
         provider="SRT",
         ranked_for_provider=_ranked(),
         spec=_spec(),
+        auto_pay_enabled=True,
         task_user_id=uuid4(),
         credentials={"username": "u", "password": "p"},
         limiter=_Limiter(),
@@ -156,6 +165,7 @@ async def test_provider_search_and_reserve_auth_relogin_and_non_payment_expiry_r
         provider="SRT",
         ranked_for_provider=_ranked(),
         spec=_spec(),
+        auto_pay_enabled=True,
         task_user_id=uuid4(),
         credentials={"username": "u", "password": "p"},
         limiter=_Limiter(),
@@ -184,6 +194,7 @@ async def test_provider_search_and_reserve_auth_relogin_and_non_payment_expiry_r
         provider="SRT",
         ranked_for_provider=_ranked(),
         spec=_spec(auto_pay=False),
+        auto_pay_enabled=False,
         task_user_id=uuid4(),
         credentials={"username": "u", "password": "p"},
         limiter=_Limiter(),

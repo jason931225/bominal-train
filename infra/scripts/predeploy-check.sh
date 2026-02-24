@@ -3,7 +3,7 @@
 # predeploy-check.sh — Validate production environment before deployment
 # -----------------------------------------------------------------------------
 # Checks:
-#   - Required env files exist (postgres.env, api.env, web.env, caddy.env)
+#   - Required env files exist (api.env, web.env, caddy.env)
 #   - No unresolved CHANGE_ME placeholders
 #   - Required API/deploy/auth/email settings are set
 #
@@ -23,7 +23,6 @@ ROOT_DIR="${BOMINAL_ROOT_DIR:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
 cd "$ROOT_DIR"
 
 required_files=(
-  "infra/env/prod/postgres.env"
   "infra/env/prod/api.env"
   "infra/env/prod/web.env"
   "infra/env/prod/caddy.env"
@@ -118,6 +117,19 @@ is_truthy() {
   esac
 }
 
+require_positive_number() {
+  local value="$1"
+  local name="$2"
+  if ! [[ "$value" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+    log_error "$name must be a positive number (got: ${value:-<empty>})"
+    exit 1
+  fi
+  awk -v v="$value" 'BEGIN { if (v <= 0) exit 1 }' || {
+    log_error "$name must be > 0 (got: ${value})"
+    exit 1
+  }
+}
+
 require_https_url() {
   local value="$1"
   local name="$2"
@@ -134,6 +146,26 @@ require_https_url_or_empty() {
     return 0
   fi
   require_https_url "$value" "$name"
+}
+
+require_supabase_database_url() {
+  local value="$1"
+  local name="$2"
+
+  if [[ "$value" == *"@postgres:"* ]] || [[ "$value" == *"@localhost:"* ]] || [[ "$value" == *"@127.0.0.1:"* ]]; then
+    log_error "$name must target managed Supabase Postgres, not local/container hostnames."
+    exit 1
+  fi
+
+  if [[ "$value" != *".supabase.co"* ]]; then
+    log_error "$name must point to a Supabase Postgres endpoint (*.supabase.co)."
+    exit 1
+  fi
+
+  if [[ "$value" != *"sslmode=require"* ]] && [[ "$value" != *"ssl=require"* ]] && [[ "$value" != *"ssl=true"* ]]; then
+    log_error "$name must require TLS (set sslmode=require or equivalent ssl=require/ssl=true)."
+    exit 1
+  fi
 }
 
 require_https_csv_origins() {
@@ -262,6 +294,11 @@ for key in "${required_api_keys[@]}"; do
   require_env_key_nonempty "infra/env/prod/api.env" "$key"
 done
 
+database_url="$(env_key_value "infra/env/prod/api.env" "DATABASE_URL")"
+sync_database_url="$(env_key_value "infra/env/prod/api.env" "SYNC_DATABASE_URL")"
+require_supabase_database_url "$database_url" "DATABASE_URL"
+require_supabase_database_url "$sync_database_url" "SYNC_DATABASE_URL"
+
 api_auth_mode="$(env_key_value "infra/env/prod/api.env" "AUTH_MODE" | tr '[:upper:]' '[:lower:]')"
 case "$api_auth_mode" in
   legacy|supabase|dual)
@@ -285,6 +322,18 @@ if [[ "$api_auth_mode" == "supabase" || "$api_auth_mode" == "dual" ]]; then
   fi
   require_https_url "$supabase_url" "SUPABASE_URL"
   require_https_url "$supabase_jwt_issuer" "SUPABASE_JWT_ISSUER"
+fi
+
+supabase_auth_enabled="$(env_key_value "infra/env/prod/api.env" "SUPABASE_AUTH_ENABLED" | tr '[:upper:]' '[:lower:]')"
+if is_truthy "$supabase_auth_enabled"; then
+  supabase_auth_api_key="$(env_key_value "infra/env/prod/api.env" "SUPABASE_AUTH_API_KEY")"
+  supabase_service_role_key="$(env_key_value "infra/env/prod/api.env" "SUPABASE_SERVICE_ROLE_KEY")"
+  supabase_auth_timeout_seconds="$(env_key_value "infra/env/prod/api.env" "SUPABASE_AUTH_TIMEOUT_SECONDS")"
+  if [[ -z "$supabase_auth_api_key" && -z "$supabase_service_role_key" ]]; then
+    log_error "SUPABASE_AUTH_ENABLED=true requires SUPABASE_AUTH_API_KEY or SUPABASE_SERVICE_ROLE_KEY"
+    exit 1
+  fi
+  require_positive_number "${supabase_auth_timeout_seconds:-0}" "SUPABASE_AUTH_TIMEOUT_SECONDS"
 fi
 
 supabase_storage_enabled="$(env_key_value "infra/env/prod/api.env" "SUPABASE_STORAGE_ENABLED" | tr '[:upper:]' '[:lower:]')"
@@ -320,14 +369,6 @@ resend_api_base_url="$(env_key_value "infra/env/prod/api.env" "RESEND_API_BASE_U
 if [[ -n "$resend_api_base_url" ]]; then
   require_https_url "$resend_api_base_url" "RESEND_API_BASE_URL"
 fi
-
-echo "==> Checking required Postgres settings"
-required_postgres_keys=(
-  "POSTGRES_PASSWORD"
-)
-for key in "${required_postgres_keys[@]}"; do
-  require_env_key_nonempty "infra/env/prod/postgres.env" "$key"
-done
 
 echo "==> Checking required Web settings"
 required_web_keys=(

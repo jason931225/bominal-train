@@ -112,14 +112,14 @@ UPDATE_OUT="$TMP_DIR/update.out"
 run_case 0 "$FIRST_OUT" "$FIRST_CALLS"
 run_case 1 "$UPDATE_OUT" "$UPDATE_CALLS"
 
-if ! rg -q "up -d --wait postgres redis api worker web caddy" "$FIRST_CALLS"; then
+if ! rg -q "up -d --wait redis api worker web caddy" "$FIRST_CALLS"; then
   echo "FAIL: first deploy did not use bootstrap-safe path" >&2
   cat "$FIRST_CALLS" >&2
   exit 1
 fi
 
-if ! rg -q "up -d --wait postgres redis$" "$UPDATE_CALLS"; then
-  echo "FAIL: rolling deploy did not run base db/redis step" >&2
+if ! rg -q "up -d --wait redis$" "$UPDATE_CALLS"; then
+  echo "FAIL: rolling deploy did not run base redis step" >&2
   cat "$UPDATE_CALLS" >&2
   exit 1
 fi
@@ -142,7 +142,7 @@ if ! rg -q "up -d --wait --no-deps web" "$UPDATE_CALLS"; then
   exit 1
 fi
 
-if rg -q "up -d --wait postgres redis api worker web caddy" "$UPDATE_CALLS"; then
+if rg -q "up -d --wait redis api worker web caddy" "$UPDATE_CALLS"; then
   echo "FAIL: running-stack deploy unexpectedly used bootstrap path" >&2
   cat "$UPDATE_CALLS" >&2
   exit 1
