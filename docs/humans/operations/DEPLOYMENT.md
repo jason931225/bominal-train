@@ -269,23 +269,22 @@ Optional:
 - validates critical contracts (Supabase URLs, `MASTER_KEY` format, unresolved placeholders).
 
 If you choose manual editing instead, required values are:
-- `infra/env/prod/api.env`: `INTERNAL_API_KEY`, `MASTER_KEY`, `DATABASE_URL`, `SYNC_DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_JWT_ISSUER`, `SUPABASE_AUTH_API_KEY` (or `SUPABASE_SERVICE_ROLE_KEY` fallback), `RESEND_API_KEY`, sender-domain placeholder in `EMAIL_FROM_ADDRESS`, plus passkey origin settings (`PASSKEY_RP_ID`, `PASSKEY_ORIGIN`)
+- `infra/env/prod/api.env`: `INTERNAL_API_KEY`, `MASTER_KEY`, `DATABASE_URL`, `SYNC_DATABASE_URL`, `AUTH_MODE=supabase`, `SUPABASE_URL`, `SUPABASE_JWT_ISSUER`, `SUPABASE_AUTH_ENABLED=true`, `SUPABASE_AUTH_API_KEY` (or `SUPABASE_SERVICE_ROLE_KEY` fallback), `SUPABASE_STORAGE_ENABLED=true`, `SUPABASE_SERVICE_ROLE_KEY`, `RESEND_API_KEY`, sender-domain placeholder in `EMAIL_FROM_ADDRESS`, plus passkey origin settings (`PASSKEY_RP_ID`, `PASSKEY_ORIGIN`)
 - `infra/env/prod/web.env`: `NEXT_PUBLIC_API_BASE_URL`, `API_SERVER_URL` (`http://api:8000` for monolithic API runtime)
 - `infra/env/prod/caddy.env`: `CADDY_SITE_ADDRESS`, `CADDY_ACME_EMAIL`
 - `infra/env/prod/deploy.env` (optional helper): set `GHCR_USERNAME` + `GHCR_TOKEN` when GHCR packages are private
 
-Optional, mode-dependent values:
-- `AUTH_MODE=legacy`: Supabase JWT fields can be left empty
-- `AUTH_MODE=dual`: `SUPABASE_URL`, `SUPABASE_JWT_ISSUER` are still required (and `SUPABASE_JWKS_URL` if overriding default)
-- `SUPABASE_AUTH_ENABLED=true`: requires `SUPABASE_AUTH_API_KEY` or `SUPABASE_SERVICE_ROLE_KEY`, plus positive `SUPABASE_AUTH_TIMEOUT_SECONDS`
+Production auth/storage mode (hard gate):
+- `AUTH_MODE` must be `supabase`
+- `SUPABASE_AUTH_ENABLED` must be `true` and requires `SUPABASE_AUTH_API_KEY` or `SUPABASE_SERVICE_ROLE_KEY`, plus positive `SUPABASE_AUTH_TIMEOUT_SECONDS`
+- `SUPABASE_STORAGE_ENABLED` must be `true` and requires `SUPABASE_SERVICE_ROLE_KEY`
 
 Production URL scheme enforcement (predeploy gate):
-- `SUPABASE_URL` and `SUPABASE_JWT_ISSUER` must be `https://` when `AUTH_MODE` is `supabase` or `dual`.
+- `SUPABASE_URL` and `SUPABASE_JWT_ISSUER` must be `https://`.
 - `CORS_ORIGINS` entries must be `https://`.
 - `RESEND_API_BASE_URL` must be `https://` when set.
 - `NEXT_PUBLIC_API_BASE_URL` may be empty (recommended same-origin) or must be `https://` if set.
 - `API_SERVER_URL` must be an absolute `http(s)://` URL.
-- `SUPABASE_STORAGE_ENABLED=true`: `SUPABASE_SERVICE_ROLE_KEY`
 - `EMAIL_PROVIDER=disabled`: Resend credentials may remain unset
 - `EMAIL_PROVIDER=smtp`: `SMTP_HOST`, `SMTP_PORT`, and SMTP credentials/TLS settings as required
 - `TRAIN_PROVIDER_EGRESS_PROXY_URL` / `RESTAURANT_PROVIDER_EGRESS_PROXY_URL`: set to internal egress gateways when outbound provider traffic must be centralized through path-allowlist proxies

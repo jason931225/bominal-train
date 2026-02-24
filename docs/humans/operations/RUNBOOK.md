@@ -158,6 +158,9 @@ docker compose -f infra/docker-compose.prod.yml exec egress-train wget -qO- --se
 
 # Confirm payment logs do not include request/response payload bodies.
 docker compose -f infra/docker-compose.prod.yml logs --since=30m api worker | rg -i 'card_number|cvv|authorization|set-cookie|wrapped_dek|ciphertext'
+
+# One-time cleanup for legacy CVV cache keys from older releases (safe to re-run).
+docker compose -f infra/docker-compose.prod.yml exec api python -m app.admin_cli secret purge-payment-cvv --yes
 ```
 
 Hosted service budget checks (non-CDE Upstash + Supabase free-tier planning):

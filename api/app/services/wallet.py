@@ -167,6 +167,16 @@ async def _delete_redis_keys_matching(*, pattern: str) -> int:
     return deleted_total
 
 
+async def purge_cached_payment_cvv_data() -> dict[str, int]:
+    redis_deleted_current = await _delete_redis_keys_matching(pattern=f"{PAYMENT_CVV_REDIS_KEY_PREFIX}:*")
+    redis_deleted_legacy = await _delete_redis_keys_matching(pattern=f"{LEGACY_PAYMENT_CVV_REDIS_KEY_PREFIX}:*")
+    return {
+        "redis_cvv_keys_deleted_current": redis_deleted_current,
+        "redis_cvv_keys_deleted_legacy": redis_deleted_legacy,
+        "redis_cvv_keys_deleted_total": redis_deleted_current + redis_deleted_legacy,
+    }
+
+
 async def purge_all_saved_payment_data(db: AsyncSession) -> dict[str, int]:
     secret_count_stmt = select(func.count(Secret.id)).where(Secret.kind == SECRET_KIND_PAYMENT_CARD)
     secret_count = int((await db.execute(secret_count_stmt)).scalar_one() or 0)
@@ -174,14 +184,11 @@ async def purge_all_saved_payment_data(db: AsyncSession) -> dict[str, int]:
     await db.execute(delete(Secret).where(Secret.kind == SECRET_KIND_PAYMENT_CARD))
     await db.commit()
 
-    redis_deleted_current = await _delete_redis_keys_matching(pattern=f"{PAYMENT_CVV_REDIS_KEY_PREFIX}:*")
-    redis_deleted_legacy = await _delete_redis_keys_matching(pattern=f"{LEGACY_PAYMENT_CVV_REDIS_KEY_PREFIX}:*")
+    redis_summary = await purge_cached_payment_cvv_data()
 
     return {
         "db_payment_card_secrets_deleted": secret_count,
-        "redis_cvv_keys_deleted_current": redis_deleted_current,
-        "redis_cvv_keys_deleted_legacy": redis_deleted_legacy,
-        "redis_cvv_keys_deleted_total": redis_deleted_current + redis_deleted_legacy,
+        **redis_summary,
     }
 
 
@@ -208,14 +215,12 @@ async def get_payment_card_status(
     except (TypeError, ValueError):
         return PaymentCardStatusResponse(configured=False, detail="Saved payment card data is invalid")
 
-    cvv_cached_until = await _load_cached_cvv_until(user_id=user.id)
     return PaymentCardStatusResponse(
         configured=True,
         card_masked=_mask_card_number(card_number),
         expiry_month=parsed_expiry_month,
         expiry_year=parsed_expiry_year,
         updated_at=secret.updated_at,
-        cvv_cached_until=cvv_cached_until,
     )
 
 
@@ -275,13 +280,6 @@ async def get_payment_card_for_execution(
     except Exception:
         return None
 
-    cached_cvv_payload = await _load_cached_cvv_payload(user_id=user_id)
-    cvv = ""
-    cvv_cached_until = None
-    if cached_cvv_payload is not None:
-        cvv = str(cached_cvv_payload.get("cvv") or "")
-        cvv_cached_until = cached_cvv_payload.get("expires_at")
-
     return {
         "card_number": card_number,
         "card_password": pin2,
@@ -289,8 +287,6 @@ async def get_payment_card_for_execution(
         "card_expire": f"{parsed_expiry_year % 100:02d}{parsed_expiry_month:02d}",
         "card_type": "J",
         "installment": 0,
-        "cvv": cvv,
-        "cvv_cached_until": cvv_cached_until.isoformat() if cvv_cached_until else None,
     }
 
 
@@ -334,15 +330,12 @@ async def set_payment_card(
         existing_secret.updated_at = now
 
     await db.commit()
-    cvv_cached_until = await _cache_cvv(user_id=user.id, cvv=payload.cvv)
-
     return PaymentCardStatusResponse(
         configured=True,
         card_masked=_mask_card_number(payload.card_number),
         expiry_month=payload.expiry_month,
         expiry_year=payload.expiry_year,
         updated_at=now,
-        cvv_cached_until=cvv_cached_until,
     )
 
 

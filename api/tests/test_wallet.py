@@ -1,10 +1,7 @@
-import json
-
 import fakeredis.aioredis
 import pytest
 from sqlalchemy import select
 
-from app.core.config import get_settings
 from app.db.models import Secret, User
 from app.services.wallet import (
     LEGACY_PAYMENT_CVV_REDIS_KEY_PREFIX,
@@ -48,6 +45,25 @@ async def _register_and_login(client, db_session, *, email: str) -> str:
 
 
 @pytest.mark.asyncio
+async def test_payment_card_save_rejects_legacy_cvv_field(client, db_session):
+    cookie = await _register_and_login(client, db_session, email="wallet-reject-cvv@example.com")
+
+    save_res = await client.post(
+        "/api/wallet/payment-card",
+        cookies={"bominal_session": cookie},
+        json={
+            "card_number": "4111 1111 1111 1111",
+            "expiry_month": 12,
+            "expiry_year": 2099,
+            "cvv": "123",
+            "birth_date": "1990-01-01",
+            "pin2": "12",
+        },
+    )
+    assert save_res.status_code == 422
+
+
+@pytest.mark.asyncio
 async def test_remove_payment_settings_wipes_saved_data(client, db_session, monkeypatch):
     fake_redis = fakeredis.aioredis.FakeRedis()
 
@@ -66,7 +82,6 @@ async def test_remove_payment_settings_wipes_saved_data(client, db_session, monk
             "card_number": "1234 5678 9012 3456",
             "expiry_month": 12,
             "expiry_year": 2099,
-            "cvv": "123",
             "birth_date": "1990-01-01",
             "pin2": "12",
         },
@@ -87,7 +102,9 @@ async def test_remove_payment_settings_wipes_saved_data(client, db_session, monk
 
     redis_key = f"{PAYMENT_CVV_REDIS_KEY_PREFIX}:{user.id}"
     legacy_key = f"{LEGACY_PAYMENT_CVV_REDIS_KEY_PREFIX}:{user.id}"
-    assert await fake_redis.get(redis_key) is not None
+    assert await fake_redis.get(redis_key) is None
+    await fake_redis.set(redis_key, "stale-cvv")
+    await fake_redis.set(legacy_key, "legacy-cvv")
 
     remove_res = await client.delete("/api/wallet/payment-card", cookies={"bominal_session": cookie})
     assert remove_res.status_code == 200
@@ -141,7 +158,6 @@ async def test_payment_card_configured_endpoint_returns_minimal_boolean(client, 
             "card_number": "4111 1111 1111 1111",
             "expiry_month": 12,
             "expiry_year": 2099,
-            "cvv": "123",
             "birth_date": "1990-01-01",
             "pin2": "12",
         },
@@ -154,7 +170,7 @@ async def test_payment_card_configured_endpoint_returns_minimal_boolean(client, 
 
 
 @pytest.mark.asyncio
-async def test_payment_card_cache_blob_has_kek_version_and_bounded_ttl(client, db_session, monkeypatch):
+async def test_payment_card_save_does_not_cache_cvv_keys(client, db_session, monkeypatch):
     fake_redis = fakeredis.aioredis.FakeRedis()
     monkeypatch.setattr("app.services.wallet.get_cde_redis_pool", lambda: MockRedisContextManager(fake_redis))
 
@@ -167,7 +183,6 @@ async def test_payment_card_cache_blob_has_kek_version_and_bounded_ttl(client, d
             "card_number": "4111 1111 1111 1111",
             "expiry_month": 12,
             "expiry_year": 2099,
-            "cvv": "123",
             "birth_date": "1990-01-01",
             "pin2": "12",
         },
@@ -176,18 +191,7 @@ async def test_payment_card_cache_blob_has_kek_version_and_bounded_ttl(client, d
 
     user = (await db_session.execute(select(User).where(User.email == "wallet-cache-kek@example.com"))).scalar_one()
     redis_key = f"{PAYMENT_CVV_REDIS_KEY_PREFIX}:{user.id}"
-    raw_blob = await fake_redis.get(redis_key)
-    assert raw_blob is not None
-
-    if isinstance(raw_blob, bytes):
-        raw_blob = raw_blob.decode("utf-8")
-    parsed = json.loads(raw_blob)
-    assert "kek_version" in parsed
-    assert isinstance(parsed["kek_version"], int)
-
-    ttl = await fake_redis.ttl(redis_key)
-    settings = get_settings()
-    assert settings.payment_cvv_ttl_min_seconds <= ttl <= settings.payment_cvv_ttl_max_seconds
+    assert await fake_redis.get(redis_key) is None
 
 
 @pytest.mark.asyncio
@@ -205,7 +209,6 @@ async def test_payment_card_status_returns_not_configured_on_kek_version_mismatc
             "card_number": "4111 1111 1111 1111",
             "expiry_month": 12,
             "expiry_year": 2099,
-            "cvv": "123",
             "birth_date": "1990-01-01",
             "pin2": "12",
         },
@@ -243,7 +246,6 @@ async def test_purge_all_saved_payment_data_wipes_wallet_secrets_and_cvv_cache(c
         "card_number": "4111 1111 1111 1111",
         "expiry_month": 12,
         "expiry_year": 2099,
-        "cvv": "123",
         "birth_date": "1990-01-01",
         "pin2": "12",
     }
@@ -255,7 +257,9 @@ async def test_purge_all_saved_payment_data_wipes_wallet_secrets_and_cvv_cache(c
     user_a = (await db_session.execute(select(User).where(User.email == "wallet-purge-a@example.com"))).scalar_one()
     user_b = (await db_session.execute(select(User).where(User.email == "wallet-purge-b@example.com"))).scalar_one()
 
-    # Legacy compatibility key should also be removed by purge.
+    # Current + legacy compatibility keys should be removed by purge.
+    await fake_redis.set(f"{PAYMENT_CVV_REDIS_KEY_PREFIX}:{user_a.id}", "current-cvv")
+    await fake_redis.set(f"{PAYMENT_CVV_REDIS_KEY_PREFIX}:{user_b.id}", "current-cvv")
     await fake_redis.set(f"{LEGACY_PAYMENT_CVV_REDIS_KEY_PREFIX}:{user_a.id}", "legacy-cvv")
 
     summary = await purge_all_saved_payment_data(db_session)

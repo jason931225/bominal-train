@@ -304,46 +304,44 @@ if [[ "$database_url" == postgresql+asyncpg://* ]] && [[ "$database_url" == *"ss
 fi
 
 api_auth_mode="$(env_key_value "infra/env/prod/api.env" "AUTH_MODE" | tr '[:upper:]' '[:lower:]')"
-case "$api_auth_mode" in
-  legacy|supabase|dual)
-    ;;
-  *)
-    log_error "AUTH_MODE must be one of: legacy|supabase|dual (got: ${api_auth_mode:-<empty>})"
-    exit 1
-    ;;
-esac
-
-if [[ "$api_auth_mode" == "supabase" || "$api_auth_mode" == "dual" ]]; then
-  supabase_url="$(env_key_value "infra/env/prod/api.env" "SUPABASE_URL")"
-  supabase_jwt_issuer="$(env_key_value "infra/env/prod/api.env" "SUPABASE_JWT_ISSUER")"
-  if [[ -z "$supabase_url" ]]; then
-    log_error "Missing required key in infra/env/prod/api.env: SUPABASE_URL"
-    exit 1
-  fi
-  if [[ -z "$supabase_jwt_issuer" ]]; then
-    log_error "Missing required key in infra/env/prod/api.env: SUPABASE_JWT_ISSUER"
-    exit 1
-  fi
-  require_https_url "$supabase_url" "SUPABASE_URL"
-  require_https_url "$supabase_jwt_issuer" "SUPABASE_JWT_ISSUER"
+if [[ "$api_auth_mode" != "supabase" ]]; then
+  log_error "AUTH_MODE must be 'supabase' in production (got: ${api_auth_mode:-<empty>})"
+  exit 1
 fi
+
+supabase_url="$(env_key_value "infra/env/prod/api.env" "SUPABASE_URL")"
+supabase_jwt_issuer="$(env_key_value "infra/env/prod/api.env" "SUPABASE_JWT_ISSUER")"
+if [[ -z "$supabase_url" ]]; then
+  log_error "Missing required key in infra/env/prod/api.env: SUPABASE_URL"
+  exit 1
+fi
+if [[ -z "$supabase_jwt_issuer" ]]; then
+  log_error "Missing required key in infra/env/prod/api.env: SUPABASE_JWT_ISSUER"
+  exit 1
+fi
+require_https_url "$supabase_url" "SUPABASE_URL"
+require_https_url "$supabase_jwt_issuer" "SUPABASE_JWT_ISSUER"
 
 supabase_auth_enabled="$(env_key_value "infra/env/prod/api.env" "SUPABASE_AUTH_ENABLED" | tr '[:upper:]' '[:lower:]')"
-if is_truthy "$supabase_auth_enabled"; then
-  supabase_auth_api_key="$(env_key_value "infra/env/prod/api.env" "SUPABASE_AUTH_API_KEY")"
-  supabase_service_role_key="$(env_key_value "infra/env/prod/api.env" "SUPABASE_SERVICE_ROLE_KEY")"
-  supabase_auth_timeout_seconds="$(env_key_value "infra/env/prod/api.env" "SUPABASE_AUTH_TIMEOUT_SECONDS")"
-  if [[ -z "$supabase_auth_api_key" && -z "$supabase_service_role_key" ]]; then
-    log_error "SUPABASE_AUTH_ENABLED=true requires SUPABASE_AUTH_API_KEY or SUPABASE_SERVICE_ROLE_KEY"
-    exit 1
-  fi
-  require_positive_number "${supabase_auth_timeout_seconds:-0}" "SUPABASE_AUTH_TIMEOUT_SECONDS"
+if ! is_truthy "$supabase_auth_enabled"; then
+  log_error "SUPABASE_AUTH_ENABLED must be true in production."
+  exit 1
 fi
+supabase_auth_api_key="$(env_key_value "infra/env/prod/api.env" "SUPABASE_AUTH_API_KEY")"
+supabase_service_role_key="$(env_key_value "infra/env/prod/api.env" "SUPABASE_SERVICE_ROLE_KEY")"
+supabase_auth_timeout_seconds="$(env_key_value "infra/env/prod/api.env" "SUPABASE_AUTH_TIMEOUT_SECONDS")"
+if [[ -z "$supabase_auth_api_key" && -z "$supabase_service_role_key" ]]; then
+  log_error "SUPABASE_AUTH_ENABLED=true requires SUPABASE_AUTH_API_KEY or SUPABASE_SERVICE_ROLE_KEY"
+  exit 1
+fi
+require_positive_number "${supabase_auth_timeout_seconds:-0}" "SUPABASE_AUTH_TIMEOUT_SECONDS"
 
 supabase_storage_enabled="$(env_key_value "infra/env/prod/api.env" "SUPABASE_STORAGE_ENABLED" | tr '[:upper:]' '[:lower:]')"
-if [[ "$supabase_storage_enabled" == "true" || "$supabase_storage_enabled" == "1" || "$supabase_storage_enabled" == "yes" ]]; then
-  require_env_key_nonempty "infra/env/prod/api.env" "SUPABASE_SERVICE_ROLE_KEY"
+if ! is_truthy "$supabase_storage_enabled"; then
+  log_error "SUPABASE_STORAGE_ENABLED must be true in production."
+  exit 1
 fi
+require_env_key_nonempty "infra/env/prod/api.env" "SUPABASE_SERVICE_ROLE_KEY"
 
 email_provider="$(env_key_value "infra/env/prod/api.env" "EMAIL_PROVIDER" | tr '[:upper:]' '[:lower:]')"
 case "$email_provider" in

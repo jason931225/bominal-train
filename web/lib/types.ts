@@ -86,7 +86,6 @@ export type WalletPaymentCardStatus = {
   expiry_month: number | null;
   expiry_year: number | null;
   updated_at: string | null;
-  cvv_cached_until: string | null;
   detail: string | null;
 };
 
