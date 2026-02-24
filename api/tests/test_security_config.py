@@ -110,6 +110,27 @@ def test_supabase_auth_enabled_requires_auth_api_key(monkeypatch) -> None:
         Settings(_env_file=None)
 
 
+def test_supabase_auth_enabled_requires_supabase_url(monkeypatch) -> None:
+    monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.setenv("SUPABASE_AUTH_ENABLED", "true")
+    monkeypatch.setenv("SUPABASE_URL", "")
+    monkeypatch.setenv("SUPABASE_JWT_ISSUER", "https://project.supabase.co/auth/v1")
+    monkeypatch.setenv("SUPABASE_AUTH_API_KEY", "anon-key")
+    with pytest.raises(ValueError, match="SUPABASE_URL must be set"):
+        Settings(_env_file=None)
+
+
+def test_supabase_auth_enabled_requires_positive_timeout(monkeypatch) -> None:
+    monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.setenv("SUPABASE_AUTH_ENABLED", "true")
+    monkeypatch.setenv("SUPABASE_URL", "https://project.supabase.co")
+    monkeypatch.setenv("SUPABASE_JWT_ISSUER", "https://project.supabase.co/auth/v1")
+    monkeypatch.setenv("SUPABASE_AUTH_API_KEY", "anon-key")
+    monkeypatch.setenv("SUPABASE_AUTH_TIMEOUT_SECONDS", "0")
+    with pytest.raises(ValueError, match="SUPABASE_AUTH_TIMEOUT_SECONDS must be > 0"):
+        Settings(_env_file=None)
+
+
 def test_supabase_auth_enabled_allows_service_role_key_fallback(monkeypatch) -> None:
     monkeypatch.setenv("APP_ENV", "development")
     monkeypatch.setenv("SUPABASE_AUTH_ENABLED", "true")
@@ -120,6 +141,15 @@ def test_supabase_auth_enabled_allows_service_role_key_fallback(monkeypatch) -> 
 
     settings = Settings(_env_file=None)
     assert settings.resolved_supabase_auth_api_key == "service-role-key"
+
+
+def test_supabase_auth_key_property_prefers_explicit_api_key(monkeypatch) -> None:
+    monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.setenv("SUPABASE_AUTH_API_KEY", "explicit-key")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "service-role-key")
+
+    settings = Settings(_env_file=None)
+    assert settings.resolved_supabase_auth_api_key == "explicit-key"
 
 
 def test_rejects_upstash_when_cde_redis_uses_fallback(monkeypatch) -> None:
