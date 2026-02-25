@@ -303,6 +303,30 @@ async def test_register_rejects_duplicate_email_and_display_name(client):
     assert duplicate_display_name.status_code == 400
     assert duplicate_display_name.json()["detail"] == "Display name already registered"
 
+
+@pytest.mark.asyncio
+async def test_register_is_idempotent_for_same_credentials(client):
+    payload = {
+        "email": "idempotent@example.com",
+        "password": "SuperSecret123",
+        "display_name": "Idempotent User",
+    }
+    first = await client.post("/api/auth/register", json=payload)
+    assert first.status_code == 201
+
+    retry = await client.post(
+        "/api/auth/register",
+        json={
+            "email": "IDEMPOTENT@example.com",
+            "password": "SuperSecret123",
+            "display_name": "idempotent user",
+        },
+    )
+    assert retry.status_code == 201
+    assert retry.json()["user"]["email"] == payload["email"]
+    assert retry.json()["notice"] == "Account already exists. Continuing with existing account."
+
+
 @pytest.mark.asyncio
 async def test_register_maps_integrity_error_to_conflict(client, monkeypatch):
     from sqlalchemy.ext.asyncio import AsyncSession

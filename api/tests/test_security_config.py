@@ -67,6 +67,32 @@ def test_parses_optional_egress_proxy_urls(monkeypatch) -> None:
     assert settings.restaurant_provider_egress_proxy_url is None
 
 
+def test_resolved_database_url_async_translates_sslmode_for_asyncpg(monkeypatch) -> None:
+    monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        "postgresql+asyncpg://user:pass@db.example:6543/postgres?sslmode=require&application_name=bominal",
+    )
+
+    settings = Settings(_env_file=None)
+
+    assert "sslmode=" not in settings.resolved_database_url_async
+    assert "ssl=require" in settings.resolved_database_url_async
+    assert "application_name=bominal" in settings.resolved_database_url_async
+
+
+def test_resolved_database_url_async_preserves_explicit_ssl_for_asyncpg(monkeypatch) -> None:
+    monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        "postgresql+asyncpg://user:pass@db.example:6543/postgres?ssl=require&application_name=bominal",
+    )
+
+    settings = Settings(_env_file=None)
+
+    assert settings.resolved_database_url_async == settings.database_url
+
+
 def test_dual_mode_allows_legacy_only_configuration(monkeypatch) -> None:
     monkeypatch.setenv("APP_ENV", "development")
     monkeypatch.setenv("AUTH_MODE", "dual")
