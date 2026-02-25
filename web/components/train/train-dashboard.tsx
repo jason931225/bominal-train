@@ -136,6 +136,11 @@ const DUPLICATE_CATEGORY_ORDER: DuplicateMatchCategory[] = ["already_reserved", 
 const TRAIN_AUTO_PAY_FEATURE_ENABLED = ["1", "true", "yes", "on"].includes(
   (process.env.NEXT_PUBLIC_TRAIN_AUTO_PAY_ENABLED ?? "false").trim().toLowerCase(),
 );
+const TRAIN_KTX_FEATURE_ENABLED = ["1", "true", "yes", "on"].includes(
+  (process.env.NEXT_PUBLIC_TRAIN_KTX_ENABLED ?? "true").trim().toLowerCase(),
+);
+const SEARCH_PROVIDER_OPTIONS: CredentialProvider[] = TRAIN_KTX_FEATURE_ENABLED ? ["SRT", "KTX"] : ["SRT"];
+const CREDENTIAL_PROVIDER_OPTIONS: CredentialProvider[] = TRAIN_KTX_FEATURE_ENABLED ? ["KTX", "SRT"] : ["SRT"];
 const TRAIN_TYPE_NAME_BY_CODE: Record<string, string> = {
   "00": "KTX",
   "02": "무궁화",
@@ -1200,7 +1205,7 @@ export function TrainDashboard() {
     date: kstDateInputValue(new Date()),
     start: "00:01",
     end: "23:59",
-    providers: { SRT: true, KTX: true },
+    providers: { SRT: true, KTX: TRAIN_KTX_FEATURE_ENABLED },
   });
   const [createForm, setCreateForm] = useState<CreateTaskState>({
     seatClass: "general_preferred",
@@ -1265,7 +1270,7 @@ export function TrainDashboard() {
     [selectedScheduleIds, scheduleById]
   );
   const selectedSearchProviders = useMemo(
-    () => (["SRT", "KTX"] as const).filter((provider) => searchForm.providers[provider]),
+    () => SEARCH_PROVIDER_OPTIONS.filter((provider) => searchForm.providers[provider]),
     [searchForm.providers],
   );
   const selectedDateLabel = useMemo(
@@ -1295,19 +1300,23 @@ export function TrainDashboard() {
 
   const ktxVerified = Boolean(credentialStatus?.ktx.verified);
   const srtVerified = Boolean(credentialStatus?.srt.verified);
-  const selectedProviderCount = Number(searchForm.providers.SRT) + Number(searchForm.providers.KTX);
+  const selectedProviderCount = SEARCH_PROVIDER_OPTIONS.reduce(
+    (count, provider) => count + Number(searchForm.providers[provider]),
+    0,
+  );
   const hasSearchResults = schedules.length > 0;
   const showRanking = hasSearched && hasSearchResults;
   const suggestedCredentialProvider =
     credentialStatus == null
-      ? "KTX"
-      : !credentialStatus.ktx.verified && !omittedProviders.has("KTX")
-        ? "KTX"
-        : !credentialStatus.srt.verified && !omittedProviders.has("SRT")
-          ? "SRT"
-          : null;
+      ? CREDENTIAL_PROVIDER_OPTIONS[0] ?? null
+      : CREDENTIAL_PROVIDER_OPTIONS.find((provider) => {
+          const providerVerified = provider === "SRT" ? srtVerified : ktxVerified;
+          return !providerVerified && !omittedProviders.has(provider);
+        }) ?? null;
   const activeCredentialProvider = credentialProvider ?? suggestedCredentialProvider;
-  const hasAnyConnectedProvider = ktxVerified || srtVerified;
+  const hasAnyConnectedProvider = CREDENTIAL_PROVIDER_OPTIONS.some((provider) =>
+    provider === "SRT" ? srtVerified : ktxVerified,
+  );
   const searchUnlocked = credentialStatus != null && hasAnyConnectedProvider;
   const searchDisabled = searching || selectedProviderCount === 0 || !searchUnlocked;
   const totalPassengers = createForm.adults + createForm.children;
@@ -1668,7 +1677,7 @@ export function TrainDashboard() {
       ...current,
       providers: {
         SRT: srtVerified,
-        KTX: ktxVerified,
+        KTX: TRAIN_KTX_FEATURE_ENABLED ? ktxVerified : false,
       },
     }));
   }, [credentialStatus, ktxVerified, srtVerified]);
@@ -1678,7 +1687,10 @@ export function TrainDashboard() {
       setCredentialPanelOpen(true);
       return;
     }
-    if (ktxVerified && srtVerified) {
+    const allVerified = CREDENTIAL_PROVIDER_OPTIONS.every((provider) =>
+      provider === "SRT" ? srtVerified : ktxVerified,
+    );
+    if (allVerified) {
       setCredentialPanelOpen(false);
     }
   }, [hasAnyConnectedProvider, ktxVerified, srtVerified]);
@@ -1772,9 +1784,7 @@ export function TrainDashboard() {
     setErrorMessage(null);
     setNotice(null);
 
-    const providers: Array<"SRT" | "KTX"> = [];
-    if (searchForm.providers.SRT) providers.push("SRT");
-    if (searchForm.providers.KTX) providers.push("KTX");
+    const providers = SEARCH_PROVIDER_OPTIONS.filter((provider) => searchForm.providers[provider]);
 
     if (providers.length === 0) {
       setErrorMessage(t("train.error.selectProvider"));
@@ -2521,7 +2531,7 @@ export function TrainDashboard() {
           <h2 className="text-lg font-semibold text-slate-800">{t("train.searchSchedules")}</h2>
           <div className="flex items-center gap-2">
             <div data-testid="provider-selector-desktop" className="hidden items-center gap-2 md:flex">
-              {(["SRT", "KTX"] as const).map((provider) => {
+              {SEARCH_PROVIDER_OPTIONS.map((provider) => {
                 const isSelectable = isProviderSelectable(provider);
                 const isSelected = isProviderSelected(provider);
                 return (
@@ -2582,7 +2592,7 @@ export function TrainDashboard() {
             ) : (
               <>
                 <div className="grid gap-3 md:grid-cols-2">
-                  {(["KTX", "SRT"] as const).map((provider) => {
+                  {CREDENTIAL_PROVIDER_OPTIONS.map((provider) => {
                     const statusInfo = provider === "KTX" ? credentialStatus?.ktx : credentialStatus?.srt;
                     const isVerified = Boolean(statusInfo?.verified);
                     const isSkipped = omittedProviders.has(provider) && !isVerified;
@@ -2832,14 +2842,14 @@ export function TrainDashboard() {
                   </div>
                 </div>
 
-                {!ktxVerified || !srtVerified ? (
+                {CREDENTIAL_PROVIDER_OPTIONS.some((provider) => !isProviderVerified(provider)) ? (
                   <p className="mt-3 text-xs text-amber-700">{t("train.providersDisabled")}</p>
                 ) : null}
 
                 <div data-testid="provider-selector-mobile" className="mt-4 md:hidden">
                   <p className={SEARCH_SECTION_LABEL_CLASS}>{t("train.provider")}</p>
                   <div className="mt-2 grid grid-cols-2 gap-2">
-                    {(["SRT", "KTX"] as const).map((provider) => {
+                    {SEARCH_PROVIDER_OPTIONS.map((provider) => {
                       const isSelectable = isProviderSelectable(provider);
                       const isSelected = isProviderSelected(provider);
                       return (

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -66,6 +67,7 @@ from app.modules.train.timezone import KST
 from app.services.wallet import get_payment_card_for_execution
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
 TASK_VISIBILITY_RETENTION_DAYS = 365
 MANUAL_RETRY_COOLDOWN_SECONDS = 15
 MANUAL_RETRY_LAST_AT_KEY = "manual_retry_last_at"
@@ -175,6 +177,38 @@ async def _latest_secret_for_user(db: AsyncSession, *, user_id: UUID, kind: str)
 
 def _credential_missing_code(provider: str) -> str:
     return "srt_credentials_missing" if provider == "SRT" else "ktx_credentials_missing"
+
+
+def _is_provider_enabled(provider: str) -> bool:
+    normalized = str(provider).upper()
+    if normalized == "KTX":
+        return bool(settings.train_ktx_enabled)
+    return normalized == "SRT"
+
+
+def _provider_disabled_detail(provider: str) -> str:
+    normalized = str(provider).upper()
+    if normalized == "KTX":
+        return "KTX provider is temporarily unavailable"
+    return f"{normalized} provider is temporarily unavailable"
+
+
+def _provider_disabled_error_code(provider: str) -> str:
+    return f"{str(provider).lower()}_provider_disabled"
+
+
+def _disabled_provider_status(provider: str) -> ProviderCredentialStatus:
+    return ProviderCredentialStatus(
+        configured=False,
+        verified=False,
+        detail=_provider_disabled_detail(provider),
+    )
+
+
+def _require_provider_enabled(provider: str, *, status_code: int = status.HTTP_503_SERVICE_UNAVAILABLE) -> None:
+    if _is_provider_enabled(provider):
+        return
+    raise HTTPException(status_code=status_code, detail=_provider_disabled_detail(provider))
 
 
 async def _load_provider_credentials(
@@ -381,7 +415,10 @@ async def get_train_credentials_status(
     user: User,
 ) -> ProviderCredentialsStatusResponse:
     # Keep checks sequential on one AsyncSession to avoid concurrent DB/session usage errors.
-    ktx = await _verify_provider_credentials_guarded(db, user=user, provider="KTX")
+    if _is_provider_enabled("KTX"):
+        ktx = await _verify_provider_credentials_guarded(db, user=user, provider="KTX")
+    else:
+        ktx = _disabled_provider_status("KTX")
     srt = await _verify_provider_credentials_guarded(db, user=user, provider="SRT")
     return ProviderCredentialsStatusResponse(ktx=ktx, srt=srt)
 
@@ -392,6 +429,8 @@ async def get_srt_credential_status(db: AsyncSession, *, user: User) -> SRTCrede
 
 
 async def get_ktx_credential_status(db: AsyncSession, *, user: User) -> KTXCredentialStatusResponse:
+    if not _is_provider_enabled("KTX"):
+        return KTXCredentialStatusResponse(**_disabled_provider_status("KTX").model_dump())
     status_info = await _verify_provider_credentials_guarded(db, user=user, provider="KTX")
     return KTXCredentialStatusResponse(**status_info.model_dump())
 
@@ -411,6 +450,14 @@ async def set_srt_credentials(
         credentials={"username": username, "password": password},
     )
     if not login_outcome.ok:
+        logger.warning(
+            "SRT credential verification failed",
+            extra={
+                "provider": "SRT",
+                "error_code": login_outcome.error_code,
+                "retryable": login_outcome.retryable,
+            },
+        )
         status_code = status.HTTP_400_BAD_REQUEST
         if login_outcome.retryable:
             status_code = status.HTTP_502_BAD_GATEWAY
@@ -438,6 +485,7 @@ async def set_ktx_credentials(
     user: User,
     payload: KTXCredentialsSetRequest,
 ) -> KTXCredentialStatusResponse:
+    _require_provider_enabled("KTX")
     username = payload.username.strip()
     password = payload.password
 
@@ -447,6 +495,14 @@ async def set_ktx_credentials(
         credentials={"username": username, "password": password},
     )
     if not login_outcome.ok:
+        logger.warning(
+            "KTX credential verification failed",
+            extra={
+                "provider": "KTX",
+                "error_code": login_outcome.error_code,
+                "retryable": login_outcome.retryable,
+            },
+        )
         status_code = status.HTTP_400_BAD_REQUEST
         if login_outcome.retryable:
             status_code = status.HTTP_502_BAD_GATEWAY
@@ -511,6 +567,7 @@ async def _get_logged_in_provider_client(
     user: User,
     provider: str,
 ):
+    _require_provider_enabled(provider)
     creds = await _load_provider_credentials(db, user_id=user.id, provider=provider)
     if creds is None:
         raise HTTPException(
@@ -566,6 +623,12 @@ def _resolve_task_providers(ranked_trains: list[dict]) -> list[str]:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="No provider could be resolved from selected schedules.",
         )
+    for provider in providers:
+        if not _is_provider_enabled(provider):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=_provider_disabled_detail(provider),
+            )
     return providers
 
 
@@ -903,79 +966,86 @@ async def search_schedules(
     limiter = RedisTokenBucketLimiter(redis)
 
     for provider in payload.providers:
-            creds = await _load_provider_credentials(db, user_id=user.id, provider=provider)
-            if creds is None:
-                provider_errors[provider] = {
-                    "error_code": _credential_missing_code(provider),
-                    "error_message": f"Connect {provider} credentials first",
-                }
-                continue
+        if not _is_provider_enabled(provider):
+            provider_errors[provider] = {
+                "error_code": _provider_disabled_error_code(provider),
+                "error_message": _provider_disabled_detail(provider),
+            }
+            continue
 
-            client = get_provider_client(provider)
-            try:
-                login_outcome = await client.login(
-                    user_id=str(user.id),
-                    credentials={"username": creds["username"], "password": creds["password"]},
-                )
-            except Exception as exc:
-                provider_errors[provider] = {
-                    "error_code": "provider_login_transport_error",
-                    "error_message": f"{provider} login transport error: {type(exc).__name__}",
-                }
-                continue
+        creds = await _load_provider_credentials(db, user_id=user.id, provider=provider)
+        if creds is None:
+            provider_errors[provider] = {
+                "error_code": _credential_missing_code(provider),
+                "error_message": f"Connect {provider} credentials first",
+            }
+            continue
 
-            if not login_outcome.ok:
-                provider_errors[provider] = {
-                    "error_code": login_outcome.error_code or f"{provider.lower()}_login_failed",
-                    "error_message": login_outcome.error_message_safe or f"{provider} login failed",
-                }
-                continue
-
-            await limiter.acquire_provider_call(
-                provider=provider,
-                user_bucket_key=str(user.id),
-                host_bucket_key="default-host",
+        client = get_provider_client(provider)
+        try:
+            login_outcome = await client.login(
+                user_id=str(user.id),
+                credentials={"username": creds["username"], "password": creds["password"]},
             )
-            try:
-                outcome = await client.search(
-                    dep=payload.dep,
-                    arr=payload.arr,
-                    date_value=payload.date,
-                    time_window_start=payload.time_window.start,
-                    time_window_end=payload.time_window.end,
-                    user_id=str(user.id),
-                )
-            except Exception as exc:
-                provider_errors[provider] = {
-                    "error_code": "provider_transport_error",
-                    "error_message": f"{provider} search transport error: {type(exc).__name__}",
-                }
-                continue
+        except Exception as exc:
+            provider_errors[provider] = {
+                "error_code": "provider_login_transport_error",
+                "error_message": f"{provider} login transport error: {type(exc).__name__}",
+            }
+            continue
 
-            if not outcome.ok:
-                provider_errors[provider] = {
-                    "error_code": outcome.error_code,
-                    "error_message": outcome.error_message_safe,
-                }
-                continue
+        if not login_outcome.ok:
+            provider_errors[provider] = {
+                "error_code": login_outcome.error_code or f"{provider.lower()}_login_failed",
+                "error_message": login_outcome.error_message_safe or f"{provider} login failed",
+            }
+            continue
 
-            provider_schedules = outcome.data.get("schedules", [])
-            for schedule in provider_schedules:
-                if not isinstance(schedule, ProviderSchedule):
-                    continue
-                schedules.append(
-                    ScheduleOut(
-                        schedule_id=schedule.schedule_id,
-                        provider=schedule.provider,
-                        departure_at=schedule.departure_at,
-                        arrival_at=schedule.arrival_at,
-                        train_no=schedule.train_no,
-                        dep=schedule.dep,
-                        arr=schedule.arr,
-                        availability=schedule.availability,
-                        metadata=schedule.metadata,
-                    )
+        await limiter.acquire_provider_call(
+            provider=provider,
+            user_bucket_key=str(user.id),
+            host_bucket_key="default-host",
+        )
+        try:
+            outcome = await client.search(
+                dep=payload.dep,
+                arr=payload.arr,
+                date_value=payload.date,
+                time_window_start=payload.time_window.start,
+                time_window_end=payload.time_window.end,
+                user_id=str(user.id),
+            )
+        except Exception as exc:
+            provider_errors[provider] = {
+                "error_code": "provider_transport_error",
+                "error_message": f"{provider} search transport error: {type(exc).__name__}",
+            }
+            continue
+
+        if not outcome.ok:
+            provider_errors[provider] = {
+                "error_code": outcome.error_code,
+                "error_message": outcome.error_message_safe,
+            }
+            continue
+
+        provider_schedules = outcome.data.get("schedules", [])
+        for schedule in provider_schedules:
+            if not isinstance(schedule, ProviderSchedule):
+                continue
+            schedules.append(
+                ScheduleOut(
+                    schedule_id=schedule.schedule_id,
+                    provider=schedule.provider,
+                    departure_at=schedule.departure_at,
+                    arrival_at=schedule.arrival_at,
+                    train_no=schedule.train_no,
+                    dep=schedule.dep,
+                    arr=schedule.arr,
+                    availability=schedule.availability,
+                    metadata=schedule.metadata,
                 )
+            )
 
     if not schedules and provider_errors and len(provider_errors) == len(payload.providers):
         detail = "; ".join(
