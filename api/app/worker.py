@@ -4,6 +4,7 @@ import asyncio
 import logging
 import signal
 from contextlib import suppress
+from dataclasses import replace
 from datetime import datetime, timezone
 from uuid import UUID
 
@@ -31,6 +32,22 @@ HEARTBEAT_KEY = b"bominal:worker:heartbeat"
 HEARTBEAT_TTL_SECONDS = 30
 HEARTBEAT_INTERVAL_SECONDS = 10
 ATTEMPT_HYGIENE_INTERVAL_SECONDS = 24 * 60 * 60
+WORKER_REDIS_CONN_TIMEOUT_SECONDS = 5
+WORKER_REDIS_CONN_RETRIES = 8
+WORKER_REDIS_CONN_RETRY_DELAY_SECONDS = 1
+WORKER_REDIS_MAX_CONNECTIONS = 200
+
+
+def _worker_redis_settings() -> RedisSettings:
+    base = RedisSettings.from_dsn(settings.resolved_redis_url_non_cde)
+    return replace(
+        base,
+        conn_timeout=WORKER_REDIS_CONN_TIMEOUT_SECONDS,
+        conn_retries=WORKER_REDIS_CONN_RETRIES,
+        conn_retry_delay=WORKER_REDIS_CONN_RETRY_DELAY_SECONDS,
+        max_connections=WORKER_REDIS_MAX_CONNECTIONS,
+        retry_on_timeout=True,
+    )
 
 
 def _register_in_flight(task_id: str) -> None:
@@ -193,7 +210,7 @@ async def on_shutdown(ctx: dict) -> None:
 
 class WorkerSettings:
     functions = [run_train_task, deliver_email_job]
-    redis_settings = RedisSettings.from_dsn(settings.resolved_redis_url_non_cde)
+    redis_settings = _worker_redis_settings()
     queue_name = TRAIN_QUEUE_NAME
     on_startup = on_startup
     on_shutdown = on_shutdown

@@ -431,6 +431,23 @@ curl -sI https://www.bominal.com/
 sudo docker compose -f infra/docker-compose.prod.yml logs -f --tail=50 api worker web
 ```
 
+### Runtime Pressure Checks
+
+```bash
+# Host pressure
+uptime
+free -h
+
+# Container resource usage
+sudo docker stats --no-stream --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}"
+
+# Worker restart/health guard
+sudo docker inspect -f '{{.Name}} restart={{.RestartCount}} status={{.State.Status}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' bominal-worker
+
+# Zombie count trend
+ps -eo stat | awk '$1 ~ /^Z/ {c++} END {print c+0}'
+```
+
 ---
 
 ## Troubleshooting
@@ -465,6 +482,27 @@ Check logs:
 ```bash
 docker logs bominal-api 2>&1 | tail -50
 docker logs bominal-web 2>&1 | tail -50
+```
+
+### Web Process Is Healthy but Zombie Count Keeps Growing
+
+Symptoms:
+- `bominal-web` stays healthy, but host zombie count keeps increasing.
+- Zombies map to the web parent PID.
+
+Actions:
+1. Recreate only web service (do not restart entire stack):
+
+```bash
+sudo -u bominal docker compose -f /opt/bominal/repo/infra/docker-compose.prod.yml up -d --no-deps --force-recreate web
+```
+
+2. Verify web/worker health and restart stability:
+
+```bash
+sudo -u bominal docker compose -f /opt/bominal/repo/infra/docker-compose.prod.yml ps --format "table {{.Name}}\t{{.Status}}" web worker
+sudo docker inspect -f '{{.Name}} restart={{.RestartCount}} status={{.State.Status}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' bominal-worker
+ps -eo stat | awk '$1 ~ /^Z/ {c++} END {print c+0}'
 ```
 
 ### Rollback Not Working
