@@ -3,7 +3,7 @@
 bominal is a modular product foundation with:
 
 - `web/`: Next.js App Router + TypeScript + Tailwind + Zod
-- `api/`: FastAPI + Postgres + Alembic + configurable auth modes (`legacy`/`supabase`/`dual`)
+- `api/`: FastAPI + Postgres + Alembic + configurable auth modes (`legacy`/`supabase`)
 - `worker`: arq train worker for async Train Tasks + queued email jobs
 - `redis`: queue + provider rate limiting
 - `third_party/srtgo`: read-only provider behavior reference (submodule)
@@ -143,13 +143,13 @@ Optional:
    - `infra/env/prod/deploy.env` (optional helper): `GHCR_USERNAME` + `GHCR_TOKEN` if GHCR packages are private
    - Optional, mode-dependent:
      - `AUTH_MODE=legacy`: Supabase JWT fields can be left empty
-     - `AUTH_MODE=dual`: `SUPABASE_URL`, `SUPABASE_JWT_ISSUER` are still required (and `SUPABASE_JWKS_URL` if overriding default)
+     - `AUTH_MODE=supabase`: `SUPABASE_URL` and `SUPABASE_JWT_ISSUER` are required (and `SUPABASE_JWKS_URL` if overriding default)
      - `SUPABASE_AUTH_ENABLED=true`: set `SUPABASE_AUTH_API_KEY` (or `SUPABASE_SERVICE_ROLE_KEY`) and `SUPABASE_AUTH_TIMEOUT_SECONDS`
      - `SUPABASE_STORAGE_ENABLED=true`: `SUPABASE_SERVICE_ROLE_KEY`
      - `EMAIL_PROVIDER=disabled`: Resend credentials may remain unset
      - `EMAIL_PROVIDER=smtp`: `SMTP_HOST`, `SMTP_PORT`, and SMTP credentials/TLS flags as needed
 
-   Production note: `DATABASE_URL` / `SYNC_DATABASE_URL` must target Supabase Postgres (`*.supabase.co`) with TLS required (`sslmode=require` or equivalent). Local dev remains Docker-local Postgres/Redis by default.
+   Production note: `DATABASE_URL` / `SYNC_DATABASE_URL` must target Supabase Postgres (`*.supabase.co`) with TLS required (`sslmode=require` or equivalent). Local development must remain Docker-local Postgres/Redis (`postgres:5432` / `localhost:5432`) and must not point at VM/remote Postgres.
    If you bypass the bootstrap script and edit manually, ensure no unresolved placeholders remain.
 
 3) Deploy (recommended):
@@ -213,7 +213,6 @@ Auth modes (`AUTH_MODE`):
 
 - `legacy`: session cookie (`bominal_session`) is required for authenticated routes.
 - `supabase`: API requires `Authorization: Bearer <jwt>`, verifies Supabase JWT (`iss`/`aud`/`exp`), then maps `sub` to local user/role.
-- `dual`: Bearer token is preferred when present; otherwise cookie auth is used.
 
 API access tiers:
 

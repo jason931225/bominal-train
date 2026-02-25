@@ -120,9 +120,6 @@ async def get_current_user(
             raise _unauthorized()
         return await _resolve_user_from_supabase_bearer(bearer_token=bearer_token, db=db)
 
-    if auth_mode == "dual" and bearer_token:
-        return await _resolve_user_from_supabase_bearer(bearer_token=bearer_token, db=db)
-
     auth_session = await _resolve_session_from_cookie(session_token=session_token, db=db)
     if auth_session is None:
         raise _unauthorized()

@@ -68,7 +68,7 @@ def test_parses_optional_egress_proxy_urls(monkeypatch) -> None:
 
 
 def test_resolved_database_url_async_translates_sslmode_for_asyncpg(monkeypatch) -> None:
-    monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.setenv("APP_ENV", "test")
     monkeypatch.setenv(
         "DATABASE_URL",
         "postgresql+asyncpg://user:pass@db.example:6543/postgres?sslmode=require&application_name=bominal",
@@ -82,7 +82,7 @@ def test_resolved_database_url_async_translates_sslmode_for_asyncpg(monkeypatch)
 
 
 def test_resolved_database_url_async_preserves_explicit_ssl_for_asyncpg(monkeypatch) -> None:
-    monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.setenv("APP_ENV", "test")
     monkeypatch.setenv(
         "DATABASE_URL",
         "postgresql+asyncpg://user:pass@db.example:6543/postgres?ssl=require&application_name=bominal",
@@ -93,25 +93,23 @@ def test_resolved_database_url_async_preserves_explicit_ssl_for_asyncpg(monkeypa
     assert settings.resolved_database_url_async == settings.database_url
 
 
-def test_dual_mode_allows_legacy_only_configuration(monkeypatch) -> None:
+def test_legacy_mode_allows_missing_supabase_configuration(monkeypatch) -> None:
     monkeypatch.setenv("APP_ENV", "development")
-    monkeypatch.setenv("AUTH_MODE", "dual")
+    monkeypatch.setenv("AUTH_MODE", "legacy")
     monkeypatch.delenv("SUPABASE_URL", raising=False)
     monkeypatch.delenv("SUPABASE_JWT_ISSUER", raising=False)
 
     settings = Settings(_env_file=None)
-    assert settings.auth_mode == "dual"
+    assert settings.auth_mode == "legacy"
     assert settings.supabase_url is None
     assert settings.supabase_jwt_issuer is None
 
 
-def test_dual_mode_requires_url_and_issuer_together(monkeypatch) -> None:
+def test_auth_mode_rejects_dual(monkeypatch) -> None:
     monkeypatch.setenv("APP_ENV", "development")
     monkeypatch.setenv("AUTH_MODE", "dual")
-    monkeypatch.setenv("SUPABASE_URL", "https://project.supabase.co")
-    monkeypatch.delenv("SUPABASE_JWT_ISSUER", raising=False)
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="AUTH_MODE must be one of: legacy, supabase"):
         Settings(_env_file=None)
 
 
@@ -122,6 +120,24 @@ def test_supabase_mode_requires_jwt_issuer(monkeypatch) -> None:
     monkeypatch.delenv("SUPABASE_JWT_ISSUER", raising=False)
 
     with pytest.raises(ValueError):
+        Settings(_env_file=None)
+
+
+def test_development_rejects_non_local_database_url(monkeypatch) -> None:
+    monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.setenv("AUTH_MODE", "legacy")
+    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://user:pass@db.example:5432/bominal")
+
+    with pytest.raises(ValueError, match="DATABASE_URL must point to local Postgres hostnames"):
+        Settings(_env_file=None)
+
+
+def test_development_rejects_non_local_sync_database_url(monkeypatch) -> None:
+    monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.setenv("AUTH_MODE", "legacy")
+    monkeypatch.setenv("SYNC_DATABASE_URL", "postgresql+psycopg://user:pass@db.example:5432/bominal")
+
+    with pytest.raises(ValueError, match="SYNC_DATABASE_URL must point to local Postgres hostnames"):
         Settings(_env_file=None)
 
 

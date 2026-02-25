@@ -5,7 +5,7 @@
 Bominal is a modular monorepo with three runtime tiers:
 
 1. **Web** (`web/`): Next.js App Router UI, server-rendered pages + client components
-2. **API** (`api/`): FastAPI REST backend with configurable auth mode (`legacy` | `supabase` | `dual`)
+2. **API** (`api/`): FastAPI REST backend with configurable auth mode (`legacy` | `supabase`)
 3. **Workers**:
    - `api/app/worker.py` -> train-task + queued email execution
 
@@ -86,7 +86,6 @@ Module contract:
 
 - `AUTH_MODE=supabase`: stateless Bearer token auth; API verifies Supabase JWT (`iss`/`aud`/`exp`) and maps `sub` to local user role.
 - `AUTH_MODE=legacy`: session cookie auth (`bominal_session`) with DB-backed hashed session tokens (development/backward-compatibility mode).
-- `AUTH_MODE=dual`: Bearer token takes precedence when present; otherwise falls back to session cookie (development/backward-compatibility mode).
 - Production deploy/predeploy gates enforce `AUTH_MODE=supabase`.
 - Session cookie behavior remains `HttpOnly`, `SameSite=Lax`, and `Secure` only in production.
 - Local authorization source of truth remains `users.role_id` / `roles.name` (JWT role claims are not trusted for privilege).
