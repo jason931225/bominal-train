@@ -116,9 +116,15 @@ async def get_current_user(
     bearer_token = _extract_bearer_token(request.headers.get("authorization"))
 
     if auth_mode == "supabase":
-        if not bearer_token:
+        if bearer_token:
+            return await _resolve_user_from_supabase_bearer(bearer_token=bearer_token, db=db)
+
+        # Compatibility fallback for current web session-cookie auth flow.
+        # Bearer remains primary when provided (including invalid bearer -> 401).
+        auth_session = await _resolve_session_from_cookie(session_token=session_token, db=db)
+        if auth_session is None:
             raise _unauthorized()
-        return await _resolve_user_from_supabase_bearer(bearer_token=bearer_token, db=db)
+        return auth_session.user
 
     auth_session = await _resolve_session_from_cookie(session_token=session_token, db=db)
     if auth_session is None:
