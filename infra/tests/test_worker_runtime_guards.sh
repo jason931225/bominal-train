@@ -36,6 +36,12 @@ if ! matches_pattern 'python -m app\.worker_entrypoint app\.worker\.WorkerSettin
   exit 1
 fi
 
+pay_env_refs="$(grep -c '\./env/prod/pay\.env' "$PROD_COMPOSE" || true)"
+if [[ "$pay_env_refs" -lt 2 ]]; then
+  echo "FAIL: prod compose api/worker must include ./env/prod/pay.env for backend-only auto-pay." >&2
+  exit 1
+fi
+
 if ! matches_pattern 'WorkerSettings' "$PROD_COMPOSE"; then
   echo "FAIL: prod compose worker healthcheck must verify WorkerSettings process." >&2
   exit 1
