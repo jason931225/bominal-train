@@ -187,8 +187,19 @@ main() {
       fi
 
       # Latest-only deploys: always prefer the infra/scripts on origin/main.
-      # Best-effort: if fetch failed, origin/main may still be usable (from previous fetch).
-      git -C "$repo_dir" checkout --detach origin/main 2>/dev/null || true
+      # If local tracked/untracked edits block checkout, auto-stash and retry so
+      # deploys do not silently stay pinned to stale infrastructure code.
+      if git -C "$repo_dir" checkout --detach origin/main >/dev/null 2>&1; then
+        log "Repo aligned to origin/main ($(git -C "$repo_dir" rev-parse --short HEAD 2>/dev/null || echo unknown))"
+      else
+        log "WARN: checkout --detach origin/main failed; attempting auto-stash and retry"
+        git -C "$repo_dir" stash push -u -m "deploy-agent-auto-stash-$(date -u +%Y%m%dT%H%M%SZ)" >/dev/null 2>&1 || true
+        if git -C "$repo_dir" checkout --detach origin/main >/dev/null 2>&1; then
+          log "Repo aligned to origin/main after auto-stash ($(git -C "$repo_dir" rev-parse --short HEAD 2>/dev/null || echo unknown))"
+        else
+          log "WARN: repo checkout to origin/main still failing; continuing with existing repo state"
+        fi
+      fi
 
       # Run deploy. Use "latest" by default to avoid missing image tags when only one image was rebuilt.
       export GCP_PROJECT_ID

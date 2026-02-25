@@ -195,6 +195,8 @@ jobs:
           set -euo pipefail
 
           commit="${{ steps.prereq.outputs.target_sha }}"
+          # CI image tags use short git SHA tags (7 chars), not full 40-char SHAs.
+          commit_tag="${commit:0:7}"
           mode="latest"
           ghcr_namespace="${{ env.GHCR_NAMESPACE }}"
 
@@ -203,21 +205,23 @@ jobs:
           web_image=""
 
           if [[ "${{ steps.prereq.outputs.api_changed }}" == "true" ]]; then
-            api_image="${ghcr_namespace}/api:${commit}"
-            worker_image="${ghcr_namespace}/api:${commit}"
+            api_image="${ghcr_namespace}/api:${commit_tag}"
+            worker_image="${ghcr_namespace}/api:${commit_tag}"
           fi
           if [[ "${{ steps.prereq.outputs.web_changed }}" == "true" ]]; then
-            web_image="${ghcr_namespace}/web:${commit}"
+            web_image="${ghcr_namespace}/web:${commit_tag}"
           fi
 
           echo "Deploy request:"
           echo "  mode:   $mode"
           echo "  commit: $commit"
+          echo "  tag:    $commit_tag"
           echo "  api_image: ${api_image:-<latest>}"
           echo "  worker_image: ${worker_image:-<latest>}"
           echo "  web_image: ${web_image:-<latest>}"
 
           export DEPLOY_COMMIT="$commit"
+          export DEPLOY_COMMIT_TAG="$commit_tag"
           export DEPLOY_API_IMAGE="$api_image"
           export DEPLOY_WORKER_IMAGE="$worker_image"
           export DEPLOY_WEB_IMAGE="$web_image"
@@ -232,6 +236,7 @@ jobs:
               "action": "deploy",
               "mode": "latest",
               "commit": os.environ.get("DEPLOY_COMMIT", ""),
+              "commit_tag": os.environ.get("DEPLOY_COMMIT_TAG", ""),
               "api_image": os.environ.get("DEPLOY_API_IMAGE", ""),
               "worker_image": os.environ.get("DEPLOY_WORKER_IMAGE", ""),
               "web_image": os.environ.get("DEPLOY_WEB_IMAGE", ""),
@@ -250,6 +255,7 @@ jobs:
             --attribute="app=bominal" \
             --attribute="mode=latest" \
             --attribute="commit=$commit" \
+            --attribute="commit_tag=$commit_tag" \
             --attribute="api_image=$api_image" \
             --attribute="worker_image=$worker_image" \
             --attribute="web_image=$web_image" \
