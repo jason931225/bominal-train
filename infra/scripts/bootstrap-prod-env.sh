@@ -346,6 +346,7 @@ PY
   set_env_key "$API_ENV" "SUPABASE_SERVICE_ROLE_KEY" "$supabase_service_role_key"
   set_env_key "$API_ENV" "INTERNAL_API_KEY" "$internal_api_key"
   set_env_key "$API_ENV" "MASTER_KEY" "$master_key"
+  set_env_key "$API_ENV" "RESTAURANT_MODULE_ENABLED" "false"
   set_env_key "$API_ENV" "TRAIN_POLL_FORCE_MAX_RATE" "false"
   set_env_key "$API_ENV" "TRAIN_PERSIST_ALL_ATTEMPTS" "false"
   set_env_key "$API_ENV" "PAYMENT_ENABLED" "true"
@@ -362,6 +363,7 @@ PY
   set_env_key "$WEB_ENV" "NEXT_PUBLIC_API_BASE_URL" "$next_public_api_base_url"
   set_env_key "$WEB_ENV" "API_SERVER_URL" "$api_server_url"
   set_env_key "$WEB_ENV" "NEXT_PUBLIC_TRAIN_AUTO_PAY_ENABLED" "true"
+  set_env_key "$WEB_ENV" "NEXT_PUBLIC_RESTAURANT_MODULE_ENABLED" "false"
   set_env_key "$WEB_ENV" "NEXT_PUBLIC_FONT_BASE_URL" "$font_base"
   set_env_key "$WEB_ENV" "NODE_ENV" "production"
 
