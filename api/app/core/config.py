@@ -15,7 +15,7 @@ import json
 from functools import lru_cache
 from typing import Annotated
 from typing import List
-from urllib.parse import urlparse
+from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunsplit
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -34,6 +34,40 @@ def is_upstash_redis_url(url: str | None) -> bool:
     if not host:
         return False
     return any(host == suffix or host.endswith(f".{suffix}") for suffix in UPSTASH_REDIS_HOST_SUFFIXES)
+
+
+def normalize_async_database_url(url: str) -> str:
+    """Normalize async SQLAlchemy database URLs for asyncpg compatibility.
+
+    Supabase examples and operator habits often use `sslmode=require`, which
+    asyncpg does not accept as a connect keyword. For asyncpg URLs, translate
+    `sslmode=<value>` to `ssl=<value>` unless an explicit `ssl` query value is
+    already present.
+    """
+    normalized = str(url).strip()
+    if not normalized:
+        return normalized
+
+    try:
+        parsed = urlsplit(normalized)
+    except Exception:
+        return normalized
+
+    if (parsed.scheme or "").lower() != "postgresql+asyncpg":
+        return normalized
+
+    query_pairs = parse_qsl(parsed.query, keep_blank_values=True)
+    if not query_pairs:
+        return normalized
+
+    has_ssl = any(key.lower() == "ssl" for key, _ in query_pairs)
+    sslmode_values = [value for key, value in query_pairs if key.lower() == "sslmode"]
+    filtered_pairs = [(key, value) for key, value in query_pairs if key.lower() != "sslmode"]
+    if sslmode_values and not has_ssl:
+        filtered_pairs.append(("ssl", sslmode_values[-1]))
+
+    rebuilt_query = urlencode(filtered_pairs, doseq=True)
+    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, rebuilt_query, parsed.fragment))
 
 
 class Settings(BaseSettings):
@@ -433,6 +467,10 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.app_env.lower() == "production"
+
+    @property
+    def resolved_database_url_async(self) -> str:
+        return normalize_async_database_url(self.database_url)
 
     @property
     def resolved_redis_url_non_cde(self) -> str:

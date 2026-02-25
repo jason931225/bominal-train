@@ -93,6 +93,14 @@ def _integrity_conflict_detail(exc: IntegrityError) -> str:
     return "Account already exists"
 
 
+def _is_idempotent_register_retry(*, existing_user: User, payload: RegisterRequest) -> bool:
+    existing_display_name = str(existing_user.display_name or "").strip().lower()
+    requested_display_name = payload.display_name.strip().lower()
+    if existing_display_name != requested_display_name:
+        return False
+    return verify_password(payload.password, existing_user.password_hash)
+
+
 def _public_base_url() -> str:
     return settings.app_public_base_url.rstrip("/")
 
@@ -289,8 +297,14 @@ def _email_change_template_payload(*, email: str, code: str) -> EmailTemplateJob
 async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db)) -> AuthResponse:
     email = payload.email.lower()
 
-    existing = await db.execute(select(User).where(User.email == email))
-    if existing.scalar_one_or_none():
+    existing = await db.execute(select(User).options(joinedload(User.role)).where(User.email == email))
+    existing_user = existing.scalar_one_or_none()
+    if existing_user is not None:
+        if _is_idempotent_register_retry(existing_user=existing_user, payload=payload):
+            return AuthResponse(
+                user=user_to_out(existing_user),
+                notice="Account already exists. Continuing with existing account.",
+            )
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
 
     existing_display_name = await db.execute(
@@ -319,7 +333,20 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
         await db.commit()
     except IntegrityError as exc:
         await db.rollback()
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_integrity_conflict_detail(exc)) from exc
+        detail = _integrity_conflict_detail(exc)
+        if detail == "Email already registered":
+            existing_after_conflict = (
+                await db.execute(select(User).options(joinedload(User.role)).where(User.email == email))
+            ).scalar_one_or_none()
+            if existing_after_conflict is not None and _is_idempotent_register_retry(
+                existing_user=existing_after_conflict,
+                payload=payload,
+            ):
+                return AuthResponse(
+                    user=user_to_out(existing_after_conflict),
+                    notice="Account already exists. Continuing with existing account.",
+                )
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail) from exc
 
     user_result = await db.execute(
         select(User).options(joinedload(User.role)).where(User.id == user.id)
