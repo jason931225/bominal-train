@@ -16,24 +16,10 @@ def test_worker_settings_have_isolated_queue_names():
 
 def test_worker_settings_use_non_cde_redis_dsn(monkeypatch):
     from app.core.config import get_settings
-    from arq.connections import RedisSettings
 
     monkeypatch.setenv("REDIS_URL", "redis://legacy:6379/0")
     monkeypatch.setenv("REDIS_URL_NON_CDE", "redis://non-cde:6380/2")
     get_settings.cache_clear()
-
-    captured: list[str] = []
-    original_from_dsn = RedisSettings.from_dsn
-
-    def _capture_from_dsn(*args, **kwargs):  # noqa: ANN001, ANN002, ANN003
-        dsn = kwargs.get("dsn")
-        if dsn is None and args:
-            dsn = args[-1]
-        dsn = str(dsn)
-        captured.append(dsn)
-        return original_from_dsn(dsn)
-
-    monkeypatch.setattr(RedisSettings, "from_dsn", _capture_from_dsn)
 
     import app.worker as worker_module
     import app.worker_restaurant as worker_restaurant_module
@@ -41,6 +27,24 @@ def test_worker_settings_use_non_cde_redis_dsn(monkeypatch):
     importlib.reload(worker_module)
     importlib.reload(worker_restaurant_module)
 
-    assert "redis://non-cde:6380/2" in captured
+    train_redis_settings = worker_module.WorkerSettings.redis_settings
+    restaurant_redis_settings = worker_restaurant_module.WorkerRestaurantSettings.redis_settings
+
+    assert train_redis_settings.host == "non-cde"
+    assert train_redis_settings.port == 6380
+    assert train_redis_settings.database == 2
+    assert restaurant_redis_settings.host == "non-cde"
+    assert restaurant_redis_settings.port == 6380
+    assert restaurant_redis_settings.database == 2
+
+    assert train_redis_settings.retry_on_timeout is True
+    assert train_redis_settings.conn_timeout >= 3
+    assert train_redis_settings.conn_retries >= 5
+    assert train_redis_settings.max_connections is not None and train_redis_settings.max_connections >= 100
+
+    assert restaurant_redis_settings.retry_on_timeout is True
+    assert restaurant_redis_settings.conn_timeout >= 3
+    assert restaurant_redis_settings.conn_retries >= 5
+    assert restaurant_redis_settings.max_connections is not None and restaurant_redis_settings.max_connections >= 50
 
     get_settings.cache_clear()

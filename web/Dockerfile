@@ -24,4 +24,5 @@ RUN npm prune --omit=dev
 
 EXPOSE 3000
 
-CMD ["npm", "run", "start", "--", "-H", "0.0.0.0", "-p", "3000"]
+# Run Next directly instead of through npm so PID1 is the app process.
+CMD ["node", "node_modules/next/dist/bin/next", "start", "-H", "0.0.0.0", "-p", "3000"]
