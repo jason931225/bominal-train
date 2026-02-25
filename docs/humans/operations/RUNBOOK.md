@@ -135,6 +135,27 @@ docker compose -f infra/docker-compose.prod.yml ps
 docker compose -f infra/docker-compose.prod.yml logs -f caddy api worker web
 ```
 
+Performance pressure quick triage (production):
+
+```bash
+# Host pressure snapshot
+uptime
+free -h
+
+# Top containers by CPU/memory
+docker stats --no-stream --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}"
+
+# Worker restart + health
+docker inspect -f '{{.Name}} restart={{.RestartCount}} status={{.State.Status}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' bominal-worker
+
+# Zombie count on host
+ps -eo stat | awk '$1 ~ /^Z/ {c++} END {print c+0}'
+
+# Recent worker timeout signals
+docker logs --since=30m bominal-worker 2>&1 | grep -c "Timeout connecting to server" || true
+docker logs --since=30m bominal-worker 2>&1 | grep -c "redis connection error" || true
+```
+
 Security checks for payment/CDE runtime:
 
 ```bash
@@ -423,6 +444,39 @@ Impact notes:
 1. Disabling Secret Manager breaks any runtime/bootstrap path that reads secrets from Secret Manager.
 2. Container image publish/pull is GHCR-backed; review GHCR package retention and pull frequency for registry-side cost control.
 3. If immediate cost stop is required and source is still unclear, disable project billing as a final emergency step.
+
+## 0.4) High load with web zombie buildup or worker timeout noise
+
+Symptoms:
+
+- load average remains elevated while traffic is normal
+- zombie count trends upward
+- worker logs contain repeated `Timeout connecting to server` entries
+
+Checks:
+
+1. Confirm top resource consumers:
+   - `docker stats --no-stream ...`
+2. Confirm zombie parent process:
+   - `ps -eo stat,ppid,pid,user,comm,args | awk '$1 ~ /^Z/ {print}' | head`
+3. Confirm worker restart stability:
+   - `docker inspect -f '{{.RestartCount}}' bominal-worker`
+
+Recovery:
+
+1. Recreate only web service to reset stale zombie process trees:
+
+```bash
+sudo -u bominal docker compose -f /opt/bominal/repo/infra/docker-compose.prod.yml up -d --no-deps --force-recreate web
+```
+
+2. Verify web and worker health after recreate:
+
+```bash
+sudo -u bominal docker compose -f /opt/bominal/repo/infra/docker-compose.prod.yml ps --format "table {{.Name}}\t{{.Status}}" web worker
+ps -eo stat | awk '$1 ~ /^Z/ {c++} END {print c+0}'
+docker inspect -f '{{.Name}} restart={{.RestartCount}} status={{.State.Status}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' bominal-worker
+```
 
 ## 1) Web route fails to load (`Cannot find module './901.js'`)
 
