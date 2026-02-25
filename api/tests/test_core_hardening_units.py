@@ -123,13 +123,6 @@ def test_settings_model_validation_branches(monkeypatch) -> None:
     settings_ok = Settings(_env_file=None)
     assert settings_ok.auth_mode == "supabase"
 
-    # Dual mode mismatch branch.
-    monkeypatch.setenv("AUTH_MODE", "dual")
-    monkeypatch.setenv("SUPABASE_URL", "https://project.supabase.co")
-    monkeypatch.delenv("SUPABASE_JWT_ISSUER", raising=False)
-    with pytest.raises(ValueError):
-        Settings(_env_file=None)
-
     # Supabase storage enabled without key.
     monkeypatch.setenv("AUTH_MODE", "legacy")
     monkeypatch.setenv("SUPABASE_STORAGE_ENABLED", "true")
@@ -452,19 +445,30 @@ def test_settings_rejects_upstash_for_cde_and_empty_hosts_in_production(monkeypa
         Settings(_env_file=None)
 
 
-def test_settings_dual_mode_accepts_supabase_pair_and_is_production_property(monkeypatch) -> None:
+def test_settings_rejects_dual_mode(monkeypatch) -> None:
     monkeypatch.setenv("APP_ENV", "production")
     monkeypatch.setenv("MASTER_KEY", _valid_master_key_b64())
     monkeypatch.setenv("INTERNAL_API_KEY", "internal")
     monkeypatch.setenv("AUTH_MODE", "dual")
-    monkeypatch.setenv("SUPABASE_URL", "https://project.supabase.co")
-    monkeypatch.setenv("SUPABASE_JWT_ISSUER", "https://project.supabase.co/auth/v1")
+    monkeypatch.setenv("EMAIL_PROVIDER", "disabled")
+    monkeypatch.setenv("PAYMENT_PROVIDER_ALLOWED_HOSTS", "app.srail.or.kr")
+    monkeypatch.setenv("REDIS_URL_CDE", "redis://redis:6379/0")
+
+    with pytest.raises(ValueError, match="AUTH_MODE must be one of: legacy, supabase"):
+        Settings(_env_file=None)
+
+
+def test_settings_legacy_mode_is_allowed_and_is_production_property(monkeypatch) -> None:
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("MASTER_KEY", _valid_master_key_b64())
+    monkeypatch.setenv("INTERNAL_API_KEY", "internal")
+    monkeypatch.setenv("AUTH_MODE", "legacy")
     monkeypatch.setenv("EMAIL_PROVIDER", "disabled")
     monkeypatch.setenv("PAYMENT_PROVIDER_ALLOWED_HOSTS", "app.srail.or.kr")
     monkeypatch.setenv("REDIS_URL_CDE", "redis://redis:6379/0")
 
     settings = Settings(_env_file=None)
-    assert settings.auth_mode == "dual"
+    assert settings.auth_mode == "legacy"
     assert settings.is_production is True
 
 

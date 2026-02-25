@@ -22,6 +22,7 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 DEFAULT_MASTER_KEY_B64 = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
 UPSTASH_REDIS_HOST_SUFFIXES = ("upstash.io", "upstash.dev", "upstash.com")
+LOCAL_DEV_DB_HOSTS = {"postgres", "localhost", "127.0.0.1"}
 
 
 def is_upstash_redis_url(url: str | None) -> bool:
@@ -68,6 +69,23 @@ def normalize_async_database_url(url: str) -> str:
 
     rebuilt_query = urlencode(filtered_pairs, doseq=True)
     return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, rebuilt_query, parsed.fragment))
+
+
+def is_local_dev_database_url(url: str | None) -> bool:
+    if not url:
+        return False
+    normalized = str(url).strip()
+    if not normalized:
+        return False
+    try:
+        parsed = urlparse(normalized)
+    except Exception:
+        return False
+    scheme = (parsed.scheme or "").lower()
+    if scheme.startswith("sqlite"):
+        return True
+    host = (parsed.hostname or "").lower().strip()
+    return host in LOCAL_DEV_DB_HOSTS
 
 
 class Settings(BaseSettings):
@@ -362,8 +380,8 @@ class Settings(BaseSettings):
     @classmethod
     def validate_auth_mode(cls, value: str) -> str:
         normalized = value.strip().lower()
-        if normalized not in {"legacy", "supabase", "dual"}:
-            raise ValueError("AUTH_MODE must be one of: legacy, supabase, dual")
+        if normalized not in {"legacy", "supabase"}:
+            raise ValueError("AUTH_MODE must be one of: legacy, supabase")
         return normalized
 
     @field_validator("train_provider_retry_attempts")
@@ -417,18 +435,20 @@ class Settings(BaseSettings):
                 "REDIS_URL_CDE (or REDIS_URL fallback) cannot point to Upstash for CDE/CVV usage; "
                 "use a non-durable Redis runtime for CDE data"
             )
+        if self.app_env.lower() == "development":
+            if not is_local_dev_database_url(self.database_url):
+                raise ValueError(
+                    "DATABASE_URL must point to local Postgres hostnames (postgres/localhost/127.0.0.1) in development"
+                )
+            if not is_local_dev_database_url(self.sync_database_url):
+                raise ValueError(
+                    "SYNC_DATABASE_URL must point to local Postgres hostnames (postgres/localhost/127.0.0.1) in development"
+                )
         if self.auth_mode == "supabase":
             if not self.supabase_url:
                 raise ValueError("SUPABASE_URL must be set when AUTH_MODE is supabase")
             if not self.supabase_jwt_issuer:
                 raise ValueError("SUPABASE_JWT_ISSUER must be set when AUTH_MODE is supabase")
-        if self.auth_mode == "dual":
-            has_url = bool(self.supabase_url)
-            has_issuer = bool(self.supabase_jwt_issuer)
-            if has_url != has_issuer:
-                raise ValueError(
-                    "SUPABASE_URL and SUPABASE_JWT_ISSUER must be set together when AUTH_MODE=dual"
-                )
         if self.passkey_timeout_ms < 1:
             raise ValueError("PASSKEY_TIMEOUT_MS must be >= 1")
         if self.supabase_auth_enabled:

@@ -9,7 +9,7 @@ Security controls and requirements for bominal.
 - Password hashing: Argon2id (`api/app/core/security.py`)
 - Auth mode is controlled by `AUTH_MODE`:
   - production requires `supabase` (Bearer JWT auth verified against Supabase JWKS)
-  - `legacy` and `dual` remain development/backward-compatibility modes only
+  - `legacy` remains a development/backward-compatibility mode only
 - Optional passkey auth is enabled via WebAuthn for session-auth flows:
   - authenticated passkey enrollment in account/signup flow
   - passkey login bootstrap issuing the same session cookie contract
@@ -30,7 +30,7 @@ Security controls and requirements for bominal.
 - API access separation:
   - Public: unauthenticated auth bootstrap routes
   - Authenticated (production): Supabase Bearer
-  - Authenticated (non-production): Supabase Bearer or session-cookie depending on `AUTH_MODE`
+  - Authenticated (non-production): Supabase Bearer or session-cookie depending on `AUTH_MODE` (`legacy`/`supabase`)
   - Internal-only:
     - `X-Internal-Api-Key` must match `INTERNAL_API_KEY`, or
     - `X-Internal-Service-Token` must be a valid short-lived internal token signed by `INTERNAL_IDENTITY_SECRET`

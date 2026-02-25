@@ -21,8 +21,8 @@ async def _register_and_login(client, *, email: str, display_name: str) -> str:
     return session_cookie
 
 
-async def test_dual_mode_accepts_supabase_bearer_and_creates_local_user(client, db_session, monkeypatch):
-    monkeypatch.setattr("app.http.deps.settings.auth_mode", "dual")
+async def test_supabase_mode_accepts_supabase_bearer_and_creates_local_user(client, db_session, monkeypatch):
+    monkeypatch.setattr("app.http.deps.settings.auth_mode", "supabase")
     monkeypatch.setattr(
         "app.http.deps.verify_supabase_jwt",
         lambda _token: {
@@ -46,7 +46,7 @@ async def test_dual_mode_accepts_supabase_bearer_and_creates_local_user(client, 
     assert user.email == "supabase-user@example.com"
 
 
-async def test_dual_mode_uses_local_role_not_jwt_role_claim(client, db_session, monkeypatch):
+async def test_supabase_mode_uses_local_role_not_jwt_role_claim(client, db_session, monkeypatch):
     email = "supabase-admin@example.com"
     await _register_and_login(client, email=email, display_name="SupabaseAdmin")
 
@@ -57,7 +57,7 @@ async def test_dual_mode_uses_local_role_not_jwt_role_claim(client, db_session, 
     user.access_status = "approved"
     await db_session.commit()
 
-    monkeypatch.setattr("app.http.deps.settings.auth_mode", "dual")
+    monkeypatch.setattr("app.http.deps.settings.auth_mode", "supabase")
     monkeypatch.setattr(
         "app.http.deps.verify_supabase_jwt",
         lambda _token: {"sub": "supabase-admin-001", "email": email, "role": "user"},
@@ -67,14 +67,14 @@ async def test_dual_mode_uses_local_role_not_jwt_role_claim(client, db_session, 
     assert response.status_code == 200
 
 
-async def test_dual_mode_rejects_invalid_bearer_even_with_valid_cookie(client, monkeypatch):
+async def test_supabase_mode_rejects_invalid_bearer_even_with_valid_cookie(client, monkeypatch):
     cookie = await _register_and_login(
         client,
-        email="dual-cookie-fallback@example.com",
-        display_name="DualCookieFallback",
+        email="supabase-cookie-fallback@example.com",
+        display_name="SupabaseCookieFallback",
     )
 
-    monkeypatch.setattr("app.http.deps.settings.auth_mode", "dual")
+    monkeypatch.setattr("app.http.deps.settings.auth_mode", "supabase")
 
     def _raise_invalid(_token: str):
         raise SupabaseJWTError("invalid token")
