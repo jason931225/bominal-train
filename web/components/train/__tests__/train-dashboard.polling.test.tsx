@@ -4,7 +4,7 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { LocaleProvider } from "@/components/locale-provider";
-import { TrainDashboard } from "@/components/train/train-dashboard";
+import { clearTrainDashboardFetchCaches, TrainDashboard } from "@/components/train/train-dashboard";
 import type { TrainTaskSummary } from "@/lib/types";
 
 class MockEventSource {
@@ -107,6 +107,7 @@ describe("TrainDashboard polling behavior", () => {
   let searchBody: Record<string, unknown> = { schedules: [] };
 
   beforeEach(() => {
+    clearTrainDashboardFetchCaches();
     activeCalls = 0;
     completedCalls = 0;
     pauseCalls = 0;
@@ -200,6 +201,7 @@ describe("TrainDashboard polling behavior", () => {
   });
 
   afterEach(() => {
+    clearTrainDashboardFetchCaches();
     vi.unstubAllGlobals();
   });
 
@@ -434,8 +436,8 @@ describe("TrainDashboard polling behavior", () => {
     expect(desktopSelector.className).toContain("hidden");
     expect(desktopSelector.className).toContain("md:block");
 
-    const mobileCard = within(mobileSelector).getByRole("button", { name: "KTX-산천 301" });
-    const mobileCardSecond = within(mobileSelector).getByRole("button", { name: "KTX-산천 302" });
+    const mobileCard = within(mobileSelector).getByRole("button", { name: /KTX-산천 301/ });
+    const mobileCardSecond = within(mobileSelector).getByRole("button", { name: /KTX-산천 302/ });
     expect(mobileCard).toHaveAttribute("aria-pressed", "false");
     fireEvent.click(mobileCard);
     expect(mobileCard).toHaveAttribute("aria-pressed", "true");
