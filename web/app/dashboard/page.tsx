@@ -4,29 +4,49 @@ import Link from "next/link";
 
 import { ModuleTile } from "@/components/module-tile";
 import { serverApiBaseUrl } from "@/lib/api-base";
+import { NEXT_PUBLIC_RESTAURANT_MODULE_ENABLED } from "@/lib/feature-flags";
 import { localeFromAcceptLanguage, localeFromUser, t } from "@/lib/i18n";
 import { UI_BODY_MUTED, UI_CARD_MD, UI_CARD_LG, UI_KICKER, UI_TITLE_LG } from "@/lib/ui";
 import { requireApprovedUser } from "@/lib/server-auth";
 import type { BominalModule, ModulesResponse } from "@/lib/types";
 
-const FALLBACK_MODULES: BominalModule[] = [
-  {
-    slug: "train",
-    name: "Train",
-    coming_soon: false,
-    enabled: true,
-    capabilities: [
-      "train.search",
-      "train.tasks.create",
-      "train.tasks.control",
-      "train.credentials.manage",
-      "train.tickets.manage",
-      "wallet.payment_card",
-    ],
-  },
-  { slug: "restaurant", name: "Restaurant", coming_soon: true, enabled: false, capabilities: [] },
-  { slug: "calendar", name: "Calendar", coming_soon: true, enabled: false, capabilities: [] },
-];
+const TRAIN_FALLBACK_MODULE: BominalModule = {
+  slug: "train",
+  name: "Train",
+  coming_soon: false,
+  enabled: true,
+  capabilities: [
+    "train.search",
+    "train.tasks.create",
+    "train.tasks.control",
+    "train.credentials.manage",
+    "train.tickets.manage",
+    "wallet.payment_card",
+  ],
+};
+
+const CALENDAR_FALLBACK_MODULE: BominalModule = {
+  slug: "calendar",
+  name: "Calendar",
+  coming_soon: true,
+  enabled: false,
+  capabilities: [],
+};
+
+const RESTAURANT_FALLBACK_MODULE: BominalModule = {
+  slug: "restaurant",
+  name: "Restaurant",
+  coming_soon: true,
+  enabled: false,
+  capabilities: [],
+};
+
+function fallbackModules(): BominalModule[] {
+  if (!NEXT_PUBLIC_RESTAURANT_MODULE_ENABLED) {
+    return [TRAIN_FALLBACK_MODULE, CALENDAR_FALLBACK_MODULE];
+  }
+  return [TRAIN_FALLBACK_MODULE, RESTAURANT_FALLBACK_MODULE, CALENDAR_FALLBACK_MODULE];
+}
 
 const DASHBOARD_MODULE_FETCH_TIMEOUT_MS = 3000;
 
@@ -49,12 +69,12 @@ async function getModules() {
       cache: "no-store",
     });
     if (!response.ok) {
-      return FALLBACK_MODULES;
+      return fallbackModules();
     }
     const data = (await response.json()) as ModulesResponse;
     return data.modules;
   } catch {
-    return FALLBACK_MODULES;
+    return fallbackModules();
   }
 }
 

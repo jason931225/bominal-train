@@ -1,5 +1,7 @@
 import Link from "next/link";
+import { notFound } from "next/navigation";
 
+import { NEXT_PUBLIC_RESTAURANT_MODULE_ENABLED } from "@/lib/feature-flags";
 import { UI_CARD_LG, UI_KICKER, UI_TITLE_LG } from "@/lib/ui";
 import { getServerT } from "@/lib/i18n-server";
 import { ROUTES } from "@/lib/routes";
@@ -7,6 +9,9 @@ import { requireApprovedUser } from "@/lib/server-auth";
 
 export default async function RestaurantModulePage() {
   await requireApprovedUser();
+  if (!NEXT_PUBLIC_RESTAURANT_MODULE_ENABLED) {
+    notFound();
+  }
   const { t } = await getServerT();
 
   return (

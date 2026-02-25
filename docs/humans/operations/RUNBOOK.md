@@ -153,7 +153,6 @@ docker compose -f infra/docker-compose.prod.yml exec api env | rg 'PAYMENT_PROVI
 
 # Confirm egress gateways are healthy and deny unknown routes by default.
 docker compose -f infra/docker-compose.prod.yml exec egress-train wget --spider -q http://127.0.0.1:8080/health
-docker compose -f infra/docker-compose.prod.yml exec egress-restaurant wget --spider -q http://127.0.0.1:8080/health
 docker compose -f infra/docker-compose.prod.yml exec egress-train wget -qO- --server-response http://127.0.0.1:8080/not-allowed 2>&1 | rg '403'
 
 # Confirm payment logs do not include request/response payload bodies.

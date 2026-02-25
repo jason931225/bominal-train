@@ -31,23 +31,6 @@ services:
       start_period: 10s
     restart: unless-stopped
 
-  egress-restaurant:
-    image: caddy:2.9-alpine
-    container_name: bominal-egress-restaurant
-    volumes:
-      - ./egress/restaurant/Caddyfile:/etc/caddy/Caddyfile:ro
-    deploy:
-      resources:
-        limits:
-          memory: 96M
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8080/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
-    restart: unless-stopped
-
   api:
     image: ${API_IMAGE:-${GHCR_NAMESPACE:-ghcr.io/jason931225/bominal}/api:latest}
     container_name: bominal-api
@@ -72,8 +55,6 @@ services:
       redis:
         condition: service_healthy
       egress-train:
-        condition: service_healthy
-      egress-restaurant:
         condition: service_healthy
     ports:
       - "127.0.0.1:8000:8000"
@@ -101,8 +82,6 @@ services:
       redis:
         condition: service_healthy
       egress-train:
-        condition: service_healthy
-      egress-restaurant:
         condition: service_healthy
     restart: unless-stopped
 
