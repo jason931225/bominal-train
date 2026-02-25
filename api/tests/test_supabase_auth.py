@@ -89,7 +89,7 @@ async def test_supabase_mode_rejects_invalid_bearer_even_with_valid_cookie(clien
     assert response.status_code == 401
 
 
-async def test_supabase_mode_rejects_cookie_only_auth(client, monkeypatch):
+async def test_supabase_mode_accepts_cookie_only_auth_when_bearer_absent(client, monkeypatch):
     cookie = await _register_and_login(
         client,
         email="supabase-only-cookie@example.com",
@@ -98,7 +98,8 @@ async def test_supabase_mode_rejects_cookie_only_auth(client, monkeypatch):
     monkeypatch.setattr("app.http.deps.settings.auth_mode", "supabase")
 
     response = await client.get("/api/auth/me", cookies={"bominal_session": cookie})
-    assert response.status_code == 401
+    assert response.status_code == 200
+    assert response.json()["user"]["email"] == "supabase-only-cookie@example.com"
 
 
 async def test_supabase_existing_user_does_not_mutate_email_from_claims(client, db_session, monkeypatch):
