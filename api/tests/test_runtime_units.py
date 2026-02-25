@@ -249,9 +249,10 @@ async def test_get_current_user_mode_selection(monkeypatch):
 
     monkeypatch.setattr(deps.settings, "auth_mode", "supabase")
     assert await deps.get_current_user(request=request, session_token=None, db=object()) is fake_user
+    request_no_bearer = SimpleNamespace(headers={})
+    assert await deps.get_current_user(request=request_no_bearer, session_token="cookie", db=object()) is fake_user
 
     monkeypatch.setattr(deps.settings, "auth_mode", "legacy")
-    request_no_bearer = SimpleNamespace(headers={})
     assert await deps.get_current_user(request=request_no_bearer, session_token="cookie", db=object()) is fake_user
 
     with pytest.raises(HTTPException):
@@ -331,7 +332,7 @@ async def test_resolve_user_from_supabase_bearer_invalid_jwt_branch(monkeypatch)
 
 
 @pytest.mark.asyncio
-async def test_get_current_user_supabase_requires_bearer(monkeypatch):
+async def test_get_current_user_supabase_rejects_when_missing_bearer_and_cookie(monkeypatch):
     monkeypatch.setattr(deps.settings, "auth_mode", "supabase")
     request = SimpleNamespace(headers={})
     with pytest.raises(HTTPException):
