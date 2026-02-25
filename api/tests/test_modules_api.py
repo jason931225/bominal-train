@@ -127,3 +127,24 @@ async def test_restaurant_capabilities_are_safe_subset(client, db_session):
     capabilities = set(restaurant["capabilities"])
     assert capabilities.issubset(set(RESTAURANT_CAPABILITIES_EXPOSED))
     assert capabilities.isdisjoint(set(RESTAURANT_CAPABILITIES_COMING_SOON))
+
+
+@pytest.mark.asyncio
+async def test_modules_omit_restaurant_when_restaurant_module_disabled(client, db_session, monkeypatch):
+    session_cookie = await _register_and_login(
+        client,
+        db_session,
+        email=f"restaurant-hidden-{uuid4().hex[:8]}@example.com",
+        display_name=f"Restaurant Hidden {uuid4().hex[:6]}",
+    )
+
+    monkeypatch.setattr("app.http.routes.modules.settings.restaurant_module_enabled", False)
+
+    response = await client.get("/api/modules", cookies={"bominal_session": session_cookie})
+    assert response.status_code == 200
+    modules = response.json()["modules"]
+    by_slug = {module["slug"]: module for module in modules}
+
+    assert "restaurant" not in by_slug
+    assert "train" in by_slug
+    assert "calendar" in by_slug

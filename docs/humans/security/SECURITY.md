@@ -396,7 +396,7 @@ Workers handling payment MUST:
 - reject user-input hostnames and dynamic outbound host routing
 - when egress gateways are configured:
   - `TRAIN_PROVIDER_EGRESS_PROXY_URL` MUST target internal `egress-train`
-  - `RESTAURANT_PROVIDER_EGRESS_PROXY_URL` MUST target internal `egress-restaurant`
+  - if `RESTAURANT_MODULE_ENABLED=true`, `RESTAURANT_PROVIDER_EGRESS_PROXY_URL` MUST target internal `egress-restaurant`
   - egress gateways MUST deny unmatched paths and methods (fail closed)
   - egress gateways MUST not expose administrative control surfaces
 

@@ -26,20 +26,13 @@ async def list_modules(_: User = Depends(get_current_approved_user)) -> ModuleLi
     if settings.payment_enabled:
         train_capabilities.append("wallet.payment_card")
 
-    modules = [
+    modules: list[ModuleOut] = [
         ModuleOut(
             slug="train",
             name="Train",
             coming_soon=False,
             enabled=True,
             capabilities=train_capabilities,
-        ),
-        ModuleOut(
-            slug="restaurant",
-            name="Restaurant",
-            coming_soon=True,
-            enabled=False,
-            capabilities=list(RESTAURANT_CAPABILITIES_EXPOSED),
         ),
         ModuleOut(
             slug="calendar",
@@ -49,4 +42,15 @@ async def list_modules(_: User = Depends(get_current_approved_user)) -> ModuleLi
             capabilities=list(CALENDAR_CAPABILITIES_EXPOSED),
         ),
     ]
+    if settings.restaurant_module_enabled:
+        modules.insert(
+            1,
+            ModuleOut(
+                slug="restaurant",
+                name="Restaurant",
+                coming_soon=True,
+                enabled=False,
+                capabilities=list(RESTAURANT_CAPABILITIES_EXPOSED),
+            ),
+        )
     return ModuleListResponse(modules=modules)

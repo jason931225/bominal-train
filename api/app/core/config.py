@@ -248,6 +248,7 @@ class Settings(BaseSettings):
         default=None,
         alias="RESTAURANT_PROVIDER_EGRESS_PROXY_URL",
     )
+    restaurant_module_enabled: bool = Field(default=True, alias="RESTAURANT_MODULE_ENABLED")
     payment_enabled: bool = Field(default=True, alias="PAYMENT_ENABLED")
     payment_require_cvv_kek_version: bool = Field(default=False, alias="PAYMENT_REQUIRE_CVV_KEK_VERSION")
 

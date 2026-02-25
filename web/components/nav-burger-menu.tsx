@@ -8,6 +8,7 @@ import { type CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocale } from "@/components/locale-provider";
 import { LogoutButton } from "@/components/logout-button";
 import { useTheme } from "@/components/theme-provider";
+import { NEXT_PUBLIC_RESTAURANT_MODULE_ENABLED, NEXT_PUBLIC_TRAIN_AUTO_PAY_ENABLED } from "@/lib/feature-flags";
 import { ROUTES } from "@/lib/routes";
 import { THEME_MODE_OPTIONS, type ThemeMode } from "@/lib/theme";
 import { UI_MENU_ITEM } from "@/lib/ui";
@@ -19,9 +20,8 @@ const THEME_DOT_COLORS = {
   winter: "#aec7ed",
 } as const;
 
-const PAYMENT_SETTINGS_ENABLED = ["1", "true", "yes", "on"].includes(
-  (process.env.NEXT_PUBLIC_TRAIN_AUTO_PAY_ENABLED ?? "false").trim().toLowerCase(),
-);
+const PAYMENT_SETTINGS_ENABLED = NEXT_PUBLIC_TRAIN_AUTO_PAY_ENABLED;
+const RESTAURANT_MODULE_ENABLED = NEXT_PUBLIC_RESTAURANT_MODULE_ENABLED;
 const MOBILE_DRAWER_HIDDEN_TRANSLATE = "calc(-100dvh - 24px)";
 
 function themeDotStyle(mode: ThemeMode): CSSProperties {
@@ -128,9 +128,11 @@ export function NavBurgerMenu({ isAdmin = false }: { isAdmin?: boolean }) {
       <Link href={ROUTES.modules.train} className={UI_MENU_ITEM}>
         {t("nav.train")}
       </Link>
-      <Link href={ROUTES.modules.restaurant} className={UI_MENU_ITEM}>
-        {t("nav.restaurant")}
-      </Link>
+      {RESTAURANT_MODULE_ENABLED ? (
+        <Link href={ROUTES.modules.restaurant} className={UI_MENU_ITEM}>
+          {t("nav.restaurant")}
+        </Link>
+      ) : null}
       <Link href={ROUTES.modules.calendar} className={UI_MENU_ITEM}>
         {t("nav.calendar")}
       </Link>
