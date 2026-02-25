@@ -244,6 +244,39 @@ async def test_verify_provider_credentials_non_ok_and_guarded_status_wrappers(mo
 
 
 @pytest.mark.asyncio
+async def test_ktx_disabled_status_and_set_credentials_are_blocked(monkeypatch):
+    db = _DummyDB()
+    user = _user()
+    monkeypatch.setattr(train_service.settings, "train_ktx_enabled", False)
+
+    async def _srt_only_status(*_args, **kwargs):  # noqa: ANN002, ANN003
+        provider = kwargs.get("provider")
+        if provider != "SRT":
+            raise AssertionError("KTX verification should not run when KTX is disabled")
+        return train_service.ProviderCredentialStatus(configured=True, verified=True, detail=None)
+
+    monkeypatch.setattr(train_service, "_verify_provider_credentials_guarded", _srt_only_status)
+
+    both = await train_service.get_train_credentials_status(db, user=user)
+    assert both.ktx.configured is False
+    assert both.ktx.verified is False
+    assert "temporarily unavailable" in str(both.ktx.detail).lower()
+    assert both.srt.verified is True
+
+    ktx_status = await train_service.get_ktx_credential_status(db, user=user)
+    assert ktx_status.configured is False
+    assert "temporarily unavailable" in str(ktx_status.detail).lower()
+
+    with pytest.raises(HTTPException) as ktx_set:
+        await train_service.set_ktx_credentials(
+            db,
+            user=user,
+            payload=KTXCredentialsSetRequest(username="ktx-user", password="pass1234"),
+        )
+    assert ktx_set.value.status_code == 503
+
+
+@pytest.mark.asyncio
 async def test_set_and_clear_credentials_and_get_logged_in_provider_client(monkeypatch):
     db = _DummyDB()
     user = _user()

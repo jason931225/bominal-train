@@ -267,6 +267,12 @@ def test_ranked_train_helper_raises_for_missing_or_mismatched_providers():
             )
         )
 
+
+def test_resolve_task_providers_rejects_disabled_ktx(monkeypatch):
+    monkeypatch.setattr(train_service.settings, "train_ktx_enabled", False)
+    with pytest.raises(HTTPException, match="temporarily unavailable"):
+        train_service._resolve_task_providers([{"provider": "KTX"}])
+
     with pytest.raises(HTTPException, match="No provider could be resolved"):
         train_service._resolve_task_providers([{"provider": None}])
 
