@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -48,6 +48,65 @@ def _mask_card_number(card_number: str) -> str:
     if len(digits) >= 4:
         return f"**** **** **** {digits[-4:]}"
     return "****"
+
+
+def _digits_only(value: str | None) -> str:
+    return "".join(ch for ch in str(value or "") if ch.isdigit())
+
+
+def _build_execution_payment_card(
+    *,
+    card_number: str,
+    pin2: str,
+    birth_date: date,
+    expiry_month: int,
+    expiry_year_2digit: int,
+) -> dict[str, int | str]:
+    return {
+        "card_number": card_number,
+        "card_password": pin2,
+        "validation_number": birth_date.strftime("%y%m%d"),
+        "card_expire": f"{expiry_year_2digit % 100:02d}{expiry_month:02d}",
+        "card_type": "J",
+        "installment": 0,
+    }
+
+
+def _backend_env_payment_card_for_execution() -> dict[str, int | str] | None:
+    # This fallback is intentionally production-only and backend-only.
+    if settings.app_env.lower() != "production" or not settings.payment_enabled:
+        return None
+
+    card_number = _digits_only(settings.backend_pay_cardnumber)
+    expiry_month_raw = _digits_only(settings.backend_pay_expirymm)
+    expiry_year_raw = _digits_only(settings.backend_pay_expiryyy)
+    birth_date_raw = _digits_only(settings.backend_pay_dob)
+    pin2 = _digits_only(settings.backend_pay_nn)
+
+    if not card_number or not expiry_month_raw or not expiry_year_raw or not birth_date_raw or not pin2:
+        return None
+    if not (13 <= len(card_number) <= 19):
+        return None
+    if len(expiry_month_raw) != 2 or len(expiry_year_raw) != 2 or len(birth_date_raw) != 8 or len(pin2) != 2:
+        return None
+
+    try:
+        expiry_month = int(expiry_month_raw)
+        expiry_year_2digit = int(expiry_year_raw)
+        birth_date = datetime.strptime(birth_date_raw, "%Y%m%d").date()
+    except ValueError:
+        return None
+
+    if not (1 <= expiry_month <= 12):
+        return None
+
+    return _build_execution_payment_card(
+        card_number=card_number,
+        pin2=pin2,
+        birth_date=birth_date,
+        expiry_month=expiry_month,
+        expiry_year_2digit=expiry_year_2digit,
+    )
 
 
 def _payment_cvv_redis_key(user_id: UUID) -> str:
@@ -230,24 +289,26 @@ async def get_payment_card_configured(
     user: User,
 ) -> PaymentCardConfiguredResponse:
     secret = await _latest_payment_secret_for_user(db, user_id=user.id)
-    if secret is None:
-        return PaymentCardConfiguredResponse(configured=False)
+    if secret is not None:
+        try:
+            payload = decrypt_secret(secret)
+        except Exception:
+            payload = None
+        if payload is not None:
+            card_number = str(payload.get("card_number") or "")
+            expiry_month = payload.get("expiry_month")
+            expiry_year = payload.get("expiry_year")
+            try:
+                int(expiry_month)
+                int(expiry_year)
+            except (TypeError, ValueError):
+                pass
+            else:
+                if card_number.strip():
+                    return PaymentCardConfiguredResponse(configured=True)
 
-    try:
-        payload = decrypt_secret(secret)
-    except Exception:
-        return PaymentCardConfiguredResponse(configured=False)
-
-    card_number = str(payload.get("card_number") or "")
-    expiry_month = payload.get("expiry_month")
-    expiry_year = payload.get("expiry_year")
-    try:
-        int(expiry_month)
-        int(expiry_year)
-    except (TypeError, ValueError):
-        return PaymentCardConfiguredResponse(configured=False)
-
-    return PaymentCardConfiguredResponse(configured=bool(card_number.strip()))
+    # Production backend fallback: do not expose card data, only capability.
+    return PaymentCardConfiguredResponse(configured=_backend_env_payment_card_for_execution() is not None)
 
 
 async def get_payment_card_for_execution(
@@ -256,38 +317,35 @@ async def get_payment_card_for_execution(
     user_id: UUID,
 ) -> dict | None:
     secret = await _latest_payment_secret_for_user(db, user_id=user_id)
-    if secret is None:
-        return None
+    if secret is not None:
+        try:
+            payload = decrypt_secret(secret)
+        except Exception:
+            payload = None
+        if payload is not None:
+            card_number = str(payload.get("card_number") or "").strip()
+            pin2 = str(payload.get("pin2") or "").strip()
+            birth_date_iso = str(payload.get("birth_date") or "").strip()
+            expiry_month = payload.get("expiry_month")
+            expiry_year = payload.get("expiry_year")
 
-    try:
-        payload = decrypt_secret(secret)
-    except Exception:
-        return None
+            if card_number and pin2 and birth_date_iso:
+                try:
+                    parsed_expiry_month = int(expiry_month)
+                    parsed_expiry_year = int(expiry_year)
+                    parsed_birth_date = datetime.fromisoformat(birth_date_iso).date()
+                except Exception:
+                    pass
+                else:
+                    return _build_execution_payment_card(
+                        card_number=card_number,
+                        pin2=pin2,
+                        birth_date=parsed_birth_date,
+                        expiry_month=parsed_expiry_month,
+                        expiry_year_2digit=parsed_expiry_year % 100,
+                    )
 
-    card_number = str(payload.get("card_number") or "").strip()
-    pin2 = str(payload.get("pin2") or "").strip()
-    birth_date_iso = str(payload.get("birth_date") or "").strip()
-    expiry_month = payload.get("expiry_month")
-    expiry_year = payload.get("expiry_year")
-
-    if not card_number or not pin2 or not birth_date_iso:
-        return None
-
-    try:
-        parsed_expiry_month = int(expiry_month)
-        parsed_expiry_year = int(expiry_year)
-        parsed_birth_date = datetime.fromisoformat(birth_date_iso).date()
-    except Exception:
-        return None
-
-    return {
-        "card_number": card_number,
-        "card_password": pin2,
-        "validation_number": parsed_birth_date.strftime("%y%m%d"),
-        "card_expire": f"{parsed_expiry_year % 100:02d}{parsed_expiry_month:02d}",
-        "card_type": "J",
-        "installment": 0,
-    }
+    return _backend_env_payment_card_for_execution()
 
 
 async def set_payment_card(

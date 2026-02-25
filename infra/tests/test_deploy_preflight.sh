@@ -44,6 +44,14 @@ NEXT_PUBLIC_API_BASE_URL=https://example.com
 API_SERVER_URL=http://api:8000
 EOF_ENV
 
+cat >"$TMP_DIR/repo/infra/env/prod/pay.env" <<'EOF_ENV'
+CARDNUMBER=4111111111111111
+EXPIRYMM=12
+EXPIRYYY=99
+DOB=19900101
+NN=12
+EOF_ENV
+
 cat >"$TMP_DIR/repo/infra/env/prod/caddy.env" <<'EOF_ENV'
 CADDY_SITE_ADDRESS=example.com
 CADDY_ACME_EMAIL=ops@example.com

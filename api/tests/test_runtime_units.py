@@ -525,6 +525,34 @@ async def test_wallet_execution_and_status_branches(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_wallet_execution_uses_backend_pay_env_fallback_in_production(monkeypatch):
+    user_id = uuid4()
+
+    async def _latest_none(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr(wallet, "_latest_payment_secret_for_user", _latest_none)
+    monkeypatch.setattr(wallet.settings, "app_env", "production")
+    monkeypatch.setattr(wallet.settings, "payment_enabled", True)
+    monkeypatch.setattr(wallet.settings, "backend_pay_cardnumber", "4111-1111-1111-1111")
+    monkeypatch.setattr(wallet.settings, "backend_pay_expirymm", "12")
+    monkeypatch.setattr(wallet.settings, "backend_pay_expiryyy", "99")
+    monkeypatch.setattr(wallet.settings, "backend_pay_dob", "19900101")
+    monkeypatch.setattr(wallet.settings, "backend_pay_nn", "12")
+
+    execution = await wallet.get_payment_card_for_execution(db=object(), user_id=user_id)
+    assert execution is not None
+    assert execution["card_number"] == "4111111111111111"
+    assert execution["card_password"] == "12"
+    assert execution["validation_number"] == "900101"
+    assert execution["card_expire"] == "9912"
+    assert execution["card_type"] == "J"
+    assert execution["installment"] == 0
+
+    configured = await wallet.get_payment_card_configured(db=object(), user=SimpleNamespace(id=user_id))
+    assert configured.configured is True
+
+@pytest.mark.asyncio
 async def test_wallet_set_card_rejects_expired_card(monkeypatch):
     payload = SimpleNamespace(
         card_number="4111 1111 1111 1111",
