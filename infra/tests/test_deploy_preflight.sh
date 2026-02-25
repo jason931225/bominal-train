@@ -24,9 +24,16 @@ EOF_ENV
 
 cat >"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF_ENV'
 GCP_PROJECT_ID=bominal
-DATABASE_URL=postgresql+asyncpg://bominal:strong-password@postgres:5432/bominal
-SYNC_DATABASE_URL=postgresql+psycopg://bominal:strong-password@postgres:5432/bominal
-AUTH_MODE=legacy
+DATABASE_URL=postgresql+asyncpg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:5432/postgres?ssl=require
+SYNC_DATABASE_URL=postgresql+psycopg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:5432/postgres?sslmode=require
+AUTH_MODE=supabase
+SUPABASE_URL=https://test-ref.supabase.co
+SUPABASE_JWT_ISSUER=https://test-ref.supabase.co/auth/v1
+SUPABASE_AUTH_ENABLED=true
+SUPABASE_AUTH_API_KEY=anon-key
+SUPABASE_AUTH_TIMEOUT_SECONDS=12
+SUPABASE_STORAGE_ENABLED=true
+SUPABASE_SERVICE_ROLE_KEY=service-role-key
 EMAIL_PROVIDER=disabled
 INTERNAL_API_KEY=abc123
 MASTER_KEY=base64-secret

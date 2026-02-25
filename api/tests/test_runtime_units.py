@@ -250,9 +250,6 @@ async def test_get_current_user_mode_selection(monkeypatch):
     monkeypatch.setattr(deps.settings, "auth_mode", "supabase")
     assert await deps.get_current_user(request=request, session_token=None, db=object()) is fake_user
 
-    monkeypatch.setattr(deps.settings, "auth_mode", "dual")
-    assert await deps.get_current_user(request=request, session_token="cookie", db=object()) is fake_user
-
     monkeypatch.setattr(deps.settings, "auth_mode", "legacy")
     request_no_bearer = SimpleNamespace(headers={})
     assert await deps.get_current_user(request=request_no_bearer, session_token="cookie", db=object()) is fake_user

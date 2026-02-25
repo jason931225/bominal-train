@@ -38,8 +38,8 @@ chmod +x "$TMP_DIR/bin/docker"
 make_valid_envs() {
   cat >"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF'
 GCP_PROJECT_ID=test-project
-DATABASE_URL=postgresql+asyncpg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:6543/postgres?ssl=require
-SYNC_DATABASE_URL=postgresql+psycopg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:6543/postgres?sslmode=require
+DATABASE_URL=postgresql+asyncpg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:5432/postgres?ssl=require
+SYNC_DATABASE_URL=postgresql+psycopg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:5432/postgres?sslmode=require
 AUTH_MODE=supabase
 SUPABASE_URL=https://test-ref.supabase.co
 SUPABASE_JWT_ISSUER=https://test-ref.supabase.co/auth/v1
@@ -111,9 +111,9 @@ PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" BOM
 make_valid_envs
 cat >"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF'
 GCP_PROJECT_ID=test-project
-DATABASE_URL=postgresql+asyncpg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:6543/postgres?ssl=require
-SYNC_DATABASE_URL=postgresql+psycopg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:6543/postgres?sslmode=require
-AUTH_MODE=dual
+DATABASE_URL=postgresql+asyncpg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:5432/postgres?ssl=require
+SYNC_DATABASE_URL=postgresql+psycopg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:5432/postgres?sslmode=require
+AUTH_MODE=legacy
 SUPABASE_URL=https://test-ref.supabase.co
 SUPABASE_JWT_ISSUER=https://test-ref.supabase.co/auth/v1
 SUPABASE_AUTH_ENABLED=true
@@ -132,8 +132,8 @@ make_valid_registry
 # Production must enforce Supabase auth integration.
 cat >"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF'
 GCP_PROJECT_ID=test-project
-DATABASE_URL=postgresql+asyncpg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:6543/postgres?ssl=require
-SYNC_DATABASE_URL=postgresql+psycopg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:6543/postgres?sslmode=require
+DATABASE_URL=postgresql+asyncpg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:5432/postgres?ssl=require
+SYNC_DATABASE_URL=postgresql+psycopg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:5432/postgres?sslmode=require
 AUTH_MODE=supabase
 SUPABASE_URL=https://test-ref.supabase.co
 SUPABASE_JWT_ISSUER=https://test-ref.supabase.co/auth/v1
@@ -151,8 +151,8 @@ make_valid_registry
 # Production must enforce Supabase storage integration.
 cat >"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF'
 GCP_PROJECT_ID=test-project
-DATABASE_URL=postgresql+asyncpg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:6543/postgres?ssl=require
-SYNC_DATABASE_URL=postgresql+psycopg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:6543/postgres?sslmode=require
+DATABASE_URL=postgresql+asyncpg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:5432/postgres?ssl=require
+SYNC_DATABASE_URL=postgresql+psycopg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:5432/postgres?sslmode=require
 AUTH_MODE=supabase
 SUPABASE_URL=https://test-ref.supabase.co
 SUPABASE_JWT_ISSUER=https://test-ref.supabase.co/auth/v1
@@ -203,8 +203,8 @@ assert_fails "missing INTERNAL_API_KEY" env PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_
 make_valid_envs
 cat >"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF'
 GCP_PROJECT_ID=test-project
-DATABASE_URL=postgresql+asyncpg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:6543/postgres?ssl=require
-SYNC_DATABASE_URL=postgresql+psycopg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:6543/postgres?sslmode=require
+DATABASE_URL=postgresql+asyncpg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:5432/postgres?ssl=require
+SYNC_DATABASE_URL=postgresql+psycopg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:5432/postgres?sslmode=require
 AUTH_MODE=supabase
 SUPABASE_URL=
 SUPABASE_JWT_ISSUER=
@@ -218,8 +218,8 @@ assert_fails "supabase mode requires issuer/url" env PATH="$TMP_DIR/bin:$PATH" P
 make_valid_envs
 cat >"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF'
 GCP_PROJECT_ID=test-project
-DATABASE_URL=postgresql+asyncpg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:6543/postgres?ssl=require
-SYNC_DATABASE_URL=postgresql+psycopg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:6543/postgres?sslmode=require
+DATABASE_URL=postgresql+asyncpg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:5432/postgres?ssl=require
+SYNC_DATABASE_URL=postgresql+psycopg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:5432/postgres?sslmode=require
 AUTH_MODE=supabase
 SUPABASE_URL=http://supabase.local
 SUPABASE_JWT_ISSUER=http://supabase.local/auth/v1
@@ -233,8 +233,8 @@ assert_fails "supabase urls must be https" env PATH="$TMP_DIR/bin:$PATH" PREDEPL
 make_valid_envs
 cat >"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF'
 GCP_PROJECT_ID=test-project
-DATABASE_URL=postgresql+asyncpg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:6543/postgres?ssl=require
-SYNC_DATABASE_URL=postgresql+psycopg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:6543/postgres?sslmode=require
+DATABASE_URL=postgresql+asyncpg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:5432/postgres?ssl=require
+SYNC_DATABASE_URL=postgresql+psycopg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:5432/postgres?sslmode=require
 AUTH_MODE=supabase
 SUPABASE_URL=https://test-ref.supabase.co
 SUPABASE_JWT_ISSUER=https://test-ref.supabase.co/auth/v1
@@ -252,8 +252,8 @@ assert_fails "supabase auth enabled requires auth key" env PATH="$TMP_DIR/bin:$P
 make_valid_envs
 cat >"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF'
 GCP_PROJECT_ID=test-project
-DATABASE_URL=postgresql+asyncpg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:6543/postgres?ssl=require
-SYNC_DATABASE_URL=postgresql+psycopg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:6543/postgres?sslmode=require
+DATABASE_URL=postgresql+asyncpg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:5432/postgres?ssl=require
+SYNC_DATABASE_URL=postgresql+psycopg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:5432/postgres?sslmode=require
 AUTH_MODE=legacy
 EMAIL_PROVIDER=resend
 RESEND_API_KEY=
@@ -274,8 +274,8 @@ assert_fails "web public api base must be https" env PATH="$TMP_DIR/bin:$PATH" P
 make_valid_envs
 cat >"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF'
 GCP_PROJECT_ID=test-project
-DATABASE_URL=postgresql+asyncpg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:6543/postgres?ssl=require
-SYNC_DATABASE_URL=postgresql+psycopg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:6543/postgres?sslmode=require
+DATABASE_URL=postgresql+asyncpg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:5432/postgres?ssl=require
+SYNC_DATABASE_URL=postgresql+psycopg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:5432/postgres?sslmode=require
 AUTH_MODE=legacy
 CORS_ORIGINS=http://example.com
 EMAIL_PROVIDER=disabled
@@ -288,8 +288,8 @@ assert_fails "cors origins must be https" env PATH="$TMP_DIR/bin:$PATH" PREDEPLO
 make_valid_envs
 cat >"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF'
 GCP_PROJECT_ID=test-project
-DATABASE_URL=postgresql+asyncpg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:6543/postgres?ssl=require
-SYNC_DATABASE_URL=postgresql+psycopg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:6543/postgres?sslmode=require
+DATABASE_URL=postgresql+asyncpg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:5432/postgres?ssl=require
+SYNC_DATABASE_URL=postgresql+psycopg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:5432/postgres?sslmode=require
 AUTH_MODE=legacy
 EMAIL_PROVIDER=disabled
 RESEND_API_BASE_URL=http://api.resend.com
