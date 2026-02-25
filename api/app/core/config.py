@@ -304,6 +304,11 @@ class Settings(BaseSettings):
     restaurant_module_enabled: bool = Field(default=True, alias="RESTAURANT_MODULE_ENABLED")
     payment_enabled: bool = Field(default=True, alias="PAYMENT_ENABLED")
     payment_require_cvv_kek_version: bool = Field(default=False, alias="PAYMENT_REQUIRE_CVV_KEK_VERSION")
+    backend_pay_cardnumber: str | None = Field(default=None, alias="CARDNUMBER")
+    backend_pay_expirymm: str | None = Field(default=None, alias="EXPIRYMM")
+    backend_pay_expiryyy: str | None = Field(default=None, alias="EXPIRYYY")
+    backend_pay_dob: str | None = Field(default=None, alias="DOB")
+    backend_pay_nn: str | None = Field(default=None, alias="NN")
 
     email_provider: str = Field(default="smtp", alias="EMAIL_PROVIDER")
     email_from_name: str = Field(default="bominal", alias="EMAIL_FROM_NAME")
