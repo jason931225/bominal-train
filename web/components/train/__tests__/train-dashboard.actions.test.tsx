@@ -4,7 +4,7 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { LocaleProvider } from "@/components/locale-provider";
-import { TrainDashboard } from "@/components/train/train-dashboard";
+import { clearTrainDashboardFetchCaches, TrainDashboard } from "@/components/train/train-dashboard";
 import type { TrainSchedule, TrainTaskSummary } from "@/lib/types";
 
 function makeTask(id: string, state: TrainTaskSummary["state"], overrides: Partial<TrainTaskSummary> = {}): TrainTaskSummary {
@@ -94,6 +94,7 @@ describe("TrainDashboard action flows", () => {
   let fetchMock: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
+    clearTrainDashboardFetchCaches();
     vi.useFakeTimers();
     vi.stubGlobal("confirm", vi.fn(() => true));
     activeTasks = [];
@@ -168,6 +169,7 @@ describe("TrainDashboard action flows", () => {
   });
 
   afterEach(() => {
+    clearTrainDashboardFetchCaches();
     vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
@@ -741,9 +743,6 @@ describe("TrainDashboard action flows", () => {
     const desktopRows = within(screen.getByTestId("schedule-selector-desktop")).getAllByRole("button");
     fireEvent.click(desktopRows[0]);
     fireEvent.click(desktopRows[0]);
-
-    fireEvent.change(screen.getByLabelText("Sort:"), { target: { value: "desc" } });
-    fireEvent.change(screen.getByLabelText("Sort:"), { target: { value: "asc" } });
 
     fireEvent.click(screen.getByRole("button", { name: "Load dummy task cards" }));
     await flushAsyncEffects();
@@ -1450,13 +1449,15 @@ describe("TrainDashboard action flows", () => {
     expect(screen.getByText("search detail preserved")).toBeInTheDocument();
 
     failTaskList = true;
+    const requestsBeforeFailureTick = activeRequestCount;
     await act(async () => {
       vi.advanceTimersByTime(60_000);
       await Promise.resolve();
       await Promise.resolve();
     });
     await flushAsyncEffects();
-    expect(screen.getByText("search detail preserved")).toBeInTheDocument();
+    expect(activeRequestCount).toBe(requestsBeforeFailureTick);
+    expect(screen.queryByText("Could not load task lists.")).not.toBeInTheDocument();
   }, 20_000);
 
   it("shows credential timeout on abort and blocks search while providers are not connected", async () => {

@@ -19,6 +19,7 @@ import { getTrainStationsCached } from "@/lib/train/stations-cache";
 import { subscribeTrainTaskEvents } from "@/lib/train/task-events";
 import {
   ACTIVE_TASK_FETCH_LIMIT,
+  clearTaskListBootstrapSnapshot,
   COMPLETED_TASK_FETCH_LIMIT,
   fetchTaskListBootstrap,
   fetchTasksByStatus as fetchTasksByStatusFromApi,
@@ -159,6 +160,14 @@ let paymentCardConfiguredCache: { value: boolean | null; fetchedAt: number } = {
   fetchedAt: 0,
 };
 let paymentCardConfiguredInFlight: Promise<boolean> | null = null;
+
+export function clearTrainDashboardFetchCaches(): void {
+  credentialStatusCache = { value: null, fetchedAt: 0 };
+  credentialStatusInFlight = null;
+  paymentCardConfiguredCache = { value: null, fetchedAt: 0 };
+  paymentCardConfiguredInFlight = null;
+  clearTaskListBootstrapSnapshot();
+}
 
 function isDashboardFetchCacheFresh(fetchedAt: number): boolean {
   return fetchedAt > 0 && Date.now() - fetchedAt <= TRAIN_DASHBOARD_FETCH_DEDUPE_TTL_MS;
@@ -1232,10 +1241,10 @@ export function TrainDashboard() {
   const tasksLoadInFlight = useRef(false);
   const activeTasksRef = useRef<TrainTaskSummary[]>([]);
   const completedTasksRef = useRef<TrainTaskSummary[]>([]);
-  const queuedTaskReload = useRef<{ pending: boolean; refreshCompleted: boolean; forceCompleted: boolean }>({
+  const queuedTaskReload = useRef<{ pending: boolean; refreshCompleted: boolean; force: boolean }>({
     pending: false,
     refreshCompleted: false,
-    forceCompleted: false,
+    force: false,
   });
   const dummyTaskCardsModeRef = useRef(false);
   const searchPanelRef = useRef<HTMLDivElement | null>(null);
@@ -1393,13 +1402,13 @@ export function TrainDashboard() {
     [selectedSchedules.length],
   );
 
-  const reloadTasks = useCallback(async (options?: { refreshCompleted?: boolean; forceCompleted?: boolean }) => {
+  const reloadTasks = useCallback(async (options?: { refreshCompleted?: boolean; force?: boolean }) => {
     if (dummyTaskCardsModeRef.current) return;
     if (tasksLoadInFlight.current) {
       queuedTaskReload.current = {
         pending: true,
         refreshCompleted: queuedTaskReload.current.refreshCompleted || Boolean(options?.refreshCompleted),
-        forceCompleted: queuedTaskReload.current.forceCompleted || Boolean(options?.forceCompleted),
+        force: queuedTaskReload.current.force || Boolean(options?.force),
       };
       return;
     }
@@ -1407,7 +1416,7 @@ export function TrainDashboard() {
     try {
       const { active, completed } = await fetchTaskListBootstrap({
         refreshCompleted: options?.refreshCompleted,
-        force: Boolean(options?.forceCompleted),
+        force: Boolean(options?.force),
         activeLimit: ACTIVE_TASK_FETCH_LIMIT,
         completedLimit: COMPLETED_TASK_FETCH_LIMIT,
       });
@@ -1433,8 +1442,8 @@ export function TrainDashboard() {
       tasksLoadInFlight.current = false;
       if (queuedTaskReload.current.pending) {
         const queued = queuedTaskReload.current;
-        queuedTaskReload.current = { pending: false, refreshCompleted: false, forceCompleted: false };
-        void reloadTasks({ refreshCompleted: queued.refreshCompleted, forceCompleted: queued.forceCompleted });
+        queuedTaskReload.current = { pending: false, refreshCompleted: false, force: false };
+        void reloadTasks({ refreshCompleted: queued.refreshCompleted, force: queued.force });
       }
     }
   }, []);
@@ -1527,7 +1536,7 @@ export function TrainDashboard() {
     dummyTaskCardsModeRef.current = false;
     setDummyTaskCardsMode(false);
     setNotice("Restored live task cards.");
-    await reloadTasks({ forceCompleted: true, refreshCompleted: true });
+    await reloadTasks({ force: true, refreshCompleted: true });
   };
 
   const loadCredentialStatus = useCallback(async (options?: { force?: boolean }) => {
@@ -1675,9 +1684,9 @@ export function TrainDashboard() {
   }, [hasAnyConnectedProvider, ktxVerified, srtVerified]);
 
   useEffect(() => {
-    const refreshIfVisible = async (options?: { refreshCompleted?: boolean; forceCompleted?: boolean }) => {
+    const refreshIfVisible = async (options?: { refreshCompleted?: boolean }) => {
       if (document.visibilityState === "hidden") return;
-      await reloadTasks(options);
+      await reloadTasks({ refreshCompleted: options?.refreshCompleted, force: true });
     };
 
     void reloadTasks({ refreshCompleted: true });
@@ -1967,7 +1976,7 @@ export function TrainDashboard() {
       };
 
       setNotice(createResponsePayload.deduplicated ? t("train.notice.taskDeduplicated") : t("train.notice.taskCreatedQueued"));
-      await reloadTasks({ forceCompleted: true });
+      await reloadTasks({ force: true });
       return true;
     },
     [reloadTasks, t],
@@ -2060,7 +2069,7 @@ export function TrainDashboard() {
         setErrorMessage(detail);
         return;
       }
-      await reloadTasks({ forceCompleted: true });
+      await reloadTasks({ force: true });
     } catch {
       setErrorMessage(t("train.task.actionFailed"));
     }
@@ -2103,7 +2112,7 @@ export function TrainDashboard() {
       }
 
       setNotice(cancelPayload?.detail ?? t("train.notice.ticketCancelDone"));
-      await reloadTasks({ forceCompleted: true });
+      await reloadTasks({ force: true });
     } catch {
       setErrorMessage(t("train.error.ticketCancel"));
     } finally {
@@ -2130,7 +2139,7 @@ export function TrainDashboard() {
       }
 
       setNotice(t("train.notice.paymentProcessed"));
-      await reloadTasks({ refreshCompleted: true, forceCompleted: true });
+      await reloadTasks({ refreshCompleted: true, force: true });
     } catch {
       setErrorMessage(t("train.error.paymentProcess"));
     } finally {
