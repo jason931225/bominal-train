@@ -24,6 +24,7 @@ cd "$ROOT_DIR"
 
 required_files=(
   "infra/env/prod/api.env"
+  "infra/env/prod/pay.env"
   "infra/env/prod/web.env"
   "infra/env/prod/caddy.env"
 )
@@ -370,6 +371,61 @@ fi
 resend_api_base_url="$(env_key_value "infra/env/prod/api.env" "RESEND_API_BASE_URL")"
 if [[ -n "$resend_api_base_url" ]]; then
   require_https_url "$resend_api_base_url" "RESEND_API_BASE_URL"
+fi
+
+payment_enabled="$(env_key_value "infra/env/prod/api.env" "PAYMENT_ENABLED" | tr '[:upper:]' '[:lower:]')"
+if [[ -z "$payment_enabled" ]]; then
+  payment_enabled="true"
+fi
+
+if is_truthy "$payment_enabled"; then
+  echo "==> Checking required backend auto-pay settings"
+  for key in CARDNUMBER EXPIRYMM EXPIRYYY DOB NN; do
+    require_env_key_nonempty "infra/env/prod/pay.env" "$key"
+  done
+
+  pay_cardnumber_raw="$(env_key_value "infra/env/prod/pay.env" "CARDNUMBER")"
+  pay_cardnumber="${pay_cardnumber_raw//[^0-9]/}"
+  if [[ ! "$pay_cardnumber" =~ ^[0-9]{13,19}$ ]]; then
+    log_error "CARDNUMBER in infra/env/prod/pay.env must contain 13-19 digits."
+    exit 1
+  fi
+
+  pay_expirymm="$(env_key_value "infra/env/prod/pay.env" "EXPIRYMM")"
+  pay_expiryyy="$(env_key_value "infra/env/prod/pay.env" "EXPIRYYY")"
+  pay_dob="$(env_key_value "infra/env/prod/pay.env" "DOB")"
+  pay_nn="$(env_key_value "infra/env/prod/pay.env" "NN")"
+
+  if [[ ! "$pay_expirymm" =~ ^[0-9]{2}$ ]]; then
+    log_error "EXPIRYMM in infra/env/prod/pay.env must be exactly 2 digits (MM)."
+    exit 1
+  fi
+  if [[ "$pay_expirymm" -lt 1 || "$pay_expirymm" -gt 12 ]]; then
+    log_error "EXPIRYMM in infra/env/prod/pay.env must be between 01 and 12."
+    exit 1
+  fi
+  if [[ ! "$pay_expiryyy" =~ ^[0-9]{2}$ ]]; then
+    log_error "EXPIRYYY in infra/env/prod/pay.env must be exactly 2 digits (YY)."
+    exit 1
+  fi
+  if [[ ! "$pay_nn" =~ ^[0-9]{2}$ ]]; then
+    log_error "NN in infra/env/prod/pay.env must be exactly 2 digits."
+    exit 1
+  fi
+  if [[ ! "$pay_dob" =~ ^[0-9]{8}$ ]]; then
+    log_error "DOB in infra/env/prod/pay.env must be exactly 8 digits (YYYYMMDD)."
+    exit 1
+  fi
+  if ! python3 - <<'PY' "$pay_dob"
+import datetime
+import sys
+dob = sys.argv[1]
+datetime.datetime.strptime(dob, "%Y%m%d")
+PY
+  then
+    log_error "DOB in infra/env/prod/pay.env must be a valid date formatted as YYYYMMDD."
+    exit 1
+  fi
 fi
 
 echo "==> Checking required Web settings"

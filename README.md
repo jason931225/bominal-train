@@ -135,6 +135,7 @@ Optional:
 
 2) Review generated files and confirm required values:
    - `infra/env/prod/api.env`: `INTERNAL_API_KEY`, `MASTER_KEY`, `DATABASE_URL`, `SYNC_DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_JWT_ISSUER`, `SUPABASE_AUTH_API_KEY` (or `SUPABASE_SERVICE_ROLE_KEY` fallback), `RESEND_API_KEY`, sender-domain in `EMAIL_FROM_ADDRESS`, plus passkey origin settings (`PASSKEY_RP_ID`, `PASSKEY_ORIGIN`)
+   - `infra/env/prod/pay.env`: backend-only auto-pay card data (`CARDNUMBER`, `EXPIRYMM`, `EXPIRYYY`, `DOB`, `NN`)
   - `infra/env/prod/web.env`:
     - keep `NEXT_PUBLIC_API_BASE_URL` empty so browser auth requests stay same-origin (required for `SameSite=Lax` session cookies)
     - set `API_SERVER_URL=http://api:8000` for server-side Next.js fetches in monolithic API runtime
@@ -371,7 +372,7 @@ docker compose -f infra/docker-compose.yml exec web npx tsc --noEmit
 Run this checklist before first deployment:
 
 1. **Env sanity**
-   - `infra/env/prod/api.env`, `infra/env/prod/web.env`, `infra/env/prod/caddy.env` exist.
+   - `infra/env/prod/api.env`, `infra/env/prod/pay.env`, `infra/env/prod/web.env`, `infra/env/prod/caddy.env` exist.
    - No unresolved placeholders remain (bootstrap script enforces this).
    - `APP_ENV=production` in `infra/env/prod/api.env`.
    - `MASTER_KEY` is set to a real 32-byte base64 key (generate with `openssl rand -base64 32`).
