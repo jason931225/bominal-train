@@ -1,10 +1,13 @@
 from fastapi import APIRouter, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
-from app.http.deps import get_current_approved_user
 from app.db.models import User
+from app.db.session import get_db
+from app.http.deps import get_current_approved_user
 from app.modules.restaurant.capabilities import RESTAURANT_CAPABILITIES_EXPOSED
 from app.schemas.module import ModuleListResponse, ModuleOut
+from app.services.system_payment import is_payment_runtime_enabled
 
 router = APIRouter()
 settings = get_settings()
@@ -21,9 +24,12 @@ CALENDAR_CAPABILITIES_EXPOSED: tuple[str, ...] = ()
 
 
 @router.get("/modules", response_model=ModuleListResponse)
-async def list_modules(_: User = Depends(get_current_approved_user)) -> ModuleListResponse:
+async def list_modules(
+    _: User = Depends(get_current_approved_user),
+    db: AsyncSession = Depends(get_db),
+) -> ModuleListResponse:
     train_capabilities = list(TRAIN_CAPABILITIES_EXPOSED)
-    if settings.payment_enabled:
+    if await is_payment_runtime_enabled(db):
         train_capabilities.append("wallet.payment_card")
 
     modules: list[ModuleOut] = [

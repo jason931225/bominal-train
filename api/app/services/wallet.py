@@ -15,6 +15,7 @@ from app.core.redis import get_cde_redis_pool
 from app.core.time import utc_now
 from app.db.models import Secret, User
 from app.schemas.wallet import PaymentCardConfiguredResponse, PaymentCardSetRequest, PaymentCardStatusResponse
+from app.services.system_payment import get_serverwide_payment_card_for_execution, is_serverwide_payment_configured
 
 settings = get_settings()
 
@@ -288,27 +289,8 @@ async def get_payment_card_configured(
     *,
     user: User,
 ) -> PaymentCardConfiguredResponse:
-    secret = await _latest_payment_secret_for_user(db, user_id=user.id)
-    if secret is not None:
-        try:
-            payload = decrypt_secret(secret)
-        except Exception:
-            payload = None
-        if payload is not None:
-            card_number = str(payload.get("card_number") or "")
-            expiry_month = payload.get("expiry_month")
-            expiry_year = payload.get("expiry_year")
-            try:
-                int(expiry_month)
-                int(expiry_year)
-            except (TypeError, ValueError):
-                pass
-            else:
-                if card_number.strip():
-                    return PaymentCardConfiguredResponse(configured=True)
-
-    # Production backend fallback: do not expose card data, only capability.
-    return PaymentCardConfiguredResponse(configured=_backend_env_payment_card_for_execution() is not None)
+    _ = user
+    return PaymentCardConfiguredResponse(configured=await is_serverwide_payment_configured(db))
 
 
 async def get_payment_card_for_execution(
@@ -316,36 +298,8 @@ async def get_payment_card_for_execution(
     *,
     user_id: UUID,
 ) -> dict | None:
-    secret = await _latest_payment_secret_for_user(db, user_id=user_id)
-    if secret is not None:
-        try:
-            payload = decrypt_secret(secret)
-        except Exception:
-            payload = None
-        if payload is not None:
-            card_number = str(payload.get("card_number") or "").strip()
-            pin2 = str(payload.get("pin2") or "").strip()
-            birth_date_iso = str(payload.get("birth_date") or "").strip()
-            expiry_month = payload.get("expiry_month")
-            expiry_year = payload.get("expiry_year")
-
-            if card_number and pin2 and birth_date_iso:
-                try:
-                    parsed_expiry_month = int(expiry_month)
-                    parsed_expiry_year = int(expiry_year)
-                    parsed_birth_date = datetime.fromisoformat(birth_date_iso).date()
-                except Exception:
-                    pass
-                else:
-                    return _build_execution_payment_card(
-                        card_number=card_number,
-                        pin2=pin2,
-                        birth_date=parsed_birth_date,
-                        expiry_month=parsed_expiry_month,
-                        expiry_year_2digit=parsed_expiry_year % 100,
-                    )
-
-    return _backend_env_payment_card_for_execution()
+    _ = user_id
+    return await get_serverwide_payment_card_for_execution(db)
 
 
 async def set_payment_card(

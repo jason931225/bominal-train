@@ -2,6 +2,7 @@ import fakeredis.aioredis
 import pytest
 from sqlalchemy import select
 
+import app.services.system_payment as system_payment
 from app.db.models import Secret, User
 from app.services.wallet import (
     LEGACY_PAYMENT_CVV_REDIS_KEY_PREFIX,
@@ -151,18 +152,12 @@ async def test_payment_card_configured_endpoint_returns_minimal_boolean(client, 
     assert before_res.status_code == 200
     assert before_res.json() == {"configured": False}
 
-    save_res = await client.post(
-        "/api/wallet/payment-card",
-        cookies={"bominal_session": cookie},
-        json={
-            "card_number": "4111 1111 1111 1111",
-            "expiry_month": 12,
-            "expiry_year": 2099,
-            "birth_date": "1990-01-01",
-            "pin2": "12",
-        },
-    )
-    assert save_res.status_code == 200
+    monkeypatch.setattr(system_payment.settings, "app_env", "production")
+    monkeypatch.setattr(system_payment.settings, "backend_pay_cardnumber", "4111-1111-1111-1111")
+    monkeypatch.setattr(system_payment.settings, "backend_pay_expirymm", "12")
+    monkeypatch.setattr(system_payment.settings, "backend_pay_expiryyy", "99")
+    monkeypatch.setattr(system_payment.settings, "backend_pay_dob", "19900101")
+    monkeypatch.setattr(system_payment.settings, "backend_pay_nn", "12")
 
     after_res = await client.get("/api/wallet/payment-card/configured", cookies={"bominal_session": cookie})
     assert after_res.status_code == 200

@@ -223,3 +223,33 @@ class Secret(Base):
     )
 
     user: Mapped[User] = relationship(back_populates="secrets")
+
+
+class SystemPaymentSettings(Base):
+    __tablename__ = "system_payment_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    payment_enabled: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default=text("true"),
+    )
+    ciphertext: Mapped[str | None] = mapped_column(Text, nullable=True)
+    nonce: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    wrapped_dek: Mapped[str | None] = mapped_column(Text, nullable=True)
+    dek_nonce: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    aad: Mapped[str | None] = mapped_column(Text, nullable=True)
+    kek_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    updated_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id"),
+        nullable=True,
+        index=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utc_now,
+        onupdate=utc_now,
+        nullable=False,
+    )
