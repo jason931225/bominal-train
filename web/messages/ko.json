@@ -457,12 +457,14 @@
       "passengerMinimum": "총 인원은 최소 1명이어야 합니다.",
       "createTask": "작업을 생성할 수 없습니다.",
       "taskDetailLoad": "작업 상세를 불러올 수 없습니다.",
+      "taskRefresh": "작업 상세 동기화에 실패했습니다.",
       "ticketCancel": "티켓을 취소할 수 없습니다.",
       "paymentProcess": "결제를 처리할 수 없습니다."
     },
     "notice": {
       "taskDeduplicated": "이미 동일한 작업이 진행 중입니다.",
       "taskCreatedQueued": "작업이 생성되어 대기열에 추가되었습니다.",
+      "taskRefreshed": "작업 상세를 동기화했습니다.",
       "ticketCancelDone": "티켓 취소 요청이 완료되었습니다.",
       "paymentProcessed": "결제가 처리되었습니다.",
       "noSchedulesInWindow": "이 시간대에는 조회된 시간표가 없습니다.",
@@ -517,6 +519,8 @@
       "cancelling": "취소 중...",
       "cancelReservation": "예약 취소",
       "cancel": "취소",
+      "syncRefresh": "동기화 새로고침",
+      "syncing": "동기화 중...",
       "payNow": "지금 결제",
       "retry": "재시도",
       "pause": "일시정지",

@@ -424,6 +424,108 @@ async def test_service_remaining_list_refresh_and_refresh_ticket_branches(monkey
 
 
 @pytest.mark.asyncio
+async def test_service_remaining_list_tasks_expires_overdue_manual_payment(monkeypatch):
+    user = _user()
+    now = datetime.now(timezone.utc)
+    overdue_task = _task(state="COMPLETED", completed_at=now - timedelta(hours=2))
+    overdue_task.id = uuid4()
+    overdue_artifact = _ticket_artifact(
+        {
+            "provider": "SRT",
+            "reservation_id": "PNR-EXPIRED-1",
+            "status": "awaiting_payment",
+            "paid": False,
+            "payment_deadline_at": (now - timedelta(minutes=5)).isoformat(),
+        }
+    )
+
+    class _ListResult:
+        def __init__(self, tasks):  # noqa: ANN001
+            self._tasks = tasks
+
+        def scalars(self):  # noqa: ANN201
+            return SimpleNamespace(all=lambda: list(self._tasks))
+
+    db = _DB()
+
+    async def _execute(_stmt):  # noqa: ANN001
+        return _ListResult([overdue_task])
+
+    db.execute = _execute  # type: ignore[method-assign]
+
+    monkeypatch.setattr(train_service, "_task_list_stmt", lambda *_args, **_kwargs: object())
+    async def _latest_attempts(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        return {}
+
+    async def _latest_artifacts(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        return {overdue_task.id: overdue_artifact}
+
+    monkeypatch.setattr(train_service, "_latest_attempt_map", _latest_attempts)
+    monkeypatch.setattr(train_service, "_latest_ticket_artifact_map", _latest_artifacts)
+
+    response = await train_service.list_tasks(
+        db,
+        user=user,
+        status_filter="active",
+        refresh_completed=False,
+    )
+    assert overdue_task.state == "EXPIRED"
+    assert response.tasks == []
+    assert db.commits == 1
+
+
+@pytest.mark.asyncio
+async def test_service_remaining_list_tasks_expires_overdue_manual_payment_in_active_state(monkeypatch):
+    user = _user()
+    now = datetime.now(timezone.utc)
+    overdue_task = _task(state="POLLING")
+    overdue_artifact = _ticket_artifact(
+        {
+            "provider": "KTX",
+            "reservation_id": "PNR-EXPIRED-2",
+            "status": "reserved",
+            "paid": False,
+            "payment_deadline_at": (now - timedelta(minutes=3)).isoformat(),
+        }
+    )
+
+    class _ListResult:
+        def __init__(self, tasks):  # noqa: ANN001
+            self._tasks = tasks
+
+        def scalars(self):  # noqa: ANN201
+            return SimpleNamespace(all=lambda: list(self._tasks))
+
+    db = _DB()
+
+    async def _execute(_stmt):  # noqa: ANN001
+        return _ListResult([overdue_task])
+
+    db.execute = _execute  # type: ignore[method-assign]
+
+    monkeypatch.setattr(train_service, "_task_list_stmt", lambda *_args, **_kwargs: object())
+
+    async def _latest_attempts(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        return {}
+
+    async def _latest_artifacts(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        return {overdue_task.id: overdue_artifact}
+
+    monkeypatch.setattr(train_service, "_latest_attempt_map", _latest_attempts)
+    monkeypatch.setattr(train_service, "_latest_ticket_artifact_map", _latest_artifacts)
+
+    response = await train_service.list_tasks(
+        db,
+        user=user,
+        status_filter="active",
+        refresh_completed=False,
+    )
+    assert overdue_task.state == "EXPIRED"
+    assert response.tasks == []
+    assert db.commits == 1
+
+
+@pytest.mark.asyncio
 async def test_service_remaining_pause_resume_retry_cancel_and_pay_branches(monkeypatch):
     user = _user()
     db = _DB()
@@ -522,6 +624,39 @@ async def test_service_remaining_pause_resume_retry_cancel_and_pay_branches(monk
     monkeypatch.setattr(train_service, "get_task_for_user", _active_cancel_task)
     cancel_active = await train_service.cancel_task(db, task_id=uuid4(), user=user)
     assert active_cancel_task.state == "CANCELLED"
+
+    completed_with_ticket = _task(state="COMPLETED")
+    completed_with_ticket.id = uuid4()
+    completed_with_ticket.artifacts = [
+        _ticket_artifact(
+            {
+                "provider": "SRT",
+                "reservation_id": "PNR-CANCEL-1",
+                "status": "awaiting_payment",
+                "paid": False,
+            }
+        )
+    ]
+    completed_with_ticket.artifacts[0].id = uuid4()
+    completed_with_ticket.artifacts[0].task_id = completed_with_ticket.id
+
+    async def _completed_with_ticket(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        return completed_with_ticket
+
+    cancel_ticket_calls: list[UUID] = []
+
+    async def _cancel_ticket_stub(_db, *, artifact_id: UUID, user):  # noqa: ANN001, ANN201
+        _ = user
+        cancel_ticket_calls.append(artifact_id)
+        completed_with_ticket.state = "CANCELLED"
+        completed_with_ticket.cancelled_at = now
+        return SimpleNamespace(status="cancelled", detail="Ticket cancelled")
+
+    monkeypatch.setattr(train_service, "get_task_for_user", _completed_with_ticket)
+    monkeypatch.setattr(train_service, "cancel_ticket", _cancel_ticket_stub)
+    cancel_completed = await train_service.cancel_task(db, task_id=uuid4(), user=user)
+    assert cancel_ticket_calls == [completed_with_ticket.artifacts[0].id]
+    assert completed_with_ticket.state == "CANCELLED"
 
     async def _redis_obj():
         return object()
@@ -635,3 +770,48 @@ async def test_service_remaining_pause_resume_retry_cancel_and_pay_branches(monk
     with pytest.raises(HTTPException) as no_card:
         await train_service.pay_task(db, task_id=uuid4(), user=user)
     assert no_card.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_service_remaining_refresh_task_detail_branches(monkeypatch):
+    user = _user()
+    db = _DB()
+
+    task_without_ticket = _task(state="RUNNING")
+    task_without_ticket.id = uuid4()
+
+    async def _task_no_ticket(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        return task_without_ticket
+
+    async def _task_detail_payload(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        return SimpleNamespace(task=_summary(), attempts=[], artifacts=[])
+
+    monkeypatch.setattr(train_service, "get_task_for_user", _task_no_ticket)
+    monkeypatch.setattr(train_service, "get_task_detail", _task_detail_payload)
+    no_ticket_result = await train_service.refresh_task_detail(db, task_id=task_without_ticket.id, user=user)
+    assert no_ticket_result.task.state == "COMPLETED"
+    assert db.commits == 0
+
+    task_with_ticket = _task(state="RUNNING")
+    task_with_ticket.id = uuid4()
+    artifact = _ticket_artifact({"provider": "SRT", "reservation_id": "PNR-REFRESH-1"})
+    artifact.id = uuid4()
+    artifact.task_id = task_with_ticket.id
+    task_with_ticket.artifacts = [artifact]
+
+    async def _task_with_ticket(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        return task_with_ticket
+
+    async def _redis_obj():
+        return object()
+
+    async def _refresh_true(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        return True
+
+    monkeypatch.setattr(train_service, "get_task_for_user", _task_with_ticket)
+    monkeypatch.setattr(train_service, "get_redis_client", _redis_obj)
+    monkeypatch.setattr(train_service, "RedisTokenBucketLimiter", lambda _redis: object())
+    monkeypatch.setattr(train_service, "_refresh_ticket_artifact_status", _refresh_true)
+    refreshed_result = await train_service.refresh_task_detail(db, task_id=task_with_ticket.id, user=user)
+    assert refreshed_result.task.state == "COMPLETED"
+    assert db.commits == 1

@@ -871,7 +871,16 @@ def _is_manual_payment_pending(ticket_summary: dict | None) -> bool:
         return False
     ticket_status = str(ticket_summary.get("ticket_status") or "")
     ticket_paid = ticket_summary.get("ticket_paid")
-    return ticket_status in {"awaiting_payment", "waiting"} and ticket_paid is not True
+    return ticket_status in {"awaiting_payment", "reserved", "waiting"} and ticket_paid is not True
+
+
+def _is_manual_payment_expired(ticket_summary: dict | None, *, now: datetime) -> bool:
+    if not _is_manual_payment_pending(ticket_summary):
+        return False
+    payment_deadline_at = ticket_summary.get("ticket_payment_deadline_at") if ticket_summary else None
+    if not isinstance(payment_deadline_at, datetime):
+        return False
+    return now >= _as_aware_utc_datetime(payment_deadline_at)
 
 
 def _is_waitlisted_unpaid(ticket_summary: dict | None) -> bool:
@@ -898,6 +907,18 @@ def _is_active_for_listing(task: Task, ticket_summary: dict | None) -> bool:
     if task.state == "COMPLETED" and _is_manual_payment_pending(ticket_summary):
         return True
     return False
+
+
+def _expire_manual_payment_task_if_due(task: Task, *, ticket_summary: dict | None, now: datetime) -> bool:
+    if task.state not in ACTIVE_TASK_STATES and task.state != "COMPLETED":
+        return False
+    if not _is_manual_payment_expired(ticket_summary, now=now):
+        return False
+    task.state = "EXPIRED"
+    task.completed_at = None
+    task.paused_at = None
+    task.updated_at = now
+    return True
 
 
 def task_to_summary(
@@ -1289,6 +1310,15 @@ async def list_tasks(
     ticket_summaries: dict[UUID, dict | None] = {
         task.id: _ticket_summary_from_artifact(ticket_artifacts.get(task.id)) for task in tasks
     }
+    expired_updates = False
+    for task in tasks:
+        expired_updates = _expire_manual_payment_task_if_due(
+            task,
+            ticket_summary=ticket_summaries.get(task.id),
+            now=now,
+        ) or expired_updates
+    if expired_updates:
+        await db.commit()
 
     if status_filter == "active":
         tasks = [task for task in tasks if _is_active_for_listing(task, ticket_summaries.get(task.id))][: max(1, limit)]
@@ -1493,13 +1523,23 @@ async def get_task_detail(db: AsyncSession, *, task_id: UUID, user: User) -> Tas
 
     attempts = sorted(task.attempts, key=lambda row: row.started_at)
     artifacts = sorted(task.artifacts, key=lambda row: row.created_at)
+    latest_ticket_artifact = _latest_ticket_artifact_for_task(task)
+    ticket_summary = _ticket_summary_from_artifact(latest_ticket_artifact)
 
     latest_attempt = max(attempts, key=lambda row: row.finished_at) if attempts else None
     last_attempt_at = latest_attempt.finished_at if latest_attempt else None
     now = utc_now()
+    if _expire_manual_payment_task_if_due(task, ticket_summary=ticket_summary, now=now):
+        await db.commit()
 
     return TaskDetailOut(
-        task=task_to_summary(task, last_attempt_at=last_attempt_at, latest_attempt=latest_attempt, now=now),
+        task=task_to_summary(
+            task,
+            last_attempt_at=last_attempt_at,
+            latest_attempt=latest_attempt,
+            ticket_summary=ticket_summary,
+            now=now,
+        ),
         attempts=[
             TaskAttemptOut(
                 id=attempt.id,
@@ -1527,6 +1567,25 @@ async def get_task_detail(db: AsyncSession, *, task_id: UUID, user: User) -> Tas
             for artifact in artifacts
         ],
     )
+
+
+async def refresh_task_detail(db: AsyncSession, *, task_id: UUID, user: User) -> TaskDetailOut:
+    task = await get_task_for_user(db, task_id=task_id, user=user)
+    artifact = _latest_ticket_artifact_for_task(task)
+    if artifact is not None:
+        redis = await get_redis_client()
+        limiter = RedisTokenBucketLimiter(redis)
+        updated = await _refresh_ticket_artifact_status(
+            db,
+            user=user,
+            artifact=artifact,
+            limiter=limiter,
+            force=True,
+        )
+        if updated:
+            task.updated_at = utc_now()
+            await db.commit()
+    return await get_task_detail(db, task_id=task_id, user=user)
 
 
 async def pause_task(db: AsyncSession, *, task_id: UUID, user: User) -> TaskActionResponse:
@@ -1610,14 +1669,31 @@ async def retry_task_now(db: AsyncSession, *, task_id: UUID, user: User) -> Task
 
 async def cancel_task(db: AsyncSession, *, task_id: UUID, user: User) -> TaskActionResponse:
     task = await get_task_for_user(db, task_id=task_id, user=user)
-    if task.state in TERMINAL_TASK_STATES:
-        return TaskActionResponse(task=task_to_summary(task))
+    latest_ticket_artifact = _latest_ticket_artifact_for_task(task)
+    ticket_summary = _ticket_summary_from_artifact(latest_ticket_artifact)
+
+    if task.state in TERMINAL_TASK_STATES and task.state != "COMPLETED":
+        return TaskActionResponse(task=task_to_summary(task, ticket_summary=ticket_summary))
+
+    if task.state == "COMPLETED" and not _is_manual_payment_pending(ticket_summary):
+        return TaskActionResponse(task=task_to_summary(task, ticket_summary=ticket_summary))
+
+    if latest_ticket_artifact is not None:
+        await cancel_ticket(db, artifact_id=latest_ticket_artifact.id, user=user)
+        task = await get_task_for_user(db, task_id=task_id, user=user)
+        latest_ticket_artifact = _latest_ticket_artifact_for_task(task)
+        ticket_summary = _ticket_summary_from_artifact(latest_ticket_artifact)
+        return TaskActionResponse(task=task_to_summary(task, ticket_summary=ticket_summary))
 
     task.state = "CANCELLED"
-    task.cancelled_at = utc_now()
+    task.cancelled_at = task.cancelled_at or utc_now()
+    task.completed_at = None
+    task.failed_at = None
+    task.paused_at = None
+    task.updated_at = utc_now()
     await db.commit()
     await db.refresh(task)
-    return TaskActionResponse(task=task_to_summary(task))
+    return TaskActionResponse(task=task_to_summary(task, ticket_summary=ticket_summary))
 
 
 async def pay_task(db: AsyncSession, *, task_id: UUID, user: User) -> TaskActionResponse:
@@ -1854,21 +1930,38 @@ async def delete_task(db: AsyncSession, *, task_id: UUID, user: User) -> TaskAct
 
 async def cancel_ticket(db: AsyncSession, *, artifact_id: UUID, user: User) -> TicketCancelResponse:
     stmt = (
-        select(Artifact)
+        select(Artifact, Task)
         .join(Task, Task.id == Artifact.task_id)
         .where(Artifact.id == artifact_id)
         .where(Task.user_id == user.id)
         .where(Task.module == TASK_MODULE)
     )
-    artifact = (await db.execute(stmt)).scalar_one_or_none()
-    if artifact is None:
+    row = (await db.execute(stmt)).one_or_none()
+    if row is None:
         return TicketCancelResponse(status="not_found", detail="Artifact not found")
+    artifact, task = row
 
     if artifact.data_json_safe.get("cancelled"):
+        if task.state != "CANCELLED":
+            task.state = "CANCELLED"
+            task.cancelled_at = task.cancelled_at or utc_now()
+            task.completed_at = None
+            task.failed_at = None
+            task.paused_at = None
+            task.updated_at = utc_now()
+            await db.commit()
         return TicketCancelResponse(status="already_cancelled", detail="Ticket is already cancelled")
 
     provider = str(artifact.data_json_safe.get("provider") or "")
     if provider not in {"SRT", "KTX"}:
+        if task.state != "CANCELLED":
+            task.state = "CANCELLED"
+            task.cancelled_at = task.cancelled_at or utc_now()
+            task.completed_at = None
+            task.failed_at = None
+            task.paused_at = None
+            task.updated_at = utc_now()
+            await db.commit()
         return TicketCancelResponse(status="not_supported", detail="Provider does not support ticket cancellation")
 
     redis = await get_redis_client()
@@ -1959,6 +2052,13 @@ async def cancel_ticket(db: AsyncSession, *, artifact_id: UUID, user: User) -> T
         provider_http["cancel"] = redact_sensitive(cancel_trace)
 
     if not outcome.ok and outcome.error_code == "not_supported":
+        if task.state != "CANCELLED":
+            task.state = "CANCELLED"
+            task.cancelled_at = task.cancelled_at or utc_now()
+            task.completed_at = None
+            task.failed_at = None
+            task.paused_at = None
+            task.updated_at = utc_now()
         artifact.data_json_safe = validate_safe_metadata(
             {
                 **artifact.data_json_safe,
@@ -1969,6 +2069,13 @@ async def cancel_ticket(db: AsyncSession, *, artifact_id: UUID, user: User) -> T
         return TicketCancelResponse(status="not_supported", detail=outcome.error_message_safe or "not supported")
 
     if not outcome.ok and outcome.error_code == "reservation_not_found":
+        if task.state != "CANCELLED":
+            task.state = "CANCELLED"
+            task.cancelled_at = task.cancelled_at or utc_now()
+            task.completed_at = None
+            task.failed_at = None
+            task.paused_at = None
+            task.updated_at = utc_now()
         artifact.data_json_safe = validate_safe_metadata(
             {
                 **artifact.data_json_safe,
@@ -1997,6 +2104,12 @@ async def cancel_ticket(db: AsyncSession, *, artifact_id: UUID, user: User) -> T
             "provider_http": provider_http,
         }
     )
+    task.state = "CANCELLED"
+    task.cancelled_at = task.cancelled_at or utc_now()
+    task.completed_at = None
+    task.failed_at = None
+    task.paused_at = None
+    task.updated_at = utc_now()
     updated = True
     updated = await _refresh_ticket_artifact_status(
         db,
@@ -2018,6 +2131,295 @@ async def cancel_ticket(db: AsyncSession, *, artifact_id: UUID, user: User) -> T
     return TicketCancelResponse(status="cancelled", detail="Ticket cancelled")
 
 
+def _provider_reservation_ticket_status(reservation: dict) -> str:
+    status_raw = str(reservation.get("status") or "").strip().lower()
+    if status_raw == "reserved":
+        return "awaiting_payment"
+    if status_raw in {"awaiting_payment", "waiting", "paid", "expired", "cancelled", "reservation_not_found"}:
+        return status_raw
+    if bool(reservation.get("paid")):
+        return "paid"
+    if bool(reservation.get("expired")):
+        return "expired"
+    if bool(reservation.get("waiting")):
+        return "waiting"
+    return "awaiting_payment"
+
+
+def _provider_reservation_task_state(ticket_status: str) -> str:
+    if ticket_status == "expired":
+        return "EXPIRED"
+    if ticket_status in {"cancelled", "reservation_not_found"}:
+        return "CANCELLED"
+    return "COMPLETED"
+
+
+def _provider_reservation_deadline_at(reservation: dict, *, now: datetime) -> datetime:
+    for key in ("departure_at", "payment_deadline_at", "arrival_at"):
+        parsed = _parse_iso_datetime(str(reservation.get(key) or ""))
+        if parsed is not None:
+            return _as_aware_utc_datetime(parsed)
+    return now + timedelta(days=365)
+
+
+def _provider_reservation_idempotency_key(*, user_id: UUID, provider: str, reservation_id: str) -> str:
+    raw = f"provider_discovery:{user_id}:{provider}:{reservation_id}"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _provider_reservation_task_spec(*, provider: str, reservation_id: str, reservation: dict) -> dict:
+    spec: dict[str, Any] = {
+        "provider": provider,
+        "reservation_id": reservation_id,
+        "discovered_from_provider": True,
+    }
+
+    dep = str(reservation.get("dep") or "").strip()
+    arr = str(reservation.get("arr") or "").strip()
+    departure_at = _parse_iso_datetime(str(reservation.get("departure_at") or ""))
+    arrival_at = _parse_iso_datetime(str(reservation.get("arrival_at") or ""))
+    train_no = str(reservation.get("train_no") or "").strip()
+
+    if dep:
+        spec["dep"] = dep
+    if arr:
+        spec["arr"] = arr
+    if departure_at is not None:
+        spec["date"] = departure_at.astimezone(KST).strftime("%Y%m%d")
+
+    if dep and arr and departure_at is not None:
+        ranked: dict[str, Any] = {
+            "rank": 1,
+            "provider": provider,
+            "dep": dep,
+            "arr": arr,
+            "departure_at": departure_at.isoformat(),
+        }
+        if arrival_at is not None:
+            ranked["arrival_at"] = arrival_at.isoformat()
+        if train_no:
+            ranked["train_no"] = train_no
+        spec["selected_trains_ranked"] = [ranked]
+
+    return validate_safe_metadata(spec)
+
+
+def _provider_reservation_ticket_payload(*, provider: str, reservation: dict, ticket_status: str) -> dict:
+    reservation_id = str(reservation.get("reservation_id") or "").strip()
+    departure_at = _parse_iso_datetime(str(reservation.get("departure_at") or ""))
+    arrival_at = _parse_iso_datetime(str(reservation.get("arrival_at") or ""))
+    payment_deadline_at = _parse_iso_datetime(str(reservation.get("payment_deadline_at") or ""))
+
+    tickets_raw = reservation.get("tickets")
+    tickets = [row for row in tickets_raw if isinstance(row, dict)] if isinstance(tickets_raw, list) else []
+
+    seat_count = reservation.get("seat_count")
+    if not isinstance(seat_count, int) or isinstance(seat_count, bool):
+        seat_count = len(tickets) if tickets else None
+
+    total_cost = reservation.get("total_cost")
+    if not isinstance(total_cost, int) or isinstance(total_cost, bool):
+        total_cost = None
+
+    metadata = reservation.get("metadata")
+    metadata_safe = metadata if isinstance(metadata, dict) else None
+
+    payload: dict[str, Any] = {
+        "provider": provider,
+        "reservation_id": reservation_id,
+        "status": ticket_status,
+        "paid": bool(reservation.get("paid")),
+        "waiting": bool(reservation.get("waiting")),
+        "expired": bool(reservation.get("expired")),
+        "train_no": reservation.get("train_no"),
+        "train_code": reservation.get("train_code"),
+        "train_type_code": reservation.get("train_type_code"),
+        "train_type_name": reservation.get("train_type_name"),
+        "dep": reservation.get("dep"),
+        "arr": reservation.get("arr"),
+        "departure_at": departure_at.isoformat() if departure_at is not None else None,
+        "arrival_at": arrival_at.isoformat() if arrival_at is not None else None,
+        "payment_deadline_at": payment_deadline_at.isoformat() if payment_deadline_at is not None else None,
+        "seat_count": seat_count,
+        "total_cost": total_cost,
+        "journey_no": reservation.get("journey_no"),
+        "journey_cnt": reservation.get("journey_cnt"),
+        "rsv_chg_no": reservation.get("rsv_chg_no"),
+        "wct_no": reservation.get("wct_no"),
+        "tickets": tickets,
+        "reservation_snapshot": redact_sensitive(reservation),
+    }
+    if metadata_safe is not None:
+        payload["metadata"] = metadata_safe
+    return validate_safe_metadata(payload)
+
+
+async def _upsert_discovered_provider_reservations(
+    db: AsyncSession,
+    *,
+    user: User,
+    provider: str,
+    reservations: list[dict],
+) -> bool:
+    if not reservations:
+        return False
+
+    now = utc_now()
+    stmt = (
+        select(Task, Artifact)
+        .join(Artifact, Artifact.task_id == Task.id)
+        .where(Task.user_id == user.id)
+        .where(Task.module == TASK_MODULE)
+        .where(Task.hidden_at.is_(None))
+        .where(Artifact.module == TASK_MODULE)
+        .where(Artifact.kind == "ticket")
+    )
+    existing_rows = (await db.execute(stmt)).all()
+    existing_by_reservation: dict[str, tuple[Task, Artifact]] = {}
+    min_aware = datetime.min.replace(tzinfo=timezone.utc)
+    for task, artifact in existing_rows:
+        data = artifact.data_json_safe or {}
+        if str(data.get("provider") or "") != provider:
+            continue
+        reservation_id = str(data.get("reservation_id") or "").strip()
+        if not reservation_id:
+            continue
+        previous = existing_by_reservation.get(reservation_id)
+        if previous is None:
+            existing_by_reservation[reservation_id] = (task, artifact)
+            continue
+        previous_created = previous[1].created_at or min_aware
+        current_created = artifact.created_at or min_aware
+        if current_created >= previous_created:
+            existing_by_reservation[reservation_id] = (task, artifact)
+
+    changed = False
+    for reservation in reservations:
+        if not isinstance(reservation, dict):
+            continue
+        reservation_id = str(reservation.get("reservation_id") or "").strip()
+        if not reservation_id:
+            continue
+
+        ticket_status = _provider_reservation_ticket_status(reservation)
+        task_state = _provider_reservation_task_state(ticket_status)
+        ticket_payload = _provider_reservation_ticket_payload(
+            provider=provider,
+            reservation=reservation,
+            ticket_status=ticket_status,
+        )
+
+        existing = existing_by_reservation.get(reservation_id)
+        if existing is None:
+            task = Task(
+                user_id=user.id,
+                module=TASK_MODULE,
+                state=task_state,
+                deadline_at=_provider_reservation_deadline_at(reservation, now=now),
+                spec_json=_provider_reservation_task_spec(
+                    provider=provider,
+                    reservation_id=reservation_id,
+                    reservation=reservation,
+                ),
+                idempotency_key=_provider_reservation_idempotency_key(
+                    user_id=user.id,
+                    provider=provider,
+                    reservation_id=reservation_id,
+                ),
+            )
+            if task_state == "COMPLETED":
+                task.completed_at = now
+            elif task_state == "EXPIRED":
+                task.completed_at = None
+            elif task_state == "CANCELLED":
+                task.cancelled_at = now
+            db.add(task)
+            await db.flush()
+
+            artifact = Artifact(
+                task_id=task.id,
+                module=TASK_MODULE,
+                kind="ticket",
+                data_json_safe=ticket_payload,
+            )
+            db.add(artifact)
+            existing_by_reservation[reservation_id] = (task, artifact)
+            changed = True
+            continue
+
+        task, artifact = existing
+        merged_payload = validate_safe_metadata(
+            {
+                **dict(artifact.data_json_safe or {}),
+                **ticket_payload,
+            }
+        )
+        if merged_payload != artifact.data_json_safe:
+            artifact.data_json_safe = merged_payload
+            changed = True
+
+        if task.state == "CANCELLED":
+            continue
+
+        task_changed = False
+        if task_state == "EXPIRED":
+            if task.state != "EXPIRED":
+                task.state = "EXPIRED"
+                task_changed = True
+            if task.completed_at is not None:
+                task.completed_at = None
+                task_changed = True
+            if task.failed_at is not None:
+                task.failed_at = None
+                task_changed = True
+            if task.paused_at is not None:
+                task.paused_at = None
+                task_changed = True
+        elif task_state == "COMPLETED":
+            # Preserve active worker lifecycle for already-tracked unpaid reservations.
+            # Newly discovered reservations are created as COMPLETED + pending ticket
+            # so they appear in the active tab without entering worker polling.
+            if ticket_status in {"awaiting_payment", "waiting"} and task.state in ACTIVE_TASK_STATES:
+                task_changed = False
+            else:
+                if task.state != "COMPLETED":
+                    task.state = "COMPLETED"
+                    task_changed = True
+                if task.completed_at is None:
+                    task.completed_at = now
+                    task_changed = True
+                if task.failed_at is not None:
+                    task.failed_at = None
+                    task_changed = True
+                if task.paused_at is not None:
+                    task.paused_at = None
+                    task_changed = True
+        elif task_state == "CANCELLED":
+            if task.state != "CANCELLED":
+                task.state = "CANCELLED"
+                task_changed = True
+            if task.cancelled_at is None:
+                task.cancelled_at = now
+                task_changed = True
+            if task.completed_at is not None:
+                task.completed_at = None
+                task_changed = True
+            if task.failed_at is not None:
+                task.failed_at = None
+                task_changed = True
+            if task.paused_at is not None:
+                task.paused_at = None
+                task_changed = True
+
+        if task_changed:
+            task.updated_at = now
+            changed = True
+
+    if changed:
+        await db.commit()
+    return changed
+
+
 async def list_provider_reservations(
     db: AsyncSession,
     *,
@@ -2037,7 +2439,22 @@ async def list_provider_reservations(
             detail=outcome.error_message_safe or f"{provider} failed to return reservations",
         )
 
-    return ProviderReservationsResponse(reservations=outcome.data.get("reservations", []))
+    reservation_rows = [row for row in outcome.data.get("reservations", []) if isinstance(row, dict)]
+    if reservation_rows:
+        try:
+            await _upsert_discovered_provider_reservations(
+                db,
+                user=user,
+                provider=provider,
+                reservations=reservation_rows,
+            )
+        except Exception:
+            logger.warning(
+                "Failed to upsert discovered provider reservations",
+                extra={"user_id": str(user.id), "provider": provider},
+            )
+
+    return ProviderReservationsResponse(reservations=reservation_rows)
 
 
 async def get_provider_ticket_info(
