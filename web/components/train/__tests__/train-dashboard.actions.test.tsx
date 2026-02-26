@@ -232,10 +232,10 @@ describe("TrainDashboard action flows", () => {
 
     await renderDashboard();
 
-    expect(screen.getByText("Providers without verified credentials are disabled for search.")).toBeInTheDocument();
+    expect(screen.getByText("Connect to a provider to unlock search.")).toBeInTheDocument();
     const providerDesktop = within(screen.getByTestId("provider-selector-desktop"));
     expect(providerDesktop.getByRole("button", { name: "SRT" })).toBeDisabled();
-    expect(providerDesktop.getByRole("button", { name: "KTX" })).not.toBeDisabled();
+    expect(providerDesktop.queryByRole("button", { name: "KTX" })).not.toBeInTheDocument();
   }, 45_000);
 
   it("renders sold-out availability badges and ignores non-activating desktop keydown", async () => {
@@ -821,7 +821,7 @@ describe("TrainDashboard action flows", () => {
         }
         return jsonResponse({ schedules: [] });
       }
-      if (url.includes("/api/train/credentials/ktx") && method === "POST") {
+      if (url.includes("/api/train/credentials/srt") && method === "POST") {
         credentialSubmitCount += 1;
         if (credentialSubmitCount === 1) {
           return jsonResponse({ detail: "bad credentials" }, 400);
@@ -844,22 +844,19 @@ describe("TrainDashboard action flows", () => {
     fireEvent.click(screen.getByRole("button", { name: /Show provider credentials|Hide provider credentials/i }));
 
     fireEvent.click(screen.getAllByRole("button", { name: "Connect" })[0]);
-    fireEvent.change(screen.getByLabelText("KTX username"), { target: { value: "010-1234-5678" } });
-    fireEvent.change(screen.getByLabelText("KTX password"), { target: { value: "pw1234" } });
-    const ktxCredentialForm = screen.getByLabelText("KTX username").closest("form");
-    expect(ktxCredentialForm).not.toBeNull();
-    fireEvent.click(within(ktxCredentialForm!).getByRole("button", { name: "Connect" }));
+    fireEvent.change(screen.getByLabelText("SRT username"), { target: { value: "010-1234-5678" } });
+    fireEvent.change(screen.getByLabelText("SRT password"), { target: { value: "pw1234" } });
+    const srtCredentialForm = screen.getByLabelText("SRT username").closest("form");
+    expect(srtCredentialForm).not.toBeNull();
+    fireEvent.click(within(srtCredentialForm!).getByRole("button", { name: "Connect" }));
     await flushAsyncEffects();
     expect(screen.getByText("bad credentials")).toBeInTheDocument();
 
-    fireEvent.click(within(ktxCredentialForm!).getByRole("button", { name: "Connect" }));
+    fireEvent.click(within(srtCredentialForm!).getByRole("button", { name: "Connect" }));
     await flushAsyncEffects();
-    expect(screen.getByText("KTX credentials verified.")).toBeInTheDocument();
+    expect(screen.getByText("SRT credentials verified.")).toBeInTheDocument();
 
-    const connectButtons = screen.getAllByRole("button", { name: "Connect" });
-    fireEvent.click(connectButtons[connectButtons.length - 1]);
-    const srtCredentialForm = screen.getByLabelText("SRT username").closest("form");
-    expect(srtCredentialForm).not.toBeNull();
+    fireEvent.click(screen.getAllByRole("button", { name: /Connect|Change/ })[0]);
     fireEvent.click(within(srtCredentialForm!).getByRole("button", { name: "Ignore" }));
     expect(screen.getByText("Continuing without SRT. SRT search is disabled.")).toBeInTheDocument();
 
@@ -869,14 +866,11 @@ describe("TrainDashboard action flows", () => {
     await flushAsyncEffects();
     fireEvent.click(screen.getAllByRole("button", { name: "Sign out" })[0]);
     await flushAsyncEffects();
-    expect(screen.getByText("KTX signed out.")).toBeInTheDocument();
+    expect(screen.getByText("SRT signed out.")).toBeInTheDocument();
     expect(confirmSpy).toHaveBeenCalled();
 
-    const srtToggle = within(screen.getByTestId("provider-selector-mobile")).getByRole("button", { name: "SRT" });
-    fireEvent.click(srtToggle);
-    fireEvent.submit(screen.getByTestId("train-search-form"));
-    await flushAsyncEffects();
-    expect(screen.getByText("Select at least one provider.")).toBeInTheDocument();
+    expect(screen.getByText("Connect to a provider to unlock search.")).toBeInTheDocument();
+    expect(screen.queryByTestId("train-search-form")).not.toBeInTheDocument();
   }, 20_000);
 
   it("covers task list polling error states and action failure branches", async () => {
@@ -1166,9 +1160,6 @@ describe("TrainDashboard action flows", () => {
       if (url.includes("/api/train/search") && method === "POST") {
         throw new Error("search network");
       }
-      if (url.includes("/api/train/credentials/ktx") && method === "POST") {
-        return jsonResponse({ ok: true });
-      }
       return jsonResponse({ detail: "not found" }, 404);
     });
 
@@ -1176,13 +1167,6 @@ describe("TrainDashboard action flows", () => {
     expect(
       screen.getByText(/Session expired\. Please log in again\.|Could not load wallet status\./),
     ).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: /Show provider credentials|Hide provider credentials/i }));
-    fireEvent.click(screen.getAllByRole("button", { name: "Change" })[0]);
-    fireEvent.change(screen.getByLabelText("KTX username"), { target: { value: "010-1234-5678" } });
-    fireEvent.change(screen.getByLabelText("KTX password"), { target: { value: "pw1234" } });
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-    await flushAsyncEffects();
 
     fireEvent.submit(screen.getByTestId("train-search-form"));
     await flushAsyncEffects();
@@ -1194,7 +1178,6 @@ describe("TrainDashboard action flows", () => {
 
     const providerDesktop = within(screen.getByTestId("provider-selector-desktop"));
     fireEvent.click(providerDesktop.getByRole("button", { name: "SRT" }));
-    fireEvent.click(providerDesktop.getByRole("button", { name: "KTX" }));
     fireEvent.submit(screen.getByTestId("train-search-form"));
     await flushAsyncEffects();
     expect(screen.getByText("Select at least one provider.")).toBeInTheDocument();
@@ -1223,8 +1206,6 @@ describe("TrainDashboard action flows", () => {
 
     let searchCount = 0;
     let createCount = 0;
-    let credentialSubmitCount = 0;
-    let signOutCount = 0;
     let cancelTicketCount = 0;
 
     fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -1271,16 +1252,6 @@ describe("TrainDashboard action flows", () => {
         if (createCount === 1) return jsonResponse({ detail: "create detail failure" }, 400);
         throw new Error("create network failure");
       }
-      if (url.includes("/api/train/credentials/ktx/signout") && method === "POST") {
-        signOutCount += 1;
-        if (signOutCount === 1) return jsonResponse({ detail: "signout detail failure" }, 400);
-        throw new Error("signout network failure");
-      }
-      if (url.includes("/api/train/credentials/ktx") && method === "POST") {
-        credentialSubmitCount += 1;
-        if (credentialSubmitCount === 1) return jsonResponse({ detail: "credential detail failure" }, 400);
-        throw new Error("credential network failure");
-      }
       if (url.includes("/api/train/tasks/awaiting-guard") && method === "GET") {
         return jsonResponse({
           artifacts: [{ id: "ticket-guard", module: "train", kind: "ticket", data_json_safe: {}, created_at: "2026-02-22T11:00:00+09:00" }],
@@ -1302,8 +1273,6 @@ describe("TrainDashboard action flows", () => {
       .mockReturnValueOnce(false) // sendTaskAction(cancel) early return
       .mockReturnValueOnce(false) // payAwaitingPaymentTask early return
       .mockReturnValueOnce(false) // cancelTaskTicket early return
-      .mockReturnValue(true) // sign out non-ok
-      .mockReturnValue(true) // sign out catch
       .mockReturnValue(true); // cancel ticket non-ok json parse fallback
 
     await renderDashboard();
@@ -1326,19 +1295,6 @@ describe("TrainDashboard action flows", () => {
     await flushAsyncEffects();
     expect(screen.getByText("Could not create Task.")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /Show provider credentials|Hide provider credentials/i }));
-    fireEvent.click(screen.getAllByRole("button", { name: "Change" })[0]);
-    fireEvent.change(screen.getByLabelText("KTX username"), { target: { value: "01012345678" } });
-    fireEvent.change(screen.getByLabelText("KTX password"), { target: { value: "pw1234" } });
-    const ktxCredentialForm = screen.getByLabelText("KTX username").closest("form");
-    expect(ktxCredentialForm).not.toBeNull();
-    fireEvent.click(within(ktxCredentialForm!).getByRole("button", { name: "Connect" }));
-    await flushAsyncEffects();
-    expect(screen.getByText("credential detail failure")).toBeInTheDocument();
-    fireEvent.click(within(ktxCredentialForm!).getByRole("button", { name: "Connect" }));
-    await flushAsyncEffects();
-    expect(screen.getByText("Could not verify KTX credentials.")).toBeInTheDocument();
-
     const runningGuardCard = screen.getByText("RUNNING").closest("li");
     expect(runningGuardCard).not.toBeNull();
     fireEvent.click(within(runningGuardCard!).getByRole("button", { name: "Cancel" })); // early return confirm false
@@ -1349,13 +1305,6 @@ describe("TrainDashboard action flows", () => {
     await flushAsyncEffects();
     fireEvent.click(screen.getByRole("button", { name: "Cancel reservation" })); // early return confirm false
     await flushAsyncEffects();
-
-    fireEvent.click(screen.getAllByRole("button", { name: "Sign out" })[0]);
-    await flushAsyncEffects();
-    expect(screen.getByText("signout detail failure")).toBeInTheDocument();
-    fireEvent.click(screen.getAllByRole("button", { name: "Sign out" })[0]);
-    await flushAsyncEffects();
-    expect(screen.getByText("Could not sign out KTX.")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Cancel reservation" }));
     await flushAsyncEffects();
@@ -1538,9 +1487,6 @@ describe("TrainDashboard action flows", () => {
       if (url.includes("/api/train/search") && method === "POST") {
         return new Response("search upstream failure", { status: 500, headers: { "Content-Type": "text/plain" } });
       }
-      if (url.includes("/api/train/credentials/ktx") && method === "POST") {
-        return new Response("credential upstream failure", { status: 500, headers: { "Content-Type": "text/plain" } });
-      }
       return jsonResponse({ detail: "not found" }, 404);
     });
 
@@ -1550,20 +1496,6 @@ describe("TrainDashboard action flows", () => {
     await flushAsyncEffects();
     expect(screen.getByText("Search failed.")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /Show provider credentials|Hide provider credentials/i }));
-    await flushAsyncEffects();
-    if (!screen.queryByRole("button", { name: "Connect" })) {
-      fireEvent.click(screen.getByRole("button", { name: /Show provider credentials|Hide provider credentials/i }));
-      await flushAsyncEffects();
-    }
-    fireEvent.click(screen.getAllByRole("button", { name: "Connect" })[0]);
-    fireEvent.change(screen.getByLabelText("KTX username"), { target: { value: "010-5555-0000" } });
-    fireEvent.change(screen.getByLabelText("KTX password"), { target: { value: "pw1234" } });
-    const ktxCredentialForm = screen.getByLabelText("KTX username").closest("form");
-    expect(ktxCredentialForm).not.toBeNull();
-    fireEvent.click(within(ktxCredentialForm!).getByRole("button", { name: "Connect" }));
-    await flushAsyncEffects();
-    expect(screen.getByText("KTX login failed.")).toBeInTheDocument();
   }, 20_000);
 
   it("ignores late station payloads after unmount without mutating state", async () => {
