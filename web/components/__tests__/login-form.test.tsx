@@ -109,6 +109,26 @@ describe("LoginForm", () => {
     expect(screen.getByRole("button", { name: "Sign in with password" })).toBeInTheDocument();
   });
 
+  it("keeps waiting when passkey prompt bootstrap is still in flight", async () => {
+    vi.mocked(signInWithPasskey).mockImplementationOnce(
+      (_apiBaseUrl, _params, hooks) =>
+        new Promise(() => {
+          window.setTimeout(() => {
+            hooks?.onPromptStart?.();
+          }, 500);
+        }),
+    );
+
+    renderLoginForm();
+
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "slow-options@example.com" } });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+
+    expect(screen.getByRole("button", { name: "Continuing..." })).toBeInTheDocument();
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(screen.queryByLabelText("Password")).not.toBeInTheDocument();
+  });
+
   it("shows password quickly when passkey prompt never starts", async () => {
     vi.mocked(signInWithPasskey).mockImplementationOnce(
       () =>
@@ -124,7 +144,7 @@ describe("LoginForm", () => {
 
     await waitFor(() => {
       expect(screen.getByLabelText("Password")).toBeInTheDocument();
-    }, { timeout: 700 });
+    }, { timeout: 1400 });
     expect(screen.getByRole("button", { name: "Sign in" })).toBeInTheDocument();
   });
 
