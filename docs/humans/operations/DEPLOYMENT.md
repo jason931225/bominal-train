@@ -110,9 +110,11 @@ Canonical workflow files:
 - `.github/workflows/ci-build-publish-images.yml`
 - `.github/workflows/cd-deploy-production.yml`
 Deploy gating in CI:
-- Deploy workflow is triggered from successful `CI - Infra Quality Gates` completion on `main`.
-- Manual dispatches are also gated against prerequisite workflow status for the selected commit.
+- Deploy workflow is auto-triggered only when a GitHub Release is published (tagged release), plus optional manual dispatch.
+- Release/manual deploys are gated against prerequisite workflow status for the selected commit.
 - Before publish, CI blocks deploy unless **both** `CI - Infra Quality Gates` and `CI - Build and Publish Images` for the same commit completed with `success`.
+- `CI - Build and Publish Images` manual dispatch supports `build_api` / `build_web` boolean inputs so operators can avoid unneeded image publishes.
+- Deprecation policy checks run in `CI - Infra Quality Gates` and deploy preflight; CD publish no longer duplicates that check set.
 - Image publish job is fail-closed on Trivy scan findings (`HIGH` / `CRITICAL`) and emits SBOM/provenance attestations.
 - After publish, CI runs a post-deploy verification gate:
   - production API health must report `db=true` and `redis=true`;

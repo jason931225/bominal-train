@@ -10,6 +10,17 @@ on:
       - "infra/scripts/version_guard.py"
       - ".github/workflows/ci-build-publish-images.yml"
   workflow_dispatch:
+    inputs:
+      build_api:
+        description: "Build and publish API image"
+        required: true
+        default: true
+        type: boolean
+      build_web:
+        description: "Build and publish web image"
+        required: true
+        default: true
+        type: boolean
 
 concurrency:
   group: ci-build-publish-images-${{ github.ref }}
@@ -51,7 +62,15 @@ jobs:
   build-api:
     name: Build API Image
     needs: changes
-    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.api == 'true'
+    if: |
+      (
+        github.event_name == 'workflow_dispatch' &&
+        github.event.inputs.build_api == 'true'
+      ) ||
+      (
+        github.event_name != 'workflow_dispatch' &&
+        needs.changes.outputs.api == 'true'
+      )
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -100,7 +119,15 @@ jobs:
   build-web:
     name: Build Web Image
     needs: changes
-    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.web == 'true'
+    if: |
+      (
+        github.event_name == 'workflow_dispatch' &&
+        github.event.inputs.build_web == 'true'
+      ) ||
+      (
+        github.event_name != 'workflow_dispatch' &&
+        needs.changes.outputs.web == 'true'
+      )
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

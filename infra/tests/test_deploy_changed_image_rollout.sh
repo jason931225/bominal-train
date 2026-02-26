@@ -203,6 +203,12 @@ if matches_pattern "up -d --wait --no-deps api|up -d --wait --no-deps worker|up 
   exit 1
 fi
 
+if ! matches_pattern "up -d --wait --no-deps caddy" "$UNCHANGED_CALLS"; then
+  echo "FAIL: unchanged-image case did not run isolated caddy reconciliation" >&2
+  cat "$UNCHANGED_CALLS" >&2
+  exit 1
+fi
+
 if ! matches_pattern "up -d --wait --no-deps api" "$API_ONLY_CALLS"; then
   echo "FAIL: api-only case did not roll api service" >&2
   cat "$API_ONLY_CALLS" >&2
