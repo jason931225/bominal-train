@@ -51,6 +51,18 @@ jobs:
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const targetSha = context.payload.workflow_run?.head_sha || context.sha;
+            const bypassPolicyGates = "${{ vars.CI_ALLOW_POLICY_GATES_BYPASS }}" === "true";
+            if (bypassPolicyGates) {
+              core.warning(
+                "Bypassing deploy prerequisite workflow gate because CI_ALLOW_POLICY_GATES_BYPASS=true."
+              );
+              core.setOutput("target_sha", targetSha);
+              core.setOutput("build_required", "false");
+              core.setOutput("build_run_id", "");
+              core.setOutput("api_changed", "false");
+              core.setOutput("web_changed", "false");
+              return;
+            }
             const maxAttempts = 40;
             const sleepMs = 15000;
             const buildPathMatchers = [
@@ -172,6 +184,7 @@ jobs:
             core.setOutput("web_changed", String(changed.web_changed));
 
       - name: Validate deprecation gates
+        if: vars.CI_ALLOW_POLICY_GATES_BYPASS != 'true'
         shell: bash
         run: |
           set -euo pipefail

@@ -114,6 +114,14 @@ make_valid_registry
 # Valid env files with skip smoke checks should pass.
 PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" BOMINAL_ROOT_DIR="$TMP_DIR/repo" "$SCRIPT" --skip-smoke-tests >/dev/null
 
+# Policy-gate bypass should skip deprecation/resource gates.
+PATH="$TMP_DIR/bin:$PATH" \
+  PREDEPLOY_ALLOW_POLICY_GATES_BYPASS=true \
+  PREDEPLOY_MIN_TOTAL_MEMORY_MB=999999 \
+  PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" \
+  BOMINAL_ROOT_DIR="$TMP_DIR/repo" \
+  "$SCRIPT" --skip-smoke-tests >/dev/null
+
 # Production must enforce AUTH_MODE=supabase.
 make_valid_envs
 cat >"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF'
