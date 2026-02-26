@@ -39,7 +39,8 @@ Deploy script guardrails:
 - Auto rollback on smoke failure is enabled by default (`AUTO_ROLLBACK_ON_SMOKE_FAILURE=true`).
 - Logs tracked working-tree dirty state before deploy; set `DEPLOY_FAIL_ON_DIRTY_REPO=true` to hard-fail on dirty tracked files.
 - GitHub deploy workflow guardrails:
-  - deploy request is published only after same-commit `CI - Infra Quality Gates` and `CI - Build and Publish Images` both succeed (including manual dispatches);
+  - auto deploy request is published only for GitHub Release `published` events (tagged releases), with optional manual dispatch;
+  - deploy request is published only after same-commit `CI - Infra Quality Gates` and `CI - Build and Publish Images` both succeed;
   - image publish is blocked when Trivy reports `HIGH` or `CRITICAL` vulnerabilities on pushed images;
   - deploy payload pins changed services to commit-tagged GHCR images and leaves unchanged services on latest baseline;
   - post-deploy CI verification checks production `/health` (`db=true`, `redis=true`) and production web endpoint HTTP `200`/`3xx`.

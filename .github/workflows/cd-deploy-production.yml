@@ -1,10 +1,8 @@
 name: CD - Deploy Production
 
 on:
-  workflow_run:
-    workflows: ["CI - Infra Quality Gates"]
-    types: [completed]
-    branches: [main]
+  release:
+    types: [published]
 
   workflow_dispatch:
 
@@ -33,9 +31,8 @@ jobs:
     if: |
       github.event_name == 'workflow_dispatch' ||
       (
-        github.event_name == 'workflow_run' &&
-        github.event.workflow_run.name == 'CI - Infra Quality Gates' &&
-        github.event.workflow_run.conclusion == 'success'
+        github.event_name == 'release' &&
+        github.event.action == 'published'
       )
     runs-on: ubuntu-latest
     environment: production
@@ -50,7 +47,19 @@ jobs:
           script: |
             const owner = context.repo.owner;
             const repo = context.repo.repo;
-            const targetSha = context.payload.workflow_run?.head_sha || context.sha;
+            const targetRef = context.eventName === "release"
+              ? context.payload.release?.tag_name
+              : context.sha;
+            if (!targetRef) {
+              core.setFailed("Could not determine deploy target ref.");
+              return;
+            }
+            const commitRef = await github.rest.repos.getCommit({
+              owner,
+              repo,
+              ref: targetRef,
+            });
+            const targetSha = commitRef.data.sha;
             const bypassPolicyGates = "${{ vars.CI_ALLOW_POLICY_GATES_BYPASS }}" === "true";
             if (bypassPolicyGates) {
               core.warning(
@@ -73,12 +82,7 @@ jobs:
               /^\.github\/workflows\/ci-build-publish-images\.yml$/,
             ];
 
-            const commit = await github.rest.repos.getCommit({
-              owner,
-              repo,
-              ref: targetSha,
-            });
-            const changedFiles = (commit.data.files || []).map((file) => file.filename);
+            const changedFiles = (commitRef.data.files || []).map((file) => file.filename);
             const buildRequired = changedFiles.some((path) =>
               buildPathMatchers.some((matcher) => matcher.test(path))
             );
