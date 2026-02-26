@@ -92,6 +92,21 @@ def test_create_base_app_version_endpoint_available_under_api_prefix(monkeypatch
     assert prefixed_response.json() == root_payload
 
 
+def test_create_base_app_version_endpoint_prefers_build_info_file(monkeypatch, tmp_path):
+    build_info = tmp_path / "build_info.json"
+    build_info.write_text('{"app_version":"7.7.7","build_version":"sha-build"}', encoding="utf-8")
+    monkeypatch.setattr(app_common, "BUILD_INFO_PATH", build_info)
+    monkeypatch.setenv("APP_VERSION", "0.0.0")
+    monkeypatch.setenv("BUILD_VERSION", "unknown")
+
+    app = app_common.create_base_app(description="version build file")
+    client = TestClient(app)
+    payload = client.get("/api/version").json()
+
+    assert payload["app_version"] == "7.7.7"
+    assert payload["build_version"] == "sha-build"
+
+
 def test_create_base_app_healthcheck_degraded_paths(monkeypatch):
     # DB failure path.
     monkeypatch.setattr(app_common, "SessionLocal", lambda: _SessionContext(should_fail=True))

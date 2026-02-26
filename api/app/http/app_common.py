@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+import json
 import os
+from pathlib import Path
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,6 +18,7 @@ from app.http.deps import get_current_admin
 
 settings = get_settings()
 logger = get_logger(__name__)
+BUILD_INFO_PATH = Path(__file__).resolve().parents[1] / "build_info.json"
 
 
 def _normalized_env_version(name: str, *, fallback: str) -> str:
@@ -23,11 +26,31 @@ def _normalized_env_version(name: str, *, fallback: str) -> str:
     return value or fallback
 
 
+def _read_build_info_file() -> dict[str, str]:
+    if not BUILD_INFO_PATH.exists():
+        return {}
+    try:
+        payload = json.loads(BUILD_INFO_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    app_version = str(payload.get("app_version", "")).strip()
+    build_version = str(payload.get("build_version", "")).strip()
+    result: dict[str, str] = {}
+    if app_version:
+        result["app_version"] = app_version
+    if build_version:
+        result["build_version"] = build_version
+    return result
+
+
 def build_version_payload() -> dict[str, str]:
+    build_info = _read_build_info_file()
     return {
         "app": settings.app_name,
-        "app_version": _normalized_env_version("APP_VERSION", fallback="0.0.0"),
-        "build_version": _normalized_env_version("BUILD_VERSION", fallback="unknown"),
+        "app_version": build_info.get("app_version") or _normalized_env_version("APP_VERSION", fallback="0.0.0"),
+        "build_version": build_info.get("build_version") or _normalized_env_version("BUILD_VERSION", fallback="unknown"),
     }
 
 
