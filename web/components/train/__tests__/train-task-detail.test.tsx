@@ -164,9 +164,11 @@ describe("TrainTaskDetail actions", () => {
     expect(fetchMock.mock.calls.some(([request]) => String(request).includes("/api/train/tickets/"))).toBe(false);
   });
 
-  it("hides pay action when task is expired even if artifact status is awaiting_payment", async () => {
+  it("shows terminal retry/delete and hides pay/cancel when task is expired", async () => {
     const expiredPayload = buildTaskDetailPayload();
     expiredPayload.task.state = "EXPIRED";
+    expiredPayload.task.retry_now_allowed = true;
+    expiredPayload.task.retry_now_reason = "task_running";
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       const method = init?.method ?? "GET";
@@ -185,5 +187,8 @@ describe("TrainTaskDetail actions", () => {
     await flushAsyncEffects();
 
     expect(screen.queryByRole("button", { name: "Pay" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retry now" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Delete" })).toBeInTheDocument();
   });
 });

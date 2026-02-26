@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { createPortal } from "react-dom";
 import { FormEvent, UIEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 
 import { useLocale } from "@/components/locale-provider";
 import { clientApiBaseUrl } from "@/lib/api-base";
@@ -53,6 +54,7 @@ type CreateTaskState = {
   adults: number;
   children: number;
   autoPay: boolean;
+  retryOnExpiry: boolean;
   notify: boolean;
 };
 
@@ -102,6 +104,7 @@ type TrainTaskCreatePayload = {
   };
   seat_class: TrainSeatClass;
   auto_pay: boolean;
+  retry_on_expiry: boolean;
   notify: boolean;
   confirm_duplicate?: boolean;
 };
@@ -278,6 +281,10 @@ const SMALL_SUCCESS_BUTTON_CLASS =
 const SMALL_DISABLED_BUTTON_CLASS =
   "inline-flex h-8 items-center justify-center rounded-full border border-slate-200 bg-slate-100 px-2.5 text-xs font-medium text-slate-500 shadow-sm transition focus:outline-none focus:ring-2 focus:ring-slate-100";
 const TASK_ACTION_BUTTON_SIZE_CLASS = "h-9 min-w-[88px] px-3";
+const TASK_CARD_ENTER_EXIT_TRANSITION = { duration: 0.22, ease: [0.22, 1, 0.36, 1] as const };
+const TASK_CARD_INITIAL_ANIMATION = { opacity: 0, y: 10, scale: 0.985 };
+const TASK_CARD_ANIMATE_ANIMATION = { opacity: 1, y: 0, scale: 1 };
+const TASK_CARD_EXIT_ANIMATION = { opacity: 0, y: -8, scale: 0.985 };
 const EMPTY_CREDENTIAL_STATUS: TrainCredentialStatusResponse = {
   ktx: { configured: false, verified: false, detail: null },
   srt: { configured: false, verified: false, detail: null },
@@ -630,6 +637,9 @@ export function getTaskTicketBadge(task: TrainTaskSummary): { label: string; cla
   const paid = task.ticket_paid === true;
 
   if (!status && !paid) return null;
+  if (task.state === "EXPIRED" && (status === "awaiting_payment" || status === "waiting") && !paid) {
+    return null;
+  }
   if (status === "cancelled") {
     return { label: "train.badge.cancelled", className: "bg-slate-100 text-slate-700" };
   }
@@ -667,7 +677,7 @@ export function taskDisplayState(task: Pick<TrainTaskSummary, "state" | "ticket_
 }
 
 export function isAwaitingPaymentTask(task: TrainTaskSummary): boolean {
-  return isUnpaidAwaitingPaymentTicket(task);
+  return task.state === "COMPLETED" && isUnpaidAwaitingPaymentTicket(task);
 }
 
 export function shouldShowCompletedCancel(task: TrainTaskSummary): boolean {
@@ -675,6 +685,10 @@ export function shouldShowCompletedCancel(task: TrainTaskSummary): boolean {
   if (task.ticket_status === "cancelled") return false;
   if (task.ticket_status === "reservation_not_found" && task.ticket_paid !== true) return false;
   return true;
+}
+
+function isRetryDeleteTerminalTask(task: TrainTaskSummary): boolean {
+  return task.state === "EXPIRED" || task.state === "CANCELLED" || task.state === "FAILED";
 }
 
 export function retryNowDisabledTitle(task: TrainTaskSummary): string {
@@ -1225,6 +1239,7 @@ export function TrainDashboard() {
     adults: 1,
     children: 0,
     autoPay: false,
+    retryOnExpiry: true,
     notify: false,
   });
   const [duplicateWarning, setDuplicateWarning] = useState<TrainTaskDuplicateCheckResponse | null>(null);
@@ -1969,6 +1984,7 @@ export function TrainDashboard() {
         },
         seat_class: createForm.seatClass,
         auto_pay: createForm.autoPay && autoPayAvailable,
+        retry_on_expiry: createForm.retryOnExpiry,
         notify: createForm.notify,
         confirm_duplicate: confirmDuplicate,
       };
@@ -1979,6 +1995,7 @@ export function TrainDashboard() {
       createForm.autoPay,
       createForm.children,
       createForm.notify,
+      createForm.retryOnExpiry,
       createForm.seatClass,
       searchForm.arr,
       searchForm.date,
@@ -2013,7 +2030,7 @@ export function TrainDashboard() {
     [reloadTasks, t],
   );
 
-  const openCreateTaskReview = () => {
+  const openCreateTaskReview = async () => {
     const validationError = validateCreateTaskInputs(selectedSchedules.length, totalPassengers);
     if (validationError) {
       setErrorMessage(t(validationError));
@@ -2021,6 +2038,9 @@ export function TrainDashboard() {
     }
     setErrorMessage(null);
     setNotice(null);
+    if (TRAIN_AUTO_PAY_FEATURE_ENABLED) {
+      await loadPaymentCardConfigured({ force: true });
+    }
     setCreateTaskReviewOpen(true);
   };
 
@@ -2293,6 +2313,33 @@ export function TrainDashboard() {
                           aria-hidden="true"
                           className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition ${
                             createForm.notify ? "translate-x-5" : "translate-x-0.5"
+                          }`}
+                        />
+                      </button>
+                    </dd>
+                  </div>
+                  <div className="flex min-h-12 items-center justify-between gap-3 py-2">
+                    <dt className="text-slate-500">{t("train.retryOnExpiry")}</dt>
+                    <dd className="flex items-center">
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={createForm.retryOnExpiry}
+                        aria-label={t("train.retryOnExpiry")}
+                        onClick={() =>
+                          setCreateForm((current) => ({
+                            ...current,
+                            retryOnExpiry: !current.retryOnExpiry,
+                          }))
+                        }
+                        className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition focus:outline-none focus:ring-2 focus:ring-blossom-100 ${
+                          createForm.retryOnExpiry ? "bg-blossom-500" : "bg-slate-300"
+                        }`}
+                      >
+                        <span
+                          aria-hidden="true"
+                          className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition ${
+                            createForm.retryOnExpiry ? "translate-x-5" : "translate-x-0.5"
                           }`}
                         />
                       </button>
@@ -3225,7 +3272,7 @@ export function TrainDashboard() {
                     </button>
                     <button
                       type="button"
-                      onClick={openCreateTaskReview}
+                      onClick={() => void openCreateTaskReview()}
                       disabled={createDisabled}
                       className={`${PRIMARY_BUTTON_CLASS} h-11 flex-1 px-4 sm:min-w-[148px] sm:flex-none`}
                     >
@@ -3282,14 +3329,24 @@ export function TrainDashboard() {
           <h2 className="text-lg font-semibold text-slate-800">{t("train.activeTasks")}</h2>
           <ul className="mt-4 space-y-3 text-sm">
             {sortedActiveTasks.length === 0 ? <li className="text-slate-500">{t("train.empty.activeTasks")}</li> : null}
+            <AnimatePresence initial={false}>
             {sortedActiveTasks.map((task) => {
               const info = taskInfoFromSpec(task, locale);
               const showRetryNow = task.state === "QUEUED" || task.state === "POLLING";
+              const canControlRuntimeTask = ACTIVE_TASK_STATES_FOR_LIST.has(task.state);
               const ticketBadge = getTaskTicketBadge(task);
               const displayState = taskDisplayState(task);
               const taskError = taskErrorPresentation(task);
               return (
-                <li key={task.id} className="overflow-hidden rounded-2xl border border-blossom-200 bg-white shadow-sm">
+                <motion.li
+                  key={task.id}
+                  layout
+                  initial={TASK_CARD_INITIAL_ANIMATION}
+                  animate={TASK_CARD_ANIMATE_ANIMATION}
+                  exit={TASK_CARD_EXIT_ANIMATION}
+                  transition={TASK_CARD_ENTER_EXIT_TRANSITION}
+                  className="overflow-hidden rounded-2xl border border-blossom-200 bg-white shadow-sm"
+                >
                   <div className="border-b border-dashed border-blossom-200 bg-gradient-to-r from-blossom-50 via-white to-sky-50 px-4 py-3 sm:px-5">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
@@ -3412,7 +3469,7 @@ export function TrainDashboard() {
                         {t("train.action.retry")}
                       </button>
                     ) : null}
-                    {task.state !== "PAUSED" ? (
+                    {canControlRuntimeTask && task.state !== "PAUSED" ? (
                       <button
                         type="button"
                         onClick={() => sendTaskAction(task.id, "pause")}
@@ -3420,7 +3477,8 @@ export function TrainDashboard() {
                       >
                         {t("train.action.pause")}
                       </button>
-                    ) : (
+                    ) : null}
+                    {canControlRuntimeTask && task.state === "PAUSED" ? (
                       <button
                         type="button"
                         onClick={() => sendTaskAction(task.id, "resume")}
@@ -3428,7 +3486,7 @@ export function TrainDashboard() {
                       >
                         {t("train.action.resume")}
                       </button>
-                    )}
+                    ) : null}
                     {isAwaitingPaymentTask(task) ? (
                       <button
                         type="button"
@@ -3449,17 +3507,20 @@ export function TrainDashboard() {
                         {cancellingTaskId === task.id ? t("train.action.cancelling") : t("train.action.cancelReservation")}
                       </button>
                     ) : null}
-                    <button
-                      type="button"
-                      onClick={() => sendTaskAction(task.id, "cancel")}
-                      className={`${SMALL_DANGER_BUTTON_CLASS} ${TASK_ACTION_BUTTON_SIZE_CLASS}`}
-                    >
-                      {t("train.action.cancel")}
-                    </button>
+                    {canControlRuntimeTask ? (
+                      <button
+                        type="button"
+                        onClick={() => sendTaskAction(task.id, "cancel")}
+                        className={`${SMALL_DANGER_BUTTON_CLASS} ${TASK_ACTION_BUTTON_SIZE_CLASS}`}
+                      >
+                        {t("train.action.cancel")}
+                      </button>
+                    ) : null}
                   </div>
-                </li>
+                </motion.li>
               );
             })}
+            </AnimatePresence>
           </ul>
         </div>
 
@@ -3467,6 +3528,7 @@ export function TrainDashboard() {
           <h2 className="text-lg font-semibold text-slate-800">{t("train.completedTasks")}</h2>
           <ul className="mt-4 space-y-3 text-sm">
             {sortedCompletedTasks.length === 0 ? <li className="text-slate-500">{t("train.empty.completedTasks")}</li> : null}
+            <AnimatePresence initial={false}>
             {sortedCompletedTasks.map((task) => {
               const info = taskInfoFromSpec(task, locale);
               const ticketBadge = getTaskTicketBadge(task);
@@ -3474,7 +3536,15 @@ export function TrainDashboard() {
               const ticketTrainLabel = taskTicketTrainLabel(task);
               const ticketSeatLabel = taskTicketSeatLabel(task, locale);
               return (
-                <li key={task.id} className="overflow-hidden rounded-2xl border border-blossom-200 bg-white shadow-sm">
+                <motion.li
+                  key={task.id}
+                  layout
+                  initial={TASK_CARD_INITIAL_ANIMATION}
+                  animate={TASK_CARD_ANIMATE_ANIMATION}
+                  exit={TASK_CARD_EXIT_ANIMATION}
+                  transition={TASK_CARD_ENTER_EXIT_TRANSITION}
+                  className="overflow-hidden rounded-2xl border border-blossom-200 bg-white shadow-sm"
+                >
                   <div className="border-b border-dashed border-blossom-200 bg-gradient-to-r from-slate-50 via-white to-blossom-50 px-4 py-3 sm:px-5">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
@@ -3599,6 +3669,17 @@ export function TrainDashboard() {
                       aria-hidden="true"
                       className="pointer-events-none absolute -right-3 top-0 h-6 w-6 -translate-y-1/2 rounded-full border border-blossom-200 bg-white"
                     />
+                    {isRetryDeleteTerminalTask(task) ? (
+                      <button
+                        type="button"
+                        onClick={() => sendTaskAction(task.id, "retry")}
+                        disabled={!task.retry_now_allowed}
+                        title={task.retry_now_allowed ? t("train.action.retry") : retryNowDisabledTitle(task)}
+                        className={`${task.retry_now_allowed ? SMALL_BUTTON_CLASS : SMALL_DISABLED_BUTTON_CLASS} ${TASK_ACTION_BUTTON_SIZE_CLASS}`}
+                      >
+                        {t("train.action.retry")}
+                      </button>
+                    ) : null}
                     {isAwaitingPaymentTask(task) ? (
                       <button
                         type="button"
@@ -3612,7 +3693,7 @@ export function TrainDashboard() {
                         {payingTaskId === task.id ? t("train.action.paying") : t("train.action.pay")}
                       </button>
                     ) : null}
-                    {isAwaitingPaymentTask(task) ? (
+                    {isRetryDeleteTerminalTask(task) ? null : isAwaitingPaymentTask(task) ? (
                       <button
                         type="button"
                         onClick={() => void cancelTaskTicket(task.id)}
@@ -3639,10 +3720,20 @@ export function TrainDashboard() {
                         {t("common.delete")}
                       </button>
                     )}
+                    {isRetryDeleteTerminalTask(task) ? (
+                      <button
+                        type="button"
+                        onClick={() => sendTaskAction(task.id, "delete")}
+                        className={`${SMALL_DANGER_BUTTON_CLASS} ${TASK_ACTION_BUTTON_SIZE_CLASS}`}
+                      >
+                        {t("common.delete")}
+                      </button>
+                    ) : null}
                   </div>
-                </li>
+                </motion.li>
               );
             })}
+            </AnimatePresence>
           </ul>
         </div>
       </div>

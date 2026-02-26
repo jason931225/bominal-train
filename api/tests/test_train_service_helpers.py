@@ -77,8 +77,11 @@ def test_compute_retry_now_status_covers_all_major_branches():
     paused = _make_task(state="PAUSED")
     assert train_service._compute_retry_now_status(paused, now=now) == (False, "paused_use_resume", None)
 
-    terminal = _make_task(state="FAILED")
-    assert train_service._compute_retry_now_status(terminal, now=now) == (False, "terminal_state", None)
+    terminal_retryable = _make_task(state="FAILED")
+    assert train_service._compute_retry_now_status(terminal_retryable, now=now) == (True, None, None)
+
+    completed_terminal = _make_task(state="COMPLETED")
+    assert train_service._compute_retry_now_status(completed_terminal, now=now) == (False, "not_eligible_state", None)
 
     running = _make_task(state="RUNNING")
     assert train_service._compute_retry_now_status(running, now=now) == (False, "task_running", None)

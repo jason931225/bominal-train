@@ -111,6 +111,7 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
   const ticketArtifact = useMemo(() => artifacts.find((artifact) => artifact.kind === "ticket") ?? null, [artifacts]);
   const canCancelReservation = useMemo(() => {
     if (!ticketArtifact) return false;
+    if (task?.state === "EXPIRED" || task?.state === "CANCELLED" || task?.state === "FAILED") return false;
     const status = readString(ticketArtifact.data_json_safe.status);
     const paid = readBoolean(ticketArtifact.data_json_safe.paid);
     const cancelled = readBoolean(ticketArtifact.data_json_safe.cancelled) ?? false;
@@ -121,7 +122,7 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
   }, [ticketArtifact, isCompleted]);
   const canPayReservation = useMemo(() => {
     if (!ticketArtifact) return false;
-    if (task?.state === "EXPIRED" || task?.state === "CANCELLED") return false;
+    if (task?.state === "EXPIRED" || task?.state === "CANCELLED" || task?.state === "FAILED") return false;
     const status = readString(ticketArtifact.data_json_safe.status);
     const paid = readBoolean(ticketArtifact.data_json_safe.paid);
     const cancelled = readBoolean(ticketArtifact.data_json_safe.cancelled) ?? false;
@@ -130,6 +131,7 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
   const canPauseTask = Boolean(task) && !isTerminal && task?.state !== "PAUSED";
   const canResumeTask = Boolean(task) && !isTerminal && task?.state === "PAUSED";
   const canCancelTask = Boolean(task) && (!isTerminal || canCancelReservation);
+  const canRetryNow = task ? task.state === "QUEUED" || task.state === "POLLING" || isTerminal : false;
   const sortedAttempts = useMemo(() => {
     return [...attempts].sort((left, right) => {
       const leftStarted = Date.parse(left.started_at);
@@ -442,7 +444,7 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
               </p>
             ) : null}
           </div>
-          {!isTerminal && (task.state === "QUEUED" || task.state === "POLLING") ? (
+          {canRetryNow ? (
             <div className="mt-4 flex flex-wrap items-center gap-2">
               <button
                 type="button"

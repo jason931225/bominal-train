@@ -420,6 +420,7 @@
     "selectSchedulesFirst": "먼저 시간표를 선택하세요",
     "autoPay": "자동 결제",
     "autoPayHelp": "Wallet 정보를 저장하면 자동 결제를 사용할 수 있습니다.",
+    "retryOnExpiry": "만료 시 재시도",
     "notify": "알림",
     "creatingTask": "작업 생성 중...",
     "createTask": "작업 생성",

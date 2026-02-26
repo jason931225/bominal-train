@@ -2785,6 +2785,51 @@ async def test_retry_task_now_rejects_processing_states(db_session, monkeypatch)
 
 
 @pytest.mark.asyncio
+async def test_retry_task_now_allows_expired_terminal_task(db_session, monkeypatch):
+    enqueue_calls: list[tuple[str, float]] = []
+
+    async def _enqueue(task_id: str, defer_seconds: float = 0.0) -> bool:
+        enqueue_calls.append((task_id, float(defer_seconds)))
+        return True
+
+    monkeypatch.setattr("app.modules.train.service.enqueue_train_task", _enqueue)
+
+    user = User(
+        email="retry-expired-terminal@example.com",
+        password_hash="x",
+        display_name="Retry Expired Terminal",
+        role_id=2,
+    )
+    db_session.add(user)
+    await db_session.flush()
+
+    now = _utc_now()
+    task = Task(
+        user_id=user.id,
+        module="train",
+        state="EXPIRED",
+        deadline_at=now + timedelta(minutes=10),
+        completed_at=now - timedelta(minutes=1),
+        spec_json={"provider": "SRT", "manual_retry_last_at": (now - timedelta(minutes=5)).isoformat()},
+        idempotency_key="retry-expired-terminal",
+    )
+    db_session.add(task)
+    await db_session.commit()
+
+    response = await retry_task_now(db_session, task_id=task.id, user=user)
+
+    assert response.task.state == "QUEUED"
+    assert enqueue_calls == [(str(task.id), 0.0)]
+
+    await db_session.refresh(task)
+    assert task.state == "QUEUED"
+    assert task.completed_at is None
+    assert task.failed_at is None
+    assert task.cancelled_at is None
+    assert task.spec_json.get("manual_retry_last_at")
+
+
+@pytest.mark.asyncio
 async def test_retry_task_now_marks_expired_when_deadline_passed(db_session, monkeypatch):
     async def _noop_enqueue(task_id: str, defer_seconds: float = 0.0) -> None:
         return None

@@ -542,6 +542,63 @@ async def test_login_rehashes_password_when_policy_changes(db_session, monkeypat
 
 
 @pytest.mark.asyncio
+async def test_login_refreshes_train_reservations_after_sign_in(db_session, monkeypatch):
+    role_user = (await db_session.execute(select(Role).where(Role.name == "user"))).scalar_one()
+    email = f"signin-refresh-{uuid4().hex[:8]}@example.com"
+    user = User(
+        email=email,
+        password_hash=hash_password("SuperSecret123"),
+        display_name=f"SigninRefresh-{uuid4().hex[:6]}",
+        role_id=role_user.id,
+        ui_locale="en",
+    )
+    db_session.add(user)
+    await db_session.commit()
+
+    refresh_calls: list[UUID] = []
+
+    async def _refresh_train_reservations_after_sign_in(db, *, user):  # noqa: ANN001
+        refresh_calls.append(user.id)
+
+    monkeypatch.setattr(auth_routes, "refresh_train_reservations_after_sign_in", _refresh_train_reservations_after_sign_in)
+
+    response = await auth_routes.login(
+        payload=LoginRequest(email=email, password="SuperSecret123", remember_me=False),
+        request=_request_for_login(),
+        db=db_session,
+    )
+    assert response.status_code == 200
+    assert refresh_calls == [user.id]
+
+
+@pytest.mark.asyncio
+async def test_login_keeps_sign_in_successful_when_reservation_refresh_fails(db_session, monkeypatch):
+    role_user = (await db_session.execute(select(Role).where(Role.name == "user"))).scalar_one()
+    email = f"signin-refresh-fail-{uuid4().hex[:8]}@example.com"
+    user = User(
+        email=email,
+        password_hash=hash_password("SuperSecret123"),
+        display_name=f"SigninRefreshFail-{uuid4().hex[:6]}",
+        role_id=role_user.id,
+        ui_locale="en",
+    )
+    db_session.add(user)
+    await db_session.commit()
+
+    async def _refresh_train_reservations_after_sign_in(db, *, user):  # noqa: ANN001
+        raise RuntimeError("provider unavailable")
+
+    monkeypatch.setattr(auth_routes, "refresh_train_reservations_after_sign_in", _refresh_train_reservations_after_sign_in)
+
+    response = await auth_routes.login(
+        payload=LoginRequest(email=email, password="SuperSecret123", remember_me=False),
+        request=_request_for_login(),
+        db=db_session,
+    )
+    assert response.status_code == 200
+
+
+@pytest.mark.asyncio
 async def test_register_duplicate_display_name_and_update_integrity_delete_paths(db_session, monkeypatch):
     async def _enqueue_ok(_payload, defer_seconds: float = 0.0):  # noqa: ANN001
         return "job-id"
@@ -651,12 +708,18 @@ async def test_passkey_route_units_with_mocked_service(db_session, monkeypatch):
         assert credential == {"id": "cred-1"}
         return None
 
+    refresh_calls: list[UUID] = []
+
+    async def _refresh_train_reservations_after_sign_in(db, *, user):  # noqa: ANN001
+        refresh_calls.append(user.id)
+
     monkeypatch.setattr(auth_routes, "list_passkeys", _list_passkeys)
     monkeypatch.setattr(auth_routes, "begin_passkey_registration", _begin_registration)
     monkeypatch.setattr(auth_routes, "complete_passkey_registration", _complete_registration)
     monkeypatch.setattr(auth_routes, "delete_passkey", _delete_passkey)
     monkeypatch.setattr(auth_routes, "begin_passkey_authentication", _begin_authentication)
     monkeypatch.setattr(auth_routes, "complete_passkey_authentication", _complete_authentication)
+    monkeypatch.setattr(auth_routes, "refresh_train_reservations_after_sign_in", _refresh_train_reservations_after_sign_in)
 
     async def _issue_step_up_token(db, *, user_id):  # noqa: ANN001
         return "step-up-token"
@@ -726,6 +789,7 @@ async def test_passkey_route_units_with_mocked_service(db_session, monkeypatch):
     )
     assert auth_response.status_code == 200
     assert "set-cookie" in auth_response.headers
+    assert refresh_calls == [user.id]
 
     verified_password = await auth_routes.verify_current_password(
         payload=PasswordVerifyRequest(current_password="SuperSecret123"),

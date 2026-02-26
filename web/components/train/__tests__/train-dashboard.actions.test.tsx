@@ -477,6 +477,10 @@ describe("TrainDashboard action flows", () => {
         ticket_status: "cancelled",
         ticket_paid: false,
       }),
+      makeTask("expired-control", "EXPIRED", {
+        ticket_status: "awaiting_payment",
+        ticket_paid: false,
+      }),
     ];
 
     await renderDashboard();
@@ -497,7 +501,7 @@ describe("TrainDashboard action flows", () => {
     expect(within(awaitingCard).queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
     expect(within(awaitingCard).getByRole("button", { name: "Pay" })).toBeInTheDocument();
     expect(within(awaitingCard).getByRole("button", { name: "Cancel reservation" })).toBeInTheDocument();
-    expect(within(awaitingCard).getByRole("button", { name: "Cancel" })).toBeInTheDocument();
+    expect(within(awaitingCard).queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument();
 
     const completedIssuedCard = getTaskCard("completed-issued-control");
     expect(within(completedIssuedCard).queryByRole("button", { name: "Pay" })).not.toBeInTheDocument();
@@ -508,6 +512,13 @@ describe("TrainDashboard action flows", () => {
     expect(within(completedCancelledCard).getByRole("button", { name: "Delete" })).toBeInTheDocument();
     expect(within(completedCancelledCard).queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument();
     expect(within(completedCancelledCard).queryByRole("button", { name: "Pay" })).not.toBeInTheDocument();
+
+    const expiredCard = getTaskCard("expired-control");
+    expect(within(expiredCard).getByRole("button", { name: "Retry" })).toBeInTheDocument();
+    expect(within(expiredCard).getByRole("button", { name: "Delete" })).toBeInTheDocument();
+    expect(within(expiredCard).queryByRole("button", { name: "Pay" })).not.toBeInTheDocument();
+    expect(within(expiredCard).queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument();
+    expect(within(expiredCard).queryByRole("button", { name: "Cancel reservation" })).not.toBeInTheDocument();
 
     fireEvent.click(within(queuedCard).getByRole("button", { name: "Retry" }));
     await flushAsyncEffects();
@@ -523,6 +534,10 @@ describe("TrainDashboard action flows", () => {
     fireEvent.click(within(queuedCard).getByRole("button", { name: "Cancel" }));
     await flushAsyncEffects();
     fireEvent.click(within(completedCancelledCard).getByRole("button", { name: "Delete" }));
+    await flushAsyncEffects();
+    fireEvent.click(within(expiredCard).getByRole("button", { name: "Retry" }));
+    await flushAsyncEffects();
+    fireEvent.click(within(expiredCard).getByRole("button", { name: "Delete" }));
     await flushAsyncEffects();
 
     expect(fetchMock).toHaveBeenCalledWith(
@@ -551,6 +566,14 @@ describe("TrainDashboard action flows", () => {
     );
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining("/api/train/tasks/completed-cancelled-control/delete"),
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/api/train/tasks/expired-control/retry"),
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/api/train/tasks/expired-control/delete"),
       expect.objectContaining({ method: "POST" }),
     );
   });
@@ -750,19 +773,19 @@ describe("TrainDashboard action flows", () => {
     fireEvent.click(screen.getByRole("button", { name: "Restore live tasks" }));
     await flushAsyncEffects();
 
-    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Retry" })[0]);
     await flushAsyncEffects();
 
     fireEvent.click(screen.getAllByRole("button", { name: "Pause" })[0]);
     await flushAsyncEffects();
 
-    fireEvent.click(screen.getByRole("button", { name: "Resume" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Resume" })[0]);
     await flushAsyncEffects();
 
     const confirmMock = vi.spyOn(window, "confirm").mockReturnValue(true);
     fireEvent.click(screen.getAllByRole("button", { name: "Pay" })[0]);
     await flushAsyncEffects();
-    fireEvent.click(screen.getByRole("button", { name: "Cancel reservation" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Cancel reservation" })[0]);
     await flushAsyncEffects();
     fireEvent.click(screen.getAllByRole("button", { name: "Cancel" })[0]);
     await flushAsyncEffects();
