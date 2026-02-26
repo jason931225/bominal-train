@@ -19,7 +19,7 @@ from app.modules.train.providers.ktx_client import parse_ktx_search_response
 from app.modules.train.providers.srt_client import parse_srt_search_response
 from app.modules.train.rate_limiter import RedisTokenBucketLimiter
 from app.modules.train.schemas import TrainPassengers
-from app.modules.train.service import get_task_detail, list_tasks, retry_task_now
+from app.modules.train.service import get_task_detail, list_provider_reservations, list_tasks, retry_task_now
 from app.modules.train.schemas import ProviderCredentialStatus
 from app.modules.train.worker import run_train_task
 from tests.conftest import make_fake_get_redis_client
@@ -3177,6 +3177,144 @@ async def test_task_list_classifies_completed_awaiting_payment_as_active(db_sess
     assert pending_task.id not in completed_ids
     assert waiting_task.id not in completed_ids
     assert paid_task.id in completed_ids
+
+
+@pytest.mark.asyncio
+async def test_provider_reservation_discovery_populates_active_and_completed_lists(db_session, monkeypatch):
+    user = User(
+        email="provider-discovery@example.com",
+        password_hash="x",
+        display_name="Provider Discovery User",
+        role_id=2,
+    )
+    db_session.add(user)
+    await db_session.flush()
+
+    now = _utc_now()
+    waiting_deadline = (now + timedelta(minutes=20)).isoformat()
+    waiting_departure = (now + timedelta(hours=3)).isoformat()
+    paid_departure = (now + timedelta(hours=5)).isoformat()
+
+    class _ProviderClient:
+        async def get_reservations(self, **_kwargs):  # noqa: ANN003
+            return ProviderOutcome(
+                ok=True,
+                data={
+                    "reservations": [
+                        {
+                            "reservation_id": "DISCOVERED-WAIT-1",
+                            "provider": "KTX",
+                            "paid": False,
+                            "waiting": True,
+                            "dep": "서울",
+                            "arr": "부산",
+                            "departure_at": waiting_departure,
+                            "payment_deadline_at": waiting_deadline,
+                            "tickets": [],
+                        },
+                        {
+                            "reservation_id": "DISCOVERED-PAID-1",
+                            "provider": "KTX",
+                            "paid": True,
+                            "waiting": False,
+                            "dep": "서울",
+                            "arr": "동대구",
+                            "departure_at": paid_departure,
+                            "tickets": [{"car_no": "5", "seat_no": "10A"}],
+                        },
+                    ]
+                },
+            )
+
+    async def _provider_client(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        return _ProviderClient()
+
+    monkeypatch.setattr("app.modules.train.service._get_logged_in_provider_client", _provider_client)
+
+    first = await list_provider_reservations(db_session, user=user, provider="KTX", paid_only=False)
+    assert len(first.reservations) == 2
+
+    active = await list_tasks(db_session, user=user, status_filter="active")
+    completed = await list_tasks(db_session, user=user, status_filter="completed")
+
+    active_row = next((row for row in active.tasks if row.ticket_reservation_id == "DISCOVERED-WAIT-1"), None)
+    assert active_row is not None
+    assert active_row.ticket_status == "waiting"
+    assert active_row.ticket_paid is False
+
+    completed_row = next((row for row in completed.tasks if row.ticket_reservation_id == "DISCOVERED-PAID-1"), None)
+    assert completed_row is not None
+    assert completed_row.ticket_status == "paid"
+    assert completed_row.ticket_paid is True
+
+    second = await list_provider_reservations(db_session, user=user, provider="KTX", paid_only=False)
+    assert len(second.reservations) == 2
+    task_count = len((await db_session.execute(select(Task).where(Task.user_id == user.id))).scalars().all())
+    assert task_count == 2
+
+
+@pytest.mark.asyncio
+async def test_provider_reservation_discovery_preserves_existing_active_waiting_task_state(db_session, monkeypatch):
+    user = User(
+        email="provider-discovery-existing@example.com",
+        password_hash="x",
+        display_name="Provider Discovery Existing User",
+        role_id=2,
+    )
+    db_session.add(user)
+    await db_session.flush()
+
+    task = Task(
+        user_id=user.id,
+        module="train",
+        state="POLLING",
+        deadline_at=_utc_now() + timedelta(hours=6),
+        spec_json={"provider": "KTX"},
+        idempotency_key="provider-discovery-existing",
+    )
+    db_session.add(task)
+    await db_session.flush()
+    db_session.add(
+        Artifact(
+            task_id=task.id,
+            module="train",
+            kind="ticket",
+            data_json_safe={
+                "provider": "KTX",
+                "reservation_id": "DISCOVERED-EXISTING-WAIT-1",
+                "status": "waiting",
+                "paid": False,
+            },
+        )
+    )
+    await db_session.commit()
+
+    class _ProviderClient:
+        async def get_reservations(self, **_kwargs):  # noqa: ANN003
+            return ProviderOutcome(
+                ok=True,
+                data={
+                    "reservations": [
+                        {
+                            "reservation_id": "DISCOVERED-EXISTING-WAIT-1",
+                            "provider": "KTX",
+                            "paid": False,
+                            "waiting": True,
+                            "dep": "서울",
+                            "arr": "부산",
+                            "departure_at": (_utc_now() + timedelta(hours=2)).isoformat(),
+                        }
+                    ]
+                },
+            )
+
+    async def _provider_client(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        return _ProviderClient()
+
+    monkeypatch.setattr("app.modules.train.service._get_logged_in_provider_client", _provider_client)
+    await list_provider_reservations(db_session, user=user, provider="KTX", paid_only=False)
+    await db_session.refresh(task)
+    assert task.state == "POLLING"
 
 
 @pytest.mark.asyncio

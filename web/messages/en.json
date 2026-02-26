@@ -459,12 +459,14 @@
       "passengerMinimum": "At least 1 total passenger is required.",
       "createTask": "Could not create Task.",
       "taskDetailLoad": "Could not load task detail.",
+      "taskRefresh": "Could not refresh task detail.",
       "ticketCancel": "Could not cancel ticket.",
       "paymentProcess": "Could not process payment."
     },
     "notice": {
       "taskDeduplicated": "Task already active (deduplicated).",
       "taskCreatedQueued": "Task created and queued.",
+      "taskRefreshed": "Task detail synced.",
       "ticketCancelDone": "Ticket cancellation request completed.",
       "paymentProcessed": "Payment processed.",
       "noSchedulesInWindow": "No schedules in this window.",
@@ -518,6 +520,8 @@
       "cancelling": "Cancelling...",
       "cancelReservation": "Cancel reservation",
       "cancel": "Cancel",
+      "syncRefresh": "Sync refresh",
+      "syncing": "Syncing...",
       "payNow": "Pay now",
       "retry": "Retry",
       "pause": "Pause",
