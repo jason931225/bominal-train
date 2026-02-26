@@ -79,6 +79,19 @@ def test_create_base_app_version_endpoint_uses_defaults(monkeypatch):
     assert payload["build_version"] == "unknown"
 
 
+def test_create_base_app_version_endpoint_available_under_api_prefix(monkeypatch):
+    monkeypatch.setenv("APP_VERSION", "2.3.4")
+    monkeypatch.setenv("BUILD_VERSION", "build-prefix")
+
+    app = app_common.create_base_app(description="version api prefix")
+    client = TestClient(app)
+    root_payload = client.get("/version").json()
+    prefixed_response = client.get("/api/version")
+
+    assert prefixed_response.status_code == 200
+    assert prefixed_response.json() == root_payload
+
+
 def test_create_base_app_healthcheck_degraded_paths(monkeypatch):
     # DB failure path.
     monkeypatch.setattr(app_common, "SessionLocal", lambda: _SessionContext(should_fail=True))

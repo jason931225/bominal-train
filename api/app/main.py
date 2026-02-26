@@ -168,6 +168,7 @@ async def healthcheck() -> dict[str, str | bool]:
     return health
 
 
+@app.get("/api/version")
 @app.get("/version")
 async def version_info() -> dict[str, str]:
     return build_version_payload()
