@@ -957,7 +957,8 @@ export function taskTicketTrainLabel(task: TrainTaskSummary): string | null {
   if (typeof task.ticket_train_no !== "string") {
     return null;
   }
-  const trainNo = task.ticket_train_no.trim();
+  const rawTrainNo = task.ticket_train_no.trim();
+  const trainNo = /^\d+$/.test(rawTrainNo) ? String(parseInt(rawTrainNo, 10)) : rawTrainNo;
   if (!trainNo) {
     return null;
   }

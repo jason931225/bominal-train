@@ -400,6 +400,14 @@ describe("train dashboard helpers", () => {
     ).toBe("SRT 711");
     expect(
       taskTicketTrainLabel(
+        makeTask("train-leading-zero", "COMPLETED", {
+          ticket_train_no: "00383",
+          spec_json: { provider: "SRT" } as unknown as Record<string, unknown>,
+        }),
+      ),
+    ).toBe("SRT 383");
+    expect(
+      taskTicketTrainLabel(
         makeTask("train-provider-invalid-spec", "COMPLETED", {
           ticket_train_no: "811",
           spec_json: "bad" as unknown as Record<string, unknown>,
