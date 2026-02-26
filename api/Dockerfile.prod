@@ -17,10 +17,15 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 
 FROM python:3.14.3-slim AS runner
 
+ARG BUILD_VERSION=dev
+ARG APP_VERSION=0.0.0
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    BUILD_VERSION=${BUILD_VERSION} \
+    APP_VERSION=${APP_VERSION} \
     PATH="/opt/venv/bin:$PATH"
 
 WORKDIR /app
