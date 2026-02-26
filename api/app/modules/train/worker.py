@@ -27,6 +27,12 @@ from app.modules.train.constants import (
     ATTEMPT_ACTION_SYNC,
     SECRET_KIND_KTX_CREDENTIALS,
     SECRET_KIND_SRT_CREDENTIALS,
+    SPEC_KEY_MANUAL_RETRY_LAST_AT,
+    SPEC_KEY_NEXT_RUN_AT,
+    SPEC_KEY_NOTIFY_EMAIL_JOB_ID,
+    SPEC_KEY_NOTIFY_EMAIL_SENT_AT,
+    SPEC_KEY_NOTIFY_EMAIL_STATE,
+    SPEC_KEY_RETRY_ON_EXPIRY,
     TASK_MODULE,
     TERMINAL_TASK_STATES,
     credential_kind,
@@ -45,6 +51,9 @@ from app.services.wallet import get_payment_card_for_execution
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
+MANUAL_RETRY_LAST_AT_KEY = SPEC_KEY_MANUAL_RETRY_LAST_AT
+NEXT_RUN_AT_KEY = SPEC_KEY_NEXT_RUN_AT
+RETRY_ON_EXPIRY_KEY = SPEC_KEY_RETRY_ON_EXPIRY
 # Poll-delay model constants.
 #
 # We model provider-search retry delay with:
@@ -132,6 +141,66 @@ def _as_aware_utc(value: datetime) -> datetime:
 
 def _utc_now_aware() -> datetime:
     return _as_aware_utc(utc_now())
+
+
+def _compute_task_deadline_from_spec(spec_json: dict[str, Any]) -> datetime:
+    ranked = spec_json.get("selected_trains_ranked", [])
+    if not isinstance(ranked, list):
+        raise ValueError("selected_trains_ranked must be a list")
+
+    departures: list[datetime] = []
+    for row in ranked:
+        if not isinstance(row, dict):
+            continue
+        departure_at = str(row.get("departure_at") or "")
+        if not departure_at:
+            continue
+        try:
+            departures.append(_as_aware_utc(datetime.fromisoformat(departure_at)))
+        except ValueError:
+            continue
+    if not departures:
+        raise ValueError("selected_trains_ranked cannot be empty")
+    return min(departures)
+
+
+def _build_retry_on_expiry_spec(task: Task) -> dict[str, Any]:
+    retry_spec = dict(task.spec_json or {})
+    retry_spec.pop(MANUAL_RETRY_LAST_AT_KEY, None)
+    retry_spec.pop(NEXT_RUN_AT_KEY, None)
+    retry_spec.pop(SPEC_KEY_NOTIFY_EMAIL_SENT_AT, None)
+    retry_spec.pop(SPEC_KEY_NOTIFY_EMAIL_STATE, None)
+    retry_spec.pop(SPEC_KEY_NOTIFY_EMAIL_JOB_ID, None)
+    return validate_safe_metadata(retry_spec)
+
+
+def _apply_retry_reset(task: Task, *, retry_spec: dict[str, Any], now: datetime) -> None:
+    task.spec_json = validate_safe_metadata(retry_spec)
+    task.state = "QUEUED"
+    task.paused_at = None
+    task.completed_at = None
+    task.failed_at = None
+    task.cancelled_at = None
+    task.updated_at = now
+
+
+def _requeue_task_after_expiry_in_place(task: Task, *, now: datetime) -> bool:
+    spec = dict(task.spec_json or {})
+    if not bool(spec.get(RETRY_ON_EXPIRY_KEY)):
+        return False
+
+    retry_spec = _build_retry_on_expiry_spec(task)
+    try:
+        retry_deadline_at = _compute_task_deadline_from_spec(retry_spec)
+    except Exception:
+        return False
+
+    if now >= retry_deadline_at:
+        return False
+
+    _apply_retry_reset(task, retry_spec=retry_spec, now=now)
+    task.deadline_at = retry_deadline_at
+    return True
 
 
 def _seat_preference_order(seat_class: str) -> tuple[str, ...]:
@@ -786,7 +855,7 @@ async def _enqueue_terminal_notification(
     spec = task.spec_json if isinstance(task.spec_json, dict) else {}
     if not bool(spec.get("notify")):
         return
-    if spec.get("notify_email_sent_at"):
+    if spec.get(SPEC_KEY_NOTIFY_EMAIL_SENT_AT):
         return
 
     user = await db.get(User, task.user_id)
@@ -868,20 +937,33 @@ async def _enqueue_terminal_notification(
         return
 
     next_spec = dict(spec)
-    next_spec["notify_email_sent_at"] = utc_now().isoformat()
-    next_spec["notify_email_state"] = final_state
+    next_spec[SPEC_KEY_NOTIFY_EMAIL_SENT_AT] = utc_now().isoformat()
+    next_spec[SPEC_KEY_NOTIFY_EMAIL_STATE] = final_state
     if job_id:
-        next_spec["notify_email_job_id"] = job_id
+        next_spec[SPEC_KEY_NOTIFY_EMAIL_JOB_ID] = job_id
     task.spec_json = next_spec
     task.updated_at = utc_now()
     await db.commit()
 
 
 async def _mark_expired(db: AsyncSession, task: Task) -> None:
+    expired_at = _utc_now_aware()
     task.state = "EXPIRED"
-    task.updated_at = utc_now()
+    task.updated_at = expired_at
+    requeued = _requeue_task_after_expiry_in_place(task, now=expired_at)
     await db.commit()
-    await publish_task_state_event(user_id=task.user_id, task_id=task.id, state=task.state, updated_at=task.updated_at)
+    await publish_task_state_event(user_id=task.user_id, task_id=task.id, state="EXPIRED", updated_at=expired_at)
+    if requeued:
+        enqueued = await enqueue_train_task(str(task.id))
+        if enqueued is False:
+            await enqueue_train_task(str(task.id), defer_seconds=0.01)
+        await publish_task_state_event(
+            user_id=task.user_id,
+            task_id=task.id,
+            state=task.state,
+            updated_at=task.updated_at,
+        )
+        return
     await _enqueue_terminal_notification(db, task=task, final_state="EXPIRED")
 
 
@@ -908,7 +990,7 @@ async def _schedule_retry(db: AsyncSession, task: Task, delay_seconds: float) ->
     # (ARQ defer queue), and only touch DB when lifecycle state changes.
     if task.state != "POLLING":
         next_spec = dict(task.spec_json or {})
-        next_spec["next_run_at"] = (utc_now() + timedelta(seconds=delay_seconds)).isoformat()
+        next_spec[NEXT_RUN_AT_KEY] = (utc_now() + timedelta(seconds=delay_seconds)).isoformat()
         task.spec_json = next_spec
         task.state = "POLLING"
         task.updated_at = utc_now()
@@ -965,6 +1047,10 @@ def _find_paid_ticket_artifact(artifacts: list[Artifact]) -> Artifact | None:
 
 def _find_open_ticket_artifact(artifacts: list[Artifact]) -> Artifact | None:
     for artifact in artifacts:
+        status = str(artifact.data_json_safe.get("status") or "").strip().lower()
+        cancelled = bool(artifact.data_json_safe.get("cancelled"))
+        if cancelled or status in {"expired", "cancelled", "reservation_not_found"}:
+            continue
         if artifact.data_json_safe.get("reservation_id") and not bool(artifact.data_json_safe.get("paid")):
             return artifact
     return None

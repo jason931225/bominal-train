@@ -133,6 +133,7 @@ class TrainTaskCreateRequest(BaseModel):
     passengers: TrainPassengers
     seat_class: SeatClass
     auto_pay: bool = True
+    retry_on_expiry: bool = False
     notify: bool = False
     confirm_duplicate: bool = False
 

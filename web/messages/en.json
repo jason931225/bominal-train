@@ -421,6 +421,7 @@
     "selectSchedulesFirst": "Select schedules first",
     "autoPay": "Auto-pay",
     "autoPayHelp": "Save wallet details first to enable auto-pay",
+    "retryOnExpiry": "Retry on expiry",
     "notify": "Notify",
     "creatingTask": "Creating Task...",
     "createTask": "Create Task",

@@ -104,6 +104,7 @@ describe("TrainDashboard feature-flag and fallback branches", () => {
     ];
     const schedules = [makeSchedule()];
     let createTaskAutoPay: boolean | null = null;
+    let createTaskRetryOnExpiry: boolean | null = null;
 
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -143,8 +144,9 @@ describe("TrainDashboard feature-flag and fallback branches", () => {
         return jsonResponse({ schedules });
       }
       if (url.endsWith("/api/train/tasks") && method === "POST") {
-        const payload = JSON.parse(String(init?.body ?? "{}")) as { auto_pay?: boolean };
+        const payload = JSON.parse(String(init?.body ?? "{}")) as { auto_pay?: boolean; retry_on_expiry?: boolean };
         createTaskAutoPay = Boolean(payload.auto_pay);
+        createTaskRetryOnExpiry = Boolean(payload.retry_on_expiry);
         return jsonResponse({ task: makeTask("dedup-task", "QUEUED"), deduplicated: true });
       }
       if (url.includes("/api/train/tasks/completed-awaiting/pay") && method === "POST") {
@@ -175,11 +177,13 @@ describe("TrainDashboard feature-flag and fallback branches", () => {
     fireEvent.click(screen.getByRole("button", { name: "SRT 301" }));
 
     fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await flushAsyncEffects();
     expect(screen.getByRole("heading", { name: "Review task before starting" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
     await flushAsyncEffects();
     expect(screen.getByText("Task already active (deduplicated).")).toBeInTheDocument();
     expect(createTaskAutoPay).toBe(true);
+    expect(createTaskRetryOnExpiry).toBe(true);
 
     const completedPayButton = screen.getAllByRole("button", { name: "Pay" })[0];
     fireEvent.click(completedPayButton);
@@ -203,6 +207,97 @@ describe("TrainDashboard feature-flag and fallback branches", () => {
       await Promise.resolve();
     });
   }, 20_000);
+
+  it("refreshes wallet status when opening review and allows disabling retry-on-expiry", async () => {
+    vi.stubEnv("NEXT_PUBLIC_TRAIN_AUTO_PAY_ENABLED", "true");
+    vi.resetModules();
+    const { LocaleProvider } = await import("@/components/locale-provider");
+    const { TrainDashboard } = await import("@/components/train/train-dashboard");
+
+    const schedules = [makeSchedule()];
+    let walletConfiguredCallCount = 0;
+    let submittedRetryOnExpiry: boolean | null = null;
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? "GET";
+
+      if (url.includes("/api/train/credentials/status")) {
+        return jsonResponse({
+          ktx: { configured: true, verified: true, username: "01012345678", verified_at: null, detail: null },
+          srt: { configured: true, verified: true, username: "srt-user", verified_at: null, detail: null },
+        });
+      }
+      if (url.includes("/api/wallet/payment-card")) {
+        walletConfiguredCallCount += 1;
+        return jsonResponse({
+          configured: walletConfiguredCallCount >= 2,
+          card_masked: "****-****-****-1234",
+          expiry_month: 12,
+          expiry_year: 2030,
+          updated_at: "2026-02-22T10:00:00+09:00",
+          detail: null,
+        });
+      }
+      if (url.includes("/api/train/stations")) {
+        return jsonResponse({
+          stations: [
+            { name: "수서", srt_code: "0551", srt_supported: true },
+            { name: "부산", srt_code: "0020", srt_supported: true },
+          ],
+        });
+      }
+      if (url.includes("/api/train/tasks?status=active")) {
+        return jsonResponse({ tasks: [] });
+      }
+      if (url.includes("/api/train/tasks?status=completed")) {
+        return jsonResponse({ tasks: [] });
+      }
+      if (url.includes("/api/train/search") && method === "POST") {
+        return jsonResponse({ schedules });
+      }
+      if (url.includes("/api/train/tasks/duplicate-check") && method === "POST") {
+        return jsonResponse({
+          has_duplicate: false,
+          summary: { already_reserved: 0, waiting: 0, polling: 0 },
+          matches: [],
+        });
+      }
+      if (url.endsWith("/api/train/tasks") && method === "POST") {
+        const payload = JSON.parse(String(init?.body ?? "{}")) as { retry_on_expiry?: boolean };
+        submittedRetryOnExpiry = Boolean(payload.retry_on_expiry);
+        return jsonResponse({ task: makeTask("created-task", "QUEUED"), deduplicated: false });
+      }
+      return jsonResponse({ detail: "not found" }, 404);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <LocaleProvider initialLocale="en">
+        <TrainDashboard />
+      </LocaleProvider>,
+    );
+    await flushAsyncEffects();
+
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    await flushAsyncEffects();
+    fireEvent.click(screen.getByRole("button", { name: "SRT 301" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await flushAsyncEffects();
+
+    const autoPaySwitch = screen.getByRole("switch", { name: "Auto-pay" });
+    expect(autoPaySwitch).toBeEnabled();
+
+    const retryOnExpirySwitch = screen.getByRole("switch", { name: "Retry on expiry" });
+    expect(retryOnExpirySwitch).toHaveAttribute("aria-checked", "true");
+    fireEvent.click(retryOnExpirySwitch);
+    expect(retryOnExpirySwitch).toHaveAttribute("aria-checked", "false");
+
+    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+    await flushAsyncEffects();
+    expect(submittedRetryOnExpiry).toBe(false);
+  });
 
   it("covers credential/wallet/station failure fallbacks with auto-pay flag enabled", async () => {
     vi.stubEnv("NEXT_PUBLIC_TRAIN_AUTO_PAY_ENABLED", "true");

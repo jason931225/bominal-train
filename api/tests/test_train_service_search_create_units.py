@@ -65,7 +65,13 @@ def _ranked(provider: str = "SRT", schedule_id: str = "SRT-1", rank: int = 1):
     ]
 
 
-def _task_payload(*, dep: str = "수서", arr: str = "부산", provider: str = "SRT") -> TrainTaskCreateRequest:
+def _task_payload(
+    *,
+    dep: str = "수서",
+    arr: str = "부산",
+    provider: str = "SRT",
+    retry_on_expiry: bool = False,
+) -> TrainTaskCreateRequest:
     return TrainTaskCreateRequest(
         provider=provider,
         dep=dep,
@@ -76,6 +82,7 @@ def _task_payload(*, dep: str = "수서", arr: str = "부산", provider: str = "
         seat_class="general",
         auto_pay=False,
         notify=False,
+        retry_on_expiry=retry_on_expiry,
     )
 
 
@@ -363,5 +370,21 @@ async def test_create_task_branch_coverage_for_station_credential_dedupe_and_cre
     assert created.deduplicated is False
     assert created.queued is True
     assert create_db.added
+    created_task = create_db.added[0]
+    assert isinstance(created_task, Task)
+    assert created_task.spec_json.get("retry_on_expiry") is False
     assert create_db.commits == 1
     assert create_db.refreshed
+
+    create_retry_db = _DB(execute_scalars=[None])
+    created_retry = await train_service.create_task(
+        create_retry_db,
+        user=user,
+        payload=_task_payload(retry_on_expiry=True),
+    )
+    assert created_retry.deduplicated is False
+    assert created_retry.queued is True
+    assert create_retry_db.added
+    created_retry_task = create_retry_db.added[0]
+    assert isinstance(created_retry_task, Task)
+    assert created_retry_task.spec_json.get("retry_on_expiry") is True

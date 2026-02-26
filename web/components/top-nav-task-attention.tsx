@@ -43,12 +43,15 @@ function readTaskEventType(payloadType: unknown, rawEventType: unknown): "task_s
   return normalize(payloadType) ?? normalize(rawEventType);
 }
 
-function isPendingTicket(task: Pick<TrainTaskSummary, "ticket_status" | "ticket_paid">): boolean {
+function isPendingTicket(task: Pick<TrainTaskSummary, "state" | "ticket_status" | "ticket_paid">): boolean {
   const status = String(task.ticket_status || "").trim().toLowerCase();
+  if (task.state === "EXPIRED" && (status === "awaiting_payment" || status === "waiting")) {
+    return false;
+  }
   return PENDING_TICKET_STATUSES.has(status) && task.ticket_paid !== true;
 }
 
-function pendingBadgeKey(task: Pick<TrainTaskSummary, "ticket_status" | "ticket_paid">): string | null {
+function pendingBadgeKey(task: Pick<TrainTaskSummary, "state" | "ticket_status" | "ticket_paid">): string | null {
   if (!isPendingTicket(task)) return null;
   return String(task.ticket_status || "").trim().toLowerCase() === "waiting"
     ? "train.badge.waitlisted"

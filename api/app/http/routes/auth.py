@@ -47,6 +47,7 @@ from app.schemas.auth import (
     RegisterRequest,
 )
 from app.schemas.notification import EmailTemplateBlock, EmailTemplateJobPayload
+from app.modules.train.service import refresh_train_reservations_after_sign_in
 from app.services.email_queue import enqueue_template_email
 from app.services.passkeys import (
     begin_passkey_authentication,
@@ -412,6 +413,10 @@ async def login(
 
     db.add(session)
     await db.commit()
+    try:
+        await refresh_train_reservations_after_sign_in(db, user=user)
+    except Exception:
+        logger.warning("Failed to refresh train reservations after password sign-in", extra={"user_id": str(user.id)})
 
     response = JSONResponse(content=AuthResponse(user=user_to_out(user)).model_dump(mode="json"))
     set_session_cookie(response, session_token, payload.remember_me)
@@ -911,6 +916,10 @@ async def passkey_auth_verify(
     )
     db.add(session)
     await db.commit()
+    try:
+        await refresh_train_reservations_after_sign_in(db, user=user)
+    except Exception:
+        logger.warning("Failed to refresh train reservations after passkey sign-in", extra={"user_id": str(user.id)})
 
     response = JSONResponse(content=AuthResponse(user=user_to_out(user)).model_dump(mode="json"))
     set_session_cookie(response, session_token, payload.remember_me)

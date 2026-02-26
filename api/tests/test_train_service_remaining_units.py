@@ -129,6 +129,32 @@ def _ticket_artifact(data: dict) -> Artifact:
     )
 
 
+def _retry_on_expiry_spec(*, departure_at: datetime) -> dict:
+    return {
+        "module": "train",
+        "provider": "SRT",
+        "providers": ["SRT"],
+        "dep": "수서",
+        "arr": "부산",
+        "dep_srt_code": "0551",
+        "arr_srt_code": "0020",
+        "date": departure_at.date().isoformat(),
+        "selected_trains_ranked": [
+            {
+                "schedule_id": "SRT-301",
+                "departure_at": departure_at.isoformat(),
+                "rank": 1,
+                "provider": "SRT",
+            }
+        ],
+        "passengers": {"adults": 1, "children": 0},
+        "seat_class": "general",
+        "auto_pay": False,
+        "notify": False,
+        "retry_on_expiry": True,
+    }
+
+
 @pytest.mark.asyncio
 async def test_service_remaining_credential_and_status_branches(monkeypatch):
     db = _DB()
@@ -526,6 +552,82 @@ async def test_service_remaining_list_tasks_expires_overdue_manual_payment_in_ac
     assert overdue_artifact.data_json_safe["status"] == "expired"
     assert overdue_artifact.data_json_safe["expired"] is True
     assert response.tasks == []
+    assert db.commits == 1
+
+
+@pytest.mark.asyncio
+async def test_service_remaining_list_tasks_expires_overdue_manual_payment_requeues_same_task(monkeypatch):
+    user = _user()
+    now = datetime.now(timezone.utc)
+    overdue_task = _task(state="COMPLETED", completed_at=now - timedelta(hours=1))
+    overdue_task.user_id = user.id
+    overdue_task.spec_json = _retry_on_expiry_spec(departure_at=now + timedelta(hours=3))
+    overdue_artifact = _ticket_artifact(
+        {
+            "provider": "SRT",
+            "reservation_id": "PNR-EXPIRED-3",
+            "status": "awaiting_payment",
+            "paid": False,
+            "payment_deadline_at": (now - timedelta(minutes=1)).isoformat(),
+        }
+    )
+
+    class _ListResult:
+        def __init__(self, tasks):  # noqa: ANN001
+            self._tasks = tasks
+
+        def scalars(self):  # noqa: ANN201
+            return SimpleNamespace(all=lambda: list(self._tasks))
+
+    db = _DB()
+
+    async def _execute(_stmt):  # noqa: ANN001
+        return _ListResult([overdue_task])
+
+    db.execute = _execute  # type: ignore[method-assign]
+
+    monkeypatch.setattr(train_service, "_task_list_stmt", lambda *_args, **_kwargs: object())
+
+    async def _latest_attempts(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        return {}
+
+    async def _latest_artifacts(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        return {overdue_task.id: overdue_artifact}
+
+    enqueued_task_ids: list[str] = []
+
+    async def _enqueue(task_id: str, **_kwargs):  # noqa: ANN001, ANN003
+        enqueued_task_ids.append(task_id)
+        return True
+
+    published_events: list[tuple[str, str]] = []
+
+    async def _publish(*, user_id, task_id, state, updated_at):  # noqa: ANN001
+        _ = updated_at
+        published_events.append((str(user_id), f"{task_id}:{state}"))
+
+    monkeypatch.setattr(train_service, "_latest_attempt_map", _latest_attempts)
+    monkeypatch.setattr(train_service, "_latest_ticket_artifact_map", _latest_artifacts)
+    monkeypatch.setattr(train_service, "enqueue_train_task", _enqueue)
+    monkeypatch.setattr(train_service, "publish_task_state_event", _publish)
+
+    response = await train_service.list_tasks(
+        db,
+        user=user,
+        status_filter="active",
+        refresh_completed=False,
+    )
+    assert overdue_task.state == "QUEUED"
+    assert overdue_task.completed_at is None
+    assert overdue_artifact.data_json_safe["status"] == "expired"
+    assert overdue_artifact.data_json_safe["expired"] is True
+    assert db.added == []
+    assert overdue_task.spec_json.get("retry_on_expiry") is True
+    assert overdue_task.user_id == user.id
+    assert enqueued_task_ids == [str(overdue_task.id)]
+    assert published_events == [(str(user.id), f"{overdue_task.id}:QUEUED")]
+    assert response.tasks and response.tasks[0].id == overdue_task.id
+    assert response.tasks[0].state == "QUEUED"
     assert db.commits == 1
 
 

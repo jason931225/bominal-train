@@ -25,10 +25,17 @@ from app.modules.train.constants import (
     ACTIVE_TASK_STATES,
     SECRET_KIND_KTX_CREDENTIALS,
     SECRET_KIND_SRT_CREDENTIALS,
+    SPEC_KEY_MANUAL_RETRY_LAST_AT,
+    SPEC_KEY_NEXT_RUN_AT,
+    SPEC_KEY_NOTIFY_EMAIL_JOB_ID,
+    SPEC_KEY_NOTIFY_EMAIL_SENT_AT,
+    SPEC_KEY_NOTIFY_EMAIL_STATE,
+    SPEC_KEY_RETRY_ON_EXPIRY,
     TASK_MODULE,
     TERMINAL_TASK_STATES,
     credential_kind,
 )
+from app.modules.train.events import publish_task_state_event
 from app.modules.train.providers import get_provider_client
 from app.modules.train.providers.base import ProviderSchedule
 from app.modules.train.queue import enqueue_train_task
@@ -71,8 +78,9 @@ settings = get_settings()
 logger = logging.getLogger(__name__)
 TASK_VISIBILITY_RETENTION_DAYS = 365
 MANUAL_RETRY_COOLDOWN_SECONDS = 15
-MANUAL_RETRY_LAST_AT_KEY = "manual_retry_last_at"
-NEXT_RUN_AT_KEY = "next_run_at"
+MANUAL_RETRY_LAST_AT_KEY = SPEC_KEY_MANUAL_RETRY_LAST_AT
+NEXT_RUN_AT_KEY = SPEC_KEY_NEXT_RUN_AT
+RETRY_ON_EXPIRY_KEY = SPEC_KEY_RETRY_ON_EXPIRY
 SYNC_PROVIDER_META_STABLE_KEYS = frozenset(
     {
         "provider",
@@ -114,11 +122,9 @@ def _compute_retry_now_status(
 
     if task.state == "PAUSED" or task.paused_at is not None:
         return False, "paused_use_resume", None
-    if task.state in TERMINAL_TASK_STATES:
-        return False, "terminal_state", None
     if task.state in {"RUNNING", "RESERVING", "PAYING"}:
         return False, "task_running", None
-    if task.state not in {"QUEUED", "POLLING"}:
+    if task.state not in {"QUEUED", "POLLING", "EXPIRED", "CANCELLED", "FAILED"}:
         return False, "not_eligible_state", None
 
     deadline_at = _as_aware_utc_datetime(task.deadline_at)
@@ -654,6 +660,7 @@ def normalize_task_spec(payload: TrainTaskCreateRequest, *, ranked_trains: list[
         },
         "seat_class": payload.seat_class,
         "auto_pay": effective_auto_pay,
+        "retry_on_expiry": bool(payload.retry_on_expiry),
         "notify": payload.notify,
     }
 
@@ -677,6 +684,65 @@ def compute_idempotency_key(user_id: UUID, spec_json: dict) -> str:
 def _force_unique_active_idempotency_key(user_id: UUID, spec_json: dict) -> str:
     base_key = compute_idempotency_key(user_id, spec_json)
     return hashlib.sha256(f"{base_key}:{uuid4().hex}".encode("utf-8")).hexdigest()
+
+
+def _build_retry_on_expiry_spec(task: Task) -> dict:
+    retry_spec = dict(task.spec_json or {})
+    retry_spec.pop(MANUAL_RETRY_LAST_AT_KEY, None)
+    retry_spec.pop(NEXT_RUN_AT_KEY, None)
+    retry_spec.pop(SPEC_KEY_NOTIFY_EMAIL_SENT_AT, None)
+    retry_spec.pop(SPEC_KEY_NOTIFY_EMAIL_STATE, None)
+    retry_spec.pop(SPEC_KEY_NOTIFY_EMAIL_JOB_ID, None)
+    return validate_safe_metadata(retry_spec)
+
+
+def _apply_retry_reset(task: Task, *, retry_spec: dict, now: datetime) -> None:
+    task.spec_json = validate_safe_metadata(retry_spec)
+    task.state = "QUEUED"
+    task.paused_at = None
+    task.completed_at = None
+    task.failed_at = None
+    task.cancelled_at = None
+    task.updated_at = now
+
+
+async def _requeue_task_after_expiry_in_place(*, task: Task, now: datetime) -> bool:
+    spec = dict(task.spec_json or {})
+    if not bool(spec.get(RETRY_ON_EXPIRY_KEY)):
+        return False
+
+    retry_spec = _build_retry_on_expiry_spec(task)
+    try:
+        retry_deadline_at = _as_aware_utc_datetime(compute_deadline_from_spec(retry_spec))
+    except Exception:
+        return False
+
+    if now >= retry_deadline_at:
+        return False
+
+    _apply_retry_reset(task, retry_spec=retry_spec, now=now)
+    task.deadline_at = retry_deadline_at
+    return True
+
+
+async def _activate_requeued_task(task: Task) -> None:
+    try:
+        enqueued = await enqueue_train_task(str(task.id))
+        if enqueued is False:
+            await enqueue_train_task(str(task.id), defer_seconds=0.01)
+    except Exception as exc:
+        logger.warning("Failed to enqueue retry-on-expiry task %s: %s", task.id, type(exc).__name__)
+        return
+
+    try:
+        await publish_task_state_event(
+            user_id=task.user_id,
+            task_id=task.id,
+            state=task.state,
+            updated_at=task.updated_at,
+        )
+    except Exception as exc:
+        logger.warning("Failed to publish retry-on-expiry task event %s: %s", task.id, type(exc).__name__)
 
 
 def _departure_key_map_from_spec(spec_json: dict) -> dict[int, datetime]:
@@ -1325,6 +1391,7 @@ async def list_tasks(
         task.id: _ticket_summary_from_artifact(ticket_artifacts.get(task.id)) for task in tasks
     }
     expired_updates = False
+    requeued_retry_tasks: list[Task] = []
     for task in tasks:
         ticket_artifact = ticket_artifacts.get(task.id)
         expired_changed = _expire_manual_payment_task_if_due(
@@ -1335,9 +1402,14 @@ async def list_tasks(
         )
         if expired_changed and ticket_artifact is not None:
             ticket_summaries[task.id] = _ticket_summary_from_artifact(ticket_artifact)
+        if expired_changed:
+            if await _requeue_task_after_expiry_in_place(task=task, now=now):
+                requeued_retry_tasks.append(task)
         expired_updates = expired_changed or expired_updates
     if expired_updates:
         await db.commit()
+        for retry_task in requeued_retry_tasks:
+            await _activate_requeued_task(retry_task)
 
     if status_filter == "active":
         tasks = [task for task in tasks if _is_active_for_listing(task, ticket_summaries.get(task.id))][: max(1, limit)]
@@ -1548,13 +1620,17 @@ async def get_task_detail(db: AsyncSession, *, task_id: UUID, user: User) -> Tas
     latest_attempt = max(attempts, key=lambda row: row.finished_at) if attempts else None
     last_attempt_at = latest_attempt.finished_at if latest_attempt else None
     now = utc_now()
+    requeued_retry = False
     if _expire_manual_payment_task_if_due(
         task,
         ticket_summary=ticket_summary,
         ticket_artifact=latest_ticket_artifact,
         now=now,
     ):
+        requeued_retry = await _requeue_task_after_expiry_in_place(task=task, now=now)
         await db.commit()
+        if requeued_retry:
+            await _activate_requeued_task(task)
         ticket_summary = _ticket_summary_from_artifact(latest_ticket_artifact)
 
     return TaskDetailOut(
@@ -1659,8 +1735,6 @@ async def retry_task_now(db: AsyncSession, *, task_id: UUID, user: User) -> Task
     if not allowed:
         if reason == "paused_use_resume":
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Task is paused. Use Resume instead.")
-        if reason == "terminal_state":
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Task is in a terminal state.")
         if reason == "task_running":
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Task is currently running.")
         if reason == "deadline_passed":
@@ -1673,13 +1747,10 @@ async def retry_task_now(db: AsyncSession, *, task_id: UUID, user: User) -> Task
             raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Retry cooldown active.")
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Task is not eligible for retry.")
 
-    next_spec = dict(task.spec_json or {})
-    next_spec.pop(NEXT_RUN_AT_KEY, None)
+    next_spec = _build_retry_on_expiry_spec(task)
     next_spec[MANUAL_RETRY_LAST_AT_KEY] = now.isoformat()
 
-    task.spec_json = next_spec
-    task.state = "QUEUED"
-    task.updated_at = now
+    _apply_retry_reset(task, retry_spec=next_spec, now=now)
     await db.commit()
     await db.refresh(task)
 
@@ -2480,6 +2551,42 @@ async def list_provider_reservations(
             )
 
     return ProviderReservationsResponse(reservations=reservation_rows)
+
+
+async def refresh_train_reservations_after_sign_in(
+    db: AsyncSession,
+    *,
+    user: User,
+) -> None:
+    for provider in ("SRT", "KTX"):
+        if not _is_provider_enabled(provider):
+            continue
+        creds = await _load_provider_credentials(db, user_id=user.id, provider=provider)
+        if creds is None:
+            continue
+        try:
+            await list_provider_reservations(
+                db,
+                user=user,
+                provider=provider,
+                paid_only=False,
+            )
+        except HTTPException as exc:
+            await db.rollback()
+            logger.warning(
+                "Sign-in reservation refresh failed for configured provider",
+                extra={
+                    "user_id": str(user.id),
+                    "provider": provider,
+                    "status_code": exc.status_code,
+                },
+            )
+        except Exception:
+            await db.rollback()
+            logger.warning(
+                "Sign-in reservation refresh failed unexpectedly",
+                extra={"user_id": str(user.id), "provider": provider},
+            )
 
 
 async def get_provider_ticket_info(

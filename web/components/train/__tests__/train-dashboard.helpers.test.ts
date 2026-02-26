@@ -126,10 +126,15 @@ describe("train dashboard helpers", () => {
       ticket_status: "awaiting_payment",
       ticket_paid: false,
     });
+    const expiredAwaiting = makeTask("awaiting-expired", "EXPIRED", {
+      ticket_status: "awaiting_payment",
+      ticket_paid: false,
+    });
     const completedPaid = makeTask("done", "COMPLETED", { ticket_status: "ticket_issued", ticket_paid: true });
 
     expect(isUnpaidAwaitingPaymentTicket(awaiting)).toBe(true);
     expect(isAwaitingPaymentTask(awaiting)).toBe(true);
+    expect(isAwaitingPaymentTask(expiredAwaiting)).toBe(false);
     expect(isActiveTaskForList(polling)).toBe(true);
     expect(isActiveTaskForList(awaiting)).toBe(true);
     expect(isActiveTaskForList(completedPaid)).toBe(false);
@@ -321,9 +326,13 @@ describe("train dashboard helpers", () => {
       getTaskTicketBadge(makeTask("awaiting", "COMPLETED", { ticket_status: "awaiting_payment", ticket_paid: false }))
         ?.label,
     ).toBe("train.badge.awaitingPayment");
+    expect(
+      getTaskTicketBadge(makeTask("awaiting-expired", "EXPIRED", { ticket_status: "awaiting_payment", ticket_paid: false })),
+    ).toBeNull();
     expect(getTaskTicketBadge(makeTask("waitlisted", "POLLING", { ticket_status: "waiting", ticket_paid: false }))?.label).toBe(
       "train.badge.waitlisted",
     );
+    expect(getTaskTicketBadge(makeTask("waitlisted-expired", "EXPIRED", { ticket_status: "waiting", ticket_paid: false }))).toBeNull();
     expect(getTaskTicketBadge(makeTask("paid", "COMPLETED", { ticket_status: "ticket_issued", ticket_paid: true }))?.label).toBe(
       "train.badge.confirmed",
     );

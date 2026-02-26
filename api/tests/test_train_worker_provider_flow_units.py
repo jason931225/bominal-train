@@ -251,3 +251,60 @@ async def test_worker_notification_and_mark_helpers_cover_terminal_paths(monkeyp
     assert task.state == "FAILED"
     await train_worker._mark_completed(_DB(), task)
     assert task.state == "COMPLETED"
+
+
+@pytest.mark.asyncio
+async def test_mark_expired_requeues_same_task_when_retry_on_expiry_enabled(monkeypatch):
+    commits = {"count": 0}
+
+    class _DB:
+        async def commit(self):
+            commits["count"] += 1
+
+    user_id = uuid4()
+    task = SimpleNamespace(
+        id=uuid4(),
+        user_id=user_id,
+        spec_json={
+            "retry_on_expiry": True,
+            "selected_trains_ranked": [
+                {
+                    "schedule_id": "SRT-301",
+                    "departure_at": "2026-02-22T15:00:00+00:00",
+                    "rank": 1,
+                    "provider": "SRT",
+                }
+            ],
+        },
+        updated_at=None,
+        state="RUNNING",
+    )
+    enqueue_calls: list[str] = []
+
+    async def _enqueue(task_id: str, **_kwargs):  # noqa: ANN001, ANN003
+        enqueue_calls.append(task_id)
+        return True
+
+    published_states: list[tuple[str, str]] = []
+
+    async def _publish(*, user_id, task_id, state, updated_at):  # noqa: ANN001
+        _ = updated_at
+        published_states.append((str(user_id), f"{task_id}:{state}"))
+
+    async def _noop_notify(_db, *, task, final_state):  # noqa: ANN001
+        task.spec_json["final"] = final_state
+
+    monkeypatch.setattr(train_worker, "enqueue_train_task", _enqueue)
+    monkeypatch.setattr(train_worker, "publish_task_state_event", _publish)
+    monkeypatch.setattr(train_worker, "_enqueue_terminal_notification", _noop_notify)
+    monkeypatch.setattr(train_worker, "utc_now", lambda: datetime(2026, 2, 22, 12, 0, tzinfo=timezone.utc))
+
+    await train_worker._mark_expired(_DB(), task)
+
+    assert task.state == "QUEUED"
+    assert enqueue_calls == [str(task.id)]
+    assert published_states == [
+        (str(user_id), f"{task.id}:EXPIRED"),
+        (str(user_id), f"{task.id}:QUEUED"),
+    ]
+    assert commits["count"] == 1
