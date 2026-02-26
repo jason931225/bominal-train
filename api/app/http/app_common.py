@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+import os
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,6 +16,19 @@ from app.http.deps import get_current_admin
 
 settings = get_settings()
 logger = get_logger(__name__)
+
+
+def _normalized_env_version(name: str, *, fallback: str) -> str:
+    value = os.getenv(name, "").strip()
+    return value or fallback
+
+
+def build_version_payload() -> dict[str, str]:
+    return {
+        "app": settings.app_name,
+        "app_version": _normalized_env_version("APP_VERSION", fallback="0.0.0"),
+        "build_version": _normalized_env_version("BUILD_VERSION", fallback="unknown"),
+    }
 
 
 @asynccontextmanager
@@ -81,6 +95,10 @@ def create_base_app(*, description: str) -> FastAPI:
             health["status"] = "degraded"
 
         return health
+
+    @app.get("/version")
+    async def version_info() -> dict[str, str]:
+        return build_version_payload()
 
     return app
 

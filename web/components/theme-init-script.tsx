@@ -18,7 +18,7 @@ const initThemeScript = `
     var root = document.documentElement;
     root.dataset.themeMode = mode;
     root.dataset.theme = season;
-    var href = "/favicons/seasonal/bominal_" + season + ".ico";
+    var href = "/favicons/catdog.ico";
     var icon = document.getElementById("bominal-theme-icon");
     if (!(icon instanceof HTMLLinkElement)) {
       icon = document.createElement("link");

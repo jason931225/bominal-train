@@ -50,6 +50,35 @@ def test_create_base_app_healthcheck_happy_path(monkeypatch):
     assert payload["redis"] is True
 
 
+def test_create_base_app_version_endpoint_reports_runtime_versions(monkeypatch):
+    monkeypatch.setenv("APP_VERSION", " 1.2.3 ")
+    monkeypatch.setenv("BUILD_VERSION", " build-abc123 ")
+
+    app = app_common.create_base_app(description="version app")
+    client = TestClient(app)
+    response = client.get("/version")
+    payload = response.json()
+
+    assert response.status_code == 200
+    assert payload == {
+        "app": app_common.settings.app_name,
+        "app_version": "1.2.3",
+        "build_version": "build-abc123",
+    }
+
+
+def test_create_base_app_version_endpoint_uses_defaults(monkeypatch):
+    monkeypatch.delenv("APP_VERSION", raising=False)
+    monkeypatch.delenv("BUILD_VERSION", raising=False)
+
+    app = app_common.create_base_app(description="version defaults")
+    client = TestClient(app)
+    payload = client.get("/version").json()
+
+    assert payload["app_version"] == "0.0.0"
+    assert payload["build_version"] == "unknown"
+
+
 def test_create_base_app_healthcheck_degraded_paths(monkeypatch):
     # DB failure path.
     monkeypatch.setattr(app_common, "SessionLocal", lambda: _SessionContext(should_fail=True))

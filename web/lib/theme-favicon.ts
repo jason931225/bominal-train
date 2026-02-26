@@ -1,12 +1,12 @@
 import type { ThemeName } from "@/lib/theme";
 
-const THEME_ICON_BASE_PATH = "/favicons/seasonal";
+const THEME_FAVICON_PATH = "/favicons/catdog.ico";
 
 export const THEME_FAVICON_LINK_ID = "bominal-theme-icon";
 export const THEME_FAVICON_SHORTCUT_LINK_ID = "bominal-theme-shortcut-icon";
 
-export function themeFaviconHref(theme: ThemeName): string {
-  return `${THEME_ICON_BASE_PATH}/bominal_${theme}.ico`;
+export function themeFaviconHref(_theme: ThemeName): string {
+  return THEME_FAVICON_PATH;
 }
 
 function upsertLink(id: string, rel: "icon" | "shortcut icon", href: string): void {
