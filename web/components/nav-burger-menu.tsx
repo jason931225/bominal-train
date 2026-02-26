@@ -22,6 +22,7 @@ const THEME_DOT_COLORS = {
 
 const PAYMENT_SETTINGS_ENABLED = NEXT_PUBLIC_TRAIN_AUTO_PAY_ENABLED;
 const RESTAURANT_MODULE_ENABLED = NEXT_PUBLIC_RESTAURANT_MODULE_ENABLED;
+const SHOW_DISABLED_MODULE_LINKS = false;
 const MOBILE_DRAWER_HIDDEN_TRANSLATE = "calc(-100dvh - 24px)";
 
 function themeDotStyle(mode: ThemeMode): CSSProperties {
@@ -122,20 +123,24 @@ export function NavBurgerMenu({ isAdmin = false }: { isAdmin?: boolean }) {
 
   const topMenuItems = (
     <>
-      <Link href={ROUTES.dashboard} className={UI_MENU_ITEM}>
-        {t("nav.dashboard")}
-      </Link>
       <Link href={ROUTES.modules.train} className={UI_MENU_ITEM}>
         {t("nav.train")}
       </Link>
-      {RESTAURANT_MODULE_ENABLED ? (
-        <Link href={ROUTES.modules.restaurant} className={UI_MENU_ITEM}>
-          {t("nav.restaurant")}
-        </Link>
+      {SHOW_DISABLED_MODULE_LINKS ? (
+        <>
+          <Link href={ROUTES.dashboard} className={UI_MENU_ITEM}>
+            {t("nav.dashboard")}
+          </Link>
+          {RESTAURANT_MODULE_ENABLED ? (
+            <Link href={ROUTES.modules.restaurant} className={UI_MENU_ITEM}>
+              {t("nav.restaurant")}
+            </Link>
+          ) : null}
+          <Link href={ROUTES.modules.calendar} className={UI_MENU_ITEM}>
+            {t("nav.calendar")}
+          </Link>
+        </>
       ) : null}
-      <Link href={ROUTES.modules.calendar} className={UI_MENU_ITEM}>
-        {t("nav.calendar")}
-      </Link>
     </>
   );
 

@@ -1664,7 +1664,14 @@ async def pay_task(db: AsyncSession, *, task_id: UUID, user: User) -> TaskAction
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Reservation is already cancelled")
 
     if ticket_paid:
-        if updated:
+        reconciled_to_completed = False
+        if task.state in ACTIVE_TASK_STATES or task.state in {"FAILED", "PAUSED"}:
+            task.state = "COMPLETED"
+            task.completed_at = task.completed_at or utc_now()
+            task.failed_at = None
+            task.updated_at = utc_now()
+            reconciled_to_completed = True
+        if updated or reconciled_to_completed:
             await db.commit()
         task = await get_task_for_user(db, task_id=task_id, user=user)
         last_attempt_at = (await _last_attempt_map(db, [task.id])).get(task.id)

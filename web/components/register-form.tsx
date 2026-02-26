@@ -35,10 +35,10 @@ export function RegisterForm() {
   const navigateAfterAuth = () => {
     if (typeof window !== "undefined") {
       // Full navigation ensures persistent root layout re-resolves authenticated user state.
-      window.location.assign(ROUTES.dashboard);
+      window.location.assign(ROUTES.modules.train);
       return;
     }
-    router.push(ROUTES.dashboard);
+    router.push(ROUTES.modules.train);
   };
 
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {

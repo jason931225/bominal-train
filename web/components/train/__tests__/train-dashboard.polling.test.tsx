@@ -246,6 +246,36 @@ describe("TrainDashboard polling behavior", () => {
     expect(completedCalls).toBe(baselineCompletedCalls + 1);
   });
 
+  it("refreshes task lists for ticket-status payloads even when delivered on task_state channel", async () => {
+    await renderDashboard();
+    const baselineActiveCalls = activeCalls;
+    const baselineCompletedCalls = completedCalls;
+
+    MockEventSource.emit("task_state", {
+      type: "task_ticket_status_changed",
+      task_id: "active-1",
+      state: "POLLING",
+      previous_ticket_status: "waiting",
+      ticket_status: "awaiting_payment",
+    });
+    await flushAsyncEffects();
+
+    expect(activeCalls).toBe(baselineActiveCalls + 1);
+    expect(completedCalls).toBe(baselineCompletedCalls + 1);
+  });
+
+  it("treats lowercase terminal states as terminal refresh events", async () => {
+    await renderDashboard();
+    const baselineActiveCalls = activeCalls;
+    const baselineCompletedCalls = completedCalls;
+
+    MockEventSource.emit("task_state", { task_id: "active-1", state: "completed" });
+    await flushAsyncEffects();
+
+    expect(activeCalls).toBe(baselineActiveCalls + 1);
+    expect(completedCalls).toBe(baselineCompletedCalls + 1);
+  });
+
   it("reconciles task lists when receiving non-terminal events for unknown task ids", async () => {
     await renderDashboard();
     const baselineActiveCalls = activeCalls;

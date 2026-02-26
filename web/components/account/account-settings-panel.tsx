@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { createPortal } from "react-dom";
 
 import { useLocale } from "@/components/locale-provider";
 import { clientApiBaseUrl } from "@/lib/api-base";
@@ -202,6 +203,7 @@ export function AccountSettingsPanel({
   const [passkeyBusy, setPasskeyBusy] = useState(false);
   const [passkeyLoading, setPasskeyLoading] = useState(false);
   const [passkeys, setPasskeys] = useState<PasskeyListItem[]>([]);
+  const [portalReady, setPortalReady] = useState(false);
   const [passwordPromptOpen, setPasswordPromptOpen] = useState(false);
   const [passwordPromptValue, setPasswordPromptValue] = useState("");
   const [passwordPromptBusy, setPasswordPromptBusy] = useState(false);
@@ -218,6 +220,10 @@ export function AccountSettingsPanel({
       setPendingEmailChangeTo(prefillEmailChange.email);
     }
   }, [prefillEmailChange?.code, prefillEmailChange?.email]);
+
+  useEffect(() => {
+    setPortalReady(true);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -491,6 +497,48 @@ export function AccountSettingsPanel({
       setPasskeyBusy(false);
     }
   };
+
+  const passwordPromptModal =
+    passwordPromptOpen && portalReady
+      ? createPortal(
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4">
+            <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
+              <p className="text-sm font-semibold text-slate-900">{t("settings.sensitiveAuthTitle")}</p>
+              <p className="mt-1 text-xs text-slate-600">{t("settings.sensitiveAuthBody")}</p>
+              <label className="mt-4 block text-sm text-slate-700">
+                {t("settings.currentPassword")}
+                <input
+                  type="password"
+                  value={passwordPromptValue}
+                  onChange={(event) => setPasswordPromptValue(event.target.value)}
+                  className={`mt-1 ${UI_FIELD}`}
+                  placeholder={t("settings.currentPasswordRequired")}
+                  autoFocus
+                />
+              </label>
+              <div className="mt-4 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={closePasswordPrompt}
+                  disabled={passwordPromptBusy}
+                  className="inline-flex h-10 items-center justify-center rounded-full border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {t("common.cancel")}
+                </button>
+                <button
+                  type="button"
+                  onClick={onConfirmPasswordPrompt}
+                  disabled={passwordPromptBusy}
+                  className={`inline-flex h-10 items-center justify-center ${UI_BUTTON_PRIMARY}`}
+                >
+                  {passwordPromptBusy ? t("common.saving") : t("settings.sensitiveAuthConfirm")}
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )
+      : null;
 
   return (
     <section>
@@ -769,43 +817,7 @@ export function AccountSettingsPanel({
         </div>
       </div>
 
-      {passwordPromptOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4">
-          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
-            <p className="text-sm font-semibold text-slate-900">{t("settings.sensitiveAuthTitle")}</p>
-            <p className="mt-1 text-xs text-slate-600">{t("settings.sensitiveAuthBody")}</p>
-            <label className="mt-4 block text-sm text-slate-700">
-              {t("settings.currentPassword")}
-              <input
-                type="password"
-                value={passwordPromptValue}
-                onChange={(event) => setPasswordPromptValue(event.target.value)}
-                className={`mt-1 ${UI_FIELD}`}
-                placeholder={t("settings.currentPasswordRequired")}
-                autoFocus
-              />
-            </label>
-            <div className="mt-4 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={closePasswordPrompt}
-                disabled={passwordPromptBusy}
-                className="inline-flex h-10 items-center justify-center rounded-full border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {t("common.cancel")}
-              </button>
-              <button
-                type="button"
-                onClick={onConfirmPasswordPrompt}
-                disabled={passwordPromptBusy}
-                className={`inline-flex h-10 items-center justify-center ${UI_BUTTON_PRIMARY}`}
-              >
-                {passwordPromptBusy ? t("common.saving") : t("settings.sensitiveAuthConfirm")}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      {passwordPromptModal}
     </section>
   );
 }

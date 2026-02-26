@@ -95,6 +95,21 @@ describe("LoginForm", () => {
     expect(signInWithPasskey).not.toHaveBeenCalled();
   });
 
+  it("preserves entered email in forgot-password link query", async () => {
+    vi.mocked(isPasskeySupported).mockReturnValueOnce(false);
+    renderLoginForm();
+
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "user+tag@example.com " } });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Password")).toBeInTheDocument();
+    });
+
+    const forgotPasswordLink = screen.getByRole("link", { name: "Forgot password?" });
+    expect(forgotPasswordLink).toHaveAttribute("href", "/forgot-password?email=user%2Btag%40example.com");
+  });
+
   it("validates password sign-in after passkey fallback", async () => {
     fetchMock.mockResolvedValueOnce(
       new Response(JSON.stringify({ user: { id: "u1" } }), {

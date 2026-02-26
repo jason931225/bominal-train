@@ -254,6 +254,22 @@ async def test_issue_tokens_and_verification_reset_flows(db_session, monkeypatch
 
 
 @pytest.mark.asyncio
+async def test_register_rejected_when_signup_disabled(db_session, monkeypatch):
+    monkeypatch.setattr(auth_routes.settings, "auth_registration_enabled", False)
+    with pytest.raises(HTTPException) as signup_disabled:
+        await auth_routes.register(
+            payload=RegisterRequest(
+                email=f"disabled-{uuid4().hex[:8]}@example.com",
+                password="SuperSecret123",
+                display_name=f"Disabled-{uuid4().hex[:6]}",
+            ),
+            db=db_session,
+        )
+    assert signup_disabled.value.status_code == 403
+    assert signup_disabled.value.detail == auth_routes.SIGNUP_DISABLED_DETAIL
+
+
+@pytest.mark.asyncio
 async def test_register_login_session_optional_logout_and_update_account(db_session, monkeypatch):
     captured_templates: list[object] = []
 

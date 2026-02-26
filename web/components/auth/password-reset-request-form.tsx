@@ -13,9 +13,9 @@ type RequestFormState = {
   email: string;
 };
 
-export function PasswordResetRequestForm() {
+export function PasswordResetRequestForm({ initialEmail = "" }: { initialEmail?: string }) {
   const { t } = useLocale();
-  const [form, setForm] = useState<RequestFormState>({ email: "" });
+  const [form, setForm] = useState<RequestFormState>({ email: initialEmail });
   const [fieldError, setFieldError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
