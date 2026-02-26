@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
+import { applyThemeFavicon } from "@/lib/theme-favicon";
 import { THEME_STORAGE_KEY, isThemeMode, resolveTheme, type ThemeMode, type ThemeName } from "@/lib/theme";
 
 type ThemeContextValue = {
@@ -43,6 +44,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       root.dataset.themeMode = nextMode;
       root.dataset.theme = resolved;
       root.classList.add("theme-ready");
+      applyThemeFavicon(resolved);
     }
 
     if (typeof window !== "undefined") {
