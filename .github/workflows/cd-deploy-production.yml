@@ -187,14 +187,6 @@ jobs:
             core.setOutput("api_changed", String(changed.api_changed));
             core.setOutput("web_changed", String(changed.web_changed));
 
-      - name: Validate deprecation gates
-        if: vars.CI_ALLOW_POLICY_GATES_BYPASS != 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          bash infra/tests/test_deprecation_policy.sh
-          bash infra/tests/test_deprecation_references.sh
-
       - name: Auth to Google Cloud (WIF)
         uses: google-github-actions/auth@v2
         with:

@@ -41,6 +41,8 @@ Deploy script guardrails:
 - GitHub deploy workflow guardrails:
   - auto deploy request is published only for GitHub Release `published` events (tagged releases), with optional manual dispatch;
   - deploy request is published only after same-commit `CI - Infra Quality Gates` and `CI - Build and Publish Images` both succeed;
+  - manual `CI - Build and Publish Images` runs can scope publish targets via `build_api` / `build_web` inputs;
+  - deprecation policy checks are enforced in `CI - Infra Quality Gates` and deploy preflight (not duplicated in CD publish workflow);
   - image publish is blocked when Trivy reports `HIGH` or `CRITICAL` vulnerabilities on pushed images;
   - deploy payload pins changed services to commit-tagged GHCR images and leaves unchanged services on latest baseline;
   - post-deploy CI verification checks production `/health` (`db=true`, `redis=true`) and production web endpoint HTTP `200`/`3xx`.
