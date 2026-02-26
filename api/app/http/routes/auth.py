@@ -5,7 +5,7 @@ from typing import Annotated
 from urllib.parse import urlencode
 from uuid import UUID
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, BackgroundTasks, Cookie, Depends, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -23,7 +23,7 @@ from app.core.security import (
     verify_password,
 )
 from app.db.models import PasswordResetToken, Role, Session, User, VerificationToken
-from app.db.session import get_db
+from app.db.session import SessionLocal, get_db
 from app.schemas.auth import (
     AccountUpdateRequest,
     AuthResponse,
@@ -377,10 +377,28 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
     return AuthResponse(user=user_to_out(created_user))
 
 
+async def _refresh_train_reservations_after_sign_in_background(*, user_id: UUID) -> None:
+    async with SessionLocal() as background_db:
+        user = (
+            await background_db.execute(
+                select(User).options(joinedload(User.role)).where(User.id == user_id)
+            )
+        ).scalar_one_or_none()
+        if user is None:
+            logger.warning("Skipped sign-in reservation refresh for unknown user", extra={"user_id": str(user_id)})
+            return
+        try:
+            await refresh_train_reservations_after_sign_in(background_db, user=user)
+        except Exception:
+            await background_db.rollback()
+            logger.warning("Failed background train reservation refresh after sign-in", extra={"user_id": str(user_id)})
+
+
 @public_router.post("/login", response_model=AuthResponse, dependencies=[Depends(auth_rate_limit)])
 async def login(
     payload: LoginRequest,
     request: Request,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ) -> Response:
     email = payload.email.lower()
@@ -413,12 +431,11 @@ async def login(
 
     db.add(session)
     await db.commit()
-    try:
-        await refresh_train_reservations_after_sign_in(db, user=user)
-    except Exception:
-        logger.warning("Failed to refresh train reservations after password sign-in", extra={"user_id": str(user.id)})
+    background_tasks.add_task(_refresh_train_reservations_after_sign_in_background, user_id=user.id)
 
     response = JSONResponse(content=AuthResponse(user=user_to_out(user)).model_dump(mode="json"))
+    if background_tasks.tasks:
+        response.background = background_tasks
     set_session_cookie(response, session_token, payload.remember_me)
     return response
 
@@ -883,6 +900,7 @@ async def passkey_auth_options(
 async def passkey_auth_verify(
     payload: PasskeyAuthenticationVerifyRequest,
     request: Request,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ) -> Response:
     ensure_passkeys_enabled()
@@ -916,11 +934,10 @@ async def passkey_auth_verify(
     )
     db.add(session)
     await db.commit()
-    try:
-        await refresh_train_reservations_after_sign_in(db, user=user)
-    except Exception:
-        logger.warning("Failed to refresh train reservations after passkey sign-in", extra={"user_id": str(user.id)})
+    background_tasks.add_task(_refresh_train_reservations_after_sign_in_background, user_id=user.id)
 
     response = JSONResponse(content=AuthResponse(user=user_to_out(user)).model_dump(mode="json"))
+    if background_tasks.tasks:
+        response.background = background_tasks
     set_session_cookie(response, session_token, payload.remember_me)
     return response
