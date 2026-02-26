@@ -380,4 +380,29 @@ describe("TopNavTaskAttention", () => {
       expect(screen.getAllByText("수서 -> 부산").length).toBeGreaterThan(0);
     });
   });
+
+  it("does not show awaiting-payment badge for expired tasks", async () => {
+    fetchMock.mockImplementation(() => Promise.resolve(makeEmptyTaskListResponse()));
+
+    render(
+      <LocaleProvider initialLocale="en">
+        <TopNavTaskAttention userId="user-5" displayName="Jason" />
+      </LocaleProvider>,
+    );
+
+    const expiredAwaiting = {
+      ...makeAttentionTask("expired-awaiting"),
+      state: "EXPIRED" as const,
+      ticket_status: "awaiting_payment",
+      ticket_paid: false,
+    };
+
+    await act(async () => {
+      MockEventSource.emit("attention_snapshot", { tasks: [expiredAwaiting] });
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Alerts" }));
+    expect(screen.getAllByText("EXPIRED").length).toBeGreaterThan(0);
+    expect(screen.queryAllByText("Awaiting Payment")).toHaveLength(0);
+  });
 });

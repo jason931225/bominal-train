@@ -17,6 +17,7 @@ class _DummyDB:
     def __init__(self) -> None:
         self.added: list[object] = []
         self.commits = 0
+        self.rollbacks = 0
         self.executed = 0
 
     def add(self, obj: object) -> None:
@@ -24,6 +25,9 @@ class _DummyDB:
 
     async def commit(self) -> None:
         self.commits += 1
+
+    async def rollback(self) -> None:
+        self.rollbacks += 1
 
     async def execute(self, _stmt):  # noqa: ANN001
         self.executed += 1
@@ -421,3 +425,57 @@ async def test_provider_reservation_and_ticket_info_services_map_provider_outcom
     with pytest.raises(HTTPException) as ticket_fail:
         await train_service.get_provider_ticket_info(db, user=user, provider="SRT", reservation_id="PNR-2")
     assert ticket_fail.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_refresh_train_reservations_after_sign_in_syncs_configured_providers_only(monkeypatch):
+    db = _DummyDB()
+    user = _user()
+
+    monkeypatch.setattr(train_service, "_is_provider_enabled", lambda provider: provider == "SRT")
+
+    async def _load_provider_credentials(_db, *, user_id, provider):  # noqa: ANN001
+        assert user_id == user.id
+        if provider == "SRT":
+            return {"username": "srt-user", "password": "pw", "verified_at": ""}
+        return None
+
+    monkeypatch.setattr(train_service, "_load_provider_credentials", _load_provider_credentials)
+
+    calls: list[tuple[str, bool]] = []
+
+    async def _list_provider_reservations(_db, *, user, provider, paid_only):  # noqa: ANN001
+        calls.append((provider, paid_only))
+        return SimpleNamespace(reservations=[])
+
+    monkeypatch.setattr(train_service, "list_provider_reservations", _list_provider_reservations)
+
+    await train_service.refresh_train_reservations_after_sign_in(db, user=user)
+
+    assert calls == [("SRT", False)]
+
+
+@pytest.mark.asyncio
+async def test_refresh_train_reservations_after_sign_in_swallows_provider_failures(monkeypatch):
+    db = _DummyDB()
+    user = _user()
+
+    monkeypatch.setattr(train_service, "_is_provider_enabled", lambda _provider: True)
+
+    async def _load_provider_credentials(_db, *, user_id, provider):  # noqa: ANN001
+        assert user_id == user.id
+        return {"username": f"{provider}-user", "password": "pw", "verified_at": ""}
+
+    monkeypatch.setattr(train_service, "_load_provider_credentials", _load_provider_credentials)
+
+    async def _list_provider_reservations(_db, *, user, provider, paid_only):  # noqa: ANN001
+        assert paid_only is False
+        if provider == "SRT":
+            raise HTTPException(status_code=502, detail="provider down")
+        raise RuntimeError("unexpected")
+
+    monkeypatch.setattr(train_service, "list_provider_reservations", _list_provider_reservations)
+
+    await train_service.refresh_train_reservations_after_sign_in(db, user=user)
+
+    assert db.rollbacks == 2
