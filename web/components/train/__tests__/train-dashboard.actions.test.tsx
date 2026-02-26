@@ -730,10 +730,14 @@ describe("TrainDashboard action flows", () => {
     window.matchMedia = vi.fn().mockReturnValue({ matches: true }) as typeof window.matchMedia;
     fireEvent.click(screen.getByRole("button", { name: "Modify Search" }));
     await flushAsyncEffects();
-    const searchForm = screen.getByTestId("train-search-form");
-    const desktopStationSelects = searchForm.querySelectorAll("select.hidden.md\\:block");
-    fireEvent.change(desktopStationSelects[0] as HTMLSelectElement, { target: { value: "동탄" } });
-    fireEvent.change(desktopStationSelects[1] as HTMLSelectElement, { target: { value: "수서" } });
+    const departureInput = screen.getByLabelText("Departure station");
+    const arrivalInput = screen.getByLabelText("Arrival station");
+    fireEvent.focus(departureInput);
+    fireEvent.change(departureInput, { target: { value: "동탄" } });
+    fireEvent.blur(departureInput);
+    fireEvent.focus(arrivalInput);
+    fireEvent.change(arrivalInput, { target: { value: "수서" } });
+    fireEvent.blur(arrivalInput);
     fireEvent.change(screen.getByLabelText("Seat class"), { target: { value: "special" } });
     const adultsDesktopInput = screen.getByLabelText("Adults");
     const childrenDesktopInput = screen.getByLabelText("Children");
@@ -1588,8 +1592,8 @@ describe("TrainDashboard action flows", () => {
 
     await renderDashboard();
 
-    const departureMobile = screen.getAllByLabelText("Departure station")[0] as HTMLSelectElement;
-    const arrivalMobile = screen.getAllByLabelText("Arrival station")[0] as HTMLSelectElement;
+    const departureMobile = screen.getAllByLabelText("Departure station")[0] as HTMLInputElement;
+    const arrivalMobile = screen.getAllByLabelText("Arrival station")[0] as HTMLInputElement;
     expect(departureMobile.disabled).toBe(true);
     expect(arrivalMobile.disabled).toBe(true);
   });
@@ -1626,6 +1630,50 @@ describe("TrainDashboard action flows", () => {
     await renderDashboard();
 
     expect(screen.getByText("Could not load task lists.")).toBeInTheDocument();
+  });
+
+  it("autocorrects station input on blur for strong matches and reverts no-match input", async () => {
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/train/credentials/status")) {
+        return jsonResponse({
+          ktx: { configured: true, verified: true, username: "01012345678", verified_at: null, detail: null },
+          srt: { configured: true, verified: true, username: "srt-user", verified_at: null, detail: null },
+        });
+      }
+      if (url.includes("/api/wallet/payment-card")) {
+        return jsonResponse({ configured: false, card_masked: null, expiry_month: null, expiry_year: null, updated_at: null, detail: null });
+      }
+      if (url.includes("/api/train/stations")) {
+        return jsonResponse({
+          stations: [
+            { name: "수서", srt_code: "0551", srt_supported: true },
+            { name: "부산", srt_code: "0020", srt_supported: true },
+            { name: "동탄", srt_code: "0552", srt_supported: true },
+            { name: "서울", srt_code: null, srt_supported: false },
+          ],
+        });
+      }
+      if (url.includes("/api/train/tasks?")) {
+        return jsonResponse({ tasks: [] });
+      }
+      return jsonResponse({ detail: "not found" }, 404);
+    });
+
+    await renderDashboard();
+
+    const departure = screen.getAllByLabelText("Departure station")[0] as HTMLInputElement;
+    fireEvent.focus(departure);
+    fireEvent.change(departure, { target: { value: "tntj" } });
+    expect(within(screen.getByRole("listbox")).getAllByRole("option").length).toBeLessThanOrEqual(3);
+    fireEvent.blur(departure);
+    expect(departure.value).toContain("Suseo");
+
+    fireEvent.focus(departure);
+    fireEvent.change(departure, { target: { value: "zzzzqqq" } });
+    expect(screen.getByText("No matching stations")).toBeInTheDocument();
+    fireEvent.blur(departure);
+    expect(departure.value).toContain("Suseo");
   });
 
 });
