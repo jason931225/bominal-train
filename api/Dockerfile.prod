@@ -38,6 +38,7 @@ COPY --chown=bominal:bominal app ./app
 COPY --chown=bominal:bominal alembic ./alembic
 COPY --chown=bominal:bominal scripts ./scripts
 COPY --chown=bominal:bominal alembic.ini ./alembic.ini
+RUN python -c "import json, pathlib, os; pathlib.Path('/app/app/build_info.json').write_text(json.dumps({'app_version': os.environ.get('APP_VERSION', ''), 'build_version': os.environ.get('BUILD_VERSION', '')}, separators=(',', ':')), encoding='utf-8')"
 
 USER bominal
 
