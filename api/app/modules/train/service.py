@@ -64,6 +64,7 @@ from app.modules.train.schemas import (
 from app.modules.train.stations import ALL_STATIONS, station_code_for_name, station_exists
 from app.modules.train.ticket_sync import fetch_ticket_sync_snapshot
 from app.modules.train.timezone import KST
+from app.services.system_payment import is_payment_runtime_enabled
 from app.services.wallet import get_payment_card_for_execution
 
 settings = get_settings()
@@ -1621,7 +1622,7 @@ async def cancel_task(db: AsyncSession, *, task_id: UUID, user: User) -> TaskAct
 
 
 async def pay_task(db: AsyncSession, *, task_id: UUID, user: User) -> TaskActionResponse:
-    if not settings.payment_enabled:
+    if not await is_payment_runtime_enabled(db):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Payment features are currently disabled")
 
     task = await get_task_for_user(db, task_id=task_id, user=user)
@@ -1711,7 +1712,7 @@ async def pay_task(db: AsyncSession, *, task_id: UUID, user: User) -> TaskAction
             await db.commit()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Configure payment settings before paying for reservations.",
+            detail="Server-wide payment settings are not configured.",
         )
 
     client = client_cache.get(provider)

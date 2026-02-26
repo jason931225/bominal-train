@@ -43,6 +43,57 @@ async def test_admin_only_returns_expected_message():
 
 
 @pytest.mark.asyncio
+async def test_admin_payment_settings_controls(db_session):
+    admin_user = await _make_user(
+        db_session,
+        email=f"payment-admin-{uuid4().hex[:8]}@example.com",
+        role_name="admin",
+        access_status="approved",
+    )
+
+    initial = await admin_routes.get_payment_settings(db=db_session)
+    assert isinstance(initial.payment_enabled, bool)
+    assert initial.source in {"server_override", "pay_env", "none"}
+
+    disabled = await admin_routes.set_payment_settings_enabled(
+        body=admin_routes.AdminPaymentEnabledRequest(enabled=False),
+        db=db_session,
+        admin_user=admin_user,
+    )
+    assert disabled.payment_enabled is False
+    assert disabled.payment_enabled_override is False
+
+    enabled = await admin_routes.set_payment_settings_enabled(
+        body=admin_routes.AdminPaymentEnabledRequest(enabled=True),
+        db=db_session,
+        admin_user=admin_user,
+    )
+    assert enabled.payment_enabled_override is True
+
+    updated = await admin_routes.set_payment_settings_card(
+        body=admin_routes.AdminPaymentCardUpdateRequest(
+            card_number="4111 1111 1111 3456",
+            expiry_mm="12",
+            expiry_yy="29",
+            dob="19900101",
+            pin2="12",
+        ),
+        db=db_session,
+        admin_user=admin_user,
+    )
+    assert updated.configured is True
+    assert updated.source == "server_override"
+    assert updated.card_masked is not None
+    assert updated.card_masked.endswith("3456")
+
+    cleared = await admin_routes.delete_payment_settings_card(
+        db=db_session,
+        admin_user=admin_user,
+    )
+    assert cleared.source in {"pay_env", "none"}
+
+
+@pytest.mark.asyncio
 async def test_get_system_stats_aggregates_counts(db_session):
     now = datetime.now(timezone.utc)
     user = await _make_user(db_session, email=f"stats-{uuid4().hex[:8]}@example.com")

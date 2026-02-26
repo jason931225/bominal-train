@@ -40,6 +40,7 @@ from app.modules.train.ticket_sync import fetch_ticket_sync_snapshot
 from app.schemas.notification import EmailTemplateBlock, EmailTemplateJobPayload
 from app.services.email_queue import enqueue_template_email
 from app.services.email_template import format_completion_summary
+from app.services.system_payment import is_payment_runtime_enabled
 from app.services.wallet import get_payment_card_for_execution
 
 settings = get_settings()
@@ -1770,7 +1771,7 @@ async def _run_train_task_inner(
             return
 
         spec = dict(task.spec_json or {})
-        auto_pay_enabled = bool(settings.payment_enabled and spec.get("auto_pay", True))
+        auto_pay_enabled = bool((await is_payment_runtime_enabled(db)) and spec.get("auto_pay", True))
         ranked = _normalize_ranked_selection(spec)
         if not ranked:
             await _mark_failed(db, task)
