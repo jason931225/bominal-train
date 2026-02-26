@@ -175,6 +175,26 @@ async def test_healthcheck_success_and_degraded_paths(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
+async def test_version_info_reports_runtime_versions(monkeypatch) -> None:
+    monkeypatch.setenv("APP_VERSION", " 9.8.7 ")
+    monkeypatch.setenv("BUILD_VERSION", " commit-abc123 ")
+
+    payload = await main_mod.version_info()
+    assert payload == {
+        "app": main_mod.settings.app_name,
+        "app_version": "9.8.7",
+        "build_version": "commit-abc123",
+    }
+
+    monkeypatch.setenv("APP_VERSION", " ")
+    monkeypatch.delenv("BUILD_VERSION", raising=False)
+
+    default_payload = await main_mod.version_info()
+    assert default_payload["app_version"] == "0.0.0"
+    assert default_payload["build_version"] == "unknown"
+
+
+@pytest.mark.asyncio
 async def test_admin_docs_endpoints_return_schema() -> None:
     docs_response = await main_mod.admin_swagger_ui(None)
     assert docs_response.status_code == 200

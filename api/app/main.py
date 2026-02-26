@@ -14,6 +14,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from sqlalchemy import text
 
 from app.http.deps import get_current_admin, get_current_approved_user
+from app.http.app_common import build_version_payload
 from app.http.routes import admin, auth, internal, modules, notifications, wallet
 from app.core.config import get_settings
 from app.core.logging import setup_logging, get_logger
@@ -165,6 +166,11 @@ async def healthcheck() -> dict[str, str | bool]:
         health["status"] = "degraded"
     
     return health
+
+
+@app.get("/version")
+async def version_info() -> dict[str, str]:
+    return build_version_payload()
 
 
 # Admin-only API documentation
