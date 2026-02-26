@@ -178,51 +178,52 @@ main() {
     ) &
     keepalive_pid="$!"
 
-    {
-      # Update repo and align infra config to the requested commit (or origin/main).
-      if git -C "$repo_dir" fetch origin --prune; then
-        :
-      else
-        log "WARN: git fetch origin failed; continuing with existing repo state"
-      fi
+    # Update repo and align infra config to the requested commit (or origin/main).
+    if git -C "$repo_dir" fetch origin --prune; then
+      :
+    else
+      log "WARN: git fetch origin failed; continuing with existing repo state"
+    fi
 
-      # Latest-only deploys: always prefer the infra/scripts on origin/main.
-      # If local tracked/untracked edits block checkout, auto-stash and retry so
-      # deploys do not silently stay pinned to stale infrastructure code.
+    # Latest-only deploys: always prefer the infra/scripts on origin/main.
+    # If local tracked/untracked edits block checkout, auto-stash and retry so
+    # deploys do not silently stay pinned to stale infrastructure code.
+    if git -C "$repo_dir" checkout --detach origin/main >/dev/null 2>&1; then
+      log "Repo aligned to origin/main ($(git -C "$repo_dir" rev-parse --short HEAD 2>/dev/null || echo unknown))"
+    else
+      log "WARN: checkout --detach origin/main failed; attempting auto-stash and retry"
+      git -C "$repo_dir" stash push -u -m "deploy-agent-auto-stash-$(date -u +%Y%m%dT%H%M%SZ)" >/dev/null 2>&1 || true
       if git -C "$repo_dir" checkout --detach origin/main >/dev/null 2>&1; then
-        log "Repo aligned to origin/main ($(git -C "$repo_dir" rev-parse --short HEAD 2>/dev/null || echo unknown))"
+        log "Repo aligned to origin/main after auto-stash ($(git -C "$repo_dir" rev-parse --short HEAD 2>/dev/null || echo unknown))"
       else
-        log "WARN: checkout --detach origin/main failed; attempting auto-stash and retry"
-        git -C "$repo_dir" stash push -u -m "deploy-agent-auto-stash-$(date -u +%Y%m%dT%H%M%SZ)" >/dev/null 2>&1 || true
-        if git -C "$repo_dir" checkout --detach origin/main >/dev/null 2>&1; then
-          log "Repo aligned to origin/main after auto-stash ($(git -C "$repo_dir" rev-parse --short HEAD 2>/dev/null || echo unknown))"
-        else
-          log "WARN: repo checkout to origin/main still failing; continuing with existing repo state"
-        fi
+        log "WARN: repo checkout to origin/main still failing; continuing with existing repo state"
       fi
+    fi
 
-      # Run deploy. Use "latest" by default to avoid missing image tags when only one image was rebuilt.
-      export GCP_PROJECT_ID
-      export GCP_REGION="$gcp_region"
+    # Run deploy. Use "latest" by default to avoid missing image tags when only one image was rebuilt.
+    export GCP_PROJECT_ID
+    export GCP_REGION="$gcp_region"
 
-      if [[ -n "$deploy_api_image" ]]; then export API_IMAGE="$deploy_api_image"; fi
-      if [[ -n "$deploy_worker_image" ]]; then export WORKER_IMAGE="$deploy_worker_image"; fi
-      if [[ -n "$deploy_web_image" ]]; then export WEB_IMAGE="$deploy_web_image"; fi
+    if [[ -n "$deploy_api_image" ]]; then export API_IMAGE="$deploy_api_image"; fi
+    if [[ -n "$deploy_worker_image" ]]; then export WORKER_IMAGE="$deploy_worker_image"; fi
+    if [[ -n "$deploy_web_image" ]]; then export WEB_IMAGE="$deploy_web_image"; fi
 
-      log "Running deploy script (latest baseline with optional api/worker/web image overrides)"
-      bash "$deploy_script"
-
+    log "Running deploy script (latest baseline with optional api/worker/web image overrides)"
+    if bash "$deploy_script"; then
       # ACK only after successful deploy.
-      gcloud pubsub subscriptions ack "$DEPLOY_SUBSCRIPTION" \
+      if gcloud pubsub subscriptions ack "$DEPLOY_SUBSCRIPTION" \
         --project="$GCP_PROJECT_ID" \
-        --ack-ids="$ack_id" >/dev/null
-
-      log "Deploy completed; message ACKed"
-    } || {
+        --ack-ids="$ack_id" >/dev/null; then
+        log "Deploy completed; message ACKed"
+      else
+        log "ERROR: deploy succeeded but ACK failed; message may be retried"
+        sleep 10
+      fi
+    else
       # Do not ACK on failure. Pub/Sub will redeliver.
       log "ERROR: deploy failed; message NOT ACKed (will be retried)"
       sleep 10
-    }
+    fi
 
     cleanup_pid "$keepalive_pid"
 
