@@ -95,8 +95,11 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
   const [artifacts, setArtifacts] = useState<TrainArtifact[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [refreshingTask, setRefreshingTask] = useState(false);
   const [cancellingTicket, setCancellingTicket] = useState(false);
   const [payingTicket, setPayingTicket] = useState(false);
+  const [pausingTask, setPausingTask] = useState(false);
+  const [resumingTask, setResumingTask] = useState(false);
   const [deletingTask, setDeletingTask] = useState(false);
   const [retryingNow, setRetryingNow] = useState(false);
 
@@ -123,6 +126,9 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
     const cancelled = readBoolean(ticketArtifact.data_json_safe.cancelled) ?? false;
     return status === "awaiting_payment" && paid !== true && !cancelled;
   }, [ticketArtifact]);
+  const canPauseTask = Boolean(task) && !isTerminal && task?.state !== "PAUSED";
+  const canResumeTask = Boolean(task) && !isTerminal && task?.state === "PAUSED";
+  const canCancelTask = Boolean(task) && (!isTerminal || canCancelReservation);
   const sortedAttempts = useMemo(() => {
     return [...attempts].sort((left, right) => {
       const leftStarted = Date.parse(left.started_at);
@@ -189,6 +195,36 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
     }
   }, [taskId, t]);
 
+  const refreshTask = async () => {
+    setRefreshingTask(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const response = await fetch(`${clientApiBaseUrl}/api/train/tasks/${taskId}/refresh`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as { detail?: string } | null;
+        setError(payload?.detail ?? t("train.error.taskRefresh"));
+        return;
+      }
+      const payload = (await response.json()) as {
+        task: TrainTaskSummary;
+        attempts: TrainTaskAttempt[];
+        artifacts: TrainArtifact[];
+      };
+      setTask(payload.task);
+      setAttempts(payload.attempts);
+      setArtifacts(payload.artifacts);
+      setNotice(t("train.notice.taskRefreshed"));
+    } catch {
+      setError(t("train.error.taskRefresh"));
+    } finally {
+      setRefreshingTask(false);
+    }
+  };
+
   useEffect(() => {
     void loadDetail();
     const unsubscribeTaskEvents = subscribeTrainTaskEvents((payload, event) => {
@@ -204,32 +240,52 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
     setAttemptsPage((current) => Math.min(Math.max(1, current), totalAttemptPages));
   }, [totalAttemptPages]);
 
-  const cancelTicket = async () => {
-    if (!ticketArtifact) {
-      setError(t("train.ticket.missingArtifact"));
-      return;
+  const updateTaskState = async (action: "pause" | "resume") => {
+    if (action === "pause") setPausingTask(true);
+    if (action === "resume") setResumingTask(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const response = await fetch(`${clientApiBaseUrl}/api/train/tasks/${taskId}/${action}`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const payload = (await response.json().catch(() => null)) as { detail?: string } | null;
+      if (!response.ok) {
+        setError(payload?.detail ?? t("train.task.actionFailed"));
+        return;
+      }
+      await loadDetail();
+    } catch {
+      setError(t("train.task.actionFailed"));
+    } finally {
+      setPausingTask(false);
+      setResumingTask(false);
     }
-    const confirmed = window.confirm(t("train.confirm.cancelTicket"));
+  };
+
+  const cancelTask = async () => {
+    const confirmed = window.confirm(t("train.confirm.cancelTask"));
     if (!confirmed) return;
 
     setCancellingTicket(true);
     setError(null);
     setNotice(null);
     try {
-      const response = await fetch(`${clientApiBaseUrl}/api/train/tickets/${ticketArtifact.id}/cancel`, {
+      const response = await fetch(`${clientApiBaseUrl}/api/train/tasks/${taskId}/cancel`, {
         method: "POST",
         credentials: "include",
       });
-      const payload = (await response.json().catch(() => null)) as { status?: string; detail?: string } | null;
+      const payload = (await response.json().catch(() => null)) as { detail?: string } | null;
       if (!response.ok) {
-        setError(payload?.detail ?? t("train.error.ticketCancel"));
+        setError(payload?.detail ?? t("train.task.actionFailed"));
         return;
       }
 
       setNotice(payload?.detail ?? t("train.notice.ticketCancelDone"));
       await loadDetail();
     } catch {
-      setError(t("train.error.ticketCancel"));
+      setError(t("train.task.actionFailed"));
     } finally {
       setCancellingTicket(false);
     }
@@ -358,6 +414,16 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
               </p>
             ) : null}
           </div>
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void refreshTask()}
+              disabled={refreshingTask || cancellingTicket || payingTicket || pausingTask || resumingTask || deletingTask}
+              className={refreshingTask ? SMALL_DISABLED_BUTTON_CLASS : SMALL_BUTTON_CLASS}
+            >
+              {refreshingTask ? t("train.action.syncing") : t("train.action.syncRefresh")}
+            </button>
+          </div>
           {!isTerminal && (task.state === "QUEUED" || task.state === "POLLING") ? (
             <div className="mt-4 flex flex-wrap items-center gap-2">
               <button
@@ -367,6 +433,9 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
                   retryingNow ||
                   cancellingTicket ||
                   payingTicket ||
+                  pausingTask ||
+                  resumingTask ||
+                  refreshingTask ||
                   deletingTask ||
                   !task.retry_now_allowed
                 }
@@ -379,23 +448,43 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
               </button>
             </div>
           ) : null}
-          {canPayReservation || canCancelReservation || isTerminal ? (
+          {canPayReservation || canPauseTask || canResumeTask || canCancelTask || isTerminal ? (
             <div className="mt-4 flex flex-wrap items-center gap-2">
               {canPayReservation ? (
                 <button
                   type="button"
                   onClick={() => void payTicket()}
-                  disabled={payingTicket || cancellingTicket || deletingTask}
+                  disabled={payingTicket || cancellingTicket || pausingTask || resumingTask || refreshingTask || deletingTask}
                   className={SMALL_SUCCESS_BUTTON_CLASS}
                 >
                   {payingTicket ? t("train.action.paying") : t("train.action.pay")}
                 </button>
               ) : null}
-              {canCancelReservation ? (
+              {canPauseTask ? (
                 <button
                   type="button"
-                  onClick={() => void cancelTicket()}
-                  disabled={!ticketArtifact || cancellingTicket || deletingTask || payingTicket}
+                  onClick={() => void updateTaskState("pause")}
+                  disabled={pausingTask || resumingTask || cancellingTicket || payingTicket || refreshingTask || deletingTask}
+                  className={pausingTask ? SMALL_DISABLED_BUTTON_CLASS : SMALL_BUTTON_CLASS}
+                >
+                  {pausingTask ? t("common.loading") : t("train.action.pause")}
+                </button>
+              ) : null}
+              {canResumeTask ? (
+                <button
+                  type="button"
+                  onClick={() => void updateTaskState("resume")}
+                  disabled={resumingTask || pausingTask || cancellingTicket || payingTicket || refreshingTask || deletingTask}
+                  className={resumingTask ? SMALL_DISABLED_BUTTON_CLASS : SMALL_BUTTON_CLASS}
+                >
+                  {resumingTask ? t("common.loading") : t("train.action.resume")}
+                </button>
+              ) : null}
+              {canCancelTask ? (
+                <button
+                  type="button"
+                  onClick={() => void cancelTask()}
+                  disabled={cancellingTicket || pausingTask || resumingTask || deletingTask || payingTicket || refreshingTask}
                   className={SMALL_DANGER_BUTTON_CLASS}
                 >
                   {cancellingTicket ? t("train.action.cancelling") : t("train.action.cancel")}

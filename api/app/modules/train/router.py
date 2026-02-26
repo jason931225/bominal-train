@@ -53,6 +53,7 @@ from app.modules.train.service import (
     list_tasks,
     pause_task,
     pay_task,
+    refresh_task_detail,
     retry_task_now,
     resume_task,
     search_schedules,
@@ -288,6 +289,15 @@ async def get_train_task(
     db: AsyncSession = Depends(get_db),
 ) -> TaskDetailOut:
     return await get_task_detail(db, task_id=task_id, user=user)
+
+
+@router.post("/tasks/{task_id}/refresh", response_model=TaskDetailOut)
+async def refresh_train_task(
+    task_id: UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> TaskDetailOut:
+    return await refresh_task_detail(db, task_id=task_id, user=user)
 
 
 @router.post("/tasks/{task_id}/pause", response_model=TaskActionResponse)

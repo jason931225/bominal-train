@@ -20,15 +20,25 @@ class _Result:
     def scalar_one_or_none(self):  # noqa: ANN201
         return self._scalar
 
+    def one_or_none(self):  # noqa: ANN201
+        return self._scalar
+
 
 class _DB:
-    def __init__(self, artifact: Artifact | None = None) -> None:
+    def __init__(self, artifact: Artifact | None = None, task: Task | None = None) -> None:
         self.artifact = artifact
+        self.task = task
         self.added: list[object] = []
         self.commits = 0
 
     async def execute(self, _stmt):  # noqa: ANN001
-        return _Result(self.artifact)
+        if self.artifact is None:
+            return _Result(None)
+        linked_task = self.task
+        if linked_task is None:
+            linked_task = _task(state="RUNNING")
+            linked_task.id = self.artifact.task_id
+        return _Result((self.artifact, linked_task))
 
     def add(self, obj: object) -> None:
         self.added.append(obj)
@@ -323,7 +333,8 @@ async def test_cancel_ticket_branch_matrix(monkeypatch):
         kind="ticket",
         data_json_safe={"provider": "SRT", "reservation_id": "PNR-5"},
     )
-    db = _DB(artifact=base_artifact)
+    linked_task = _task(state="COMPLETED")
+    db = _DB(artifact=base_artifact, task=linked_task)
     async def _redis_obj():
         return object()
 
@@ -346,6 +357,8 @@ async def test_cancel_ticket_branch_matrix(monkeypatch):
     monkeypatch.setattr(train_service, "_get_logged_in_provider_client", _client_not_supported)
     not_supported = await train_service.cancel_ticket(db, artifact_id=uuid4(), user=user)
     assert not_supported.status == "not_supported"
+    assert linked_task.state == "CANCELLED"
+    assert linked_task.cancelled_at is not None
 
     class _ReservationGoneClient:
         async def cancel(self, **_kwargs):  # noqa: ANN003
@@ -357,6 +370,8 @@ async def test_cancel_ticket_branch_matrix(monkeypatch):
     monkeypatch.setattr(train_service, "_get_logged_in_provider_client", _client_gone)
     gone = await train_service.cancel_ticket(db, artifact_id=uuid4(), user=user)
     assert gone.status == "not_found"
+    assert linked_task.state == "CANCELLED"
+    assert linked_task.cancelled_at is not None
 
     class _CancelFailClient:
         async def cancel(self, **_kwargs):  # noqa: ANN003
@@ -380,6 +395,8 @@ async def test_cancel_ticket_branch_matrix(monkeypatch):
     monkeypatch.setattr(train_service, "_get_logged_in_provider_client", _client_success)
     cancelled = await train_service.cancel_ticket(db, artifact_id=uuid4(), user=user)
     assert cancelled.status == "cancelled"
+    assert linked_task.state == "CANCELLED"
+    assert linked_task.cancelled_at is not None
 
 
 @pytest.mark.asyncio
