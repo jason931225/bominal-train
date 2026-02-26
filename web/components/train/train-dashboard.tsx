@@ -653,6 +653,9 @@ export function getTaskTicketBadge(task: TrainTaskSummary): { label: string; cla
 }
 
 export function taskDisplayState(task: Pick<TrainTaskSummary, "state" | "ticket_status" | "ticket_paid">): string {
+  if (task.state === "EXPIRED") {
+    return "EXPIRED";
+  }
   const status = task.ticket_status ?? null;
   if (status === "awaiting_payment" && task.ticket_paid !== true) {
     return "PENDING";

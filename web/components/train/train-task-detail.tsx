@@ -121,11 +121,12 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
   }, [ticketArtifact, isCompleted]);
   const canPayReservation = useMemo(() => {
     if (!ticketArtifact) return false;
+    if (task?.state === "EXPIRED" || task?.state === "CANCELLED") return false;
     const status = readString(ticketArtifact.data_json_safe.status);
     const paid = readBoolean(ticketArtifact.data_json_safe.paid);
     const cancelled = readBoolean(ticketArtifact.data_json_safe.cancelled) ?? false;
     return status === "awaiting_payment" && paid !== true && !cancelled;
-  }, [ticketArtifact]);
+  }, [task?.state, ticketArtifact]);
   const canPauseTask = Boolean(task) && !isTerminal && task?.state !== "PAUSED";
   const canResumeTask = Boolean(task) && !isTerminal && task?.state === "PAUSED";
   const canCancelTask = Boolean(task) && (!isTerminal || canCancelReservation);
@@ -392,7 +393,34 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
 
       {task ? (
         <div className="rounded-2xl border border-blossom-100 bg-white p-6 shadow-petal">
-          <h2 className="text-lg font-semibold text-slate-800">{t("train.taskStatus")}</h2>
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-lg font-semibold text-slate-800">{t("train.taskStatus")}</h2>
+            <button
+              type="button"
+              onClick={() => void refreshTask()}
+              aria-label={t("train.action.syncRefresh")}
+              title={t("train.action.syncRefresh")}
+              disabled={refreshingTask || cancellingTicket || payingTicket || pausingTask || resumingTask || deletingTask}
+              className={
+                refreshingTask
+                  ? `${SMALL_DISABLED_BUTTON_CLASS} w-8 px-0`
+                  : `${SMALL_BUTTON_CLASS} w-8 px-0`
+              }
+            >
+              <svg
+                aria-hidden="true"
+                className={`h-4 w-4 ${refreshingTask ? "animate-spin" : ""}`}
+                viewBox="0 0 20 20"
+                fill="currentColor"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M15.312 6.094a7 7 0 10.908 7.61 1 1 0 111.836.793A9 9 0 1120 10a1 1 0 11-2 0 7 7 0 00-2.688-5.51V7a1 1 0 11-2 0V3a1 1 0 011-1h4a1 1 0 010 2h-2.688z"
+                  clipRule="evenodd"
+                />
+              </svg>
+            </button>
+          </div>
           <div className="mt-3 grid gap-2 text-sm text-slate-700 md:grid-cols-2">
             <p>
               <span className="font-medium">{t("train.state")}</span> {task.state}
@@ -413,16 +441,6 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
                 {task.next_run_at ? formatDateTimeKstSeconds(task.next_run_at, locale) : "-"}
               </p>
             ) : null}
-          </div>
-          <div className="mt-4 flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => void refreshTask()}
-              disabled={refreshingTask || cancellingTicket || payingTicket || pausingTask || resumingTask || deletingTask}
-              className={refreshingTask ? SMALL_DISABLED_BUTTON_CLASS : SMALL_BUTTON_CLASS}
-            >
-              {refreshingTask ? t("train.action.syncing") : t("train.action.syncRefresh")}
-            </button>
           </div>
           {!isTerminal && (task.state === "QUEUED" || task.state === "POLLING") ? (
             <div className="mt-4 flex flex-wrap items-center gap-2">
