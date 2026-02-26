@@ -342,6 +342,7 @@
     "toShort": "도착",
     "timeShort": "시간",
     "swapStations": "출발역과 도착역 바꾸기",
+    "noMatchingStations": "일치하는 역이 없습니다.",
     "passengerSeatClass": "인원 / 좌석 등급",
     "selectSchedules": "시간표 선택 ({date})",
     "selected": "선택됨:",
