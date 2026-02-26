@@ -34,6 +34,7 @@ skip_smoke_tests=0
 min_total_memory_mb="${PREDEPLOY_MIN_TOTAL_MEMORY_MB:-0}"
 min_total_swap_mb="${PREDEPLOY_MIN_TOTAL_SWAP_MB:-0}"
 allow_deprecation_bypass="${PREDEPLOY_ALLOW_DEPRECATION_BYPASS:-false}"
+allow_policy_gates_bypass="${PREDEPLOY_ALLOW_POLICY_GATES_BYPASS:-false}"
 deprecation_registry_path="${PREDEPLOY_DEPRECATION_REGISTRY_PATH:-$ROOT_DIR/docs/deprecations/registry.json}"
 deprecation_guard_script="${PREDEPLOY_DEPRECATION_GUARD_SCRIPT:-$ROOT_DIR/infra/scripts/deprecation_guard.py}"
 
@@ -256,6 +257,8 @@ Options:
 Environment:
   PREDEPLOY_ALLOW_DEPRECATION_BYPASS=true
       Emergency override for deprecation gate (approval required).
+  PREDEPLOY_ALLOW_POLICY_GATES_BYPASS=true
+      Temporary override for deploy policy gates (deprecation + resource checks).
   PREDEPLOY_DEPRECATION_REGISTRY_PATH=<path>
       Override default registry path (default: docs/deprecations/registry.json).
   PREDEPLOY_DEPRECATION_GUARD_SCRIPT=<path>
@@ -271,6 +274,7 @@ USAGE
 done
 
 detect_compose_cmd
+require_boolean_like "$allow_policy_gates_bypass" "PREDEPLOY_ALLOW_POLICY_GATES_BYPASS"
 
 echo "==> Checking required production env files"
 for file in "${required_files[@]}"; do
@@ -463,9 +467,12 @@ done
 echo "==> Validating production compose configuration"
 "${COMPOSE_CMD[@]}" -f infra/docker-compose.prod.yml config >/tmp/bominal-prod-compose.txt
 
-run_deprecation_gate
-
-run_resource_gate
+if is_truthy "$allow_policy_gates_bypass"; then
+  log_warn "Skipping policy gates (PREDEPLOY_ALLOW_POLICY_GATES_BYPASS=true)."
+else
+  run_deprecation_gate
+  run_resource_gate
+fi
 
 service_is_running() {
   local service="$1"
