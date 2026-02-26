@@ -404,7 +404,7 @@ if is_truthy "$payment_enabled"; then
     log_error "EXPIRYMM in infra/env/prod/pay.env must be exactly 2 digits (MM)."
     exit 1
   fi
-  if [[ "$pay_expirymm" -lt 1 || "$pay_expirymm" -gt 12 ]]; then
+  if (( 10#$pay_expirymm < 1 || 10#$pay_expirymm > 12 )); then
     log_error "EXPIRYMM in infra/env/prod/pay.env must be between 01 and 12."
     exit 1
   fi

@@ -81,6 +81,16 @@ jobs:
             git show --pretty='' --name-only "$head_sha" > "$changed_file_list"
           fi
 
+          changed_api=false
+          if grep -qE '^api/' "$changed_file_list"; then
+            changed_api=true
+          fi
+
+          changed_web=false
+          if grep -qE '^web/' "$changed_file_list"; then
+            changed_web=true
+          fi
+
           changed_api_or_web=false
           if grep -qE '^(api|web)/' "$changed_file_list"; then
             changed_api_or_web=true
@@ -99,6 +109,8 @@ jobs:
           fi
 
           changed_file_count="$(wc -l < "$changed_file_list" | tr -d ' ')"
+          echo "changed_api=$changed_api" >> "$GITHUB_OUTPUT"
+          echo "changed_web=$changed_web" >> "$GITHUB_OUTPUT"
           echo "changed_api_or_web=$changed_api_or_web" >> "$GITHUB_OUTPUT"
           echo "critical_path_changed=$critical_path_changed" >> "$GITHUB_OUTPUT"
           echo "critical_api_web_path_changed=$critical_api_web_path_changed" >> "$GITHUB_OUTPUT"
@@ -109,6 +121,7 @@ jobs:
           python-version: "3.14"
 
       - uses: actions/setup-node@v4
+        if: steps.change_scope.outputs.changed_api_or_web == 'true'
         with:
           node-version: "24"
           cache: "npm"
@@ -119,16 +132,19 @@ jobs:
           python3 -m unittest discover -s infra/tests -p 'test_*.py'
 
       - name: Install web test dependencies
+        if: steps.change_scope.outputs.changed_api_or_web == 'true'
         run: |
           npm ci --prefix web
 
       - name: Dependency vulnerability scan (Python)
+        if: steps.change_scope.outputs.changed_api == 'true'
         run: |
           python3 -m pip install --upgrade pip pip-audit
           pip-audit -r api/requirements-prod.txt --strict
           pip-audit -r api/requirements.txt --strict
 
       - name: Dependency vulnerability scan (Web production deps)
+        if: steps.change_scope.outputs.changed_api_or_web == 'true'
         run: |
           npm audit --prefix web --omit=dev --audit-level=high
 
@@ -211,6 +227,10 @@ jobs:
         run: |
           bash infra/tests/test_docs_consistency.sh
 
+      - name: Validate CI/CD workflow efficiency policies
+        run: |
+          bash infra/tests/test_ci_cd_workflow_efficiency.sh
+
       - name: Validate sensitive log scanner
         run: |
           bash infra/tests/test_sensitive_log_scan.sh
@@ -242,6 +262,8 @@ jobs:
           {
             echo "### CI Infra Quality Gates Scope"
             echo "- Changed files: \`${{ steps.change_scope.outputs.changed_file_count }}\`"
+            echo "- API changed: \`${{ steps.change_scope.outputs.changed_api }}\`"
+            echo "- Web changed: \`${{ steps.change_scope.outputs.changed_web }}\`"
             echo "- API/Web changed: \`${{ steps.change_scope.outputs.changed_api_or_web }}\`"
             echo "- Critical-path changed: \`${{ steps.change_scope.outputs.critical_path_changed }}\`"
             echo "- Critical API/Web path changed: \`${{ steps.change_scope.outputs.critical_api_web_path_changed }}\`"

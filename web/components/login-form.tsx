@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { z } from "zod";
@@ -17,6 +17,8 @@ type LoginFormData = {
   remember_me: boolean;
 };
 
+const PASSKEY_CONTINUE_FALLBACK_DELAY_MS = 1000;
+
 export function LoginForm() {
   const router = useRouter();
   const { t } = useLocale();
@@ -30,6 +32,9 @@ export function LoginForm() {
   const [formError, setFormError] = useState<string | null>(null);
   const [continueSubmitting, setContinueSubmitting] = useState(false);
   const [signInSubmitting, setSignInSubmitting] = useState(false);
+  const continueFallbackTimerRef = useRef<number | null>(null);
+  const continueAttemptIdRef = useRef(0);
+  const authResolvedRef = useRef(false);
   const showingPassword = step === "password";
   const forgotPasswordHref = (() => {
     const email = form.email.trim();
@@ -62,6 +67,20 @@ export function LoginForm() {
     );
   };
 
+  const clearContinueFallbackTimer = () => {
+    const timerId = continueFallbackTimerRef.current;
+    if (timerId == null) return;
+    window.clearTimeout(timerId);
+    continueFallbackTimerRef.current = null;
+  };
+
+  useEffect(() => {
+    return () => {
+      continueAttemptIdRef.current += 1;
+      clearContinueFallbackTimer();
+    };
+  }, []);
+
   const onContinue = async () => {
     setFieldErrors({});
     setFormError(null);
@@ -73,34 +92,63 @@ export function LoginForm() {
     }
 
     const normalizedEmail = parsed.data.toLowerCase();
+    const continueAttemptId = continueAttemptIdRef.current + 1;
+    continueAttemptIdRef.current = continueAttemptId;
     setContinueSubmitting(true);
-    try {
-      if (!isPasskeySupported()) {
-        setStep("password");
-        return;
-      }
-      const result = await signInWithPasskey(clientApiBaseUrl, {
-        email: normalizedEmail,
-        rememberMe: form.remember_me,
-      });
-      if (result.ok) {
-        navigateAfterAuth();
-        return;
-      }
-
-      if (!expectedPasskeyFallback(result.error)) {
-        setFormError(result.error ?? t("auth.passkeySignInFailed"));
-      }
+    if (!isPasskeySupported()) {
       setStep("password");
-    } catch {
-      setFormError(t("auth.passkeySignInFailed"));
-      setStep("password");
-    } finally {
       setContinueSubmitting(false);
+      return;
     }
+
+    clearContinueFallbackTimer();
+    continueFallbackTimerRef.current = window.setTimeout(() => {
+      if (authResolvedRef.current || continueAttemptIdRef.current !== continueAttemptId) {
+        return;
+      }
+      setStep("password");
+      setContinueSubmitting(false);
+    }, PASSKEY_CONTINUE_FALLBACK_DELAY_MS);
+
+    void (async () => {
+      try {
+        const result = await signInWithPasskey(clientApiBaseUrl, {
+          email: normalizedEmail,
+          rememberMe: form.remember_me,
+        });
+        if (authResolvedRef.current || continueAttemptIdRef.current !== continueAttemptId) {
+          return;
+        }
+
+        clearContinueFallbackTimer();
+        if (result.ok) {
+          authResolvedRef.current = true;
+          setContinueSubmitting(false);
+          navigateAfterAuth();
+          return;
+        }
+
+        if (!expectedPasskeyFallback(result.error)) {
+          setFormError(result.error ?? t("auth.passkeySignInFailed"));
+        }
+        setStep("password");
+        setContinueSubmitting(false);
+      } catch {
+        if (authResolvedRef.current || continueAttemptIdRef.current !== continueAttemptId) {
+          return;
+        }
+        clearContinueFallbackTimer();
+        setFormError(t("auth.passkeySignInFailed"));
+        setStep("password");
+        setContinueSubmitting(false);
+      }
+    })();
   };
 
   const onPasswordSignIn = async () => {
+    if (authResolvedRef.current) {
+      return;
+    }
     const loginSchema = z.object({
       email: z.string().email(t("auth.invalidEmail")),
       password: z.string().min(8, t("auth.passwordMin")),
@@ -126,6 +174,7 @@ export function LoginForm() {
       return;
     }
 
+    clearContinueFallbackTimer();
     setSignInSubmitting(true);
     try {
       const response = await fetch(`${clientApiBaseUrl}/api/auth/login`, {
@@ -135,14 +184,22 @@ export function LoginForm() {
         body: JSON.stringify(parsed.data),
       });
 
+      if (authResolvedRef.current) {
+        return;
+      }
+
       if (!response.ok) {
         const body = (await response.json().catch(() => null)) as { detail?: string } | null;
         setFormError(body?.detail ?? t("auth.invalidLogin"));
         return;
       }
 
+      authResolvedRef.current = true;
       navigateAfterAuth();
     } catch {
+      if (authResolvedRef.current) {
+        return;
+      }
       setFormError(t("auth.apiUnreachable"));
     } finally {
       setSignInSubmitting(false);
@@ -174,6 +231,9 @@ export function LoginForm() {
           value={form.email}
           onChange={(event) => {
             const nextEmail = event.target.value;
+            continueAttemptIdRef.current += 1;
+            clearContinueFallbackTimer();
+            setContinueSubmitting(false);
             setForm((prev) => ({ ...prev, email: nextEmail, ...(step === "password" ? { password: "" } : {}) }));
             if (step === "password") {
               setStep("email");

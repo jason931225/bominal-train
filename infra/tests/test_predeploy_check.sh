@@ -114,6 +114,25 @@ make_valid_registry
 # Valid env files with skip smoke checks should pass.
 PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" BOMINAL_ROOT_DIR="$TMP_DIR/repo" "$SCRIPT" --skip-smoke-tests >/dev/null
 
+# Leading-zero month values should be treated as decimal and avoid bash octal warnings.
+cat >"$TMP_DIR/repo/infra/env/prod/pay.env" <<'EOF'
+CARDNUMBER=4111111111111111
+EXPIRYMM=08
+EXPIRYYY=99
+DOB=19900101
+NN=12
+EOF
+predeploy_out="$(
+  env PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" BOMINAL_ROOT_DIR="$TMP_DIR/repo" \
+    "$SCRIPT" --skip-smoke-tests 2>&1
+)"
+if grep -q "value too great for base" <<<"$predeploy_out"; then
+  echo "FAIL: predeploy check emitted bash octal parse warning for EXPIRYMM=08" >&2
+  echo "$predeploy_out" >&2
+  exit 1
+fi
+make_valid_envs
+
 # Policy-gate bypass should skip deprecation/resource gates.
 PATH="$TMP_DIR/bin:$PATH" \
   PREDEPLOY_ALLOW_POLICY_GATES_BYPASS=true \

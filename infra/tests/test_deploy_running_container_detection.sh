@@ -142,6 +142,12 @@ if ! rg -q "up -d --wait --no-deps web" "$UPDATE_CALLS"; then
   exit 1
 fi
 
+if ! rg -q "up -d --wait --no-deps caddy" "$UPDATE_CALLS"; then
+  echo "FAIL: rolling deploy did not isolate caddy reconciliation with --no-deps" >&2
+  cat "$UPDATE_CALLS" >&2
+  exit 1
+fi
+
 if rg -q "up -d --wait redis api worker web caddy" "$UPDATE_CALLS"; then
   echo "FAIL: running-stack deploy unexpectedly used bootstrap path" >&2
   cat "$UPDATE_CALLS" >&2
