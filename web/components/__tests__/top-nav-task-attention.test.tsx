@@ -274,6 +274,44 @@ describe("TopNavTaskAttention", () => {
     });
   });
 
+  it("refreshes attention when ticket-status payload is delivered on task_state channel", async () => {
+    render(
+      <LocaleProvider initialLocale="en">
+        <TopNavTaskAttention userId="user-1" displayName="Jason" />
+      </LocaleProvider>,
+    );
+
+    await act(async () => {
+      MockEventSource.emit("task_state", {
+        type: "task_ticket_status_changed",
+        task_id: "t-1",
+        state: "POLLING",
+        previous_ticket_status: "waiting",
+        ticket_status: "awaiting_payment",
+      });
+    });
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it("treats lowercase terminal states as attention refresh events", async () => {
+    render(
+      <LocaleProvider initialLocale="en">
+        <TopNavTaskAttention userId="user-1" displayName="Jason" />
+      </LocaleProvider>,
+    );
+
+    await act(async () => {
+      MockEventSource.emit("task_state", { task_id: "t-1", state: "completed" });
+    });
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+  });
+
   it("coalesces burst terminal-state refresh events into a single queued follow-up request", async () => {
     render(
       <LocaleProvider initialLocale="en">

@@ -296,7 +296,7 @@ export function TopNavTaskAttention({
       if (eventType !== "task_state") {
         return;
       }
-      const state = typeof payload.state === "string" ? payload.state : null;
+      const state = typeof payload.state === "string" ? payload.state.trim().toUpperCase() : null;
       if (!state || !ATTENTION_REFRESH_EVENT_STATES.has(state)) return;
       void loadAttentionTasks({ forceRemote: true });
     });
