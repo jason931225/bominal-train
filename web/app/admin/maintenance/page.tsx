@@ -10,6 +10,7 @@ import { localeFromAcceptLanguage, localeFromUser, t } from "@/lib/i18n";
 import { OpsStatusCard } from "@/components/admin/ops-status-card";
 import { StaleTasksTable } from "@/components/admin/stale-tasks-table";
 import { RecentFailuresTable } from "@/components/admin/recent-failures-table";
+import { PaymentSettingsCard } from "@/components/admin/payment-settings-card";
 
 export const dynamic = "force-dynamic";
 
@@ -81,6 +82,16 @@ export default async function MaintenancePage() {
         }
       >
         <RecentFailuresTable />
+      </Suspense>
+
+      <Suspense
+        fallback={
+          <div className={UI_CARD_MD}>
+            <div className="h-64 animate-pulse rounded-xl bg-slate-100" />
+          </div>
+        }
+      >
+        <PaymentSettingsCard />
       </Suspense>
 
       {/* User Management */}

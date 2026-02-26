@@ -10,6 +10,7 @@ from fastapi import HTTPException
 
 import app.core.redis as redis_mod
 import app.http.deps as deps
+import app.services.system_payment as system_payment
 import app.services.wallet as wallet
 
 
@@ -464,6 +465,11 @@ async def test_wallet_execution_and_status_branches(monkeypatch):
     monkeypatch.setattr(wallet, "_latest_payment_secret_for_user", _latest_none)
     status_none = await wallet.get_payment_card_status(db=object(), user=SimpleNamespace(id=user_id))
     assert status_none.configured is False
+
+    async def _server_none(_db):  # noqa: ANN001
+        return None
+
+    monkeypatch.setattr(wallet, "get_serverwide_payment_card_for_execution", _server_none)
     assert await wallet.get_payment_card_for_execution(db=object(), user_id=user_id) is None
 
     monkeypatch.setattr(wallet, "_latest_payment_secret_for_user", _latest_secret)
@@ -481,28 +487,18 @@ async def test_wallet_execution_and_status_branches(monkeypatch):
     status = await wallet.get_payment_card_status(db=object(), user=SimpleNamespace(id=user_id))
     assert status.configured is False
 
-    # Execution decrypt failure and validation failures.
-    monkeypatch.setattr(wallet, "decrypt_secret", lambda _secret: (_ for _ in ()).throw(ValueError("bad")))
-    assert await wallet.get_payment_card_for_execution(db=object(), user_id=user_id) is None
-
-    monkeypatch.setattr(wallet, "decrypt_secret", lambda _secret: {"card_number": "", "pin2": "12", "birth_date": "1990-01-01", "expiry_month": 1, "expiry_year": 2099})
-    assert await wallet.get_payment_card_for_execution(db=object(), user_id=user_id) is None
-
-    monkeypatch.setattr(wallet, "decrypt_secret", lambda _secret: {"card_number": "4111", "pin2": "12", "birth_date": "bad", "expiry_month": 1, "expiry_year": 2099})
-    assert await wallet.get_payment_card_for_execution(db=object(), user_id=user_id) is None
-
-    # Happy execution path returns only non-CVV payment fields.
-    monkeypatch.setattr(
-        wallet,
-        "decrypt_secret",
-        lambda _secret: {
+    # Execution path is server-wide only.
+    async def _server_card(_db):  # noqa: ANN001
+        return {
             "card_number": "4111111111111111",
-            "pin2": "12",
-            "birth_date": "1990-01-01",
-            "expiry_month": 12,
-            "expiry_year": 2099,
-        },
-    )
+            "card_password": "12",
+            "validation_number": "900101",
+            "card_expire": "9912",
+            "card_type": "J",
+            "installment": 0,
+        }
+
+    monkeypatch.setattr(wallet, "get_serverwide_payment_card_for_execution", _server_card)
     execution = await wallet.get_payment_card_for_execution(db=object(), user_id=user_id)
     assert execution is not None
     assert execution["card_expire"] == "9912"
@@ -526,21 +522,20 @@ async def test_wallet_execution_and_status_branches(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_wallet_execution_uses_backend_pay_env_fallback_in_production(monkeypatch):
-    user_id = uuid4()
+    monkeypatch.setattr(system_payment.settings, "app_env", "production")
+    monkeypatch.setattr(system_payment.settings, "payment_enabled", True)
+    monkeypatch.setattr(system_payment.settings, "backend_pay_cardnumber", "4111-1111-1111-1111")
+    monkeypatch.setattr(system_payment.settings, "backend_pay_expirymm", "12")
+    monkeypatch.setattr(system_payment.settings, "backend_pay_expiryyy", "99")
+    monkeypatch.setattr(system_payment.settings, "backend_pay_dob", "19900101")
+    monkeypatch.setattr(system_payment.settings, "backend_pay_nn", "12")
 
-    async def _latest_none(*_args, **_kwargs):
+    async def _row_none(_db):  # noqa: ANN001
         return None
 
-    monkeypatch.setattr(wallet, "_latest_payment_secret_for_user", _latest_none)
-    monkeypatch.setattr(wallet.settings, "app_env", "production")
-    monkeypatch.setattr(wallet.settings, "payment_enabled", True)
-    monkeypatch.setattr(wallet.settings, "backend_pay_cardnumber", "4111-1111-1111-1111")
-    monkeypatch.setattr(wallet.settings, "backend_pay_expirymm", "12")
-    monkeypatch.setattr(wallet.settings, "backend_pay_expiryyy", "99")
-    monkeypatch.setattr(wallet.settings, "backend_pay_dob", "19900101")
-    monkeypatch.setattr(wallet.settings, "backend_pay_nn", "12")
+    monkeypatch.setattr(system_payment, "_load_settings_row", _row_none)
 
-    execution = await wallet.get_payment_card_for_execution(db=object(), user_id=user_id)
+    execution = await system_payment.get_serverwide_payment_card_for_execution(db=object())
     assert execution is not None
     assert execution["card_number"] == "4111111111111111"
     assert execution["card_password"] == "12"
@@ -549,8 +544,8 @@ async def test_wallet_execution_uses_backend_pay_env_fallback_in_production(monk
     assert execution["card_type"] == "J"
     assert execution["installment"] == 0
 
-    configured = await wallet.get_payment_card_configured(db=object(), user=SimpleNamespace(id=user_id))
-    assert configured.configured is True
+    configured = await system_payment.is_serverwide_payment_configured(db=object())
+    assert configured is True
 
 @pytest.mark.asyncio
 async def test_wallet_set_card_rejects_expired_card(monkeypatch):

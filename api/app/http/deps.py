@@ -185,6 +185,8 @@ def require_role(role_name: str):
     return dependency
 
 
-async def require_payment_enabled() -> None:
-    if not settings.payment_enabled:
+async def require_payment_enabled(db: AsyncSession = Depends(get_db)) -> None:
+    from app.services.system_payment import is_payment_runtime_enabled
+
+    if not await is_payment_runtime_enabled(db):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=PAYMENT_DISABLED_DETAIL)
