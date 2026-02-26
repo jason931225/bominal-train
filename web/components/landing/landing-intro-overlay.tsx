@@ -19,8 +19,10 @@ const CTA_GAP_PX = 28;
 
 type IntroMode = "boot" | "play" | "skip";
 
-const LANDING_WORDMARK_TEXT_CLASS =
-  "text-white/80 drop-shadow-[0_18px_50px_rgba(0,0,0,0.45)] sm:text-transparent sm:bg-clip-text sm:bg-gradient-to-b sm:from-white/95 sm:via-white/75 sm:to-white/45";
+const LANDING_WORDMARK_CLASS =
+  "select-none font-brand whitespace-nowrap text-[clamp(3.5rem,12vw,7rem)] font-semibold lowercase leading-none tracking-tight drop-shadow-[0_18px_50px_rgba(0,0,0,0.45)]";
+const LANDING_WORDMARK_LETTER_TEXT_CLASS =
+  "text-white/80 sm:text-transparent sm:bg-clip-text sm:bg-gradient-to-b sm:from-white/95 sm:via-white/75 sm:to-white/45";
 
 export function LandingIntroOverlay() {
   const router = useRouter();
@@ -127,13 +129,13 @@ export function LandingIntroOverlay() {
                 },
               },
             }}
-            className={`select-none font-brand whitespace-nowrap text-[clamp(3.5rem,12vw,7rem)] font-semibold lowercase leading-none tracking-tight ${LANDING_WORDMARK_TEXT_CLASS}`}
+            className={LANDING_WORDMARK_CLASS}
             style={{ willChange: "transform, opacity, filter" }}
           >
             {letters.map((letter, index) => (
               <motion.span
                 key={`${letter}-${index}`}
-                className="inline-block"
+                className={`inline-block ${LANDING_WORDMARK_LETTER_TEXT_CLASS}`}
                 variants={{
                   hidden: {
                     opacity: 0,

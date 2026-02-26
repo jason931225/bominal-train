@@ -33,13 +33,9 @@ export function LandingHeroVideo() {
     const activeVideo = active === "forward" ? forwardVideo : reverseVideo;
     const inactiveVideo = active === "forward" ? reverseVideo : forwardVideo;
 
-    // Keep the inactive video stopped at the start so the crossfade looks clean.
+    // Keep the inactive video paused, but do not seek it immediately: while it
+    // fades out, rewinding to frame 0 causes a visible jump.
     inactiveVideo.pause();
-    try {
-      inactiveVideo.currentTime = 0;
-    } catch {
-      // Ignore if the browser refuses to seek before metadata is loaded.
-    }
 
     try {
       activeVideo.currentTime = 0;

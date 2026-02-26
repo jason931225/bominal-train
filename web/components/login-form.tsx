@@ -17,7 +17,9 @@ type LoginFormData = {
   remember_me: boolean;
 };
 
-const PASSKEY_PROMPT_DETECTION_DELAY_MS = 200;
+// Give passkey options/bootstrap enough time on slower networks/devices before
+// auto-falling back to password. Users can still force password immediately.
+const PASSKEY_PROMPT_DETECTION_DELAY_MS = 1000;
 
 export function LoginForm() {
   const router = useRouter();
