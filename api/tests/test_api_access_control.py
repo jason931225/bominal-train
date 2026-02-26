@@ -68,17 +68,39 @@ async def test_pending_user_is_limited_to_review_safe_endpoints(client, db_sessi
         ("get", "/api/modules", None),
         ("get", "/api/train/stations", None),
         ("get", "/api/notifications/email/status", None),
-        ("patch", "/api/auth/account", {"display_name": "Updated"}),
-        ("post", "/api/auth/account/verify-password", {"current_password": "SuperSecret123"}),
-        ("post", "/api/auth/account/email-change/confirm", {"email": email, "code": "000000"}),
-        ("get", "/api/auth/passkeys", None),
-        ("post", "/api/auth/passkeys/register/options", None),
     ]
 
     for method, path, payload in blocked_requests:
         response = await client.request(method, path, cookies=cookies, json=payload)
         assert response.status_code == 403, f"{method.upper()} {path} expected 403, got {response.status_code}"
         assert response.json()["detail"] == ACCESS_REVIEW_PENDING_DETAIL
+
+    account_update = await client.patch(
+        "/api/auth/account",
+        cookies=cookies,
+        json={"display_name": "Updated Pending User"},
+    )
+    assert account_update.status_code == 200
+    assert account_update.json()["user"]["display_name"] == "Updated Pending User"
+
+    verify_password = await client.post(
+        "/api/auth/account/verify-password",
+        cookies=cookies,
+        json={"current_password": "SuperSecret123"},
+    )
+    assert verify_password.status_code == 200
+
+    confirm_email_change = await client.post(
+        "/api/auth/account/email-change/confirm",
+        cookies=cookies,
+        json={"email": email, "code": "000000"},
+    )
+    assert confirm_email_change.status_code == 400
+    assert confirm_email_change.json()["detail"] == "Invalid or expired verification code"
+
+    passkeys_list = await client.get("/api/auth/passkeys", cookies=cookies)
+    assert passkeys_list.status_code == 200
+    assert passkeys_list.json()["credentials"] == []
 
     logout_response = await client.post("/api/auth/logout", cookies=cookies)
     assert logout_response.status_code == 200

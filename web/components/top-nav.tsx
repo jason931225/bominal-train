@@ -19,8 +19,6 @@ type SectionRule = {
 
 const SECTION_RULES: SectionRule[] = [
   { prefix: ROUTES.modules.train, brandKey: "nav.train" },
-  { prefix: ROUTES.modules.restaurant, brandKey: "nav.restaurant" },
-  { prefix: ROUTES.modules.calendar, brandKey: "nav.calendar" },
   { prefix: ROUTES.settings.account, brandKey: "nav.accountSettings" },
   { prefix: ROUTES.settings.payment, brandKey: "nav.paymentSettings" },
   { prefix: ROUTES.admin.maintenance, brandKey: "nav.admin" },
@@ -40,13 +38,13 @@ function getBrandSectionLabel(locale: Locale, pathname: string): string | null {
 }
 
 export function TopNav({ user, locale }: { user: BominalUser | null; locale: Locale }) {
-  const pathname = usePathname() ?? ROUTES.dashboard;
+  const pathname = usePathname() ?? ROUTES.modules.train;
   const brandSectionLabel = getBrandSectionLabel(locale, pathname);
 
   return (
     <header className="sticky top-0 z-[140] border-b border-blossom-100 bg-white">
       <div className="mx-auto flex w-full max-w-5xl items-center justify-between px-4 py-3.5 sm:px-6">
-        <TopNavBrand href={user ? ROUTES.dashboard : ROUTES.login} sectionLabel={brandSectionLabel} />
+        <TopNavBrand href={user ? ROUTES.modules.train : ROUTES.login} sectionLabel={brandSectionLabel} />
 
         {user ? (
           <div className="flex items-center gap-3">

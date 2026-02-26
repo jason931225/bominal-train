@@ -74,6 +74,7 @@ settings = get_settings()
 logger = logging.getLogger(__name__)
 
 INVALID_LOGIN_DETAIL = "Invalid email or password"
+SIGNUP_DISABLED_DETAIL = "Sign up is currently disabled"
 EMAIL_OTP_TTL_MINUTES = 10
 PASSWORD_RESET_OTP_TTL_MINUTES = 15
 VERIFICATION_PURPOSE_EMAIL = "email_verify"
@@ -295,6 +296,9 @@ def _email_change_template_payload(*, email: str, code: str) -> EmailTemplateJob
     dependencies=[Depends(auth_rate_limit)],
 )
 async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db)) -> AuthResponse:
+    if not settings.auth_registration_enabled:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=SIGNUP_DISABLED_DETAIL)
+
     email = payload.email.lower()
 
     existing = await db.execute(select(User).options(joinedload(User.role)).where(User.email == email))
@@ -452,7 +456,7 @@ async def me(current_user: User = Depends(get_current_user)) -> AuthResponse:
 @user_router.patch("/account", response_model=AuthResponse, dependencies=[Depends(auth_rate_limit)])
 async def update_account(
     payload: AccountUpdateRequest,
-    current_user: User = Depends(get_current_approved_user),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> AuthResponse:
     provided = payload.model_fields_set
@@ -604,7 +608,7 @@ async def update_account(
 @user_router.post("/account/verify-password", response_model=MessageResponse, dependencies=[Depends(auth_rate_limit)])
 async def verify_current_password(
     payload: PasswordVerifyRequest,
-    current_user: User = Depends(get_current_approved_user),
+    current_user: User = Depends(get_current_user),
 ) -> MessageResponse:
     if not verify_password(payload.current_password, current_user.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Current password is invalid")
@@ -614,7 +618,7 @@ async def verify_current_password(
 @user_router.post("/account/email-change/confirm", response_model=AuthResponse, dependencies=[Depends(auth_rate_limit)])
 async def confirm_email_change(
     payload: EmailChangeConfirmRequest,
-    current_user: User = Depends(get_current_approved_user),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> AuthResponse:
     requested_email = payload.email.lower()
@@ -648,7 +652,7 @@ async def confirm_email_change(
 
 @user_router.get("/passkeys", response_model=PasskeyCredentialListResponse)
 async def get_passkeys(
-    current_user: User = Depends(get_current_approved_user),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> PasskeyCredentialListResponse:
     ensure_passkeys_enabled()
@@ -663,7 +667,7 @@ async def get_passkeys(
 
 @user_router.post("/passkeys/register/options", response_model=PasskeyRegistrationOptionsResponse)
 async def passkey_register_options(
-    current_user: User = Depends(get_current_approved_user),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> PasskeyRegistrationOptionsResponse:
     ensure_passkeys_enabled()
@@ -674,7 +678,7 @@ async def passkey_register_options(
 @user_router.post("/passkeys/register/verify", response_model=PasskeyCredentialOut)
 async def passkey_register_verify(
     payload: PasskeyRegistrationVerifyRequest,
-    current_user: User = Depends(get_current_approved_user),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> PasskeyCredentialOut:
     ensure_passkeys_enabled()
@@ -689,7 +693,7 @@ async def passkey_register_verify(
 
 @user_router.post("/passkeys/step-up/options", response_model=PasskeyAuthenticationOptionsResponse)
 async def passkey_step_up_options(
-    current_user: User = Depends(get_current_approved_user),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> PasskeyAuthenticationOptionsResponse:
     ensure_passkeys_enabled()
@@ -700,7 +704,7 @@ async def passkey_step_up_options(
 @user_router.post("/passkeys/step-up/verify", response_model=PasskeyStepUpVerifyResponse)
 async def passkey_step_up_verify(
     payload: PasskeyStepUpVerifyRequest,
-    current_user: User = Depends(get_current_approved_user),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> PasskeyStepUpVerifyResponse:
     ensure_passkeys_enabled()
@@ -718,7 +722,7 @@ async def passkey_step_up_verify(
 @user_router.delete("/passkeys/{passkey_id}", response_model=MessageResponse)
 async def remove_passkey(
     passkey_id: UUID,
-    current_user: User = Depends(get_current_approved_user),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> MessageResponse:
     ensure_passkeys_enabled()

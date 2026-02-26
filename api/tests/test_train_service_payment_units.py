@@ -239,6 +239,57 @@ async def test_pay_task_paid_missing_card_and_payment_failure_paths(monkeypatch)
 
 
 @pytest.mark.asyncio
+async def test_pay_task_reconciles_failed_task_when_ticket_is_already_paid(monkeypatch):
+    user = SimpleNamespace(id=uuid4())
+    db = _DB()
+    monkeypatch.setattr(train_service.settings, "payment_enabled", True)
+
+    task = _task(state="FAILED")
+    task.failed_at = datetime.now(timezone.utc)
+    task.completed_at = None
+    artifact = Artifact(
+        task_id=uuid4(),
+        module="train",
+        kind="ticket",
+        data_json_safe={
+            "provider": "SRT",
+            "reservation_id": "PNR-PAID-1",
+            "status": "paid",
+            "paid": True,
+        },
+    )
+    task.artifacts = [artifact]
+
+    async def _task_lookup(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        return task
+
+    async def _last_attempts(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        return {task.id: datetime.now(timezone.utc)}
+
+    async def _redis_obj():
+        return object()
+
+    async def _refresh_false(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        return False
+
+    monkeypatch.setattr(train_service, "get_task_for_user", _task_lookup)
+    monkeypatch.setattr(train_service, "_last_attempt_map", _last_attempts)
+    monkeypatch.setattr(train_service, "_ticket_summary_from_artifact", lambda _artifact: {"ticket_status": "paid", "ticket_paid": True})
+    monkeypatch.setattr(train_service, "task_to_summary", lambda *_args, **_kwargs: _summary(ticket_status="paid", ticket_paid=True))
+    monkeypatch.setattr(train_service, "get_redis_client", _redis_obj)
+    monkeypatch.setattr(train_service, "RedisTokenBucketLimiter", lambda _redis: _Limiter())
+    monkeypatch.setattr(train_service, "_refresh_ticket_artifact_status", _refresh_false)
+
+    result = await train_service.pay_task(db, task_id=uuid4(), user=user)
+
+    assert result.task.ticket_paid is True
+    assert task.state == "COMPLETED"
+    assert task.failed_at is None
+    assert task.completed_at is not None
+    assert db.commits >= 1
+
+
+@pytest.mark.asyncio
 async def test_cancel_ticket_branch_matrix(monkeypatch):
     user = SimpleNamespace(id=uuid4())
 

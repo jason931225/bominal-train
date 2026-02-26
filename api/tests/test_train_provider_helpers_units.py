@@ -471,7 +471,85 @@ async def test_ktx_login_bootstrap_and_login_edge_paths():
     assert client._membership_number_by_user_id[user_id] == "MEM-1"
     assert user_id in client._logged_in_user_ids
 
-    # Username format should map to email input flag (5).
-    login_request_data = transport.requests[1]["data"]
-    assert login_request_data["txtInputFlg"] == "5"
-    assert login_request_data["txtPwd"]
+    bootstrap_request = transport.requests[0]
+    assert bootstrap_request["method"] == "GET"
+    assert bootstrap_request["url"].endswith("common.code.do")
+    assert bootstrap_request["params"]["code"] == "app.login.cphd"
+    assert bootstrap_request["params"]["Device"] == "IP"
+    assert bootstrap_request["params"]["Version"] == "250601002"
+    assert bootstrap_request["params"]["srtCheckYn"] == "Y"
+
+    login_request = transport.requests[1]
+    assert login_request["method"] == "GET"
+    assert login_request["url"].endswith("login.Login")
+    assert login_request["params"]["txtInputFlg"] == "5"
+    assert login_request["params"]["txtPwd"]
+    assert login_request["params"]["txtDv"] == "2"
+    assert login_request["params"]["checkValidPw"] == "Y"
+    assert login_request["params"]["srtCheckYn"] == "Y"
+    assert login_request["params"]["Device"] == "IP"
+    assert login_request["params"]["Version"] == "250601002"
+    assert login_request["params"]["Key"] == "korail1234567890"
+
+
+def test_ktx_encrypt_password_changes_when_key_changes():
+    client = KTXClient()
+    password = "Test1234!"
+
+    encrypted_with_key_a = client._encrypt_password(password, "2bed45a56c3c150dc86e218d0429e152")  # noqa: SLF001
+    encrypted_with_key_b = client._encrypt_password(password, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")  # noqa: SLF001
+
+    assert encrypted_with_key_a != encrypted_with_key_b
+
+
+@pytest.mark.asyncio
+async def test_ktx_login_honors_endpoint_overrides(monkeypatch):
+    monkeypatch.setenv("TRAIN_KTX_ENDPOINT_CODE", "https://localhost:9443/bootstrap")
+    monkeypatch.setenv("TRAIN_KTX_ENDPOINT_LOGIN", "https://localhost:9443/login")
+
+    transport = _QueueTransport(
+        [
+            _payload_response(
+                {
+                    "strResult": "SUCC",
+                    "app.login.cphd": {"idx": "1", "key": "1234567890abcdef"},
+                }
+            ),
+            _payload_response({"strResult": "SUCC", "strMbCrdNo": "MEM-2"}),
+        ]
+    )
+    client = KTXClient(transport=transport)
+    outcome = await client.login(
+        user_id=str(uuid4()),
+        credentials={"username": "010-1111-2222", "password": "pw"},
+    )
+
+    assert outcome.ok is True
+    assert transport.requests[0]["url"] == "https://localhost:9443/bootstrap"
+    assert transport.requests[1]["url"] == "https://localhost:9443/login"
+
+
+@pytest.mark.asyncio
+async def test_ktx_login_honors_dynapath_header_override(monkeypatch):
+    monkeypatch.setenv("TRAIN_KTX_AUTH_DYNAPATH_TOKEN", "token-for-local-debug")
+
+    transport = _QueueTransport(
+        [
+            _payload_response(
+                {
+                    "strResult": "SUCC",
+                    "app.login.cphd": {"idx": "1", "key": "1234567890abcdef"},
+                }
+            ),
+            _payload_response({"strResult": "SUCC", "strMbCrdNo": "MEM-3"}),
+        ]
+    )
+
+    outcome = await KTXClient(transport=transport).login(
+        user_id=str(uuid4()),
+        credentials={"username": "010-1111-2222", "password": "pw"},
+    )
+
+    assert outcome.ok is True
+    assert transport.requests[0]["headers"]["x-dynapath-m-token"] == "token-for-local-debug"
+    assert transport.requests[1]["headers"]["x-dynapath-m-token"] == "token-for-local-debug"

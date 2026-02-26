@@ -4,6 +4,7 @@ import base64
 from collections import defaultdict
 import hashlib
 import json
+import os
 import re
 from datetime import date, datetime
 from typing import Any
@@ -40,6 +41,32 @@ KTX_DEFAULT_HEADERS = {
     "Host": "smart.letskorail.com",
     "Connection": "Keep-Alive",
     "Accept-Encoding": "gzip",
+}
+
+KTX_AUTH_DEVICE = "IP"
+KTX_AUTH_VERSION = "250601002"
+KTX_AUTH_OS_VERSION = "26.2.1"
+KTX_AUTH_KEY = "korail1234567890"
+KTX_AUTH_SRT_CHECK_YN = "Y"
+KTX_AUTH_TXT_DV = "2"
+KTX_AUTH_CHECK_VALID_PW = "Y"
+
+KTX_ENDPOINT_ENV_OVERRIDES = {
+    "code": "TRAIN_KTX_ENDPOINT_CODE",
+    "login": "TRAIN_KTX_ENDPOINT_LOGIN",
+}
+
+KTX_AUTH_DYNAPATH_TOKEN_ENV = "TRAIN_KTX_AUTH_DYNAPATH_TOKEN"
+
+KTX_AUTH_HEADERS = {
+    "Content-Type": "application/json; charset=UTF-8",
+    "Accept": "application/json",
+    "User-Agent": "KorailTalk/4.18.16 (iPhone; iOS 26.2.1; Scale/3.00)",
+    "Accept-Language": "ko-US;q=1, en-US;q=0.9, ja-US;q=0.8",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Cache-Control": "no-cache",
+    "Host": "smart.letskorail.com",
+    "Connection": "keep-alive",
 }
 
 
@@ -248,6 +275,23 @@ def _build_ktx_ticket_dict(raw: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _resolve_ktx_endpoint(endpoint_key: str) -> str:
+    override_name = KTX_ENDPOINT_ENV_OVERRIDES.get(endpoint_key)
+    if override_name:
+        override_value = os.getenv(override_name, "").strip()
+        if override_value:
+            return override_value
+    return KTX_API_ENDPOINTS[endpoint_key]
+
+
+def _resolve_ktx_auth_headers() -> dict[str, str]:
+    headers = dict(KTX_AUTH_HEADERS)
+    dynapath_token = os.getenv(KTX_AUTH_DYNAPATH_TOKEN_ENV, "").strip()
+    if dynapath_token:
+        headers["x-dynapath-m-token"] = dynapath_token
+    return headers
+
+
 class KTXClient:
     provider_name = "KTX"
 
@@ -269,10 +313,17 @@ class KTXClient:
             )
 
         code_response = await self._transport.request(
-            method="POST",
-            url=KTX_API_ENDPOINTS["code"],
-            headers=KTX_DEFAULT_HEADERS,
-            data={"code": "app.login.cphd"},
+            method="GET",
+            url=_resolve_ktx_endpoint("code"),
+            headers=_resolve_ktx_auth_headers(),
+            params={
+                "Device": KTX_AUTH_DEVICE,
+                "Version": KTX_AUTH_VERSION,
+                "OSVersion": KTX_AUTH_OS_VERSION,
+                "Key": KTX_AUTH_KEY,
+                "code": "app.login.cphd",
+                "srtCheckYn": KTX_AUTH_SRT_CHECK_YN,
+            },
             timeout=20.0,
         )
         if code_response.status_code >= 500:
@@ -314,21 +365,24 @@ class KTXClient:
         encrypted_password = self._encrypt_password(password, key)
         input_flag = "5" if EMAIL_REGEX.match(username) else ("4" if PHONE_NUMBER_REGEX.match(username) else "2")
 
-        request_data = {
-            "Device": "AD",
-            "Version": "240531001",
-            "Key": "korail1234567890",
+        request_params = {
+            "Device": KTX_AUTH_DEVICE,
+            "Version": KTX_AUTH_VERSION,
+            "Key": KTX_AUTH_KEY,
             "txtMemberNo": username,
             "txtPwd": encrypted_password,
             "txtInputFlg": input_flag,
+            "txtDv": KTX_AUTH_TXT_DV,
             "idx": idx,
+            "checkValidPw": KTX_AUTH_CHECK_VALID_PW,
+            "srtCheckYn": KTX_AUTH_SRT_CHECK_YN,
         }
 
         login_response = await self._transport.request(
-            method="POST",
-            url=KTX_API_ENDPOINTS["login"],
-            headers=KTX_DEFAULT_HEADERS,
-            data=request_data,
+            method="GET",
+            url=_resolve_ktx_endpoint("login"),
+            headers=_resolve_ktx_auth_headers(),
+            params=request_params,
             timeout=20.0,
         )
         if login_response.status_code >= 500:

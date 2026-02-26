@@ -32,6 +32,17 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function readTaskEventType(payloadType: unknown, rawEventType: unknown): "task_state" | "task_ticket_status" | null {
+  const normalize = (value: unknown): "task_state" | "task_ticket_status" | null => {
+    if (typeof value !== "string") return null;
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "task_state" || normalized === "task_state_changed") return "task_state";
+    if (normalized === "task_ticket_status" || normalized === "task_ticket_status_changed") return "task_ticket_status";
+    return null;
+  };
+  return normalize(payloadType) ?? normalize(rawEventType);
+}
+
 function isPendingTicket(task: Pick<TrainTaskSummary, "ticket_status" | "ticket_paid">): boolean {
   const status = String(task.ticket_status || "").trim().toLowerCase();
   return PENDING_TICKET_STATUSES.has(status) && task.ticket_paid !== true;
@@ -42,6 +53,13 @@ function pendingBadgeKey(task: Pick<TrainTaskSummary, "ticket_status" | "ticket_
   return String(task.ticket_status || "").trim().toLowerCase() === "waiting"
     ? "train.badge.waitlisted"
     : "train.badge.awaitingPayment";
+}
+
+function shouldStackPendingBadge(
+  task: Pick<TrainTaskSummary, "state" | "ticket_status" | "ticket_paid">,
+  badgeKey: string | null,
+): boolean {
+  return task.state === "COMPLETED" && badgeKey === "train.badge.awaitingPayment";
 }
 
 function needsAttention(task: TrainTaskSummary): boolean {
@@ -266,7 +284,8 @@ export function TopNavTaskAttention({
         return;
       }
       if (document.visibilityState === "hidden") return;
-      if (event.type === "task_ticket_status") {
+      const eventType = readTaskEventType(payload.type, event.type);
+      if (eventType === "task_ticket_status") {
         const currentStatus = String(payload.ticket_status || "").trim().toLowerCase();
         const previousStatus = String(payload.previous_ticket_status || "").trim().toLowerCase();
         if (PENDING_TICKET_STATUSES.has(currentStatus) || PENDING_TICKET_STATUSES.has(previousStatus)) {
@@ -274,7 +293,7 @@ export function TopNavTaskAttention({
         }
         return;
       }
-      if (event.type !== "task_state") {
+      if (eventType !== "task_state") {
         return;
       }
       const state = typeof payload.state === "string" ? payload.state : null;
@@ -467,6 +486,10 @@ export function TopNavTaskAttention({
             {unseenTasks.map((task) => {
               const isSelected = selectedTaskIds.has(task.id);
               const taskPendingBadgeKey = pendingBadgeKey(task);
+              const stackPendingBadge = shouldStackPendingBadge(task, taskPendingBadgeKey);
+              const statusRowClass = stackPendingBadge
+                ? "flex flex-col items-start justify-start gap-1"
+                : "flex items-center justify-start gap-1.5";
               return (
                 <li key={task.id}>
                   {selectionMode ? (
@@ -480,7 +503,7 @@ export function TopNavTaskAttention({
                       }`}
                     >
                       <div className="flex items-start justify-between gap-2">
-                        <div className="flex items-center justify-start gap-1.5">
+                        <div className={statusRowClass}>
                           <span className="text-xs font-semibold text-slate-700">{task.state}</span>
                           {taskPendingBadgeKey ? (
                             <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
@@ -512,7 +535,7 @@ export function TopNavTaskAttention({
                       }}
                       className="block rounded-xl border border-blossom-100 bg-white px-3 py-2 transition hover:bg-blossom-50"
                     >
-                      <div className="flex items-center justify-start gap-1.5">
+                      <div className={statusRowClass}>
                         <span className="text-xs font-semibold text-slate-700">{task.state}</span>
                         {taskPendingBadgeKey ? (
                           <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">

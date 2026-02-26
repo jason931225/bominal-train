@@ -282,6 +282,17 @@ async def test_register_requires_display_name(client):
 
 
 @pytest.mark.asyncio
+async def test_register_rejected_when_signup_disabled(client, monkeypatch):
+    monkeypatch.setattr("app.http.routes.auth.settings.auth_registration_enabled", False)
+    disabled = await client.post(
+        "/api/auth/register",
+        json={"email": "signup-off@example.com", "password": "SuperSecret123", "display_name": "Signup Off"},
+    )
+    assert disabled.status_code == 403
+    assert disabled.json()["detail"] == "Sign up is currently disabled"
+
+
+@pytest.mark.asyncio
 async def test_register_rejects_duplicate_email_and_display_name(client):
     first = await client.post(
         "/api/auth/register",

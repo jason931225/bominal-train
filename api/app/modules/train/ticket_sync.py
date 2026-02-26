@@ -22,9 +22,9 @@ def _status_from_snapshot(
     waiting: bool | None,
     expired: bool | None,
     reservation_found: bool,
-) -> str:
+) -> str | None:
     if not reservation_found:
-        return "reservation_not_found"
+        return None
     if bool(paid):
         return "paid"
     if bool(expired):
@@ -94,6 +94,7 @@ async def fetch_ticket_sync_snapshot(
         ticket_rows = [row for row in reservation_row.get("tickets", []) if isinstance(row, dict)]
 
     reservation_found = reservation_row is not None
+    snapshot["reservation_found"] = reservation_found
     paid = bool(reservation_row.get("paid")) if reservation_row else None
     waiting = bool(reservation_row.get("waiting")) if reservation_row else None
     expired = bool(reservation_row.get("expired")) if reservation_row else None
@@ -129,12 +130,14 @@ async def fetch_ticket_sync_snapshot(
     if expired is not None:
         snapshot["expired"] = expired
 
-    snapshot["status"] = _status_from_snapshot(
+    status_value = _status_from_snapshot(
         paid=paid,
         waiting=waiting,
         expired=expired,
         reservation_found=reservation_found,
     )
+    if status_value is not None:
+        snapshot["status"] = status_value
     snapshot["provider_sync"] = redact_sensitive(sync_meta)
     if provider_http:
         snapshot["provider_http"] = provider_http

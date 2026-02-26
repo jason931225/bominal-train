@@ -301,7 +301,19 @@ export function isActiveTaskForList(task: TrainTaskSummary): boolean {
 
 function readTaskEventState(value: unknown): TrainTaskState | null {
   if (typeof value !== "string") return null;
-  return VALID_TASK_EVENT_STATES.has(value as TrainTaskState) ? (value as TrainTaskState) : null;
+  const normalized = value.trim().toUpperCase();
+  return VALID_TASK_EVENT_STATES.has(normalized as TrainTaskState) ? (normalized as TrainTaskState) : null;
+}
+
+function readTaskEventType(payloadType: unknown, rawEventType: unknown): "task_state" | "task_ticket_status" | null {
+  const normalize = (value: unknown): "task_state" | "task_ticket_status" | null => {
+    if (typeof value !== "string") return null;
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "task_state" || normalized === "task_state_changed") return "task_state";
+    if (normalized === "task_ticket_status" || normalized === "task_ticket_status_changed") return "task_ticket_status";
+    return null;
+  };
+  return normalize(payloadType) ?? normalize(rawEventType);
 }
 
 function applyTaskEventState(
@@ -1708,7 +1720,8 @@ export function TrainDashboard() {
 
     void reloadTasks({ refreshCompleted: true });
     const unsubscribeTaskEvents = subscribeTrainTaskEvents((payload, event) => {
-      if (event.type === "task_ticket_status") {
+      const eventType = readTaskEventType(payload.type, event.type);
+      if (eventType === "task_ticket_status") {
         const ticketStatus = String(payload.ticket_status || "").trim().toLowerCase();
         const previousTicketStatus = String(payload.previous_ticket_status || "").trim().toLowerCase();
         if (
@@ -1719,7 +1732,7 @@ export function TrainDashboard() {
         }
         return;
       }
-      if (event.type !== "task_state") return;
+      if (eventType !== "task_state") return;
       const state = readTaskEventState(payload.state);
       if (!state) return;
       if (TASK_LIST_REFRESH_EVENT_STATES.has(state)) {

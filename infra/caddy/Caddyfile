@@ -21,6 +21,15 @@ bominal.com {
 		-Server
 	}
 
+	@signup_disabled {
+		method POST
+		path /api/auth/register
+	}
+	handle @signup_disabled {
+		header Content-Type application/json
+		respond "{\"detail\":\"Sign up is currently disabled\"}" 403
+	}
+
 	@api path /api /api/* /docs /docs/* /openapi.json /redoc /health /healthz
 	handle @api {
 		reverse_proxy api:8000

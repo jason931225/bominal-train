@@ -31,19 +31,24 @@ export function LoginForm() {
   const [continueSubmitting, setContinueSubmitting] = useState(false);
   const [signInSubmitting, setSignInSubmitting] = useState(false);
   const showingPassword = step === "password";
+  const forgotPasswordHref = (() => {
+    const email = form.email.trim();
+    if (!email) return ROUTES.forgotPassword;
+    return `${ROUTES.forgotPassword}?email=${encodeURIComponent(email)}`;
+  })();
 
   const navigateAfterAuth = () => {
     if (typeof window !== "undefined") {
       // Root layout is persistent in App Router; full navigation refreshes top-nav auth state.
       try {
-        window.location.assign(ROUTES.dashboard);
+        window.location.assign(ROUTES.modules.train);
       } catch {
         // jsdom/limited runtimes may not implement navigation methods.
-        router.push(ROUTES.dashboard);
+        router.push(ROUTES.modules.train);
       }
       return;
     }
-    router.push(ROUTES.dashboard);
+    router.push(ROUTES.modules.train);
   };
 
   const expectedPasskeyFallback = (message: string | undefined): boolean => {
@@ -211,7 +216,7 @@ export function LoginForm() {
 
       {showingPassword ? (
         <p className="text-right text-sm">
-          <Link href={ROUTES.forgotPassword} className="font-medium text-blossom-600 hover:text-blossom-700">
+          <Link href={forgotPasswordHref} className="font-medium text-blossom-600 hover:text-blossom-700">
             {t("auth.forgotPassword")}
           </Link>
         </p>

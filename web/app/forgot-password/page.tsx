@@ -7,13 +7,19 @@ import { ROUTES } from "@/lib/routes";
 import { getOptionalUser, postLoginRouteForUser } from "@/lib/server-auth";
 import { UI_BODY_MUTED, UI_CARD_LG, UI_TITLE_LG } from "@/lib/ui";
 
-export default async function ForgotPasswordPage() {
+export default async function ForgotPasswordPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ email?: string }>;
+}) {
   const user = await getOptionalUser();
   if (user) {
     redirect(postLoginRouteForUser(user));
   }
 
   const { t } = await getServerT();
+  const resolvedSearchParams = (await searchParams) ?? {};
+  const initialEmail = resolvedSearchParams.email ?? "";
 
   return (
     <section className={`mx-auto w-full max-w-md ${UI_CARD_LG}`}>
@@ -21,7 +27,7 @@ export default async function ForgotPasswordPage() {
       <p className={`mt-2 ${UI_BODY_MUTED}`}>{t("auth.forgotPasswordSubtitle")}</p>
 
       <div className="mt-6">
-        <PasswordResetRequestForm />
+        <PasswordResetRequestForm initialEmail={initialEmail} />
       </div>
 
       <p className="mt-6 text-sm text-slate-600">
