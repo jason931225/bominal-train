@@ -608,8 +608,10 @@ deploy_services() {
       log_info "Skipping web rollout (image unchanged)."
     fi
 
+    # Keep Caddy reconciliation isolated so unchanged dependencies are not
+    # implicitly recreated during rolling updates.
     log_info "Ensuring Caddy is healthy..."
-    if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait caddy; then
+    if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait --no-deps caddy; then
       log_error "Failed to deploy Caddy service"
       return 1
     fi
