@@ -22,6 +22,7 @@ const THEME_DOT_COLORS = {
 
 const PAYMENT_SETTINGS_ENABLED = NEXT_PUBLIC_TRAIN_AUTO_PAY_ENABLED;
 const RESTAURANT_MODULE_ENABLED = NEXT_PUBLIC_RESTAURANT_MODULE_ENABLED;
+// Keep links defined but hidden so they can be re-enabled without rebuilding nav structure.
 const SHOW_DISABLED_MODULE_LINKS = false;
 const MOBILE_DRAWER_HIDDEN_TRANSLATE = "calc(-100dvh - 24px)";
 
