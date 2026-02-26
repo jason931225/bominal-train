@@ -13,6 +13,10 @@ export type PasskeyOperationResult = {
   error?: string;
 };
 
+export type PasskeySignInHooks = {
+  onPromptStart?: () => void;
+};
+
 export type PasskeyStepUpResult = {
   ok: boolean;
   stepUpToken?: string;
@@ -195,6 +199,7 @@ export async function registerPasskeyFromSession(apiBaseUrl: string): Promise<Pa
 export async function signInWithPasskey(
   apiBaseUrl: string,
   params: { email: string; rememberMe: boolean },
+  hooks: PasskeySignInHooks = {},
 ): Promise<PasskeyOperationResult> {
   const { email, rememberMe } = params;
   if (!isPasskeySupported()) {
@@ -214,6 +219,7 @@ export async function signInWithPasskey(
   const optionsBody = (await optionsResponse.json()) as PasskeyAuthenticationOptionsResponse;
   let assertion: Credential | null = null;
   try {
+    hooks.onPromptStart?.();
     assertion = await navigator.credentials.get({
       publicKey: normalizeRequestOptions(optionsBody.public_key),
     });

@@ -49,6 +49,7 @@
     "setupPasskeyAtSignup": "Set up a passkey right after signup",
     "passkeySetupFailed": "Account created, but passkey setup could not be completed.",
     "signInWithPasskey": "Sign in with passkey",
+    "signInWithPassword": "Sign in with password",
     "signingInWithPasskey": "Signing in with passkey...",
     "passkeySignInFailed": "Could not sign in with passkey.",
     "forgotPassword": "Forgot password?",

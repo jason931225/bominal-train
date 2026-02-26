@@ -17,7 +17,7 @@ type LoginFormData = {
   remember_me: boolean;
 };
 
-const PASSKEY_CONTINUE_FALLBACK_DELAY_MS = 1000;
+const PASSKEY_PROMPT_DETECTION_DELAY_MS = 200;
 
 export function LoginForm() {
   const router = useRouter();
@@ -74,6 +74,24 @@ export function LoginForm() {
     continueFallbackTimerRef.current = null;
   };
 
+  const schedulePasswordFallback = (attemptId: number, delayMs: number) => {
+    clearContinueFallbackTimer();
+    continueFallbackTimerRef.current = window.setTimeout(() => {
+      if (authResolvedRef.current || continueAttemptIdRef.current !== attemptId) {
+        return;
+      }
+      setStep("password");
+      setContinueSubmitting(false);
+    }, delayMs);
+  };
+
+  const switchToPasswordMode = () => {
+    continueAttemptIdRef.current += 1;
+    clearContinueFallbackTimer();
+    setContinueSubmitting(false);
+    setStep("password");
+  };
+
   useEffect(() => {
     return () => {
       continueAttemptIdRef.current += 1;
@@ -96,25 +114,24 @@ export function LoginForm() {
     continueAttemptIdRef.current = continueAttemptId;
     setContinueSubmitting(true);
     if (!isPasskeySupported()) {
-      setStep("password");
-      setContinueSubmitting(false);
+      switchToPasswordMode();
       return;
     }
 
-    clearContinueFallbackTimer();
-    continueFallbackTimerRef.current = window.setTimeout(() => {
-      if (authResolvedRef.current || continueAttemptIdRef.current !== continueAttemptId) {
-        return;
-      }
-      setStep("password");
-      setContinueSubmitting(false);
-    }, PASSKEY_CONTINUE_FALLBACK_DELAY_MS);
+    schedulePasswordFallback(continueAttemptId, PASSKEY_PROMPT_DETECTION_DELAY_MS);
 
     void (async () => {
       try {
         const result = await signInWithPasskey(clientApiBaseUrl, {
           email: normalizedEmail,
           rememberMe: form.remember_me,
+        }, {
+          onPromptStart: () => {
+            if (authResolvedRef.current || continueAttemptIdRef.current !== continueAttemptId) {
+              return;
+            }
+            clearContinueFallbackTimer();
+          },
         });
         if (authResolvedRef.current || continueAttemptIdRef.current !== continueAttemptId) {
           return;
@@ -131,16 +148,14 @@ export function LoginForm() {
         if (!expectedPasskeyFallback(result.error)) {
           setFormError(result.error ?? t("auth.passkeySignInFailed"));
         }
-        setStep("password");
-        setContinueSubmitting(false);
+        switchToPasswordMode();
       } catch {
         if (authResolvedRef.current || continueAttemptIdRef.current !== continueAttemptId) {
           return;
         }
         clearContinueFallbackTimer();
         setFormError(t("auth.passkeySignInFailed"));
-        setStep("password");
-        setContinueSubmitting(false);
+        switchToPasswordMode();
       }
     })();
   };
@@ -280,7 +295,17 @@ export function LoginForm() {
             {t("auth.forgotPassword")}
           </Link>
         </p>
-      ) : null}
+      ) : (
+        continueSubmitting ? (
+          <button
+            type="button"
+            className="w-full text-sm font-medium text-slate-600 underline underline-offset-4 hover:text-slate-800"
+            onClick={switchToPasswordMode}
+          >
+            {t("auth.signInWithPassword")}
+          </button>
+        ) : null
+      )}
 
       {formError ? <p className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">{formError}</p> : null}
 
