@@ -194,6 +194,12 @@ async def test_version_info_reports_runtime_versions(monkeypatch) -> None:
     assert default_payload["build_version"] == "unknown"
 
 
+def test_main_app_exposes_version_routes() -> None:
+    paths = {route.path for route in main_mod.app.routes}
+    assert "/version" in paths
+    assert "/api/version" in paths
+
+
 @pytest.mark.asyncio
 async def test_admin_docs_endpoints_return_schema() -> None:
     docs_response = await main_mod.admin_swagger_ui(None)
