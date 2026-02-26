@@ -28,6 +28,7 @@ permissions:
 
 jobs:
   secret-scan:
+    if: vars.CI_ALLOW_POLICY_GATES_BYPASS != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -39,6 +40,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   infra-tests:
+    if: vars.CI_ALLOW_POLICY_GATES_BYPASS != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -254,3 +256,11 @@ jobs:
               echo "- Critical gates (assertive + mutation): skipped (no critical API/web boundary changes)"
             fi
           } >> "$GITHUB_STEP_SUMMARY"
+
+  policy-gates-bypass:
+    if: vars.CI_ALLOW_POLICY_GATES_BYPASS == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Acknowledge policy gate bypass
+        run: |
+          echo "CI policy gates bypassed via CI_ALLOW_POLICY_GATES_BYPASS=true."

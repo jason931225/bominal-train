@@ -75,7 +75,10 @@ async def test_modules_omits_wallet_capability_when_payment_disabled(client, db_
         display_name=f"Module Payment Off {uuid4().hex[:6]}",
     )
 
-    monkeypatch.setattr("app.http.routes.modules.settings.payment_enabled", False)
+    async def _disabled(_db):  # noqa: ANN001
+        return False
+
+    monkeypatch.setattr("app.http.routes.modules.is_payment_runtime_enabled", _disabled)
 
     response = await client.get("/api/modules", cookies={"bominal_session": session_cookie})
     assert response.status_code == 200
@@ -95,7 +98,10 @@ async def test_modules_includes_wallet_capability_when_payment_enabled(client, d
         display_name=f"Module Payment On {uuid4().hex[:6]}",
     )
 
-    monkeypatch.setattr("app.http.routes.modules.settings.payment_enabled", True)
+    async def _enabled(_db):  # noqa: ANN001
+        return True
+
+    monkeypatch.setattr("app.http.routes.modules.is_payment_runtime_enabled", _enabled)
 
     response = await client.get("/api/modules", cookies={"bominal_session": session_cookie})
     assert response.status_code == 200
