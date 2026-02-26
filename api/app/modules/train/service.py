@@ -910,7 +910,13 @@ def _is_active_for_listing(task: Task, ticket_summary: dict | None) -> bool:
     return False
 
 
-def _expire_manual_payment_task_if_due(task: Task, *, ticket_summary: dict | None, now: datetime) -> bool:
+def _expire_manual_payment_task_if_due(
+    task: Task,
+    *,
+    ticket_summary: dict | None,
+    ticket_artifact: Artifact | None = None,
+    now: datetime,
+) -> bool:
     if task.state not in ACTIVE_TASK_STATES and task.state != "COMPLETED":
         return False
     if not _is_manual_payment_expired(ticket_summary, now=now):
@@ -919,6 +925,13 @@ def _expire_manual_payment_task_if_due(task: Task, *, ticket_summary: dict | Non
     task.completed_at = None
     task.paused_at = None
     task.updated_at = now
+    if ticket_artifact is not None:
+        artifact_data = dict(ticket_artifact.data_json_safe or {})
+        artifact_data["status"] = "expired"
+        artifact_data["expired"] = True
+        if artifact_data.get("waiting") is True:
+            artifact_data["waiting"] = False
+        ticket_artifact.data_json_safe = validate_safe_metadata(artifact_data)
     return True
 
 
@@ -1313,11 +1326,16 @@ async def list_tasks(
     }
     expired_updates = False
     for task in tasks:
-        expired_updates = _expire_manual_payment_task_if_due(
+        ticket_artifact = ticket_artifacts.get(task.id)
+        expired_changed = _expire_manual_payment_task_if_due(
             task,
             ticket_summary=ticket_summaries.get(task.id),
+            ticket_artifact=ticket_artifact,
             now=now,
-        ) or expired_updates
+        )
+        if expired_changed and ticket_artifact is not None:
+            ticket_summaries[task.id] = _ticket_summary_from_artifact(ticket_artifact)
+        expired_updates = expired_changed or expired_updates
     if expired_updates:
         await db.commit()
 
@@ -1530,8 +1548,14 @@ async def get_task_detail(db: AsyncSession, *, task_id: UUID, user: User) -> Tas
     latest_attempt = max(attempts, key=lambda row: row.finished_at) if attempts else None
     last_attempt_at = latest_attempt.finished_at if latest_attempt else None
     now = utc_now()
-    if _expire_manual_payment_task_if_due(task, ticket_summary=ticket_summary, now=now):
+    if _expire_manual_payment_task_if_due(
+        task,
+        ticket_summary=ticket_summary,
+        ticket_artifact=latest_ticket_artifact,
+        now=now,
+    ):
         await db.commit()
+        ticket_summary = _ticket_summary_from_artifact(latest_ticket_artifact)
 
     return TaskDetailOut(
         task=task_to_summary(

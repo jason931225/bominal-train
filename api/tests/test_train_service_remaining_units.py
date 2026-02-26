@@ -470,6 +470,8 @@ async def test_service_remaining_list_tasks_expires_overdue_manual_payment(monke
         refresh_completed=False,
     )
     assert overdue_task.state == "EXPIRED"
+    assert overdue_artifact.data_json_safe["status"] == "expired"
+    assert overdue_artifact.data_json_safe["expired"] is True
     assert response.tasks == []
     assert db.commits == 1
 
@@ -521,6 +523,8 @@ async def test_service_remaining_list_tasks_expires_overdue_manual_payment_in_ac
         refresh_completed=False,
     )
     assert overdue_task.state == "EXPIRED"
+    assert overdue_artifact.data_json_safe["status"] == "expired"
+    assert overdue_artifact.data_json_safe["expired"] is True
     assert response.tasks == []
     assert db.commits == 1
 

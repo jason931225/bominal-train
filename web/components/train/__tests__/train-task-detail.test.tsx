@@ -102,7 +102,7 @@ describe("TrainTaskDetail actions", () => {
     vi.restoreAllMocks();
   });
 
-  it("supports sync refresh and orders awaiting-payment actions as pay, pause, cancel", async () => {
+  it("shows refresh as icon-only action and orders awaiting-payment actions as pay, pause, cancel", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       const method = init?.method ?? "GET";
@@ -132,7 +132,7 @@ describe("TrainTaskDetail actions", () => {
     );
     await flushAsyncEffects();
 
-    const taskStatusCard = screen.getByRole("heading", { name: "Task status" }).closest("div");
+    const taskStatusCard = screen.getByRole("heading", { name: "Task status" }).closest("div.rounded-2xl");
     expect(taskStatusCard).not.toBeNull();
     const labels = within(taskStatusCard as HTMLElement)
       .getAllByRole("button")
@@ -140,6 +140,8 @@ describe("TrainTaskDetail actions", () => {
     expect(labels.indexOf("Pay")).toBeGreaterThanOrEqual(0);
     expect(labels.indexOf("Pause")).toBeGreaterThan(labels.indexOf("Pay"));
     expect(labels.indexOf("Cancel")).toBeGreaterThan(labels.indexOf("Pause"));
+
+    expect(screen.queryByText("Sync refresh")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Sync refresh" }));
     await waitFor(() =>
@@ -160,5 +162,28 @@ describe("TrainTaskDetail actions", () => {
       ).toBe(true),
     );
     expect(fetchMock.mock.calls.some(([request]) => String(request).includes("/api/train/tickets/"))).toBe(false);
+  });
+
+  it("hides pay action when task is expired even if artifact status is awaiting_payment", async () => {
+    const expiredPayload = buildTaskDetailPayload();
+    expiredPayload.task.state = "EXPIRED";
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? "GET";
+      if (url.endsWith("/api/train/tasks/task-1") && method === "GET") {
+        return jsonResponse(expiredPayload);
+      }
+      return jsonResponse({ detail: "not found" }, 404);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <LocaleProvider initialLocale="en">
+        <TrainTaskDetail taskId="task-1" />
+      </LocaleProvider>,
+    );
+    await flushAsyncEffects();
+
+    expect(screen.queryByRole("button", { name: "Pay" })).not.toBeInTheDocument();
   });
 });

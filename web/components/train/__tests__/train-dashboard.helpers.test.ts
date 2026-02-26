@@ -421,10 +421,13 @@ describe("train dashboard helpers", () => {
     expect(taskTicketSeatLabel({ ticket_seat_count: Number.NaN, ticket_seats: null })).toBeNull();
   });
 
-  it("maps waitlisted and awaiting-payment cards to pending display state", () => {
+  it("maps waitlisted and awaiting-payment cards to pending display state, except expired tasks", () => {
     expect(taskDisplayState(makeTask("w", "POLLING", { ticket_status: "waiting", ticket_paid: false }))).toBe("PENDING");
     expect(taskDisplayState(makeTask("a", "COMPLETED", { ticket_status: "awaiting_payment", ticket_paid: false }))).toBe(
       "PENDING",
+    );
+    expect(taskDisplayState(makeTask("e", "EXPIRED", { ticket_status: "awaiting_payment", ticket_paid: false }))).toBe(
+      "EXPIRED",
     );
     expect(taskDisplayState(makeTask("d", "RUNNING", { ticket_status: null, ticket_paid: null }))).toBe("RUNNING");
   });
