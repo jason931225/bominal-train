@@ -2,13 +2,15 @@
 
 import Link from "next/link";
 import { createPortal } from "react-dom";
-import { FormEvent, UIEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, KeyboardEvent, UIEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 
 import { useLocale } from "@/components/locale-provider";
 import { clientApiBaseUrl } from "@/lib/api-base";
+import type { Locale } from "@/lib/i18n";
 import { formatDateTimeKst, kstDateInputValue } from "@/lib/kst";
 import { ROUTES } from "@/lib/routes";
+import { rankStationCandidates, shouldAutoCommitTopSuggestion } from "@/lib/train/station-search";
 import { UI_BUTTON_OUTLINE, UI_BUTTON_OUTLINE_SM, UI_BUTTON_PRIMARY, UI_BUTTON_DANGER_SM, UI_FIELD } from "@/lib/ui";
 import {
   clearStoredDummyTaskCards,
@@ -1213,6 +1215,138 @@ export function resolveSearchStations(
       ? DEFAULT_ARR_STATION
       : stations[Math.min(1, stations.length - 1)].name;
   return { dep, arr };
+}
+
+type StationAutocompleteFieldProps = {
+  label: string;
+  locale: Locale;
+  stationName: string;
+  stations: TrainStation[];
+  disabled: boolean;
+  noMatchesLabel: string;
+  onStationChange: (value: string) => void;
+};
+
+function StationAutocompleteField({
+  label,
+  locale,
+  stationName,
+  stations,
+  disabled,
+  noMatchesLabel,
+  onStationChange,
+}: StationAutocompleteFieldProps) {
+  const [focused, setFocused] = useState(false);
+  const [draft, setDraft] = useState("");
+
+  const suggestions = useMemo(
+    () => (focused ? rankStationCandidates(draft, stations, { locale, limit: 3 }) : []),
+    [draft, focused, locale, stations],
+  );
+
+  const commitTopSuggestion = useCallback(
+    (value: string) => {
+      const ranked = rankStationCandidates(value, stations, { locale, limit: 3 });
+      if (!shouldAutoCommitTopSuggestion(ranked, value)) {
+        return;
+      }
+      const top = ranked[0];
+      if (top) {
+        onStationChange(top.station.name);
+      }
+    },
+    [locale, onStationChange, stations],
+  );
+
+  const selectStation = useCallback(
+    (value: string) => {
+      onStationChange(value);
+      setDraft(formatStationLabel(value, locale, { compact: true }));
+      setFocused(false);
+    },
+    [locale, onStationChange],
+  );
+
+  const handleFocus = useCallback(() => {
+    setFocused(true);
+    setDraft(formatStationLabel(stationName, locale, { compact: true }));
+  }, [locale, stationName]);
+
+  const handleBlur = useCallback(() => {
+    commitTopSuggestion(draft);
+    setFocused(false);
+    setDraft("");
+  }, [commitTopSuggestion, draft]);
+
+  const handleChange = useCallback(
+    (nextValue: string) => {
+      setDraft(nextValue);
+      commitTopSuggestion(nextValue);
+    },
+    [commitTopSuggestion],
+  );
+
+  const handleKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLInputElement>) => {
+      if (event.key === "Enter") {
+        commitTopSuggestion(draft);
+        setFocused(false);
+      }
+    },
+    [commitTopSuggestion, draft],
+  );
+
+  const showNoMatches = focused && draft.trim().length > 0 && suggestions.length < 1;
+  const visibleValue = focused ? draft : formatStationLabel(stationName, locale);
+
+  return (
+    <label className="relative text-sm text-slate-700">
+      <span className="hidden md:inline">{label}</span>
+      <input
+        aria-label={label}
+        value={visibleValue}
+        onFocus={handleFocus}
+        onBlur={handleBlur}
+        onChange={(event) => handleChange(event.target.value)}
+        onKeyDown={handleKeyDown}
+        className={FIELD_BASE_CLASS}
+        required
+        disabled={disabled}
+        autoComplete="off"
+      />
+      {focused && !disabled ? (
+        <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
+          {showNoMatches ? (
+            <p className="px-3 py-2 text-xs text-slate-500">{noMatchesLabel}</p>
+          ) : (
+            <ul role="listbox" className="max-h-52 overflow-auto py-1">
+              {suggestions.map((match) => (
+                <li key={match.station.name} className="px-1">
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={match.station.name === stationName}
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      selectStation(match.station.name);
+                    }}
+                    className={`flex w-full flex-col rounded-lg px-2 py-1.5 text-left transition ${
+                      match.station.name === stationName
+                        ? "bg-blossom-50 text-blossom-700"
+                        : "text-slate-700 hover:bg-slate-50"
+                    }`}
+                  >
+                    <span className="text-sm font-medium">{match.primaryLabel}</span>
+                    {match.secondaryLabel ? <span className="text-xs text-slate-500">{match.secondaryLabel}</span> : null}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      ) : null}
+    </label>
+  );
 }
 
 export function TrainDashboard() {
@@ -2779,37 +2913,15 @@ export function TrainDashboard() {
               <div className="rounded-2xl border border-blossom-100 bg-blossom-50/40 p-4">
                 <p className={SEARCH_SECTION_LABEL_CLASS}>{t("train.station")}</p>
                 <div className="mt-3 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-end gap-2 sm:gap-3">
-                  <label className="text-sm text-slate-700">
-                    <span className="hidden md:inline">{t("train.departureStation")}</span>
-                    <select
-                      aria-label={t("train.departureStation")}
-                      value={searchForm.dep}
-                      onChange={(event) => setSearchForm((cur) => ({ ...cur, dep: event.target.value }))}
-                      className={`${FIELD_BASE_CLASS} md:hidden`}
-                      required
-                      disabled={stationsLoading || stations.length === 0 || !searchUnlocked}
-                    >
-                      {stations.map((station) => (
-                        <option key={station.name} value={station.name}>
-                          {formatStationLabel(station.name, locale, { compact: true })}
-                        </option>
-                      ))}
-                    </select>
-                    <select
-                      aria-label={t("train.departureStation")}
-                      value={searchForm.dep}
-                      onChange={(event) => setSearchForm((cur) => ({ ...cur, dep: event.target.value }))}
-                      className={`${FIELD_BASE_CLASS} hidden md:block`}
-                      required
-                      disabled={stationsLoading || stations.length === 0 || !searchUnlocked}
-                    >
-                      {stations.map((station) => (
-                        <option key={station.name} value={station.name}>
-                          {formatStationLabel(station.name, locale)}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                  <StationAutocompleteField
+                    label={t("train.departureStation")}
+                    locale={locale}
+                    stationName={searchForm.dep}
+                    stations={stations}
+                    disabled={stationsLoading || stations.length === 0 || !searchUnlocked}
+                    noMatchesLabel={t("train.noMatchingStations")}
+                    onStationChange={(value) => setSearchForm((cur) => ({ ...cur, dep: value }))}
+                  />
                   <div className="flex items-center justify-center self-end">
                     <button
                       type="button"
@@ -2833,37 +2945,15 @@ export function TrainDashboard() {
                       </svg>
                     </button>
                   </div>
-                  <label className="text-sm text-slate-700">
-                    <span className="hidden md:inline">{t("train.arrivalStation")}</span>
-                    <select
-                      aria-label={t("train.arrivalStation")}
-                      value={searchForm.arr}
-                      onChange={(event) => setSearchForm((cur) => ({ ...cur, arr: event.target.value }))}
-                      className={`${FIELD_BASE_CLASS} md:hidden`}
-                      required
-                      disabled={stationsLoading || stations.length === 0 || !searchUnlocked}
-                    >
-                      {stations.map((station) => (
-                        <option key={station.name} value={station.name}>
-                          {formatStationLabel(station.name, locale, { compact: true })}
-                        </option>
-                      ))}
-                    </select>
-                    <select
-                      aria-label={t("train.arrivalStation")}
-                      value={searchForm.arr}
-                      onChange={(event) => setSearchForm((cur) => ({ ...cur, arr: event.target.value }))}
-                      className={`${FIELD_BASE_CLASS} hidden md:block`}
-                      required
-                      disabled={stationsLoading || stations.length === 0 || !searchUnlocked}
-                    >
-                      {stations.map((station) => (
-                        <option key={station.name} value={station.name}>
-                          {formatStationLabel(station.name, locale)}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                  <StationAutocompleteField
+                    label={t("train.arrivalStation")}
+                    locale={locale}
+                    stationName={searchForm.arr}
+                    stations={stations}
+                    disabled={stationsLoading || stations.length === 0 || !searchUnlocked}
+                    noMatchesLabel={t("train.noMatchingStations")}
+                    onStationChange={(value) => setSearchForm((cur) => ({ ...cur, arr: value }))}
+                  />
                 </div>
 
                 <div className="mt-3 grid gap-3 md:grid-cols-2">

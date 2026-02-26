@@ -342,6 +342,7 @@
     "toShort": "To",
     "timeShort": "Time",
     "swapStations": "Swap departure and arrival stations",
+    "noMatchingStations": "No matching stations",
     "passengerSeatClass": "Passenger / Seat Class",
     "selectSchedules": "Select schedules ({date})",
     "selected": "Selected:",
