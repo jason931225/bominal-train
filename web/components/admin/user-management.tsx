@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { useLocale } from "@/components/locale-provider";
 import { clientApiBaseUrl } from "@/lib/api-base";
 import {
@@ -60,6 +61,7 @@ export function UserManagement() {
   const [pageSize] = useState(10);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
+  const [portalReady, setPortalReady] = useState(false);
   const [selectedUser, setSelectedUser] = useState<UserDetail | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
@@ -101,6 +103,10 @@ export function UserManagement() {
     } catch (e) {
       console.error("Failed to fetch pending users", e);
     }
+  }, []);
+
+  useEffect(() => {
+    setPortalReady(true);
   }, []);
 
   useEffect(() => {
@@ -250,6 +256,140 @@ export function UserManagement() {
     if (statusKey === "rejected") return t("admin.users.access.rejected");
     return t("admin.users.access.pending");
   };
+
+  const userDetailModal =
+    selectedUser && portalReady
+      ? createPortal(
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+            <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className={UI_KICKER}>{t("admin.users.detail.kicker")}</p>
+                  <h3 className="mt-1 text-xl font-semibold text-slate-800">
+                    {selectedUser.email}
+                  </h3>
+                </div>
+                <button
+                  onClick={() => setSelectedUser(null)}
+                  className="rounded-full p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                >
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <dt className="text-slate-400">{t("auth.displayName")}</dt>
+                  <dd className="text-slate-700">{selectedUser.display_name || t("common.notSet")}</dd>
+                </div>
+                <div>
+                  <dt className="text-slate-400">{t("settings.phone")}</dt>
+                  <dd className="text-slate-700">{selectedUser.phone_number || t("common.notSet")}</dd>
+                </div>
+                <div>
+                  <dt className="text-slate-400">{t("admin.users.table.role")}</dt>
+                  <dd>
+                    <span className={roleChipClass(selectedUser.role)}>{roleLabel(selectedUser.role)}</span>
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-slate-400">{t("admin.users.table.access")}</dt>
+                  <dd>
+                    <span className={accessBadgeClass(selectedUser.access_status)}>{accessLabel(selectedUser.access_status)}</span>
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-slate-400">{t("admin.users.detail.emailVerified")}</dt>
+                  <dd className="text-slate-700">
+                    {selectedUser.email_verified_at ? formatDate(selectedUser.email_verified_at) : t("admin.users.detail.notVerified")}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-slate-400">{t("admin.users.detail.activeSessions")}</dt>
+                  <dd className="text-slate-700">
+                    {selectedUser.active_session_count} / {selectedUser.session_count}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-slate-400">{t("admin.users.detail.tasks")}</dt>
+                  <dd className="text-slate-700">{selectedUser.task_count}</dd>
+                </div>
+                <div>
+                  <dt className="text-slate-400">{t("admin.users.detail.secrets")}</dt>
+                  <dd className="text-slate-700">{selectedUser.secret_count}</dd>
+                </div>
+                <div>
+                  <dt className="text-slate-400">{t("common.created")}</dt>
+                  <dd className="text-slate-700 text-xs">{formatDate(selectedUser.created_at)}</dd>
+                </div>
+              </dl>
+
+              <div className="mt-6 space-y-3 border-t border-slate-100 pt-4">
+                <p className="text-xs font-medium uppercase tracking-wide text-slate-400">{t("admin.users.table.actions")}</p>
+
+                <div className="flex flex-wrap gap-2">
+                  {selectedUser.role === "user" ? (
+                    <button
+                      onClick={() => updateRole(selectedUser.id, "admin")}
+                      disabled={actionLoading}
+                      className={UI_BUTTON_OUTLINE_SM}
+                    >
+                      {t("admin.users.actions.promoteToAdmin")}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => updateRole(selectedUser.id, "user")}
+                      disabled={actionLoading}
+                      className={UI_BUTTON_OUTLINE_SM}
+                    >
+                      {t("admin.users.actions.demoteToUser")}
+                    </button>
+                  )}
+
+                  <button
+                    onClick={() => revokeSessions(selectedUser.id)}
+                    disabled={actionLoading || selectedUser.active_session_count === 0}
+                    className={UI_BUTTON_OUTLINE_SM}
+                  >
+                    {t("admin.users.actions.revokeSessions", { count: selectedUser.active_session_count })}
+                  </button>
+                  {selectedUser.access_status !== "approved" ? (
+                    <button
+                      onClick={() => updateAccess(selectedUser.id, "approved")}
+                      disabled={actionLoading}
+                      className={UI_BUTTON_OUTLINE_SM}
+                    >
+                      {t("admin.users.actions.approve")}
+                    </button>
+                  ) : null}
+                  {selectedUser.access_status !== "rejected" ? (
+                    <button
+                      onClick={() => updateAccess(selectedUser.id, "rejected")}
+                      disabled={actionLoading}
+                      className={UI_BUTTON_DANGER_SM}
+                    >
+                      {t("admin.users.actions.reject")}
+                    </button>
+                  ) : null}
+                </div>
+
+                <div className="pt-2">
+                  <button
+                    onClick={() => deleteUser(selectedUser.id, selectedUser.email)}
+                    disabled={actionLoading}
+                    className={UI_BUTTON_DANGER_SM}
+                  >
+                    {t("admin.users.actions.deleteUserPermanently")}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )
+      : null;
 
   return (
     <section className={UI_CARD_MD}>
@@ -419,137 +559,7 @@ export function UserManagement() {
         </div>
       )}
 
-      {/* User Detail Modal */}
-      {selectedUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className={UI_KICKER}>{t("admin.users.detail.kicker")}</p>
-                <h3 className="mt-1 text-xl font-semibold text-slate-800">
-                  {selectedUser.email}
-                </h3>
-              </div>
-              <button
-                onClick={() => setSelectedUser(null)}
-                className="rounded-full p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-              >
-                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-
-            <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
-              <div>
-                <dt className="text-slate-400">{t("auth.displayName")}</dt>
-                <dd className="text-slate-700">{selectedUser.display_name || t("common.notSet")}</dd>
-              </div>
-              <div>
-                <dt className="text-slate-400">{t("settings.phone")}</dt>
-                <dd className="text-slate-700">{selectedUser.phone_number || t("common.notSet")}</dd>
-              </div>
-              <div>
-                <dt className="text-slate-400">{t("admin.users.table.role")}</dt>
-                <dd>
-                  <span className={roleChipClass(selectedUser.role)}>{roleLabel(selectedUser.role)}</span>
-                </dd>
-              </div>
-              <div>
-                <dt className="text-slate-400">{t("admin.users.table.access")}</dt>
-                <dd>
-                  <span className={accessBadgeClass(selectedUser.access_status)}>{accessLabel(selectedUser.access_status)}</span>
-                </dd>
-              </div>
-              <div>
-                <dt className="text-slate-400">{t("admin.users.detail.emailVerified")}</dt>
-                <dd className="text-slate-700">
-                  {selectedUser.email_verified_at ? formatDate(selectedUser.email_verified_at) : t("admin.users.detail.notVerified")}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-slate-400">{t("admin.users.detail.activeSessions")}</dt>
-                <dd className="text-slate-700">
-                  {selectedUser.active_session_count} / {selectedUser.session_count}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-slate-400">{t("admin.users.detail.tasks")}</dt>
-                <dd className="text-slate-700">{selectedUser.task_count}</dd>
-              </div>
-              <div>
-                <dt className="text-slate-400">{t("admin.users.detail.secrets")}</dt>
-                <dd className="text-slate-700">{selectedUser.secret_count}</dd>
-              </div>
-              <div>
-                <dt className="text-slate-400">{t("common.created")}</dt>
-                <dd className="text-slate-700 text-xs">{formatDate(selectedUser.created_at)}</dd>
-              </div>
-            </dl>
-
-            {/* Actions */}
-            <div className="mt-6 space-y-3 border-t border-slate-100 pt-4">
-              <p className="text-xs font-medium uppercase tracking-wide text-slate-400">{t("admin.users.table.actions")}</p>
-
-              <div className="flex flex-wrap gap-2">
-                {selectedUser.role === "user" ? (
-                  <button
-                    onClick={() => updateRole(selectedUser.id, "admin")}
-                    disabled={actionLoading}
-                    className={UI_BUTTON_OUTLINE_SM}
-                  >
-                    {t("admin.users.actions.promoteToAdmin")}
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => updateRole(selectedUser.id, "user")}
-                    disabled={actionLoading}
-                    className={UI_BUTTON_OUTLINE_SM}
-                  >
-                    {t("admin.users.actions.demoteToUser")}
-                  </button>
-                )}
-
-                <button
-                  onClick={() => revokeSessions(selectedUser.id)}
-                  disabled={actionLoading || selectedUser.active_session_count === 0}
-                  className={UI_BUTTON_OUTLINE_SM}
-                >
-                  {t("admin.users.actions.revokeSessions", { count: selectedUser.active_session_count })}
-                </button>
-                {selectedUser.access_status !== "approved" ? (
-                  <button
-                    onClick={() => updateAccess(selectedUser.id, "approved")}
-                    disabled={actionLoading}
-                    className={UI_BUTTON_OUTLINE_SM}
-                  >
-                    {t("admin.users.actions.approve")}
-                  </button>
-                ) : null}
-                {selectedUser.access_status !== "rejected" ? (
-                  <button
-                    onClick={() => updateAccess(selectedUser.id, "rejected")}
-                    disabled={actionLoading}
-                    className={UI_BUTTON_DANGER_SM}
-                  >
-                    {t("admin.users.actions.reject")}
-                  </button>
-                ) : null}
-              </div>
-
-              <div className="pt-2">
-                <button
-                  onClick={() => deleteUser(selectedUser.id, selectedUser.email)}
-                  disabled={actionLoading}
-                  className={UI_BUTTON_DANGER_SM}
-                >
-                  {t("admin.users.actions.deleteUserPermanently")}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {userDetailModal}
     </section>
   );
 }

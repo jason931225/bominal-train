@@ -92,7 +92,7 @@ export function isApprovedUser(user: BominalUser): boolean {
 }
 
 export function postLoginRouteForUser(user: BominalUser): string {
-  return isApprovedUser(user) ? ROUTES.dashboard : ROUTES.applicationReview;
+  return isApprovedUser(user) ? ROUTES.modules.train : ROUTES.applicationReview;
 }
 
 export async function requireApprovedUser(): Promise<BominalUser> {
@@ -106,19 +106,19 @@ export async function requireApprovedUser(): Promise<BominalUser> {
 export async function requirePendingReviewUser(): Promise<BominalUser> {
   const user = await requireUser();
   if (isApprovedUser(user)) {
-    redirect(ROUTES.dashboard);
+    redirect(ROUTES.modules.train);
   }
   return user;
 }
 
 /**
- * Require admin role. Redirects to /dashboard if not admin.
+ * Require admin role. Redirects to /modules/train if not admin.
  * Use for admin-only pages like maintenance dashboard.
  */
 export async function requireAdminUser(): Promise<BominalUser> {
   const user = await requireApprovedUser();
   if (user.role !== "admin") {
-    redirect(`${ROUTES.dashboard}?denied=1`);
+    redirect(ROUTES.modules.train);
   }
   return user;
 }

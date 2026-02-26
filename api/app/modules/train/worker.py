@@ -1623,6 +1623,22 @@ def _is_waiting_snapshot(snapshot: dict[str, Any] | None) -> bool:
     return bool(snapshot.get("waiting"))
 
 
+def _is_paid_snapshot(snapshot: dict[str, Any] | None) -> bool:
+    if not snapshot:
+        return False
+    if bool(snapshot.get("paid")):
+        return True
+    return str(snapshot.get("status") or "").lower() == "paid"
+
+
+def _is_reservation_not_found_snapshot(snapshot: dict[str, Any] | None) -> bool:
+    if not snapshot:
+        return False
+    if snapshot.get("reservation_found") is False:
+        return True
+    return str(snapshot.get("status") or "").lower() == "reservation_not_found"
+
+
 def _normalize_ticket_status(value: Any) -> str | None:
     normalized = str(value or "").strip().lower()
     return normalized or None
@@ -1934,7 +1950,15 @@ async def _run_train_task_inner(
                             updated_at=task.updated_at,
                         )
 
+                    if _is_paid_snapshot(failed_pay_sync_snapshot):
+                        await _mark_completed(db, task)
+                        return
                     if _is_waiting_snapshot(failed_pay_sync_snapshot) and _utc_now_aware() < _as_aware_utc(task.deadline_at):
+                        await _schedule_retry(db, task, WAITING_STATUS_POLL_SECONDS)
+                        return
+                    if _is_reservation_not_found_snapshot(failed_pay_sync_snapshot) and _utc_now_aware() < _as_aware_utc(
+                        task.deadline_at
+                    ):
                         await _schedule_retry(db, task, WAITING_STATUS_POLL_SECONDS)
                         return
 
@@ -2165,7 +2189,15 @@ async def _run_train_task_inner(
                         updated_at=task.updated_at,
                     )
 
+                if _is_paid_snapshot(failed_pay_sync_snapshot):
+                    await _mark_completed(db, task)
+                    return
                 if _is_waiting_snapshot(failed_pay_sync_snapshot) and _utc_now_aware() < _as_aware_utc(task.deadline_at):
+                    await _schedule_retry(db, task, WAITING_STATUS_POLL_SECONDS)
+                    return
+                if _is_reservation_not_found_snapshot(failed_pay_sync_snapshot) and _utc_now_aware() < _as_aware_utc(
+                    task.deadline_at
+                ):
                     await _schedule_retry(db, task, WAITING_STATUS_POLL_SECONDS)
                     return
 

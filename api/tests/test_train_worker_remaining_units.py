@@ -825,7 +825,7 @@ async def test_run_train_task_inner_open_ticket_branch_matrix(monkeypatch):
 
     monkeypatch.setattr(train_worker, "_attempt_pay_reservation", _attempt_pay_fail)
     await train_worker._run_train_task_inner({}, str(pay_fail_task.id), _db_factory(_RunDB(pay_fail_task)), object(), _Limiter())  # noqa: SLF001
-    assert str(pay_fail_task.id) in failed_calls
+    assert str(pay_fail_task.id) in retry_calls
 
     # pay failure retryable branch schedules retry
     pay_retry_task = _task(auto_pay=True)
@@ -972,6 +972,150 @@ async def test_run_train_task_inner_open_ticket_waiting_status_schedules_five_mi
         "waiting": True,
         "paid": False,
     }
+
+
+@pytest.mark.asyncio
+async def test_run_train_task_inner_open_ticket_pay_failure_paid_sync_marks_completed(monkeypatch):
+    fixed_now = datetime(2026, 2, 22, 12, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(train_worker, "_utc_now_aware", lambda: fixed_now)
+    monkeypatch.setattr(train_worker, "utc_now", lambda: fixed_now)
+    monkeypatch.setattr(train_worker, "_normalize_ranked_selection", lambda _spec: _ranked())
+    monkeypatch.setattr(train_worker, "_seconds_until_next_departure", lambda _rows: 3600.0)
+    monkeypatch.setattr(train_worker, "_poll_delay_seconds", lambda *_args, **_kwargs: 1.0)
+    monkeypatch.setattr(train_worker, "validate_safe_metadata", lambda payload: payload)
+    monkeypatch.setattr(train_worker, "redact_sensitive", lambda payload: payload)
+
+    async def _persist_noop(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        return None
+
+    async def _load_open_ticket(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        return [_open_ticket_artifact()]
+
+    async def _login_success(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        return SimpleNamespace(), None, False
+
+    async def _provider_credentials(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        return {"username": "u", "password": "p"}
+
+    async def _payment_card(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        return {"token": "tok"}
+
+    async def _attempt_pay_failed(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        return (
+            train_worker.PendingAttempt("pay", "SRT", False, False, "reservation_not_found", "not found", 1, {}, fixed_now),
+            ProviderOutcome(ok=False, retryable=False, error_code="reservation_not_found"),
+        )
+
+    sync_calls = {"n": 0}
+
+    async def _sync_empty_then_paid(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        sync_calls["n"] += 1
+        if sync_calls["n"] == 1:
+            return {}
+        return {"status": "paid", "paid": True, "waiting": False, "tickets": [{"seat_no": "1A"}]}
+
+    completed_calls: list[str] = []
+    failed_calls: list[str] = []
+    retry_delays: list[float] = []
+
+    async def _mark_completed(_db, task):  # noqa: ANN001
+        completed_calls.append(str(task.id))
+
+    async def _mark_failed(_db, task):  # noqa: ANN001
+        failed_calls.append(str(task.id))
+
+    async def _schedule_retry(_db, _task, delay):  # noqa: ANN001
+        retry_delays.append(float(delay))
+
+    monkeypatch.setattr(train_worker, "_persist_attempts", _persist_noop)
+    monkeypatch.setattr(train_worker, "_load_ticket_artifacts", _load_open_ticket)
+    monkeypatch.setattr(train_worker, "_login_provider_client_for_worker", _login_success)
+    monkeypatch.setattr(train_worker, "_load_provider_credentials", _provider_credentials)
+    monkeypatch.setattr(train_worker, "get_payment_card_for_execution", _payment_card)
+    monkeypatch.setattr(train_worker, "_attempt_pay_reservation", _attempt_pay_failed)
+    monkeypatch.setattr(train_worker, "fetch_ticket_sync_snapshot", _sync_empty_then_paid)
+    monkeypatch.setattr(train_worker, "_mark_completed", _mark_completed)
+    monkeypatch.setattr(train_worker, "_mark_failed", _mark_failed)
+    monkeypatch.setattr(train_worker, "_schedule_retry", _schedule_retry)
+
+    task = _task(auto_pay=True)
+    await train_worker._run_train_task_inner({}, str(task.id), _db_factory(_RunDB(task)), object(), _Limiter())  # noqa: SLF001
+
+    assert completed_calls == [str(task.id)]
+    assert failed_calls == []
+    assert retry_delays == []
+
+
+@pytest.mark.asyncio
+async def test_run_train_task_inner_open_ticket_pay_failure_reservation_not_found_sync_retries(monkeypatch):
+    fixed_now = datetime(2026, 2, 22, 12, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(train_worker, "_utc_now_aware", lambda: fixed_now)
+    monkeypatch.setattr(train_worker, "utc_now", lambda: fixed_now)
+    monkeypatch.setattr(train_worker, "_normalize_ranked_selection", lambda _spec: _ranked())
+    monkeypatch.setattr(train_worker, "_seconds_until_next_departure", lambda _rows: 3600.0)
+    monkeypatch.setattr(train_worker, "_poll_delay_seconds", lambda *_args, **_kwargs: 1.0)
+    monkeypatch.setattr(train_worker, "validate_safe_metadata", lambda payload: payload)
+    monkeypatch.setattr(train_worker, "redact_sensitive", lambda payload: payload)
+
+    async def _persist_noop(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        return None
+
+    async def _load_open_ticket(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        return [_open_ticket_artifact()]
+
+    async def _login_success(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        return SimpleNamespace(), None, False
+
+    async def _provider_credentials(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        return {"username": "u", "password": "p"}
+
+    async def _payment_card(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        return {"token": "tok"}
+
+    async def _attempt_pay_failed(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        return (
+            train_worker.PendingAttempt("pay", "SRT", False, False, "reservation_not_found", "not found", 1, {}, fixed_now),
+            ProviderOutcome(ok=False, retryable=False, error_code="reservation_not_found"),
+        )
+
+    sync_calls = {"n": 0}
+
+    async def _sync_empty_then_not_found(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        sync_calls["n"] += 1
+        if sync_calls["n"] == 1:
+            return {}
+        return {"reservation_found": False, "paid": False}
+
+    completed_calls: list[str] = []
+    failed_calls: list[str] = []
+    retry_delays: list[float] = []
+
+    async def _mark_completed(_db, task):  # noqa: ANN001
+        completed_calls.append(str(task.id))
+
+    async def _mark_failed(_db, task):  # noqa: ANN001
+        failed_calls.append(str(task.id))
+
+    async def _schedule_retry(_db, _task, delay):  # noqa: ANN001
+        retry_delays.append(float(delay))
+
+    monkeypatch.setattr(train_worker, "_persist_attempts", _persist_noop)
+    monkeypatch.setattr(train_worker, "_load_ticket_artifacts", _load_open_ticket)
+    monkeypatch.setattr(train_worker, "_login_provider_client_for_worker", _login_success)
+    monkeypatch.setattr(train_worker, "_load_provider_credentials", _provider_credentials)
+    monkeypatch.setattr(train_worker, "get_payment_card_for_execution", _payment_card)
+    monkeypatch.setattr(train_worker, "_attempt_pay_reservation", _attempt_pay_failed)
+    monkeypatch.setattr(train_worker, "fetch_ticket_sync_snapshot", _sync_empty_then_not_found)
+    monkeypatch.setattr(train_worker, "_mark_completed", _mark_completed)
+    monkeypatch.setattr(train_worker, "_mark_failed", _mark_failed)
+    monkeypatch.setattr(train_worker, "_schedule_retry", _schedule_retry)
+
+    task = _task(auto_pay=True)
+    await train_worker._run_train_task_inner({}, str(task.id), _db_factory(_RunDB(task)), object(), _Limiter())  # noqa: SLF001
+
+    assert completed_calls == []
+    assert failed_calls == []
+    assert retry_delays == [300.0]
 
 
 @pytest.mark.asyncio

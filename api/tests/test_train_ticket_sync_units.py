@@ -35,10 +35,12 @@ def test_status_from_snapshot_branch_matrix():
         ticket_sync._status_from_snapshot(paid=False, waiting=False, expired=False, reservation_found=True)
         == "awaiting_payment"
     )
-    assert (
-        ticket_sync._status_from_snapshot(paid=False, waiting=False, expired=False, reservation_found=False)
-        == "reservation_not_found"
-    )
+    assert ticket_sync._status_from_snapshot(
+        paid=False,
+        waiting=False,
+        expired=False,
+        reservation_found=False,
+    ) is None
 
 
 @pytest.mark.asyncio
@@ -110,6 +112,7 @@ async def test_fetch_ticket_sync_snapshot_handles_provider_failures_and_transpor
         limiter=None,
     )
 
-    assert snapshot["status"] == "reservation_not_found"
+    assert "status" not in snapshot
+    assert snapshot["reservation_found"] is False
     assert snapshot["provider_sync"]["reservations_ok"] is False
     assert snapshot["provider_sync"]["reservations_error"] == "reservation failed"
