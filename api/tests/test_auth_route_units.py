@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from uuid import UUID, uuid4
 
 import pytest
-from fastapi import HTTPException, Request, Response
+from fastapi import BackgroundTasks, HTTPException, Request, Response
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -298,18 +298,21 @@ async def test_register_login_session_optional_logout_and_update_account(db_sess
         await auth_routes.login(
             payload=LoginRequest(email="missing@example.com", password="SuperSecret123", remember_me=False),
             request=_request_for_login(),
+            background_tasks=BackgroundTasks(),
             db=db_session,
         )
     with pytest.raises(HTTPException):
         await auth_routes.login(
             payload=LoginRequest(email=user_email, password="WrongPass123", remember_me=False),
             request=_request_for_login(),
+            background_tasks=BackgroundTasks(),
             db=db_session,
         )
 
     login_response = await auth_routes.login(
         payload=LoginRequest(email=user_email, password="SuperSecret123", remember_me=True),
         request=_request_for_login(),
+        background_tasks=BackgroundTasks(),
         db=db_session,
     )
     assert login_response.status_code == 200
@@ -532,6 +535,7 @@ async def test_login_rehashes_password_when_policy_changes(db_session, monkeypat
     response = await auth_routes.login(
         payload=LoginRequest(email=email, password="SuperSecret123", remember_me=False),
         request=_request_for_login(),
+        background_tasks=BackgroundTasks(),
         db=db_session,
     )
     assert response.status_code == 200
@@ -557,17 +561,21 @@ async def test_login_refreshes_train_reservations_after_sign_in(db_session, monk
 
     refresh_calls: list[UUID] = []
 
-    async def _refresh_train_reservations_after_sign_in(db, *, user):  # noqa: ANN001
-        refresh_calls.append(user.id)
+    async def _refresh_background(*, user_id: UUID) -> None:
+        refresh_calls.append(user_id)
 
-    monkeypatch.setattr(auth_routes, "refresh_train_reservations_after_sign_in", _refresh_train_reservations_after_sign_in)
+    monkeypatch.setattr(auth_routes, "_refresh_train_reservations_after_sign_in_background", _refresh_background)
 
     response = await auth_routes.login(
         payload=LoginRequest(email=email, password="SuperSecret123", remember_me=False),
         request=_request_for_login(),
+        background_tasks=BackgroundTasks(),
         db=db_session,
     )
     assert response.status_code == 200
+    assert refresh_calls == []
+    if response.background is not None:
+        await response.background()
     assert refresh_calls == [user.id]
 
 
@@ -585,17 +593,31 @@ async def test_login_keeps_sign_in_successful_when_reservation_refresh_fails(db_
     db_session.add(user)
     await db_session.commit()
 
+    class _SessionContext:
+        def __init__(self, session: AsyncSession):
+            self._session = session
+
+        async def __aenter__(self) -> AsyncSession:
+            return self._session
+
+        async def __aexit__(self, exc_type, exc, tb) -> None:  # noqa: ANN001
+            return None
+
     async def _refresh_train_reservations_after_sign_in(db, *, user):  # noqa: ANN001
         raise RuntimeError("provider unavailable")
 
+    monkeypatch.setattr(auth_routes, "SessionLocal", lambda: _SessionContext(db_session))
     monkeypatch.setattr(auth_routes, "refresh_train_reservations_after_sign_in", _refresh_train_reservations_after_sign_in)
 
     response = await auth_routes.login(
         payload=LoginRequest(email=email, password="SuperSecret123", remember_me=False),
         request=_request_for_login(),
+        background_tasks=BackgroundTasks(),
         db=db_session,
     )
     assert response.status_code == 200
+    if response.background is not None:
+        await response.background()
 
 
 @pytest.mark.asyncio
@@ -710,8 +732,8 @@ async def test_passkey_route_units_with_mocked_service(db_session, monkeypatch):
 
     refresh_calls: list[UUID] = []
 
-    async def _refresh_train_reservations_after_sign_in(db, *, user):  # noqa: ANN001
-        refresh_calls.append(user.id)
+    async def _refresh_background(*, user_id: UUID) -> None:
+        refresh_calls.append(user_id)
 
     monkeypatch.setattr(auth_routes, "list_passkeys", _list_passkeys)
     monkeypatch.setattr(auth_routes, "begin_passkey_registration", _begin_registration)
@@ -719,7 +741,7 @@ async def test_passkey_route_units_with_mocked_service(db_session, monkeypatch):
     monkeypatch.setattr(auth_routes, "delete_passkey", _delete_passkey)
     monkeypatch.setattr(auth_routes, "begin_passkey_authentication", _begin_authentication)
     monkeypatch.setattr(auth_routes, "complete_passkey_authentication", _complete_authentication)
-    monkeypatch.setattr(auth_routes, "refresh_train_reservations_after_sign_in", _refresh_train_reservations_after_sign_in)
+    monkeypatch.setattr(auth_routes, "_refresh_train_reservations_after_sign_in_background", _refresh_background)
 
     async def _issue_step_up_token(db, *, user_id):  # noqa: ANN001
         return "step-up-token"
@@ -785,10 +807,14 @@ async def test_passkey_route_units_with_mocked_service(db_session, monkeypatch):
             remember_me=False,
         ),
         request=_request_for_login(),
+        background_tasks=BackgroundTasks(),
         db=db_session,
     )
     assert auth_response.status_code == 200
     assert "set-cookie" in auth_response.headers
+    assert refresh_calls == []
+    if auth_response.background is not None:
+        await auth_response.background()
     assert refresh_calls == [user.id]
 
     verified_password = await auth_routes.verify_current_password(
@@ -906,6 +932,7 @@ async def test_passkey_auth_routes_reject_unknown_email(db_session, monkeypatch)
                 remember_me=False,
             ),
             request=_request_for_login(),
+            background_tasks=BackgroundTasks(),
             db=db_session,
         )
     assert verify_error.value.status_code == 400

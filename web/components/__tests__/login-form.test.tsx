@@ -41,6 +41,7 @@ describe("LoginForm", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
@@ -79,6 +80,59 @@ describe("LoginForm", () => {
       expect(signInWithPasskey).toHaveBeenCalledWith("", { email: "passkey@example.com", rememberMe: false });
     });
     expect(screen.queryByLabelText("Password")).not.toBeInTheDocument();
+  });
+
+  it("waits one second before password fallback while passkey is still pending", async () => {
+    let resolvePasskey: ((value: { ok: boolean; error?: string }) => void) | undefined;
+    vi.mocked(signInWithPasskey).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolvePasskey = resolve;
+        }),
+    );
+
+    renderLoginForm();
+
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "pending@example.com" } });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+
+    expect(screen.getByRole("button", { name: "Continuing..." })).toBeInTheDocument();
+    await new Promise((resolve) => setTimeout(resolve, 900));
+    expect(screen.queryByLabelText("Password")).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByLabelText("Password")).toBeInTheDocument();
+    }, { timeout: 1500 });
+
+    resolvePasskey?.({ ok: false, error: "No passkey registered for this account" });
+    await Promise.resolve();
+  });
+
+  it("keeps passkey attempt alive after fallback and blocks password submit once passkey succeeds", async () => {
+    let resolvePasskey: ((value: { ok: boolean; error?: string }) => void) | undefined;
+    vi.mocked(signInWithPasskey).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolvePasskey = resolve;
+        }),
+    );
+
+    renderLoginForm();
+
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "late-passkey@example.com" } });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await waitFor(() => {
+      expect(signInWithPasskey).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(() => {
+      expect(screen.getByLabelText("Password")).toBeInTheDocument();
+    }, { timeout: 1500 });
+
+    resolvePasskey?.({ ok: true });
+    await Promise.resolve();
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "SuperSecret123" } });
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    await Promise.resolve();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("shows password mode immediately when passkeys are unsupported", async () => {
