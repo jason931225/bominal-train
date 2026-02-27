@@ -27,6 +27,7 @@ Keyword-to-pointer routing map to reduce discovery cost and token usage.
 | `contributing` | `docs/humans/engineering/CONTRIBUTING.md` | `docs/governance/ENGINEERING_QUALITY.md` |
 | `plan` | `docs/plans/active/README.md` | `docs/plans/README.md` |
 | `playbook` | `docs/playbooks/README.md` | `docs/governance/DOCUMENTATION_POLICY.md` |
+| `release` / `version` | `docs/releases/README.md` | `docs/releases/version-map.json`, `docs/playbooks/release-1.0.0-deploy-readiness.md` |
 | `read` / `clean` / `hygiene` | `docs/playbooks/daily-operations-chores.md` | `docs/governance/DOCUMENTATION_POLICY.md` |
 | `resy` / `provider` | `docs/provider-research/README.md` | `docs/playbooks/restaurant-provider-adapter-workflow.md` |
 
