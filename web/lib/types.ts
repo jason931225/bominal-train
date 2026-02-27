@@ -123,6 +123,7 @@ export type TrainTaskSummary = {
   ticket_train_no?: string | null;
   ticket_seat_count?: number | null;
   ticket_seats?: string[] | null;
+  ticket_seat_classes?: string[] | null;
 };
 
 export type TrainTaskAttempt = {
