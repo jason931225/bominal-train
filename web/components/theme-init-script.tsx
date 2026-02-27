@@ -18,26 +18,16 @@ const initThemeScript = `
     var root = document.documentElement;
     root.dataset.themeMode = mode;
     root.dataset.theme = season;
-    var href = "/favicons/catdog.ico";
+    var href = "/favicons/catdog.png";
     var icon = document.getElementById("bominal-theme-icon");
     if (!(icon instanceof HTMLLinkElement)) {
       icon = document.createElement("link");
       icon.id = "bominal-theme-icon";
       icon.rel = "icon";
-      icon.type = "image/x-icon";
+      icon.type = "image/png";
       document.head.appendChild(icon);
     }
     icon.setAttribute("href", href);
-
-    var shortcut = document.getElementById("bominal-theme-shortcut-icon");
-    if (!(shortcut instanceof HTMLLinkElement)) {
-      shortcut = document.createElement("link");
-      shortcut.id = "bominal-theme-shortcut-icon";
-      shortcut.rel = "shortcut icon";
-      shortcut.type = "image/x-icon";
-      document.head.appendChild(shortcut);
-    }
-    shortcut.setAttribute("href", href);
 
     window.requestAnimationFrame(function() {
       root.classList.add("theme-ready");

@@ -681,11 +681,8 @@ def run_convert(command: list[str]) -> None:
         raise RuntimeError(f"Command failed: {' '.join(command)}\n{result.stdout}\n{result.stderr}")
 
 
-def write_outputs(ppm_path: Path, png_path: Path, ico_path: Path, icns_path: Path, tmp_root: Path) -> None:
-    resized_png_path = tmp_root / f"{png_path.stem}-256.png"
+def write_outputs(ppm_path: Path, png_path: Path, icns_path: Path) -> None:
     run_convert(["sips", "-s", "format", "png", str(ppm_path), "--out", str(png_path)])
-    run_convert(["sips", "-z", "256", "256", str(png_path), "--out", str(resized_png_path)])
-    run_convert(["sips", "-s", "format", "ico", str(resized_png_path), "--out", str(ico_path)])
     run_convert(["sips", "-s", "format", "icns", str(png_path), "--out", str(icns_path)])
 
 
@@ -715,11 +712,10 @@ def generate_icon(style: Style, palette: Palette, variant_key: str, draw_fn: Var
     tmp_root.mkdir(parents=True, exist_ok=True)
     ppm_path = tmp_root / f"{style.key}-{stem}.ppm"
     png_path = base_dir / f"{stem}.png"
-    ico_path = base_dir / f"{stem}.ico"
     icns_path = base_dir / f"{stem}.icns"
     write_ppm(ppm_path, canvas)
-    write_outputs(ppm_path, png_path, ico_path, icns_path, tmp_root)
-    return png_path, ico_path
+    write_outputs(ppm_path, png_path, icns_path)
+    return png_path, icns_path
 
 
 def clean_existing_outputs() -> None:
@@ -757,12 +753,12 @@ def write_manifest(paths: list[tuple[str, str, str, str, Path, Path]]) -> None:
         for season in ("spring", "summer", "autumn", "winter"):
             lines.append(f"### {season.title()}")
             lines.append("")
-            for _, _, season_key, variant_key, png_path, ico_path in [
+            for _, _, season_key, variant_key, png_path, icns_path in [
                 p for p in paths if p[0] == style.key and p[2] == season
             ]:
                 lines.append(
                     f"- `{variant_key}`: `{png_path.relative_to(OUTPUT_ROOT.parent.parent)}` + "
-                    f"`{ico_path.relative_to(OUTPUT_ROOT.parent.parent)}`"
+                    f"`{icns_path.relative_to(OUTPUT_ROOT.parent.parent)}`"
                 )
             lines.append("")
 
@@ -869,7 +865,7 @@ def write_preview_html(paths: list[tuple[str, str, str, str, Path, Path]]) -> No
 <body>
   <main>
     <h1>Bominal Personal Seasonal Icon Prototypes</h1>
-    <p>3 style families × 4 seasons × 4 variants = 48 icons. Includes <code>.png</code>, <code>.ico</code>, and <code>.icns</code>.</p>
+    <p>3 style families × 4 seasons × 4 variants = 48 icons. Includes <code>.png</code> and <code>.icns</code>.</p>
     {''.join(style_sections)}
   </main>
 </body>
@@ -886,8 +882,8 @@ def main() -> None:
     for style in STYLES:
         for season in PALETTES:
             for variant_index, (variant_key, variant_label, draw_fn) in enumerate(VARIANTS):
-                png_path, ico_path = generate_icon(style, season, variant_key, draw_fn, variant_index)
-                all_paths.append((style.key, style.label, season.season, variant_key, png_path, ico_path))
+                png_path, icns_path = generate_icon(style, season, variant_key, draw_fn, variant_index)
+                all_paths.append((style.key, style.label, season.season, variant_key, png_path, icns_path))
 
     write_manifest(all_paths)
     write_preview_html(all_paths)
@@ -897,8 +893,8 @@ def main() -> None:
         shutil.rmtree(tmp_root)
 
     print("Generated personal seasonal icon prototypes:")
-    for style_key, _, season, variant_key, png_path, ico_path in all_paths:
-        print(f"- {style_key:<15} {season:<6} {variant_key:<18} {png_path} {ico_path}")
+    for style_key, _, season, variant_key, png_path, icns_path in all_paths:
+        print(f"- {style_key:<15} {season:<6} {variant_key:<18} {png_path} {icns_path}")
 
 
 if __name__ == "__main__":
