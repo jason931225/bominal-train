@@ -158,7 +158,25 @@ def _backend_env_card_masked() -> str | None:
 
 async def _load_settings_row(db: AsyncSession) -> SystemPaymentSettings | None:
     stmt = select(SystemPaymentSettings).where(SystemPaymentSettings.id == SYSTEM_PAYMENT_SETTINGS_ID)
-    return (await db.execute(stmt)).scalar_one_or_none()
+    result = await db.execute(stmt)
+    row: Any | None = None
+
+    scalar_one_or_none = getattr(result, "scalar_one_or_none", None)
+    if callable(scalar_one_or_none):
+        row = scalar_one_or_none()
+    else:
+        scalar_one = getattr(result, "scalar_one", None)
+        if callable(scalar_one):
+            try:
+                row = scalar_one()
+            except Exception:
+                row = None
+        else:
+            scalar = getattr(result, "scalar", None)
+            if callable(scalar):
+                row = scalar()
+
+    return row if isinstance(row, SystemPaymentSettings) else None
 
 
 async def _ensure_settings_row(db: AsyncSession) -> SystemPaymentSettings:

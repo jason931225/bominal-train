@@ -379,20 +379,27 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
 
 
 async def _refresh_train_reservations_after_sign_in_background(*, user_id: UUID) -> None:
-    async with SessionLocal() as background_db:
-        user = (
-            await background_db.execute(
-                select(User).options(joinedload(User.role)).where(User.id == user_id)
-            )
-        ).scalar_one_or_none()
-        if user is None:
-            logger.warning("Skipped sign-in reservation refresh for unknown user", extra={"user_id": str(user_id)})
-            return
-        try:
-            await refresh_train_reservations_after_sign_in(background_db, user=user)
-        except Exception:
-            await background_db.rollback()
-            logger.warning("Failed background train reservation refresh after sign-in", extra={"user_id": str(user_id)})
+    # Best-effort background refresh. This must never make login fail.
+    try:
+        async with SessionLocal() as background_db:
+            user = (
+                await background_db.execute(
+                    select(User).options(joinedload(User.role)).where(User.id == user_id)
+                )
+            ).scalar_one_or_none()
+            if user is None:
+                logger.warning("Skipped sign-in reservation refresh for unknown user", extra={"user_id": str(user_id)})
+                return
+            try:
+                await refresh_train_reservations_after_sign_in(background_db, user=user)
+            except Exception:
+                await background_db.rollback()
+                logger.warning("Failed background train reservation refresh after sign-in", extra={"user_id": str(user_id)})
+    except Exception:
+        logger.warning(
+            "Skipped background train reservation refresh after sign-in due to background session error",
+            extra={"user_id": str(user_id)},
+        )
 
 
 @public_router.post("/login", response_model=AuthResponse, dependencies=[Depends(auth_rate_limit)])
