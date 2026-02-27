@@ -235,6 +235,39 @@ Hosted service budget checks (free-tier aware):
   - warning `>=70%`
   - hard alert `>=85%`
 
+Cloud Scheduler baseline (production, last verified `2026-02-27`):
+
+| Job ID | Schedule (Etc/UTC) | Target |
+|---|---|---|
+| `bominal-daily-drift-check` | `0 9 * * *` | Pub/Sub `projects/bominal/topics/bominal-ops-triggers` (`action=drift_check`) |
+| `bominal-daily-budget-snapshot` | `30 9 * * *` | Pub/Sub `projects/bominal/topics/bominal-ops-triggers` (`action=budget_snapshot`) |
+| `bominal-hourly-smoke` | `0 * * * *` | HTTP GET `https://www.bominal.com/health` |
+
+Cloud Scheduler verification commands:
+
+```bash
+# Verify all planned jobs and schedules in us-central1.
+gcloud scheduler jobs list \
+  --project bominal \
+  --location us-central1 \
+  --format='table(name,schedule,timeZone,state,targetType)'
+
+# Inspect Pub/Sub drift check payload target.
+gcloud scheduler jobs describe bominal-daily-drift-check \
+  --project bominal \
+  --location us-central1
+
+# Inspect Pub/Sub budget snapshot payload target.
+gcloud scheduler jobs describe bominal-daily-budget-snapshot \
+  --project bominal \
+  --location us-central1
+
+# Inspect hourly smoke HTTP target and method.
+gcloud scheduler jobs describe bominal-hourly-smoke \
+  --project bominal \
+  --location us-central1
+```
+
 Operational policy:
 
 - Keep CDE Redis on a separate non-Upstash endpoint (`REDIS_URL_CDE`).
