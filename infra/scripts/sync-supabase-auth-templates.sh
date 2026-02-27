@@ -10,6 +10,8 @@ SUBJECTS_FILE="$TEMPLATE_DIR/subjects.json"
 CONFIRM_TEMPLATE="$TEMPLATE_DIR/confirm-signup.html"
 RECOVERY_TEMPLATE="$TEMPLATE_DIR/reset-password.html"
 PROD_API_ENV="$ROOT_DIR/infra/env/prod/api.env"
+PROD_WEB_ENV="$ROOT_DIR/infra/env/prod/web.env"
+PROD_CADDY_ENV="$ROOT_DIR/infra/env/prod/caddy.env"
 
 apply_mode=false
 project_ref_override=""
@@ -77,8 +79,10 @@ build_payload_json() {
   local recovery_html="$2"
   local confirmation_subject="$3"
   local recovery_subject="$4"
+  local site_url="$5"
+  local uri_allow_list="$6"
 
-  python3 - "$confirm_html" "$recovery_html" "$confirmation_subject" "$recovery_subject" <<'PY'
+  python3 - "$confirm_html" "$recovery_html" "$confirmation_subject" "$recovery_subject" "$site_url" "$uri_allow_list" <<'PY'
 import json
 import sys
 from pathlib import Path
@@ -87,15 +91,119 @@ confirm_path = Path(sys.argv[1])
 recovery_path = Path(sys.argv[2])
 confirmation_subject = sys.argv[3]
 recovery_subject = sys.argv[4]
+site_url = sys.argv[5]
+uri_allow_list = sys.argv[6]
 
 payload = {
     "mailer_subjects_confirmation": confirmation_subject,
     "mailer_subjects_recovery": recovery_subject,
     "mailer_templates_confirmation_content": confirm_path.read_text(encoding="utf-8"),
     "mailer_templates_recovery_content": recovery_path.read_text(encoding="utf-8"),
+    "site_url": site_url,
+    "uri_allow_list": uri_allow_list,
 }
 print(json.dumps(payload, ensure_ascii=False))
 PY
+}
+
+normalize_https_url() {
+  local value="$1"
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  value="${value%/}"
+  printf '%s' "$value"
+}
+
+host_from_url() {
+  local url="$1"
+  local host
+  host="${url#https://}"
+  host="${host%%/*}"
+  host="${host%%:*}"
+  printf '%s' "$host" | tr '[:upper:]' '[:lower:]'
+}
+
+is_local_host_url() {
+  local host
+  host="$(host_from_url "$1")"
+  case "$host" in
+    localhost|127.0.0.1|0.0.0.0|::1)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+resolve_site_url() {
+  local value="${SUPABASE_AUTH_SITE_URL:-}"
+  if [[ -z "$value" && -f "$PROD_WEB_ENV" ]]; then
+    value="$(env_key_value "$PROD_WEB_ENV" "NEXT_PUBLIC_API_BASE_URL")"
+  fi
+  if [[ -z "$value" && -f "$PROD_CADDY_ENV" ]]; then
+    local caddy_site
+    caddy_site="$(env_key_value "$PROD_CADDY_ENV" "CADDY_SITE_ADDRESS")"
+    caddy_site="${caddy_site#"${caddy_site%%[![:space:]]*}"}"
+    caddy_site="${caddy_site%"${caddy_site##*[![:space:]]}"}"
+    if [[ -n "$caddy_site" ]]; then
+      if [[ "$caddy_site" =~ ^https?:// ]]; then
+        value="$caddy_site"
+      else
+        value="https://$caddy_site"
+      fi
+    fi
+  fi
+
+  value="$(normalize_https_url "$value")"
+  if [[ -z "$value" ]]; then
+    log_error "Unable to resolve Supabase site URL. Set SUPABASE_AUTH_SITE_URL or NEXT_PUBLIC_API_BASE_URL."
+    return 1
+  fi
+  if [[ ! "$value" =~ ^https:// ]]; then
+    log_error "Supabase site URL must start with https:// (got: $value)"
+    return 1
+  fi
+  if is_local_host_url "$value"; then
+    log_error "Supabase site URL must not use localhost/loopback in production (got: $value)"
+    return 1
+  fi
+
+  printf '%s' "$value"
+}
+
+resolve_uri_allow_list() {
+  local site_url="$1"
+  local raw="${SUPABASE_AUTH_REDIRECT_URLS:-}"
+  if [[ -z "$raw" ]]; then
+    raw="${site_url}/auth/callback,${site_url}/reset-password,${site_url}/login"
+  fi
+
+  local urls=()
+  local item
+  IFS=',' read -ra items <<<"$raw"
+  for item in "${items[@]}"; do
+    item="$(normalize_https_url "$item")"
+    [[ -z "$item" ]] && continue
+    if [[ ! "$item" =~ ^https:// ]]; then
+      log_error "Supabase redirect URL must start with https:// (got: $item)"
+      return 1
+    fi
+    if is_local_host_url "$item"; then
+      log_error "Supabase redirect URL must not use localhost/loopback in production (got: $item)"
+      return 1
+    fi
+    urls+=("$item")
+  done
+
+  if [[ "${#urls[@]}" -eq 0 ]]; then
+    log_error "Supabase redirect URL allow-list is empty."
+    return 1
+  fi
+
+  local joined
+  joined="$(IFS=, ; echo "${urls[*]}")"
+  printf '%s' "$joined"
 }
 
 resolve_project_ref() {
@@ -176,6 +284,8 @@ require_nonempty_file "$RECOVERY_TEMPLATE"
 confirmation_subject="$(json_read_subject "$SUBJECTS_FILE" "confirmation")"
 recovery_subject="$(json_read_subject "$SUBJECTS_FILE" "recovery")"
 project_ref="$(resolve_project_ref)"
+site_url="$(resolve_site_url)"
+uri_allow_list="$(resolve_uri_allow_list "$site_url")"
 
 payload_file="$(mktemp)"
 response_file="$(mktemp)"
@@ -185,13 +295,22 @@ cleanup() {
 }
 trap cleanup EXIT
 
-build_payload_json "$CONFIRM_TEMPLATE" "$RECOVERY_TEMPLATE" "$confirmation_subject" "$recovery_subject" >"$payload_file"
+build_payload_json \
+  "$CONFIRM_TEMPLATE" \
+  "$RECOVERY_TEMPLATE" \
+  "$confirmation_subject" \
+  "$recovery_subject" \
+  "$site_url" \
+  "$uri_allow_list" \
+  >"$payload_file"
 
 confirm_bytes="$(wc -c <"$CONFIRM_TEMPLATE" | tr -d ' ')"
 recovery_bytes="$(wc -c <"$RECOVERY_TEMPLATE" | tr -d ' ')"
 
 log_info "Prepared Supabase auth template payload for project '${project_ref}'"
 log_info "Template sizes: confirmation=${confirm_bytes}B recovery=${recovery_bytes}B"
+log_info "Resolved Supabase site URL: ${site_url}"
+log_info "Resolved Supabase redirect allow-list: ${uri_allow_list}"
 
 if [[ "$apply_mode" != "true" ]]; then
   log_info "Dry run complete. Re-run with --apply to sync templates."

@@ -163,6 +163,70 @@ require_https_url_or_empty() {
   require_https_url "$value" "$name"
 }
 
+url_host() {
+  local value="$1"
+  local host
+  host="${value#https://}"
+  host="${host#http://}"
+  host="${host%%/*}"
+  host="${host%%:*}"
+  printf '%s' "$host" | tr '[:upper:]' '[:lower:]'
+}
+
+require_non_local_https_url() {
+  local value="$1"
+  local name="$2"
+  require_https_url "$value" "$name"
+  case "$(url_host "$value")" in
+    localhost|127.0.0.1|0.0.0.0|::1)
+      log_error "$name must not use localhost/loopback in production (got: $value)"
+      exit 1
+      ;;
+    *)
+      ;;
+  esac
+}
+
+require_non_local_https_csv_urls() {
+  local value="$1"
+  local name="$2"
+  local item
+  IFS=',' read -ra items <<<"$value"
+  for item in "${items[@]}"; do
+    item="${item#"${item%%[![:space:]]*}"}"
+    item="${item%"${item##*[![:space:]]}"}"
+    [[ -z "$item" ]] && continue
+    require_non_local_https_url "$item" "$name"
+  done
+}
+
+require_csv_contains_callback_path() {
+  local value="$1"
+  local name="$2"
+  local found=0
+  local item
+  IFS=',' read -ra items <<<"$value"
+  for item in "${items[@]}"; do
+    item="${item#"${item%%[![:space:]]*}"}"
+    item="${item%"${item##*[![:space:]]}"}"
+    [[ -z "$item" ]] && continue
+    local without_scheme="${item#https://}"
+    without_scheme="${without_scheme#http://}"
+    local path="/"
+    if [[ "$without_scheme" == */* ]]; then
+      path="/${without_scheme#*/}"
+    fi
+    if [[ "$path" == "/auth/callback" ]] || [[ "$path" == "/auth/callback/"* ]]; then
+      found=1
+      break
+    fi
+  done
+  if [[ "$found" -ne 1 ]]; then
+    log_error "$name must include an /auth/callback URL."
+    exit 1
+  fi
+}
+
 require_supabase_database_url() {
   local value="$1"
   local name="$2"
@@ -560,6 +624,35 @@ done
 
 next_public_api_base_url="$(env_key_value "infra/env/prod/web.env" "NEXT_PUBLIC_API_BASE_URL")"
 require_https_url_or_empty "$next_public_api_base_url" "NEXT_PUBLIC_API_BASE_URL"
+
+supabase_auth_site_url="$(env_key_value "infra/env/prod/api.env" "SUPABASE_AUTH_SITE_URL")"
+if [[ -z "$supabase_auth_site_url" ]]; then
+  supabase_auth_site_url="$next_public_api_base_url"
+fi
+if [[ -z "$supabase_auth_site_url" ]]; then
+  caddy_site_address="$(env_key_value "infra/env/prod/caddy.env" "CADDY_SITE_ADDRESS")"
+  caddy_site_address="${caddy_site_address#"${caddy_site_address%%[![:space:]]*}"}"
+  caddy_site_address="${caddy_site_address%"${caddy_site_address##*[![:space:]]}"}"
+  if [[ -n "$caddy_site_address" ]]; then
+    if [[ "$caddy_site_address" =~ ^https?:// ]]; then
+      supabase_auth_site_url="$caddy_site_address"
+    else
+      supabase_auth_site_url="https://${caddy_site_address}"
+    fi
+  fi
+fi
+if [[ -z "$supabase_auth_site_url" ]]; then
+  log_error "Could not resolve Supabase auth site URL from SUPABASE_AUTH_SITE_URL, NEXT_PUBLIC_API_BASE_URL, or CADDY_SITE_ADDRESS."
+  exit 1
+fi
+require_non_local_https_url "$supabase_auth_site_url" "Supabase auth site URL"
+
+supabase_auth_redirect_urls="$(env_key_value "infra/env/prod/api.env" "SUPABASE_AUTH_REDIRECT_URLS")"
+if [[ -z "$supabase_auth_redirect_urls" ]]; then
+  supabase_auth_redirect_urls="${supabase_auth_site_url%/}/auth/callback,${supabase_auth_site_url%/}/reset-password,${supabase_auth_site_url%/}/login"
+fi
+require_non_local_https_csv_urls "$supabase_auth_redirect_urls" "Supabase auth redirect URL"
+require_csv_contains_callback_path "$supabase_auth_redirect_urls" "Supabase auth redirect URL"
 
 next_public_supabase_direct_auth_enabled="$(env_key_value "infra/env/prod/web.env" "NEXT_PUBLIC_SUPABASE_DIRECT_AUTH_ENABLED")"
 next_public_supabase_realtime_enabled="$(env_key_value "infra/env/prod/web.env" "NEXT_PUBLIC_SUPABASE_REALTIME_ENABLED")"

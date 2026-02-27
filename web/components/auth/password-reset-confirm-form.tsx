@@ -8,7 +8,10 @@ import { z } from "zod";
 import { useLocale } from "@/components/locale-provider";
 import { clientApiBaseUrl } from "@/lib/api-base";
 import { ROUTES } from "@/lib/routes";
+import { clearSupabaseAccessToken, getSupabaseAccessToken } from "@/lib/supabase-auth";
 import { UI_BUTTON_PRIMARY, UI_FIELD } from "@/lib/ui";
+
+type ResetMode = "otp" | "supabase";
 
 type ResetConfirmFormState = {
   email: string;
@@ -20,9 +23,11 @@ type ResetConfirmFormState = {
 export function PasswordResetConfirmForm({
   initialEmail = "",
   initialCode = "",
+  mode = "otp",
 }: {
   initialEmail?: string;
   initialCode?: string;
+  mode?: ResetMode;
 }) {
   const router = useRouter();
   const { t } = useLocale();
@@ -38,8 +43,8 @@ export function PasswordResetConfirmForm({
   const [submitting, setSubmitting] = useState(false);
 
   const hasPrefilledLinkParams = useMemo(
-    () => Boolean(initialEmail.trim()) && Boolean(initialCode.trim()),
-    [initialCode, initialEmail],
+    () => mode === "otp" && Boolean(initialEmail.trim()) && Boolean(initialCode.trim()),
+    [initialCode, initialEmail, mode],
   );
 
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -48,21 +53,30 @@ export function PasswordResetConfirmForm({
     setFormError(null);
     setNotice(null);
 
+    const otpMode = mode === "otp";
     const schema = z
       .object({
-        email: z.string().email(t("auth.invalidEmail")),
-        code: z.string().trim().min(4, t("auth.passwordResetCodeRequired")),
+        email: z.string().email(t("auth.invalidEmail")).optional(),
+        code: z.string().trim().min(4, t("auth.passwordResetCodeRequired")).optional(),
         newPassword: z.string().min(8, t("auth.passwordMin")),
         confirmNewPassword: z.string().min(8, t("auth.passwordMin")),
       })
       .refine((value) => value.newPassword === value.confirmNewPassword, {
         path: ["confirmNewPassword"],
         message: t("auth.passwordConfirmMismatch"),
+      })
+      .refine((value) => !otpMode || Boolean(value.email), {
+        path: ["email"],
+        message: t("auth.invalidEmail"),
+      })
+      .refine((value) => !otpMode || Boolean(value.code), {
+        path: ["code"],
+        message: t("auth.passwordResetCodeRequired"),
       });
 
     const parsed = schema.safeParse({
-      email: form.email.trim(),
-      code: form.code.trim(),
+      email: otpMode ? form.email.trim() : undefined,
+      code: otpMode ? form.code.trim() : undefined,
       newPassword: form.newPassword,
       confirmNewPassword: form.confirmNewPassword,
     });
@@ -81,15 +95,29 @@ export function PasswordResetConfirmForm({
 
     setSubmitting(true);
     try {
-      const response = await fetch(`${clientApiBaseUrl}/api/auth/reset-password`, {
+      const endpoint = otpMode ? "/api/auth/reset-password" : "/api/auth/reset-password/supabase";
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      const body = otpMode
+        ? JSON.stringify({
+            email: parsed.data.email,
+            code: parsed.data.code,
+            new_password: parsed.data.newPassword,
+          })
+        : JSON.stringify({ new_password: parsed.data.newPassword });
+      if (!otpMode) {
+        const accessToken = await getSupabaseAccessToken();
+        if (!accessToken) {
+          setFormError(t("auth.supabaseRecoveryMissing"));
+          return;
+        }
+        headers.Authorization = `Bearer ${accessToken}`;
+      }
+
+      const response = await fetch(`${clientApiBaseUrl}${endpoint}`, {
         method: "POST",
         credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: parsed.data.email,
-          code: parsed.data.code,
-          new_password: parsed.data.newPassword,
-        }),
+        headers,
+        body,
       });
       if (!response.ok) {
         const body = (await response.json().catch(() => null)) as { detail?: string } | null;
@@ -97,6 +125,7 @@ export function PasswordResetConfirmForm({
         return;
       }
 
+      clearSupabaseAccessToken();
       setNotice(t("auth.passwordResetComplete"));
       setTimeout(() => {
         router.push(`${ROUTES.login}?reset=1`);
@@ -118,38 +147,45 @@ export function PasswordResetConfirmForm({
           {t("auth.passwordResetLinkDetected")}
         </p>
       ) : null}
+      {mode === "supabase" ? (
+        <p className="rounded-xl bg-blossom-50 px-3 py-2 text-sm text-blossom-700">{t("auth.supabaseResetReady")}</p>
+      ) : null}
 
-      <div>
-        <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor="reset-confirm-email">
-          {t("auth.email")}
-        </label>
-        <input
-          id="reset-confirm-email"
-          type="email"
-          autoComplete="email"
-          value={form.email}
-          onChange={(event) => setForm((prev) => ({ ...prev, email: event.target.value }))}
-          className={UI_FIELD}
-          required
-        />
-        {fieldErrors.email ? <p className="mt-1 text-xs text-rose-600">{fieldErrors.email}</p> : null}
-      </div>
+      {mode === "otp" ? (
+        <>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor="reset-confirm-email">
+              {t("auth.email")}
+            </label>
+            <input
+              id="reset-confirm-email"
+              type="email"
+              autoComplete="email"
+              value={form.email}
+              onChange={(event) => setForm((prev) => ({ ...prev, email: event.target.value }))}
+              className={UI_FIELD}
+              required
+            />
+            {fieldErrors.email ? <p className="mt-1 text-xs text-rose-600">{fieldErrors.email}</p> : null}
+          </div>
 
-      <div>
-        <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor="reset-confirm-code">
-          {t("auth.passwordResetCode")}
-        </label>
-        <input
-          id="reset-confirm-code"
-          type="text"
-          autoComplete="one-time-code"
-          value={form.code}
-          onChange={(event) => setForm((prev) => ({ ...prev, code: event.target.value }))}
-          className={UI_FIELD}
-          required
-        />
-        {fieldErrors.code ? <p className="mt-1 text-xs text-rose-600">{fieldErrors.code}</p> : null}
-      </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor="reset-confirm-code">
+              {t("auth.passwordResetCode")}
+            </label>
+            <input
+              id="reset-confirm-code"
+              type="text"
+              autoComplete="one-time-code"
+              value={form.code}
+              onChange={(event) => setForm((prev) => ({ ...prev, code: event.target.value }))}
+              className={UI_FIELD}
+              required
+            />
+            {fieldErrors.code ? <p className="mt-1 text-xs text-rose-600">{fieldErrors.code}</p> : null}
+          </div>
+        </>
+      ) : null}
 
       <div>
         <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor="reset-new-password">

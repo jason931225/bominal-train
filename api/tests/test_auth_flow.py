@@ -256,6 +256,190 @@ async def test_request_password_reset_and_reset_password_with_otp(client, monkey
 
 
 @pytest.mark.asyncio
+async def test_login_allows_supabase_password_fallback_when_local_hash_mismatch(client, monkeypatch):
+    email = f"supabase-fallback-{uuid4().hex[:8]}@example.com"
+    await client.post(
+        "/api/auth/register",
+        json={"email": email, "password": "LocalOnly123", "display_name": "Supabase Fallback User"},
+    )
+
+    monkeypatch.setattr("app.http.routes.auth.settings.auth_mode", "supabase")
+    monkeypatch.setattr("app.http.routes.auth.settings.supabase_auth_enabled", True)
+
+    called = {"count": 0}
+
+    async def _fake_verify_supabase_password(*, email: str, password: str):  # noqa: ARG001
+        called["count"] += 1
+        return type("Identity", (), {"user_id": "supabase-user-001", "email": email})()
+
+    monkeypatch.setattr(
+        "app.http.routes.auth.verify_supabase_password",
+        _fake_verify_supabase_password,
+        raising=False,
+    )
+
+    login_res = await client.post(
+        "/api/auth/login",
+        json={"email": email, "password": "SupabasePass123", "remember_me": False},
+    )
+
+    assert login_res.status_code == 200
+    assert called["count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_request_password_reset_uses_supabase_recovery_in_supabase_mode(client, monkeypatch):
+    email = f"supabase-recovery-{uuid4().hex[:8]}@example.com"
+    await client.post(
+        "/api/auth/register",
+        json={"email": email, "password": "SuperSecret123", "display_name": "Supabase Recovery User"},
+    )
+
+    monkeypatch.setattr("app.http.routes.auth.settings.auth_mode", "supabase")
+    monkeypatch.setattr("app.http.routes.auth.settings.supabase_auth_enabled", True)
+    monkeypatch.setattr("app.http.routes.auth._public_base_url", lambda: "https://www.bominal.com")
+
+    captured: dict[str, str | None] = {"email": None, "redirect_to": None}
+    enqueued = {"count": 0}
+
+    async def _fake_send_supabase_password_recovery(*, email: str, redirect_to: str | None = None):
+        captured["email"] = email
+        captured["redirect_to"] = redirect_to
+        return True
+
+    async def _fake_enqueue(payload, defer_seconds: float = 0.0):  # noqa: ARG001
+        enqueued["count"] += 1
+        return "job-reset-123"
+
+    monkeypatch.setattr(
+        "app.http.routes.auth.send_supabase_password_recovery",
+        _fake_send_supabase_password_recovery,
+        raising=False,
+    )
+    monkeypatch.setattr("app.http.routes.auth.enqueue_template_email", _fake_enqueue)
+
+    response = await client.post("/api/auth/request-password-reset", json={"email": email})
+    assert response.status_code == 200
+    assert captured["email"] == email
+    assert captured["redirect_to"] is not None
+    assert captured["redirect_to"].endswith("/auth/callback")
+    assert enqueued["count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_request_password_reset_falls_back_to_direct_delivery_when_enqueue_fails(client, monkeypatch):
+    email = f"reset-direct-fallback-{uuid4().hex[:8]}@example.com"
+    await client.post(
+        "/api/auth/register",
+        json={"email": email, "password": "SuperSecret123", "display_name": "Reset Direct Fallback User"},
+    )
+
+    async def _fail_enqueue(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        raise RuntimeError("queue unavailable")
+
+    delivered = {"count": 0}
+
+    async def _fake_deliver_email_job(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        delivered["count"] += 1
+        return {"status": "sent"}
+
+    monkeypatch.setattr("app.http.routes.auth.enqueue_template_email", _fail_enqueue)
+    monkeypatch.setattr(
+        "app.http.routes.auth.deliver_email_job",
+        _fake_deliver_email_job,
+        raising=False,
+    )
+
+    response = await client.post("/api/auth/request-password-reset", json={"email": email})
+    assert response.status_code == 200
+    assert delivered["count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_supabase_callback_exchange_returns_recovery_mode_payload(client, monkeypatch):
+    async def _fake_exchange(*, token_hash: str, token_type: str):  # noqa: ARG001
+        return type(
+            "CallbackSession",
+            (),
+            {"user_id": "supabase-user-001", "email": "user@example.com", "access_token": "access-token-123"},
+        )()
+
+    monkeypatch.setattr("app.http.routes.auth.exchange_supabase_token_hash", _fake_exchange, raising=False)
+
+    response = await client.post(
+        "/api/auth/supabase/callback/exchange",
+        json={"token_hash": "hash-abc", "type": "recovery"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["mode"] == "recovery"
+    assert payload["access_token"] == "access-token-123"
+    assert payload["redirect_to"].endswith("/reset-password?mode=supabase")
+
+
+@pytest.mark.asyncio
+async def test_supabase_callback_exchange_magiclink_sets_cookie(client, monkeypatch):
+    async def _fake_exchange(*, token_hash: str, token_type: str):  # noqa: ARG001
+        return type(
+            "CallbackSession",
+            (),
+            {"user_id": "supabase-user-001", "email": "magiclink@example.com", "access_token": "access-token-123"},
+        )()
+
+    monkeypatch.setattr("app.http.routes.auth.exchange_supabase_token_hash", _fake_exchange, raising=False)
+
+    response = await client.post(
+        "/api/auth/supabase/callback/exchange",
+        json={"token_hash": "hash-abc", "type": "magiclink"},
+    )
+    assert response.status_code == 200
+    assert response.json()["mode"] == "magiclink"
+    assert response.cookies.get("bominal_session")
+
+
+@pytest.mark.asyncio
+async def test_reset_password_supabase_updates_local_password_hash(client, monkeypatch):
+    email = f"supabase-reset-{uuid4().hex[:8]}@example.com"
+    await client.post(
+        "/api/auth/register",
+        json={"email": email, "password": "OldPassword123", "display_name": "Supabase Reset User"},
+    )
+
+    async def _fake_update_supabase_password(*, access_token: str, new_password: str):  # noqa: ARG001
+        return type("Identity", (), {"user_id": "supabase-user-001", "email": email})()
+
+    monkeypatch.setattr("app.http.routes.auth.update_supabase_password", _fake_update_supabase_password, raising=False)
+
+    reset_response = await client.post(
+        "/api/auth/reset-password/supabase",
+        headers={"Authorization": "Bearer recovery-access-token"},
+        json={"new_password": "NewPassword123"},
+    )
+    assert reset_response.status_code == 200
+
+    old_login = await client.post(
+        "/api/auth/login",
+        json={"email": email, "password": "OldPassword123", "remember_me": False},
+    )
+    assert old_login.status_code == 401
+
+    new_login = await client.post(
+        "/api/auth/login",
+        json={"email": email, "password": "NewPassword123", "remember_me": False},
+    )
+    assert new_login.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_reset_password_supabase_requires_bearer_token(client):
+    response = await client.post(
+        "/api/auth/reset-password/supabase",
+        json={"new_password": "NewPassword123"},
+    )
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
 async def test_login_returns_generic_error_for_unknown_email(client):
     login_res = await client.post(
         "/api/auth/login",

@@ -46,10 +46,15 @@ from app.schemas.auth import (
     PasswordResetConfirmRequest,
     PasswordResetRequest,
     RegisterRequest,
+    SupabaseCallbackExchangeRequest,
+    SupabaseCallbackExchangeResponse,
+    SupabasePasswordResetConfirmRequest,
 )
 from app.schemas.notification import EmailTemplateBlock, EmailTemplateJobPayload
 from app.modules.train.service import refresh_train_reservations_after_sign_in
 from app.services.email_queue import enqueue_template_email
+from app.services.email_worker import deliver_email_job
+from app.services.identity import get_or_create_local_user_from_supabase_claims
 from app.services.passkeys import (
     begin_passkey_authentication,
     begin_passkey_registration,
@@ -68,6 +73,12 @@ from app.services.auth import (
     set_session_cookie,
     user_to_out,
     utc_now,
+)
+from app.services.supabase_auth import (
+    exchange_supabase_token_hash,
+    send_supabase_password_recovery,
+    update_supabase_password,
+    verify_supabase_password,
 )
 
 public_router = APIRouter()
@@ -106,6 +117,18 @@ async def _is_idempotent_register_retry(*, existing_user: User, payload: Registe
 
 def _public_base_url() -> str:
     return settings.app_public_base_url.rstrip("/")
+
+
+def _extract_bearer_token(authorization_header: str | None) -> str | None:
+    if not authorization_header:
+        return None
+    parts = authorization_header.strip().split(None, 1)
+    if len(parts) != 2:
+        return None
+    if parts[0].lower() != "bearer":
+        return None
+    token = parts[1].strip()
+    return token or None
 
 
 async def _issue_verification_token(
@@ -402,6 +425,23 @@ async def _refresh_train_reservations_after_sign_in_background(*, user_id: UUID)
         )
 
 
+def _new_user_session(user: User, request: Request, *, remember_me: bool) -> tuple[str, Session]:
+    session_token = new_session_token()
+    session = Session(
+        user_id=user.id,
+        token_hash=hash_token(session_token),
+        expires_at=session_expiry(remember_me),
+        last_seen_at=datetime.now(timezone.utc),
+        user_agent=request.headers.get("user-agent"),
+        ip_address=request_ip(
+            request.client.host if request.client else None,
+            request.headers.get("x-forwarded-for"),
+            request.headers.get("cf-connecting-ip"),
+        ),
+    )
+    return session_token, session
+
+
 @public_router.post("/login", response_model=AuthResponse, dependencies=[Depends(auth_rate_limit)])
 async def login(
     payload: LoginRequest,
@@ -412,35 +452,40 @@ async def login(
     started_at = time.perf_counter()
     outcome = "unauthenticated"
     email = payload.email.lower()
+    supabase_mode = settings.auth_mode == "supabase" and settings.supabase_auth_enabled
 
     try:
         result = await db.execute(select(User).options(joinedload(User.role)).where(User.email == email))
         user = result.scalar_one_or_none()
+        local_password_ok = False
+        if user is not None:
+            local_password_ok = await async_verify_password(payload.password, user.password_hash)
+
+        supabase_password_ok = False
+        if not local_password_ok and supabase_mode:
+            supabase_identity = await verify_supabase_password(email=email, password=payload.password)
+            if supabase_identity is not None:
+                supabase_password_ok = True
+                if user is None:
+                    user = await get_or_create_local_user_from_supabase_claims(
+                        db,
+                        claims={"sub": supabase_identity.user_id, "email": supabase_identity.email},
+                    )
+                elif user.supabase_user_id != supabase_identity.user_id:
+                    user.supabase_user_id = supabase_identity.user_id
 
         if user is None:
             outcome = "user_missing"
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=INVALID_LOGIN_DETAIL)
-        if not await async_verify_password(payload.password, user.password_hash):
+        if not local_password_ok and not supabase_password_ok:
             outcome = "invalid_password"
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=INVALID_LOGIN_DETAIL)
 
         # Opportunistic migration: rehash on successful login when policy changed.
-        if await async_password_needs_rehash(user.password_hash):
+        if local_password_ok and await async_password_needs_rehash(user.password_hash):
             user.password_hash = await async_hash_password(payload.password)
 
-        session_token = new_session_token()
-        session = Session(
-            user_id=user.id,
-            token_hash=hash_token(session_token),
-            expires_at=session_expiry(payload.remember_me),
-            last_seen_at=datetime.now(timezone.utc),
-            user_agent=request.headers.get("user-agent"),
-            ip_address=request_ip(
-                request.client.host if request.client else None,
-                request.headers.get("x-forwarded-for"),
-                request.headers.get("cf-connecting-ip"),
-            ),
-        )
+        session_token, session = _new_user_session(user, request, remember_me=payload.remember_me)
 
         db.add(session)
         await db.commit()
@@ -860,13 +905,141 @@ async def request_password_reset(
     if user is None:
         return MessageResponse(message="If eligible, a password reset email has been sent")
 
+    supabase_mode = settings.auth_mode == "supabase" and settings.supabase_auth_enabled
+    supabase_recovery_requested = False
+    supabase_recovery_ok = False
+    if supabase_mode:
+        supabase_recovery_requested = True
+        redirect_to = f"{_public_base_url()}/auth/callback"
+        supabase_recovery_ok = await send_supabase_password_recovery(email=user.email, redirect_to=redirect_to)
+        if not supabase_recovery_ok:
+            logger.warning("Supabase password recovery request failed for user %s", user.id)
+
+    template_payload: EmailTemplateJobPayload | None = None
+    local_reset_enqueued = False
+    local_reset_direct_fallback = False
     try:
         code, _ = await _issue_password_reset_token(db, user_id=user.id)
-        await enqueue_template_email(_password_reset_template_payload(email=user.email, code=code))
+        template_payload = _password_reset_template_payload(email=user.email, code=code)
+        enqueued_job_id = await enqueue_template_email(template_payload)
+        if enqueued_job_id is None:
+            raise RuntimeError("email_enqueue_returned_none")
+        local_reset_enqueued = True
     except Exception as exc:
         logger.warning("Failed to queue password reset email for user %s: %s", user.id, type(exc).__name__)
+        if template_payload is not None:
+            try:
+                await deliver_email_job({}, template_payload.model_dump(mode="json"))
+                local_reset_direct_fallback = True
+            except Exception as fallback_exc:  # noqa: BLE001
+                logger.warning(
+                    "Failed direct password reset delivery fallback for user %s: %s",
+                    user.id,
+                    type(fallback_exc).__name__,
+                )
+
+    logger.info(
+        "Auth password reset requested",
+        extra={
+            "user_id": str(user.id),
+            "supabase_recovery_requested": supabase_recovery_requested,
+            "supabase_recovery_ok": supabase_recovery_ok,
+            "local_reset_enqueued": local_reset_enqueued,
+            "local_reset_direct_fallback": local_reset_direct_fallback,
+        },
+    )
 
     return MessageResponse(message="If eligible, a password reset email has been sent")
+
+
+@public_router.post(
+    "/supabase/callback/exchange",
+    response_model=SupabaseCallbackExchangeResponse,
+    dependencies=[Depends(auth_rate_limit)],
+)
+async def supabase_callback_exchange(
+    payload: SupabaseCallbackExchangeRequest,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    callback_session = await exchange_supabase_token_hash(token_hash=payload.token_hash, token_type=payload.type)
+    if callback_session is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired authentication link")
+
+    if payload.type == "recovery":
+        logger.info("Supabase callback exchange completed", extra={"mode": "recovery"})
+        return SupabaseCallbackExchangeResponse(
+            mode="recovery",
+            redirect_to=f"{_public_base_url()}/reset-password?mode=supabase",
+            access_token=callback_session.access_token,
+        )
+
+    user = await get_or_create_local_user_from_supabase_claims(
+        db,
+        claims={"sub": callback_session.user_id, "email": callback_session.email},
+    )
+    if user.supabase_user_id != callback_session.user_id:
+        user.supabase_user_id = callback_session.user_id
+
+    session_token, session = _new_user_session(user, request, remember_me=False)
+    db.add(session)
+    await db.commit()
+    background_tasks.add_task(_refresh_train_reservations_after_sign_in_background, user_id=user.id)
+
+    response_payload = SupabaseCallbackExchangeResponse(
+        mode="magiclink",
+        redirect_to="/modules/train",
+        access_token=callback_session.access_token,
+    )
+    response = JSONResponse(content=response_payload.model_dump(mode="json"))
+    if background_tasks.tasks:
+        response.background = background_tasks
+    set_session_cookie(response, session_token, False)
+    logger.info("Supabase callback exchange completed", extra={"mode": "magiclink", "user_id": str(user.id)})
+    return response
+
+
+@public_router.post(
+    "/reset-password/supabase",
+    response_model=MessageResponse,
+    dependencies=[Depends(auth_rate_limit)],
+)
+async def reset_password_supabase(
+    payload: SupabasePasswordResetConfirmRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+) -> MessageResponse:
+    access_token = _extract_bearer_token(request.headers.get("authorization"))
+    if not access_token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Recovery token required")
+
+    supabase_identity = await update_supabase_password(access_token=access_token, new_password=payload.new_password)
+    if supabase_identity is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired recovery link")
+
+    user = await get_or_create_local_user_from_supabase_claims(
+        db,
+        claims={"sub": supabase_identity.user_id, "email": supabase_identity.email},
+    )
+    user.password_hash = await async_hash_password(payload.new_password)
+    user.supabase_user_id = supabase_identity.user_id
+
+    now = utc_now()
+    active_sessions = (
+        await db.execute(
+            select(Session)
+            .where(Session.user_id == user.id)
+            .where(Session.revoked_at.is_(None))
+            .where(Session.expires_at > now)
+        )
+    ).scalars().all()
+    for auth_session in active_sessions:
+        auth_session.revoked_at = now
+
+    await db.commit()
+    logger.info("Supabase password reset complete", extra={"user_id": str(user.id), "revoked_sessions": len(active_sessions)})
+    return MessageResponse(message="Password reset complete")
 
 
 @public_router.post("/reset-password", response_model=MessageResponse)

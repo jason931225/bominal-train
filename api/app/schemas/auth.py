@@ -75,6 +75,21 @@ class PasswordResetConfirmRequest(BaseModel):
     new_password: str = Field(min_length=8, max_length=128)
 
 
+class SupabasePasswordResetConfirmRequest(BaseModel):
+    new_password: str = Field(min_length=8, max_length=128)
+
+
+class SupabaseCallbackExchangeRequest(BaseModel):
+    token_hash: str = Field(min_length=8, max_length=512)
+    type: Literal["recovery", "magiclink", "email", "signup"]
+
+
+class SupabaseCallbackExchangeResponse(BaseModel):
+    mode: Literal["recovery", "magiclink"]
+    redirect_to: str | None = None
+    access_token: str | None = None
+
+
 class PasswordVerifyRequest(BaseModel):
     current_password: str = Field(min_length=8, max_length=128)
 

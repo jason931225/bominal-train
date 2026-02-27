@@ -465,6 +465,21 @@ API_SERVER_URL=http://api:8000
 EOF
 assert_fails "web public api base must be https" env PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" BOMINAL_ROOT_DIR="$TMP_DIR/repo" "$SCRIPT" --skip-smoke-tests
 
+# Supabase auth redirect/site URL sources must not point to localhost in production.
+make_valid_envs
+cat >"$TMP_DIR/repo/infra/env/prod/web.env" <<'EOF'
+NEXT_PUBLIC_API_BASE_URL=https://localhost:3000
+API_SERVER_URL=http://api:8000
+EOF
+assert_fails "supabase auth site url must not target localhost" env PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" BOMINAL_ROOT_DIR="$TMP_DIR/repo" "$SCRIPT" --skip-smoke-tests
+
+# Supabase auth redirect URL list must include callback path.
+make_valid_envs
+cat >>"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF'
+SUPABASE_AUTH_REDIRECT_URLS=https://example.com/reset-password,https://example.com/login
+EOF
+assert_fails "supabase auth redirect URLs must include callback path" env PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" BOMINAL_ROOT_DIR="$TMP_DIR/repo" "$SCRIPT" --skip-smoke-tests
+
 # Web Supabase direct auth/realtime enabled requires browser URL + anon key.
 make_valid_envs
 cat >"$TMP_DIR/repo/infra/env/prod/web.env" <<'EOF'

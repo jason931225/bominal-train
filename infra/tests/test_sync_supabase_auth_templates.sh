@@ -42,6 +42,14 @@ cat >"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF'
 SUPABASE_URL=https://test-project.supabase.co
 EOF
 
+cat >"$TMP_DIR/repo/infra/env/prod/web.env" <<'EOF'
+NEXT_PUBLIC_API_BASE_URL=https://www.bominal.com
+EOF
+
+cat >"$TMP_DIR/repo/infra/env/prod/caddy.env" <<'EOF'
+CADDY_SITE_ADDRESS=www.bominal.com
+EOF
+
 cat >"$TMP_DIR/bin/curl" <<'CURL'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -173,6 +181,8 @@ required = {
     "mailer_subjects_recovery",
     "mailer_templates_confirmation_content",
     "mailer_templates_recovery_content",
+    "site_url",
+    "uri_allow_list",
 }
 missing = required.difference(payload.keys())
 if missing:
@@ -186,6 +196,12 @@ if "{{ .ConfirmationURL }}" not in payload["mailer_templates_confirmation_conten
     raise SystemExit("Confirmation template missing ConfirmationURL placeholder")
 if "{{ .Token }}" not in payload["mailer_templates_recovery_content"]:
     raise SystemExit("Recovery template missing Token placeholder")
+if payload["site_url"] != "https://www.bominal.com":
+    raise SystemExit("Unexpected Supabase site_url")
+if "/auth/callback" not in payload["uri_allow_list"]:
+    raise SystemExit("uri_allow_list missing auth callback path")
+if "/reset-password" not in payload["uri_allow_list"]:
+    raise SystemExit("uri_allow_list missing reset-password path")
 PY
 
 if ! rg -q 'Authorization: Bearer secret-token' "$TMP_DIR/curl.headers"; then
