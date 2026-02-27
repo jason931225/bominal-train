@@ -50,6 +50,10 @@ if [[ "${1:-}" == "secrets" && "${2:-}" == "add-iam-policy-binding" ]]; then
   exit 0
 fi
 
+if [[ "${1:-}" == "pubsub" && "${2:-}" == "subscriptions" && "${3:-}" == "add-iam-policy-binding" ]]; then
+  exit 0
+fi
+
 echo "unexpected gcloud invocation: $*" >&2
 exit 1
 GCLOUD
@@ -65,7 +69,7 @@ env PATH="$TMP_DIR/bin:$PATH" GCLOUD_LOG_FILE="$GCLOUD_LOG" \
     --root-dir "$TMP_DIR/repo" \
     --project-id test-project \
     --secret-id bominal-master-key \
-    --vm-service-account vm-sa@test-project.iam.gserviceaccount.com \
+    --runtime-service-account-email vm-sa@test-project.iam.gserviceaccount.com \
     --no-backup >/dev/null
 
 API_ENV="$TMP_DIR/repo/infra/env/prod/api.env"
@@ -81,6 +85,7 @@ grep -q 'services enable secretmanager.googleapis.com --project test-project' "$
 grep -q 'secrets create bominal-master-key --replication-policy=automatic --project test-project' "$GCLOUD_LOG"
 grep -q 'secrets versions add bominal-master-key --data-file=- --project test-project' "$GCLOUD_LOG"
 grep -q 'secrets add-iam-policy-binding bominal-master-key --project test-project --member serviceAccount:vm-sa@test-project.iam.gserviceaccount.com --role roles/secretmanager.secretAccessor' "$GCLOUD_LOG"
+grep -q 'pubsub subscriptions add-iam-policy-binding bominal-deploy-requests-vm --project test-project --member serviceAccount:vm-sa@test-project.iam.gserviceaccount.com --role roles/pubsub.subscriber' "$GCLOUD_LOG"
 
 # 2) Shell wrapper path with pinned version should avoid MASTER_KEY requirement.
 cat >"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF_ENV2'
@@ -95,7 +100,8 @@ env PATH="$TMP_DIR/bin:$PATH" GCLOUD_LOG_FILE="$GCLOUD_LOG" \
     --secret-id bominal-master-key \
     --pin-version 9 \
     --skip-enable-api \
-    --skip-iam-binding \
+    --skip-secret-iam-binding \
+    --skip-pubsub-binding \
     --no-backup >/dev/null
 
 grep -q '^GSM_MASTER_KEY_VERSION=9$' "$API_ENV"
@@ -111,7 +117,8 @@ if env PATH="$TMP_DIR/bin:$PATH" GCLOUD_LOG_FILE="$GCLOUD_LOG" \
     --project-id test-project \
     --secret-id bominal-master-key \
     --skip-enable-api \
-    --skip-iam-binding \
+    --skip-secret-iam-binding \
+    --skip-pubsub-binding \
     --no-backup >/dev/null 2>&1; then
   echo "FAIL: expected invalid master key setup to fail" >&2
   exit 1
