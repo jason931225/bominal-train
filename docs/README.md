@@ -67,6 +67,7 @@ Pointer format convention (mandatory):
 - [PTR-PLAN-003] `docs/plans/archive/2026-02-14-program-closure-report.md` - restructure closure report.
 - [PTR-PLAY-001] `docs/playbooks/README.md` - playbook index.
 - [PTR-PLAY-002] `docs/playbooks/TEMPLATE.md` - playbook template.
+- [PTR-PLAY-003] `docs/playbooks/release-1.0.0-deploy-readiness.md` - release readiness and deployment execution playbook for version 1.0.0.
 
 ### Registry and Compliance
 
@@ -76,6 +77,7 @@ Pointer format convention (mandatory):
 - [PTR-DOCS-004] `docs/releases/README.md` - versioning policy.
 - [PTR-DOCS-005] `docs/releases/version-map.json` - version map.
 - [PTR-DOCS-006] `docs/artifacts/2026-02-24-gcp-free-tier-offering.md` - user-captured snapshot of GCP free tier products and limits.
+- [PTR-DOCS-007] `docs/artifacts/2026-02-27-full-audit.md` - full release/deploy readiness audit snapshot with gate outcomes and blockers.
 
 ### Validation
 

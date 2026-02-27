@@ -21,3 +21,4 @@ Use `docs/playbooks/TEMPLATE.md` and keep all sections complete.
 - `docs/playbooks/resy-widget-form-data-capture.md` - Resy widget/form-data capture and replay protocol.
 - `docs/playbooks/restaurant-provider-adapter-workflow.md` - canonical implementation workflow for restaurant provider adapters.
 - `docs/playbooks/provider-adapter-contract-template.md` - reusable contract template for onboarding new providers.
+- `docs/playbooks/release-1.0.0-deploy-readiness.md` - release readiness and production deployment checklist for `1.0.0` promotion.
