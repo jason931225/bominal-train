@@ -5,6 +5,7 @@ import signal
 from uuid import uuid4
 
 import pytest
+from sqlalchemy.exc import ProgrammingError
 
 from app import worker as worker_mod
 
@@ -154,3 +155,60 @@ async def test_recover_in_flight_logs_warning_and_discards_on_error(monkeypatch)
     assert recovered == 0
     assert worker_mod._in_flight_tasks == set()
     assert warnings
+
+
+@pytest.mark.asyncio
+async def test_on_startup_retries_when_tasks_table_is_not_ready(monkeypatch):
+    class _SessionCtx:
+        async def __aenter__(self):
+            return object()
+
+        async def __aexit__(self, *_args):
+            return None
+
+    class _Loop:
+        def __init__(self):
+            self.registered: list[tuple[signal.Signals, object, signal.Signals]] = []
+
+        def add_signal_handler(self, sig, handler, arg):  # noqa: ANN001
+            self.registered.append((sig, handler, arg))
+
+    loop = _Loop()
+    task_sentinel = object()
+    enqueue_calls = {"count": 0}
+    sleep_calls: list[float] = []
+
+    async def _fake_enqueue_recoverable_tasks(_db):  # noqa: ANN001
+        enqueue_calls["count"] += 1
+        if enqueue_calls["count"] == 1:
+            raise ProgrammingError("SELECT", {}, Exception('relation "tasks" does not exist'))
+        return 2
+
+    async def _fake_compact_and_prune_task_attempts(_db):  # noqa: ANN001
+        return {
+            "deleted_sync_rows": 0,
+            "deleted_repetitive_rows": 0,
+            "deleted_retention_rows": 0,
+        }
+
+    async def _fake_sleep(delay: float) -> None:
+        sleep_calls.append(delay)
+
+    monkeypatch.setattr(worker_mod, "SessionLocal", lambda: _SessionCtx())
+    monkeypatch.setattr(worker_mod, "enqueue_recoverable_tasks", _fake_enqueue_recoverable_tasks)
+    monkeypatch.setattr(worker_mod, "compact_and_prune_task_attempts", _fake_compact_and_prune_task_attempts)
+    monkeypatch.setattr(worker_mod.asyncio, "get_running_loop", lambda: loop)
+    monkeypatch.setattr(worker_mod.asyncio, "sleep", _fake_sleep)
+
+    def _fake_create_task(coro):  # noqa: ANN001
+        coro.close()
+        return task_sentinel
+
+    monkeypatch.setattr(worker_mod.asyncio, "create_task", _fake_create_task)
+
+    ctx: dict = {}
+    await worker_mod.on_startup(ctx)
+
+    assert enqueue_calls["count"] == 2
+    assert sleep_calls == [worker_mod.STARTUP_RECOVERY_RETRY_DELAY_SECONDS]
+    assert ctx["heartbeat_task"] is task_sentinel

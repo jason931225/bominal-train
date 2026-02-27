@@ -24,7 +24,7 @@ def _tag_payload(tags: list[str | EmailTag]) -> list[dict[str, str]]:
 
 
 def _edge_notify_endpoint() -> str | None:
-    base = settings.resolved_supabase_edge_functions_base_url
+    base = settings.resolved_supabase_edge_functions_base_url()
     function_name = str(settings.supabase_edge_task_notify_function_name or "").strip()
     if not base or not function_name:
         return None
