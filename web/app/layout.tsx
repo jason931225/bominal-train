@@ -115,7 +115,7 @@ export default async function RootLayout({
         <ThemeInitScript />
         <ThemeProvider>
           <LocaleProvider initialLocale={locale}>
-            <AppShell user={user} locale={locale}>
+            <AppShell user={user}>
               {children}
             </AppShell>
           </LocaleProvider>

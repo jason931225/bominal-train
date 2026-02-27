@@ -20,7 +20,6 @@ type AccountFormState = {
   email: string;
   display_name: string;
   phone_number: string;
-  ui_locale: "en" | "ko";
   billing_address_line1: string;
   billing_address_line2: string;
   billing_city: string;
@@ -91,7 +90,7 @@ type AccountOptionalPatchKey =
   | "billing_country"
   | "billing_postal_code";
 
-type AccountPatchKey = AccountOptionalPatchKey | "email" | "ui_locale" | "birthday" | "new_password";
+type AccountPatchKey = AccountOptionalPatchKey | "email" | "birthday" | "new_password";
 type AccountPatchPayload = Partial<Record<AccountPatchKey, string | null>>;
 
 const OPTIONAL_PATCH_KEYS: AccountOptionalPatchKey[] = [
@@ -130,10 +129,6 @@ function buildAccountPatch(form: AccountFormState, baseline: AccountFormState): 
     setOptionalIfChanged(payload, key, form[key], baseline[key]);
   }
 
-  if (form.ui_locale !== baseline.ui_locale) {
-    payload.ui_locale = form.ui_locale;
-  }
-
   if (form.birthday !== baseline.birthday) {
     payload.birthday = form.birthday || null;
   }
@@ -153,12 +148,10 @@ function isSensitiveAccountPatch(payload: AccountPatchPayload): boolean {
 }
 
 function buildInitialForm(user: BominalUser): AccountFormState {
-  const locale = user.ui_locale === "ko" ? "ko" : "en";
   return {
     email: user.email ?? "",
     display_name: user.display_name ?? "",
     phone_number: user.phone_number ?? "",
-    ui_locale: locale,
     billing_address_line1: user.billing_address_line1 ?? "",
     billing_address_line2: user.billing_address_line2 ?? "",
     billing_city: user.billing_city ?? "",
@@ -554,19 +547,6 @@ export function AccountSettingsPanel({
           <p className="mt-2 text-xs uppercase tracking-[0.16em] text-blossom-500 md:col-span-2">
             {t("settings.generalSection")}
           </p>
-
-          <label className="text-sm text-slate-700 md:col-span-2">
-            {t("settings.language")}
-            <select
-              value={form.ui_locale}
-              onChange={(event) => setForm((current) => ({ ...current, ui_locale: event.target.value as "en" | "ko" }))}
-              className={`mt-1 ${UI_FIELD}`}
-            >
-              <option value="en">{t("settings.langEnglish")}</option>
-              <option value="ko">{t("settings.langKorean")}</option>
-            </select>
-            <p className="mt-1 text-xs text-slate-500">{t("settings.languageHelp")}</p>
-          </label>
 
           <label className="text-sm text-slate-700">
             {t("settings.email")}
