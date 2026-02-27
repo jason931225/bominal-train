@@ -3286,11 +3286,13 @@ async def test_provider_reservation_discovery_populates_active_and_completed_lis
     assert active_row is not None
     assert active_row.ticket_status == "waiting"
     assert active_row.ticket_paid is False
+    assert str(active_row.spec_json.get("date") or "") == waiting_departure[:10]
 
     completed_row = next((row for row in completed.tasks if row.ticket_reservation_id == "DISCOVERED-PAID-1"), None)
     assert completed_row is not None
     assert completed_row.ticket_status == "paid"
     assert completed_row.ticket_paid is True
+    assert str(completed_row.spec_json.get("date") or "") == paid_departure[:10]
 
     second = await list_provider_reservations(db_session, user=user, provider="KTX", paid_only=False)
     assert len(second.reservations) == 2

@@ -2281,7 +2281,7 @@ def _provider_reservation_task_spec(*, provider: str, reservation_id: str, reser
     if arr:
         spec["arr"] = arr
     if departure_at is not None:
-        spec["date"] = departure_at.astimezone(KST).strftime("%Y%m%d")
+        spec["date"] = departure_at.astimezone(KST).strftime("%Y-%m-%d")
 
     if dep and arr and departure_at is not None:
         ranked: dict[str, Any] = {

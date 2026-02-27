@@ -707,32 +707,56 @@ export function retryNowDisabledTitle(task: TrainTaskSummary): string {
   return "Retry is not available.";
 }
 
+function parseScheduleDateParts(value: string): { year: number; month: number; day: number; asUtcDate: Date } | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  let normalized = trimmed;
+  if (/^\d{8}$/.test(normalized)) {
+    normalized = `${normalized.slice(0, 4)}-${normalized.slice(4, 6)}-${normalized.slice(6, 8)}`;
+  } else if (/^\d{4}-\d{2}-\d{2}T/.test(normalized)) {
+    normalized = normalized.slice(0, 10);
+  }
+
+  const match = normalized.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+
+  const year = Number.parseInt(match[1], 10);
+  const month = Number.parseInt(match[2], 10);
+  const day = Number.parseInt(match[3], 10);
+  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) {
+    return null;
+  }
+
+  const asUtcDate = new Date(Date.UTC(year, month - 1, day));
+  if (
+    Number.isNaN(asUtcDate.getTime()) ||
+    asUtcDate.getUTCFullYear() !== year ||
+    asUtcDate.getUTCMonth() + 1 !== month ||
+    asUtcDate.getUTCDate() !== day
+  ) {
+    return null;
+  }
+
+  return { year, month, day, asUtcDate };
+}
+
 export function formatScheduleTitleDate(value: string): string {
   if (!value) return "MM/DD/YYYY";
-  const [year, month, day] = value.split("-");
-  if (!year || !month || !day) return "MM/DD/YYYY";
-  return `${month.padStart(2, "0")}/${day.padStart(2, "0")}/${year}`;
+  const parts = parseScheduleDateParts(value);
+  if (!parts) return "MM/DD/YYYY";
+  return `${String(parts.month).padStart(2, "0")}/${String(parts.day).padStart(2, "0")}/${String(parts.year)}`;
 }
 
 export function formatScheduleDateWithWeekday(value: string): string {
   if (!value) return "MM/DD/YYYY (Weekday)";
-  const [yearRaw, monthRaw, dayRaw] = value.split("-");
-  if (!yearRaw || !monthRaw || !dayRaw) return "MM/DD/YYYY (Weekday)";
-  const year = Number.parseInt(yearRaw, 10);
-  const month = Number.parseInt(monthRaw, 10);
-  const day = Number.parseInt(dayRaw, 10);
-  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) {
-    return "MM/DD/YYYY (Weekday)";
-  }
-  const asUtcDate = new Date(Date.UTC(year, month - 1, day));
-  if (Number.isNaN(asUtcDate.getTime())) {
-    return "MM/DD/YYYY (Weekday)";
-  }
-  const weekday = asUtcDate.toLocaleDateString("en-US", {
+  const parts = parseScheduleDateParts(value);
+  if (!parts) return "MM/DD/YYYY (Weekday)";
+  const weekday = parts.asUtcDate.toLocaleDateString("en-US", {
     weekday: "long",
     timeZone: "UTC",
   });
-  return `${String(month).padStart(2, "0")}/${String(day).padStart(2, "0")}/${String(year)} (${weekday})`;
+  return `${String(parts.month).padStart(2, "0")}/${String(parts.day).padStart(2, "0")}/${String(parts.year)} (${weekday})`;
 }
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
@@ -870,7 +894,12 @@ export function taskInfoFromSpec(task: TrainTaskSummary, locale: string = "en"):
     .filter((row) => row.departureAt.length > 0)
     .sort((a, b) => a.rank - b.rank);
 
-  const effectiveDateString = dateString || (ranked.length > 0 ? ranked[0].departureAt.slice(0, 10) : "");
+  const effectiveDateString =
+    parseScheduleDateParts(dateString) != null
+      ? dateString
+      : ranked.length > 0
+        ? ranked[0].departureAt.slice(0, 10)
+        : "";
   const dateLabel = formatScheduleTitleDate(effectiveDateString);
   const travelDateLabel = formatScheduleDateWithWeekday(effectiveDateString);
 
@@ -2958,7 +2987,7 @@ export function TrainDashboard() {
                 </div>
 
                 <div className="mt-3 grid gap-3 md:grid-cols-2">
-                  <label className="text-sm text-slate-700">
+                  <label className="min-w-0 text-sm text-slate-700">
                     <span className={SEARCH_SECTION_LABEL_CLASS}>{t("train.date")}</span>
                     <input
                       aria-label={t("train.date")}
@@ -2970,11 +2999,11 @@ export function TrainDashboard() {
                       disabled={!searchUnlocked}
                     />
                   </label>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="min-w-0 grid grid-cols-2 gap-2">
                     <p className={`col-span-2 ${SEARCH_SECTION_LABEL_CLASS}`}>
                       {t("train.timeShort")}
                     </p>
-                    <label className="text-sm text-slate-700">
+                    <label className="min-w-0 text-sm text-slate-700">
                       <span className="sr-only">{t("train.timeStart")}</span>
                       <input
                         aria-label={t("train.timeStart")}
@@ -2986,7 +3015,7 @@ export function TrainDashboard() {
                         disabled={!searchUnlocked}
                       />
                     </label>
-                    <label className="text-sm text-slate-700">
+                    <label className="min-w-0 text-sm text-slate-700">
                       <span className="sr-only">{t("train.timeEnd")}</span>
                       <input
                         aria-label={t("train.timeEnd")}
