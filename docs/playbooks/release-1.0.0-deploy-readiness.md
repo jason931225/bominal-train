@@ -10,6 +10,9 @@ Provide a deterministic, repeatable workflow to confirm **bominal** is ready for
   - release-readiness verification for code/docs/version state
   - production deploy preflight and post-deploy verification commands
   - SemVer mapping steps for promoting from pre-1.0 mode to `1.0.0`
+  - full big-bang audit matrix across `current` and clean `origin/main` lanes
+  - auth and train/task functional verification in dual runtime matrix (`EDGE_TASK_NOTIFY_ENABLED=false/true`)
+  - payment boundary verification via Evervault contracts without real payment attempts
 - Out of scope:
   - authoring large feature changes
   - emergency incident response outside standard deployment flow
@@ -66,6 +69,47 @@ Provide a deterministic, repeatable workflow to confirm **bominal** is ready for
    - ensure `CHANGELOG.md` contains release-ready notable entries
    - tag/release using your approved release process after deployment verification is green
 
+## Renewed Big-Bang Audit (Mandatory Before 1.0.0 Release)
+
+Run this matrix before final go/no-go:
+
+1. Execute the policy/runtime gate set in both lanes (`current` and clean `origin/main`):
+   - `bash infra/tests/test_docs_no_duplicate_security_sections.sh`
+   - `bash infra/tests/test_policy_runtime_parity.sh`
+   - `bash infra/tests/test_secret_residency_contract.sh`
+   - `bash infra/tests/test_payment_boundary_regressions.sh`
+   - `bash infra/tests/test_sync_edge_secrets_from_gsm.sh`
+   - `bash infra/tests/test_free_tier_status_report.sh`
+   - `bash infra/tests/test_ensure_uv_api_venv.sh`
+2. Run host Python bootstrap/parity:
+   - `bash infra/scripts/ensure-uv-api-venv.sh`
+3. Run auth functional suite:
+   - `cd api && uv run --python .venv/bin/python -m pytest -q tests/test_auth_flow.py tests/test_auth_route_units.py tests/test_auth_service_units.py tests/test_supabase_auth.py tests/test_supabase_auth_service.py`
+4. Run train/task suites:
+   - `cd api && uv run --python .venv/bin/python -m pytest -q tests/test_train_tasks.py tests/test_train_queue.py tests/test_train_worker_provider_flow_units.py tests/test_train_worker_remaining_units.py tests/test_train_router_and_rate_limiter_units.py tests/test_rate_limit_units.py tests/test_worker_runtime_units.py`
+   - `cd api && EDGE_TASK_NOTIFY_ENABLED=false uv run --python .venv/bin/python -m pytest -q tests/test_train_worker_provider_flow_units.py tests/test_train_worker_remaining_units.py`
+   - `cd api && EDGE_TASK_NOTIFY_ENABLED=true SUPABASE_URL=https://example.supabase.co SUPABASE_SERVICE_ROLE_KEY=test-key SUPABASE_EDGE_TIMEOUT_SECONDS=5 EMAIL_FROM_ADDRESS=no-reply@example.com uv run --python .venv/bin/python -m pytest -q tests/test_train_worker_provider_flow_units.py tests/test_train_worker_remaining_units.py`
+5. Run payment-boundary verification (no payment execution):
+   - `cd api && uv run --python .venv/bin/python -m pytest -q tests/test_wallet.py tests/test_system_payment_service_units.py tests/test_train_service_payment_units.py`
+   - `npm ci --prefix web`
+   - `npm --prefix web run test -- --run components/wallet/__tests__/payment-settings-panel.test.tsx`
+6. Run train web smoke:
+   - `npm --prefix web run test -- --run components/train/__tests__/train-dashboard.actions.test.tsx components/train/__tests__/train-dashboard.polling.test.tsx`
+7. Capture per-gate pass/fail evidence and classify failures:
+   - `doc drift` vs `runtime drift` vs `environment drift`.
+8. Apply blocker logic:
+   - payment fail => `NO-GO`
+   - payment pass and all mandatory gates pass => `GO` (track non-blockers separately)
+
+### Payment Guardrail for Audit Execution
+
+- Real payment attempts are prohibited during this audit.
+- Payment verification must remain mock/contract based:
+  - Evervault relay/function wiring checks
+  - wallet schema boundary checks (CVV/plaintext fallback rejection)
+  - log-boundary/redaction checks
+- Release packet must explicitly state that no real payment attempt occurred.
+
 ## Verification Checkpoints
 
 - Checkpoint A: documentation and changelog validators pass.
@@ -113,3 +157,4 @@ Provide a deterministic, repeatable workflow to confirm **bominal** is ready for
 ## Change History
 
 - [0000000] Initial playbook for deterministic `1.0.0` release readiness and production deployment execution.
+- [0000000] Added renewed big-bang release audit matrix and payment/no-charge verification guardrails aligned with secret residency, free-tier, and infra quality gate policies.
