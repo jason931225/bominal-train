@@ -310,6 +310,12 @@ class Settings(BaseSettings):
     payment_evervault_enforce: bool = Field(default=False, alias="PAYMENT_EVERVAULT_ENFORCE")
     autopay_require_user_wallet: bool = Field(default=True, alias="AUTOPAY_REQUIRE_USER_WALLET")
     autopay_allow_server_fallback: bool = Field(default=False, alias="AUTOPAY_ALLOW_SERVER_FALLBACK")
+    evervault_app_id: str | None = Field(default=None, alias="EVERVAULT_APP_ID")
+    evervault_api_key: str | None = Field(default=None, alias="EVERVAULT_API_KEY")
+    evervault_api_base_url: str = Field(default="https://api.evervault.com", alias="EVERVAULT_API_BASE_URL")
+    evervault_relay_cache_seconds: int = Field(default=300, alias="EVERVAULT_RELAY_CACHE_SECONDS")
+    evervault_ktx_payment_relay_id: str | None = Field(default=None, alias="EVERVAULT_KTX_PAYMENT_RELAY_ID")
+    evervault_srt_payment_relay_id: str | None = Field(default=None, alias="EVERVAULT_SRT_PAYMENT_RELAY_ID")
     restaurant_provider_egress_proxy_url: str | None = Field(
         default=None,
         alias="RESTAURANT_PROVIDER_EGRESS_PROXY_URL",
@@ -521,6 +527,12 @@ class Settings(BaseSettings):
                     raise ValueError(
                         "AUTOPAY_ALLOW_SERVER_FALLBACK must be false when PAYMENT_PROVIDER=evervault and PAYMENT_EVERVAULT_ENFORCE=true"
                     )
+                if not self.evervault_app_id or not self.evervault_api_key:
+                    raise ValueError(
+                        "EVERVAULT_APP_ID and EVERVAULT_API_KEY are required when PAYMENT_PROVIDER=evervault and PAYMENT_EVERVAULT_ENFORCE=true"
+                    )
+            if self.evervault_relay_cache_seconds < 0:
+                raise ValueError("EVERVAULT_RELAY_CACHE_SECONDS must be >= 0")
         if self.smtp_use_ssl and self.smtp_starttls:
             raise ValueError("SMTP_USE_SSL and SMTP_STARTTLS cannot both be true")
         if self.email_provider == "resend" and not self.resend_api_key:

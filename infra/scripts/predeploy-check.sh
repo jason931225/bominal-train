@@ -334,6 +334,12 @@ if [[ "$evervault_config_present" -eq 1 ]]; then
   fi
 fi
 
+payment_provider_mode="$(env_key_value "infra/env/prod/api.env" "PAYMENT_PROVIDER" | tr '[:upper:]' '[:lower:]')"
+if [[ "$payment_provider_mode" == "evervault" ]]; then
+  require_env_key_nonempty "infra/env/prod/web.env" "NEXT_PUBLIC_EVERVAULT_TEAM_ID"
+  require_env_key_nonempty "infra/env/prod/web.env" "NEXT_PUBLIC_EVERVAULT_APP_ID"
+fi
+
 database_url="$(env_key_value "infra/env/prod/api.env" "DATABASE_URL")"
 sync_database_url="$(env_key_value "infra/env/prod/api.env" "SYNC_DATABASE_URL")"
 require_supabase_database_url "$database_url" "DATABASE_URL"

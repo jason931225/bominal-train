@@ -145,6 +145,28 @@ PATH="$TMP_DIR/bin:$PATH" \
   BOMINAL_ROOT_DIR="$TMP_DIR/repo" \
   "$SCRIPT" --skip-smoke-tests >/dev/null
 
+# PAYMENT_PROVIDER=evervault requires browser-side Evervault env vars.
+cat >>"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF'
+PAYMENT_PROVIDER=evervault
+EOF
+assert_fails "evervault payment mode requires NEXT_PUBLIC_EVERVAULT_TEAM_ID and NEXT_PUBLIC_EVERVAULT_APP_ID" \
+  env PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" BOMINAL_ROOT_DIR="$TMP_DIR/repo" \
+  "$SCRIPT" --skip-smoke-tests
+make_valid_envs
+make_valid_registry
+
+cat >>"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF'
+PAYMENT_PROVIDER=evervault
+EOF
+cat >>"$TMP_DIR/repo/infra/env/prod/web.env" <<'EOF'
+NEXT_PUBLIC_EVERVAULT_TEAM_ID=team_test_123
+NEXT_PUBLIC_EVERVAULT_APP_ID=app_test_123
+EOF
+PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" BOMINAL_ROOT_DIR="$TMP_DIR/repo" \
+  "$SCRIPT" --skip-smoke-tests >/dev/null
+make_valid_envs
+make_valid_registry
+
 # Production must enforce AUTH_MODE=supabase.
 make_valid_envs
 cat >"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF'

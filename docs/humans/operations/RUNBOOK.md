@@ -177,7 +177,8 @@ docker compose -f infra/docker-compose.prod.yml exec api env | rg 'PAYMENT_PROVI
 
 # Validate Evervault runtime credentials are injected and gsm references are configured.
 docker compose -f infra/docker-compose.prod.yml exec api env | rg 'EVERVAULT_APP_ID|EVERVAULT_API_KEY'
-rg -n 'EVERVAULT_(APP_ID|API_KEY)(_SECRET_(ID|VERSION))?=' infra/env/prod/api.env
+rg -n 'EVERVAULT_(APP_ID|API_KEY|API_BASE_URL|RELAY_CACHE_SECONDS|KTX_PAYMENT_RELAY_ID|SRT_PAYMENT_RELAY_ID)(_SECRET_(ID|VERSION))?=' infra/env/prod/api.env
+rg -n 'NEXT_PUBLIC_EVERVAULT_(TEAM_ID|APP_ID)=' infra/env/prod/web.env
 
 # Confirm egress gateways are healthy and deny unknown routes by default.
 docker compose -f infra/docker-compose.prod.yml exec egress-train wget --spider -q http://127.0.0.1:8080/health
