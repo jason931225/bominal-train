@@ -173,7 +173,7 @@ docker compose -f infra/docker-compose.prod.yml exec redis redis-cli CONFIG GET 
 docker compose -f infra/docker-compose.prod.yml exec redis redis-cli CONFIG GET appendonly
 
 # Validate provider egress allowlist and timeout envs are set.
-docker compose -f infra/docker-compose.prod.yml exec api env | rg 'PAYMENT_PROVIDER_ALLOWED_HOSTS|TRAIN_PROVIDER_TIMEOUT_|PAYMENT_TRANSPORT_TRUST_ENV|PROVIDER_EGRESS_PROXY_URL'
+docker compose -f infra/docker-compose.prod.yml exec api env | rg 'PAYMENT_PROVIDER_ALLOWED_HOSTS|PAYMENT_PROVIDER|PAYMENT_EVERVAULT_ENFORCE|AUTOPAY_REQUIRE_USER_WALLET|AUTOPAY_ALLOW_SERVER_FALLBACK|TRAIN_PROVIDER_TIMEOUT_|PAYMENT_TRANSPORT_TRUST_ENV|PROVIDER_EGRESS_PROXY_URL'
 
 # Validate Evervault runtime credentials are injected and gsm references are configured.
 docker compose -f infra/docker-compose.prod.yml exec api env | rg 'EVERVAULT_APP_ID|EVERVAULT_API_KEY'

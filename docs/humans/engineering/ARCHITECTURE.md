@@ -267,6 +267,9 @@ Data controls:
 
 - Redaction helper for logs/safe metadata in `redaction.py`
 - Payment CVV is never accepted or stored by wallet APIs
+- Wallet auto-pay source is user-scoped (`/api/wallet/payment-card/configured` reflects the current user wallet, not serverwide defaults)
+- Payment contract mode is controlled by `PAYMENT_PROVIDER` (`legacy` plaintext wallet fields vs `evervault` encrypted wallet fields)
+- Serverwide payment fallback for auto-pay is policy-gated (`AUTOPAY_REQUIRE_USER_WALLET`, `AUTOPAY_ALLOW_SERVER_FALLBACK`)
 
 Cardholder Data Environment (CDE) boundary:
 
