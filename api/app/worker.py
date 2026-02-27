@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from arq.connections import RedisSettings
+from sqlalchemy.exc import ProgrammingError
 from sqlalchemy import select
 
 from app.core.config import get_settings
@@ -36,6 +37,8 @@ WORKER_REDIS_CONN_TIMEOUT_SECONDS = 5
 WORKER_REDIS_CONN_RETRIES = 8
 WORKER_REDIS_CONN_RETRY_DELAY_SECONDS = 1
 WORKER_REDIS_MAX_CONNECTIONS = 200
+STARTUP_RECOVERY_MAX_ATTEMPTS = 5
+STARTUP_RECOVERY_RETRY_DELAY_SECONDS = 1.0
 
 
 def _worker_redis_settings() -> RedisSettings:
@@ -107,10 +110,8 @@ async def on_startup(ctx: dict) -> None:
     ctx["register_in_flight"] = _register_in_flight
     ctx["unregister_in_flight"] = _unregister_in_flight
     
-    # Recover tasks from previous worker run
-    async with SessionLocal() as db:
-        recovered = await enqueue_recoverable_tasks(db)
-        attempt_cleanup_stats = await compact_and_prune_task_attempts(db)
+    # Recover tasks from previous worker run.
+    recovered, attempt_cleanup_stats = await _recover_startup_tasks_with_retry()
     logger.info("Recovered %s active train tasks into queue", recovered)
     logger.info(
         "Train attempt history cleanup: sync=%s repetitive=%s retention=%s",
@@ -129,6 +130,40 @@ async def on_startup(ctx: dict) -> None:
     ctx["attempt_hygiene_task"] = asyncio.create_task(_attempt_hygiene_loop(_shutdown_event))
     
     logger.info("Worker started with graceful shutdown handlers")
+
+
+def _is_tasks_table_not_ready_error(exc: ProgrammingError) -> bool:
+    message = str(exc).lower()
+    return (
+        "relation" in message
+        and "tasks" in message
+        and "does not exist" in message
+    )
+
+
+async def _recover_startup_tasks_with_retry() -> tuple[int, dict[str, int]]:
+    for attempt in range(1, STARTUP_RECOVERY_MAX_ATTEMPTS + 1):
+        try:
+            async with SessionLocal() as db:
+                recovered = await enqueue_recoverable_tasks(db)
+                attempt_cleanup_stats = await compact_and_prune_task_attempts(db)
+            return recovered, attempt_cleanup_stats
+        except ProgrammingError as exc:
+            if not _is_tasks_table_not_ready_error(exc) or attempt == STARTUP_RECOVERY_MAX_ATTEMPTS:
+                raise
+            logger.warning(
+                "Worker startup waiting for tasks table migration (attempt %s/%s)",
+                attempt,
+                STARTUP_RECOVERY_MAX_ATTEMPTS,
+            )
+            await asyncio.sleep(STARTUP_RECOVERY_RETRY_DELAY_SECONDS)
+
+    # Defensive fallback for type-checking completeness.
+    return 0, {
+        "deleted_sync_rows": 0,
+        "deleted_repetitive_rows": 0,
+        "deleted_retention_rows": 0,
+    }
 
 
 def _handle_shutdown_signal(sig: signal.Signals) -> None:
