@@ -312,6 +312,28 @@ for key in "${required_api_keys[@]}"; do
   require_env_key_nonempty "infra/env/prod/api.env" "$key"
 done
 
+evervault_app_id="$(env_key_value "infra/env/prod/api.env" "EVERVAULT_APP_ID")"
+evervault_api_key="$(env_key_value "infra/env/prod/api.env" "EVERVAULT_API_KEY")"
+evervault_app_id_secret_id="$(env_key_value "infra/env/prod/api.env" "EVERVAULT_APP_ID_SECRET_ID")"
+evervault_api_key_secret_id="$(env_key_value "infra/env/prod/api.env" "EVERVAULT_API_KEY_SECRET_ID")"
+evervault_config_present=0
+if [[ -n "$evervault_app_id" || -n "$evervault_api_key" || -n "$evervault_app_id_secret_id" || -n "$evervault_api_key_secret_id" ]]; then
+  evervault_config_present=1
+fi
+if [[ "$evervault_config_present" -eq 1 ]]; then
+  if [[ -z "$evervault_app_id" && -z "$evervault_app_id_secret_id" ]]; then
+    log_error "Evervault config requires EVERVAULT_APP_ID or EVERVAULT_APP_ID_SECRET_ID."
+    exit 1
+  fi
+  if [[ -z "$evervault_api_key" && -z "$evervault_api_key_secret_id" ]]; then
+    log_error "Evervault config requires EVERVAULT_API_KEY or EVERVAULT_API_KEY_SECRET_ID."
+    exit 1
+  fi
+  if [[ -n "$evervault_app_id_secret_id" || -n "$evervault_api_key_secret_id" ]]; then
+    require_env_key_nonempty "infra/env/prod/api.env" "GCP_PROJECT_ID"
+  fi
+fi
+
 database_url="$(env_key_value "infra/env/prod/api.env" "DATABASE_URL")"
 sync_database_url="$(env_key_value "infra/env/prod/api.env" "SYNC_DATABASE_URL")"
 require_supabase_database_url "$database_url" "DATABASE_URL"

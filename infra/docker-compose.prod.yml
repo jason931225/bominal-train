@@ -40,6 +40,9 @@ services:
     env_file:
       - ./env/prod/api.env
       - ./env/prod/pay.env
+    environment:
+      EVERVAULT_APP_ID: ${EVERVAULT_APP_ID:-}
+      EVERVAULT_API_KEY: ${EVERVAULT_API_KEY:-}
     deploy:
       resources:
         limits:
@@ -70,6 +73,9 @@ services:
     env_file:
       - ./env/prod/api.env
       - ./env/prod/pay.env
+    environment:
+      EVERVAULT_APP_ID: ${EVERVAULT_APP_ID:-}
+      EVERVAULT_API_KEY: ${EVERVAULT_API_KEY:-}
     deploy:
       resources:
         limits:
