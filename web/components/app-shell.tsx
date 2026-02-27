@@ -5,17 +5,14 @@ import { usePathname } from "next/navigation";
 
 import { PageTransition } from "@/components/page-transition";
 import { TopNav } from "@/components/top-nav";
-import type { Locale } from "@/lib/i18n";
 import { ROUTES } from "@/lib/routes";
 import type { BominalUser } from "@/lib/types";
 
 export function AppShell({
   user,
-  locale,
   children,
 }: {
   user: BominalUser | null;
-  locale: Locale;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -105,7 +102,7 @@ export function AppShell({
 
   return (
     <>
-      {showTopNav ? <TopNav user={user} locale={locale} /> : null}
+      {showTopNav ? <TopNav user={user} /> : null}
       <main className={mainClassName}>
         {isLanding || isReviewRoute ? children : <PageTransition>{children}</PageTransition>}
       </main>
