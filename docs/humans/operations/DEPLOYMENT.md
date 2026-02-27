@@ -74,6 +74,14 @@ Optional image override envs (for controlled/manual rollouts):
 - `API_IMAGE`, `WORKER_IMAGE`, `WEB_IMAGE`
 - Backward-compatible split overrides are still accepted but should be removed from operator automation.
 
+Evervault secret sourcing (production):
+- Keep `EVERVAULT_APP_ID` / `EVERVAULT_API_KEY` empty in `infra/env/prod/api.env`.
+- Set Secret Manager references in `infra/env/prod/api.env`:
+  - `EVERVAULT_APP_ID_SECRET_ID`, `EVERVAULT_APP_ID_SECRET_VERSION`
+  - `EVERVAULT_API_KEY_SECRET_ID`, `EVERVAULT_API_KEY_SECRET_VERSION`
+- `infra/scripts/deploy.sh` resolves these from GSM at deploy time and injects redacted runtime env vars for `api` and `worker`.
+- `GCP_PROJECT_ID` must be set in `infra/env/prod/api.env` when GSM secret IDs are used.
+
 ### Deploy Script Safety Controls
 
 - Single-run deploy lock (default path: `/tmp/bominal-deploy.lock`) blocks concurrent invocations.

@@ -221,6 +221,104 @@ check_repo_state() {
   log_warn "Continuing deploy because runtime uses immutable registry images."
 }
 
+env_key_value() {
+  local file="$1"
+  local key="$2"
+  awk -F'=' -v key="$key" '
+    /^[[:space:]]*#/ {next}
+    /^[[:space:]]*$/ {next}
+    {
+      k=$1
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", k)
+      if (k == key) {
+        v=$0
+        sub(/^[^=]*=/, "", v)
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", v)
+        gsub(/^"/, "", v)
+        gsub(/"$/, "", v)
+        print v
+        exit
+      }
+    }
+  ' "$file"
+}
+
+load_evervault_runtime_secrets() {
+  local api_env_file="$REPO_DIR/infra/env/prod/api.env"
+  if [[ ! -f "$api_env_file" ]]; then
+    log_warn "Skipping Evervault GSM load: missing $api_env_file"
+    return 0
+  fi
+
+  local app_id api_key app_id_secret_id api_key_secret_id app_id_secret_version api_key_secret_version
+  local gcp_project_id requires_evervault needs_gcloud
+  app_id="${EVERVAULT_APP_ID:-$(env_key_value "$api_env_file" "EVERVAULT_APP_ID")}"
+  api_key="${EVERVAULT_API_KEY:-$(env_key_value "$api_env_file" "EVERVAULT_API_KEY")}"
+  app_id_secret_id="${EVERVAULT_APP_ID_SECRET_ID:-$(env_key_value "$api_env_file" "EVERVAULT_APP_ID_SECRET_ID")}"
+  api_key_secret_id="${EVERVAULT_API_KEY_SECRET_ID:-$(env_key_value "$api_env_file" "EVERVAULT_API_KEY_SECRET_ID")}"
+  app_id_secret_version="${EVERVAULT_APP_ID_SECRET_VERSION:-$(env_key_value "$api_env_file" "EVERVAULT_APP_ID_SECRET_VERSION")}"
+  api_key_secret_version="${EVERVAULT_API_KEY_SECRET_VERSION:-$(env_key_value "$api_env_file" "EVERVAULT_API_KEY_SECRET_VERSION")}"
+  gcp_project_id="${GCP_PROJECT_ID:-$(env_key_value "$api_env_file" "GCP_PROJECT_ID")}"
+
+  app_id_secret_version="${app_id_secret_version:-latest}"
+  api_key_secret_version="${api_key_secret_version:-latest}"
+  requires_evervault="false"
+  needs_gcloud="false"
+
+  if [[ -n "$app_id" || -n "$api_key" || -n "$app_id_secret_id" || -n "$api_key_secret_id" ]]; then
+    requires_evervault="true"
+  fi
+  if [[ "$requires_evervault" != "true" ]]; then
+    return 0
+  fi
+
+  if [[ -z "$app_id" && -n "$app_id_secret_id" ]]; then
+    needs_gcloud="true"
+  fi
+  if [[ -z "$api_key" && -n "$api_key_secret_id" ]]; then
+    needs_gcloud="true"
+  fi
+
+  if [[ "$needs_gcloud" == "true" ]]; then
+    if [[ -z "$gcp_project_id" ]]; then
+      log_error "Evervault GSM load requires GCP_PROJECT_ID"
+      return 1
+    fi
+    if ! command -v gcloud >/dev/null 2>&1; then
+      log_error "Evervault GSM load requires gcloud CLI"
+      return 1
+    fi
+  fi
+
+  if [[ -z "$app_id" && -n "$app_id_secret_id" ]]; then
+    app_id="$(gcloud secrets versions access "$app_id_secret_version" \
+      --secret="$app_id_secret_id" \
+      --project="$gcp_project_id" 2>/dev/null || true)"
+    if [[ -z "$app_id" ]]; then
+      log_error "Failed to load EVERVAULT_APP_ID from GSM secret '$app_id_secret_id'"
+      return 1
+    fi
+  fi
+  if [[ -z "$api_key" && -n "$api_key_secret_id" ]]; then
+    api_key="$(gcloud secrets versions access "$api_key_secret_version" \
+      --secret="$api_key_secret_id" \
+      --project="$gcp_project_id" 2>/dev/null || true)"
+    if [[ -z "$api_key" ]]; then
+      log_error "Failed to load EVERVAULT_API_KEY from GSM secret '$api_key_secret_id'"
+      return 1
+    fi
+  fi
+
+  if [[ -z "$app_id" || -z "$api_key" ]]; then
+    log_error "Evervault runtime secrets incomplete (require BOTH app id and api key via env or GSM)."
+    return 1
+  fi
+
+  export EVERVAULT_APP_ID="$app_id"
+  export EVERVAULT_API_KEY="$api_key"
+  log_ok "Evervault runtime secrets loaded (values redacted)"
+}
+
 run_preflight_checks() {
   if [[ ! -f "$PREDEPLOY_CHECK_SCRIPT" ]]; then
     log_error "Predeploy check script not found: $PREDEPLOY_CHECK_SCRIPT"
@@ -744,6 +842,7 @@ main() {
     --rollback|-r)
       run_preflight_checks
       configure_docker_auth
+      load_evervault_runtime_secrets
       do_rollback
       verify_deployment
       show_status
@@ -785,6 +884,7 @@ main() {
   run_preflight_checks
   configure_docker_auth
   resolve_ghcr_namespace
+  load_evervault_runtime_secrets
 
   local prev_version deploy_commit
   prev_version="$(get_current_version)"
