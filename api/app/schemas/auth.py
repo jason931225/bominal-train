@@ -2,7 +2,7 @@ from datetime import date, datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
 
 class RegisterRequest(BaseModel):
@@ -80,8 +80,15 @@ class SupabasePasswordResetConfirmRequest(BaseModel):
 
 
 class SupabaseCallbackExchangeRequest(BaseModel):
-    token_hash: str = Field(min_length=8, max_length=512)
+    token_hash: str | None = Field(default=None, min_length=8, max_length=512)
+    access_token: str | None = Field(default=None, min_length=16, max_length=4096)
     type: Literal["recovery", "magiclink", "email", "signup"]
+
+    @model_validator(mode="after")
+    def validate_exchange_input(self) -> "SupabaseCallbackExchangeRequest":
+        if not self.token_hash and not self.access_token:
+            raise ValueError("token_hash or access_token is required")
+        return self
 
 
 class SupabaseCallbackExchangeResponse(BaseModel):

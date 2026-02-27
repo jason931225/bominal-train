@@ -8,6 +8,7 @@ import { useLocale } from "@/components/locale-provider";
 import { clientApiBaseUrl } from "@/lib/api-base";
 import { ROUTES } from "@/lib/routes";
 import { cacheSupabaseAccessToken } from "@/lib/supabase-auth";
+import { resolveSupabaseCallbackExchangePayload } from "@/lib/supabase-callback";
 import { UI_BODY_MUTED, UI_CARD_LG, UI_TITLE_LG } from "@/lib/ui";
 
 type CallbackExchangeResponse = {
@@ -26,11 +27,13 @@ export default function AuthCallbackPage() {
     let cancelled = false;
 
     async function runExchange() {
-      const tokenHash = searchParams.get("token_hash")?.trim();
-      const tokenType = searchParams.get("type")?.trim().toLowerCase();
+      const exchangePayload = resolveSupabaseCallbackExchangePayload(
+        new URLSearchParams(searchParams.toString()),
+        window.location.hash,
+      );
       const nextPath = searchParams.get("next")?.trim();
       const normalizedNext = nextPath && nextPath.startsWith("/") ? nextPath : null;
-      if (!tokenHash || !tokenType) {
+      if (!exchangePayload) {
         setErrorMessage(t("auth.callbackInvalidLink"));
         return;
       }
@@ -40,7 +43,7 @@ export default function AuthCallbackPage() {
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ token_hash: tokenHash, type: tokenType }),
+          body: JSON.stringify(exchangePayload),
         });
         if (!response.ok) {
           if (!cancelled) {
