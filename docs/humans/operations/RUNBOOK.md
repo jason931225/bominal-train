@@ -615,6 +615,45 @@ bominal-deploy
 3. Trigger `/api/notifications/email/test` from an authenticated session.
 4. Inspect API/worker logs for redacted delivery errors (no payload bodies).
 
+## 6.2) Train terminal notifications via Supabase Edge Function
+
+When `EDGE_TASK_NOTIFY_ENABLED=true`, worker terminal notifications attempt edge invoke first (`task-notify`) and fall back to queue delivery on failure.
+
+Checks:
+
+1. Confirm API env values in `infra/env/prod/api.env`:
+   - `EDGE_TASK_NOTIFY_ENABLED=true`
+   - `SUPABASE_SERVICE_ROLE_KEY` set
+   - `SUPABASE_EDGE_TASK_NOTIFY_FUNCTION_NAME=task-notify` (or your override)
+   - `SUPABASE_EDGE_FUNCTIONS_BASE_URL` unset (default) or valid `https://`
+2. Confirm edge function secrets are configured:
+   - `RESEND_API_KEY`
+   - `EMAIL_FROM_ADDRESS`
+   - optional `EMAIL_FROM_NAME`
+3. Inspect worker logs for edge invoke status:
+   - success path records `edge:task-notify` as notification job marker in task spec
+   - failure path logs warning and continues with queue fallback
+
+Recovery:
+
+1. If edge invoke fails persistently, set `EDGE_TASK_NOTIFY_ENABLED=false` and redeploy to force queue-only notification delivery.
+2. If fallback queue path also fails, use section `6.1` checks for Resend provider configuration.
+
+## 6.3) Train Data API/GraphQL read-path toggles
+
+Train list/detail reads can be switched to direct Supabase paths with automatic fallback to VM API:
+
+1. `NEXT_PUBLIC_TRAIN_READS_VIA_DATA_API=true` enables list bootstrap reads from `public.v_train_task_list_compact`.
+2. `NEXT_PUBLIC_TRAIN_DETAIL_VIA_GRAPHQL=true` enables task detail reads from `/graphql/v1`.
+
+Checks:
+
+1. Confirm browser auth/realtime base keys are present in `infra/env/prod/web.env`:
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+2. Keep feature flags off (`false`) during rollback or if RLS/view schema is not ready.
+3. Verify task list/detail still loads with flags enabled; on read-path errors, UI should transparently fallback to `/api/train/tasks` and `/api/train/tasks/{id}`.
+
 ## 7) Restaurant task policy behavior (stage scaffold)
 
 Symptoms:

@@ -165,6 +165,13 @@ class Settings(BaseSettings):
     supabase_storage_bucket: str = Field(default="artifacts-safe", alias="SUPABASE_STORAGE_BUCKET")
     supabase_service_role_key: str | None = Field(default=None, alias="SUPABASE_SERVICE_ROLE_KEY")
     supabase_storage_enabled: bool = Field(default=False, alias="SUPABASE_STORAGE_ENABLED")
+    edge_task_notify_enabled: bool = Field(default=False, alias="EDGE_TASK_NOTIFY_ENABLED")
+    supabase_edge_functions_base_url: str | None = Field(default=None, alias="SUPABASE_EDGE_FUNCTIONS_BASE_URL")
+    supabase_edge_task_notify_function_name: str = Field(
+        default="task-notify",
+        alias="SUPABASE_EDGE_TASK_NOTIFY_FUNCTION_NAME",
+    )
+    supabase_edge_timeout_seconds: float = Field(default=8.0, alias="SUPABASE_EDGE_TIMEOUT_SECONDS")
     passkey_enabled: bool = Field(default=True, alias="PASSKEY_ENABLED")
     passkey_rp_id: str | None = Field(default=None, alias="PASSKEY_RP_ID")
     passkey_origin: str | None = Field(default=None, alias="PASSKEY_ORIGIN")
@@ -475,6 +482,13 @@ class Settings(BaseSettings):
                 raise ValueError("PASSKEY_ORIGIN or APP_PUBLIC_BASE_URL must be set when PASSKEY_ENABLED=true")
         if self.supabase_storage_enabled and not self.supabase_service_role_key:
             raise ValueError("SUPABASE_SERVICE_ROLE_KEY is required when SUPABASE_STORAGE_ENABLED=true")
+        if self.edge_task_notify_enabled:
+            if not self.supabase_url:
+                raise ValueError("SUPABASE_URL must be set when EDGE_TASK_NOTIFY_ENABLED=true")
+            if not self.supabase_service_role_key:
+                raise ValueError("SUPABASE_SERVICE_ROLE_KEY is required when EDGE_TASK_NOTIFY_ENABLED=true")
+            if self.supabase_edge_timeout_seconds <= 0:
+                raise ValueError("SUPABASE_EDGE_TIMEOUT_SECONDS must be > 0 when EDGE_TASK_NOTIFY_ENABLED=true")
         if self.payment_enabled:
             if self.payment_cvv_ttl_min_seconds < 1:
                 raise ValueError("PAYMENT_CVV_TTL_MIN_SECONDS must be >= 1")
@@ -521,6 +535,14 @@ class Settings(BaseSettings):
         if self.supabase_auth_api_key:
             return self.supabase_auth_api_key
         return self.supabase_service_role_key
+
+    @property
+    def resolved_supabase_edge_functions_base_url(self) -> str | None:
+        if self.supabase_edge_functions_base_url:
+            return self.supabase_edge_functions_base_url.rstrip("/")
+        if not self.supabase_url:
+            return None
+        return f"{self.supabase_url.rstrip('/')}/functions/v1"
 
 
 @lru_cache

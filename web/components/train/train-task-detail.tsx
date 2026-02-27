@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocale } from "@/components/locale-provider";
 import { clientApiBaseUrl } from "@/lib/api-base";
 import { ROUTES } from "@/lib/routes";
+import { fetchTrainTaskDetailViaGraphql } from "@/lib/train/graphql";
 import { subscribeTrainTaskEvents } from "@/lib/train/task-events";
 import { UI_BUTTON_DANGER_SM, UI_BUTTON_OUTLINE_SM } from "@/lib/ui";
 import type { TrainArtifact, TrainTaskAttempt, TrainTaskSummary } from "@/lib/types";
@@ -170,6 +171,15 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
       do {
         queuedDetailReloadRef.current = false;
         try {
+          const graphqlPayload = await fetchTrainTaskDetailViaGraphql(taskId);
+          if (graphqlPayload) {
+            setTask(graphqlPayload.task);
+            setAttempts(graphqlPayload.attempts);
+            setArtifacts(graphqlPayload.artifacts);
+            setError(null);
+            continue;
+          }
+
           const response = await fetch(`${clientApiBaseUrl}/api/train/tasks/${taskId}`, {
             credentials: "include",
             cache: "no-store",
