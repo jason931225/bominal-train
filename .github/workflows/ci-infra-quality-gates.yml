@@ -203,6 +203,14 @@ jobs:
         run: |
           bash infra/tests/test_reset_local_db.sh
 
+      - name: Validate local cleanup script
+        run: |
+          bash infra/tests/test_local_cleanup.sh
+
+      - name: Validate local-run cleanup behavior
+        run: |
+          bash infra/tests/test_local_run_cleanup.sh
+
       - name: Validate deprecation registry policy
         run: |
           bash infra/tests/test_deprecation_policy.sh
@@ -226,6 +234,10 @@ jobs:
       - name: Validate changed-image rolling deploy path
         run: |
           bash infra/tests/test_deploy_changed_image_rollout.sh
+
+      - name: Validate deploy Docker cleanup controls
+        run: |
+          bash infra/tests/test_deploy_cleanup.sh
 
       - name: Validate intent routing
         run: |

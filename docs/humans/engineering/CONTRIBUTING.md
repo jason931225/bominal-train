@@ -105,6 +105,16 @@ Optional cleanup after checks:
 ./infra/scripts/local-check.sh --down
 ```
 
+Local Docker cleanup helper:
+
+```bash
+./infra/scripts/local-cleanup.sh
+```
+
+- `local-run.sh` now auto-runs compose down on exit in attached mode.
+- Detached mode keeps containers by default; override with `--down-on-exit`.
+- To keep containers in attached mode, use `--keep-containers`.
+
 Backend tests:
 
 ```bash
