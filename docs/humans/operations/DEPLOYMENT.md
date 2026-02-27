@@ -292,6 +292,14 @@ Production master-key source contract:
 - If `GSM_MASTER_KEY_ENABLED=false`:
   - `MASTER_KEY` must be set to a base64-encoded 32-byte key
 
+Optional helper to automate GSM setup from existing `MASTER_KEY` in `api.env`:
+
+```bash
+bash infra/scripts/setup-gsm-master-key.sh --project-id <gcp_project_id>
+# or
+python3 infra/scripts/setup-gsm-master-key.py --project-id <gcp_project_id>
+```
+
 Production URL scheme enforcement (predeploy gate):
 - `SUPABASE_URL` and `SUPABASE_JWT_ISSUER` must be `https://`.
 - `CORS_ORIGINS` entries must be `https://`.
