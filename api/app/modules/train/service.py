@@ -938,11 +938,23 @@ def _is_manual_payment_pending(ticket_summary: dict | None) -> bool:
         return False
     ticket_status = str(ticket_summary.get("ticket_status") or "")
     ticket_paid = ticket_summary.get("ticket_paid")
-    return ticket_status in {"awaiting_payment", "reserved", "waiting"} and ticket_paid is not True
+    return ticket_status in {"awaiting_payment", "waiting"} and ticket_paid is not True
 
 
-def _is_manual_payment_expired(ticket_summary: dict | None, *, now: datetime) -> bool:
-    if not _is_manual_payment_pending(ticket_summary):
+def _is_manual_payment_expired(
+    ticket_summary: dict | None,
+    *,
+    now: datetime,
+    include_reserved: bool = False,
+) -> bool:
+    if not ticket_summary:
+        return False
+    ticket_status = str(ticket_summary.get("ticket_status") or "")
+    ticket_paid = ticket_summary.get("ticket_paid")
+    pending_statuses = {"awaiting_payment", "waiting"}
+    if include_reserved:
+        pending_statuses.add("reserved")
+    if ticket_status not in pending_statuses or ticket_paid is True:
         return False
     payment_deadline_at = ticket_summary.get("ticket_payment_deadline_at") if ticket_summary else None
     if not isinstance(payment_deadline_at, datetime):
@@ -965,7 +977,7 @@ def _should_refresh_pending_ticket_status(ticket_summary: dict | None) -> bool:
     ticket_paid = ticket_summary.get("ticket_paid")
     # "waiting" tickets are polled by worker every 5 minutes. Skip read-path
     # provider sync calls for waitlisted tasks to avoid noisy DB writes.
-    return ticket_status in {"awaiting_payment", "reserved"} and ticket_paid is not True
+    return ticket_status in {"awaiting_payment"} and ticket_paid is not True
 
 
 def _is_active_for_listing(task: Task, ticket_summary: dict | None) -> bool:
@@ -985,7 +997,8 @@ def _expire_manual_payment_task_if_due(
 ) -> bool:
     if task.state not in ACTIVE_TASK_STATES and task.state != "COMPLETED":
         return False
-    if not _is_manual_payment_expired(ticket_summary, now=now):
+    include_reserved = task.state in ACTIVE_TASK_STATES
+    if not _is_manual_payment_expired(ticket_summary, now=now, include_reserved=include_reserved):
         return False
     task.state = "EXPIRED"
     task.completed_at = None
@@ -2281,7 +2294,9 @@ def _provider_reservation_task_spec(*, provider: str, reservation_id: str, reser
     if arr:
         spec["arr"] = arr
     if departure_at is not None:
-        spec["date"] = departure_at.astimezone(KST).strftime("%Y-%m-%d")
+        # Preserve the provider-declared departure date context without
+        # forcing an additional timezone conversion.
+        spec["date"] = departure_at.date().isoformat()
 
     if dep and arr and departure_at is not None:
         ranked: dict[str, Any] = {
