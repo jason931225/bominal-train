@@ -215,6 +215,10 @@ jobs:
         run: |
           bash infra/tests/test_predeploy_check.sh
 
+      - name: Validate Supabase auth template sync script
+        run: |
+          bash infra/tests/test_sync_supabase_auth_templates.sh
+
       - name: Validate changed-image rolling deploy path
         run: |
           bash infra/tests/test_deploy_changed_image_rollout.sh
