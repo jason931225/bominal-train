@@ -16,6 +16,10 @@
 #   API_IMAGE        - Override monolithic API image URL
 #   WORKER_IMAGE     - Override worker image URL
 #   WEB_IMAGE        - Override web image URL
+#   DEPLOY_DOCKER_PRUNE_UNUSED_IMAGES - prune unused images post-verify (default: true)
+#   DEPLOY_DOCKER_PRUNE_BUILD_CACHE   - prune build cache post-verify (default: true)
+#   DEPLOY_DOCKER_KEEP_BOMINAL_IMAGES - retain latest N bominal image tags; when >0, skips full image prune -a and
+#                                       removes only older bominal tags outside retention (default: 0)
 #
 # Backward compatibility:
 #   Older split-runtime env overrides (API_GATEWAY_IMAGE, API_TRAIN_IMAGE,
@@ -946,9 +950,104 @@ show_status() {
 }
 
 cleanup_docker() {
-  log_info "Cleaning up old Docker resources..."
-  docker image prune -f >/dev/null 2>&1 || true
-  docker images --format "{{.Repository}}:{{.Tag}}" | grep "bominal" | tail -n +4 | xargs -r docker rmi -f 2>/dev/null || true
+  local prune_unused_images="${DEPLOY_DOCKER_PRUNE_UNUSED_IMAGES:-true}"
+  local prune_build_cache="${DEPLOY_DOCKER_PRUNE_BUILD_CACHE:-true}"
+  local keep_bominal_images="${DEPLOY_DOCKER_KEEP_BOMINAL_IMAGES:-0}"
+  local keep_bominal_count=0
+
+  log_info "Cleaning up Docker resources (post-verify)..."
+  docker system df || true
+
+  if [[ "$keep_bominal_images" =~ ^[0-9]+$ ]]; then
+    keep_bominal_count="$keep_bominal_images"
+  else
+    log_warn "Invalid DEPLOY_DOCKER_KEEP_BOMINAL_IMAGES='$keep_bominal_images'; expected non-negative integer. Falling back to 0."
+  fi
+
+  if is_falsey_bool "$prune_unused_images"; then
+    log_info "Skipping unused image prune (DEPLOY_DOCKER_PRUNE_UNUSED_IMAGES=$prune_unused_images)"
+  else
+    if (( keep_bominal_count > 0 )); then
+      local image_refs=()
+      local listed_ref
+      while IFS= read -r listed_ref; do
+        [[ -n "$listed_ref" ]] || continue
+        image_refs+=("$listed_ref")
+      done < <(
+        docker image ls --filter "reference=${GHCR_NAMESPACE}/*" --format "{{.Repository}}:{{.Tag}}" \
+          | awk 'NF > 0 && $0 !~ /<none>/'
+      )
+
+      if (( ${#image_refs[@]} > keep_bominal_count )); then
+        local keep_refs=()
+        local running_ref
+        local contains_ref
+        contains_ref() {
+          local needle="$1"
+          shift
+          local candidate
+          for candidate in "$@"; do
+            if [[ "$candidate" == "$needle" ]]; then
+              return 0
+            fi
+          done
+          return 1
+        }
+
+        while IFS= read -r running_ref; do
+          [[ -n "$running_ref" ]] || continue
+          if ! contains_ref "$running_ref" "${keep_refs[@]-}"; then
+            keep_refs+=("$running_ref")
+          fi
+        done < <(docker ps --format "{{.Image}}" | sort -u)
+
+        local i
+        for (( i=0; i<keep_bominal_count && i<${#image_refs[@]}; i++ )); do
+          if ! contains_ref "${image_refs[$i]}" "${keep_refs[@]-}"; then
+            keep_refs+=("${image_refs[$i]}")
+          fi
+        done
+
+        local pruned_count=0
+        local ref
+        for ref in "${image_refs[@]}"; do
+          if contains_ref "$ref" "${keep_refs[@]-}"; then
+            continue
+          fi
+          if docker image rm "$ref" >/dev/null 2>&1; then
+            pruned_count=$((pruned_count + 1))
+          fi
+        done
+        log_ok "Pruned $pruned_count older bominal image tag(s) while retaining latest $keep_bominal_count plus running images"
+      else
+        log_info "Bominal image count (${#image_refs[@]}) is within retention cap ($keep_bominal_count); no tag removals needed"
+      fi
+
+      if docker image prune -f >/dev/null 2>&1; then
+        log_ok "Pruned dangling Docker image layers"
+      else
+        log_warn "Dangling Docker image prune failed; continuing"
+      fi
+    else
+      if docker image prune -a -f >/dev/null 2>&1; then
+        log_ok "Pruned unused Docker images"
+      else
+        log_warn "Unused Docker image prune failed; continuing"
+      fi
+    fi
+  fi
+
+  if is_falsey_bool "$prune_build_cache"; then
+    log_info "Skipping build cache prune (DEPLOY_DOCKER_PRUNE_BUILD_CACHE=$prune_build_cache)"
+  else
+    if docker builder prune -a -f >/dev/null 2>&1; then
+      log_ok "Pruned Docker build cache"
+    else
+      log_warn "Docker build cache prune failed; continuing"
+    fi
+  fi
+
+  docker system df || true
   log_ok "Docker cleanup complete"
 }
 

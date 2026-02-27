@@ -82,12 +82,19 @@ docker compose -f infra/docker-compose.yml --profile e2e run --rm --build web-e2
 ```
 
 `infra/scripts/local-run.sh` and `infra/scripts/local-check.sh` now invoke compose with `--remove-orphans` to prevent stale-service warning drift when switching stacks.
+`infra/scripts/local-run.sh` also auto-runs compose down on exit in attached mode (detached mode keeps containers by default).
 
 If you see orphan warnings after switching compose files (for example, legacy `bominal-caddy`), run one-time cleanup:
 
 ```bash
 docker compose -p bominal -f infra/docker-compose.yml down --remove-orphans || true
 docker compose -p bominal -f infra/docker-compose.prod.yml down --remove-orphans || true
+```
+
+For routine local Docker hygiene (stopped containers/networks/cache drift), use:
+
+```bash
+./infra/scripts/local-cleanup.sh
 ```
 
 Start stack (prod profile file):

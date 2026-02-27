@@ -94,6 +94,11 @@ Evervault secret sourcing (production):
   - resource profile threshold gate (memory/swap)
 - Smoke checks are retry-based and tunable (`SMOKE_MAX_ATTEMPTS`, `SMOKE_RETRY_DELAY_SECONDS`).
 - Auto rollback on smoke failure is enabled by default (`AUTO_ROLLBACK_ON_SMOKE_FAILURE=true`).
+- Post-verify Docker cleanup runs on the VM after successful deploy verification:
+  - unused image prune: `docker image prune -a -f` (`DEPLOY_DOCKER_PRUNE_UNUSED_IMAGES`, default `true`)
+  - build cache prune: `docker builder prune -a -f` (`DEPLOY_DOCKER_PRUNE_BUILD_CACHE`, default `true`)
+  - optional bominal-image retention cap: `DEPLOY_DOCKER_KEEP_BOMINAL_IMAGES=<N>` (default `0`)
+    - when `N > 0`, deploy cleanup retains latest `N` bominal image tags plus currently running images, removes older bominal tags, and uses dangling-only image prune (`docker image prune -f`) instead of full `-a`.
 - Repo state is checked before deployment:
   - tracked dirty state is logged
   - set `DEPLOY_FAIL_ON_DIRTY_REPO=true` to block deploy when tracked files are dirty

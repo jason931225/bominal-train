@@ -95,6 +95,16 @@ Optional cleanup after checks:
 ./infra/scripts/local-check.sh --down
 ```
 
+Local Docker hygiene (safe defaults: no volume deletion, no aggressive image prune):
+
+```bash
+./infra/scripts/local-cleanup.sh
+```
+
+Notes:
+- `./infra/scripts/local-run.sh` now auto-runs `docker compose down --remove-orphans` on exit in attached mode to avoid piling up stopped containers.
+- Detached mode (`-d/--detach`) keeps containers by default.
+
 Frontend E2E tests run in a dedicated Chromium-enabled compose profile:
 
 ```bash
