@@ -1,5 +1,6 @@
 import logging
 import secrets
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 from urllib.parse import urlencode
@@ -15,12 +16,12 @@ from sqlalchemy.orm import joinedload
 from app.http.deps import auth_rate_limit, get_current_approved_user, get_current_user
 from app.core.config import get_settings
 from app.core.security import (
-    hash_password,
+    async_hash_password,
+    async_password_needs_rehash,
+    async_verify_password,
     hash_token,
     new_session_token,
-    password_needs_rehash,
     session_expiry,
-    verify_password,
 )
 from app.db.models import PasswordResetToken, Role, Session, User, VerificationToken
 from app.db.session import SessionLocal, get_db
@@ -95,12 +96,12 @@ def _integrity_conflict_detail(exc: IntegrityError) -> str:
     return "Account already exists"
 
 
-def _is_idempotent_register_retry(*, existing_user: User, payload: RegisterRequest) -> bool:
+async def _is_idempotent_register_retry(*, existing_user: User, payload: RegisterRequest) -> bool:
     existing_display_name = str(existing_user.display_name or "").strip().lower()
     requested_display_name = payload.display_name.strip().lower()
     if existing_display_name != requested_display_name:
         return False
-    return verify_password(payload.password, existing_user.password_hash)
+    return await async_verify_password(payload.password, existing_user.password_hash)
 
 
 def _public_base_url() -> str:
@@ -305,7 +306,7 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
     existing = await db.execute(select(User).options(joinedload(User.role)).where(User.email == email))
     existing_user = existing.scalar_one_or_none()
     if existing_user is not None:
-        if _is_idempotent_register_retry(existing_user=existing_user, payload=payload):
+        if await _is_idempotent_register_retry(existing_user=existing_user, payload=payload):
             return AuthResponse(
                 user=user_to_out(existing_user),
                 notice="Account already exists. Continuing with existing account.",
@@ -327,7 +328,7 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
 
     user = User(
         email=email,
-        password_hash=hash_password(payload.password),
+        password_hash=await async_hash_password(payload.password),
         display_name=payload.display_name,
         ui_locale="en",
         access_status="pending",
@@ -343,7 +344,7 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
             existing_after_conflict = (
                 await db.execute(select(User).options(joinedload(User.role)).where(User.email == email))
             ).scalar_one_or_none()
-            if existing_after_conflict is not None and _is_idempotent_register_retry(
+            if existing_after_conflict is not None and await _is_idempotent_register_retry(
                 existing_user=existing_after_conflict,
                 payload=payload,
             ):
@@ -401,43 +402,52 @@ async def login(
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ) -> Response:
+    started_at = time.perf_counter()
+    outcome = "unauthenticated"
     email = payload.email.lower()
 
-    result = await db.execute(select(User).options(joinedload(User.role)).where(User.email == email))
-    user = result.scalar_one_or_none()
+    try:
+        result = await db.execute(select(User).options(joinedload(User.role)).where(User.email == email))
+        user = result.scalar_one_or_none()
 
-    if user is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=INVALID_LOGIN_DETAIL)
-    if not verify_password(payload.password, user.password_hash):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=INVALID_LOGIN_DETAIL)
+        if user is None:
+            outcome = "user_missing"
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=INVALID_LOGIN_DETAIL)
+        if not await async_verify_password(payload.password, user.password_hash):
+            outcome = "invalid_password"
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=INVALID_LOGIN_DETAIL)
 
-    # Opportunistic migration: rehash on successful login when policy changed.
-    if password_needs_rehash(user.password_hash):
-        user.password_hash = hash_password(payload.password)
+        # Opportunistic migration: rehash on successful login when policy changed.
+        if await async_password_needs_rehash(user.password_hash):
+            user.password_hash = await async_hash_password(payload.password)
 
-    session_token = new_session_token()
-    session = Session(
-        user_id=user.id,
-        token_hash=hash_token(session_token),
-        expires_at=session_expiry(payload.remember_me),
-        last_seen_at=datetime.now(timezone.utc),
-        user_agent=request.headers.get("user-agent"),
-        ip_address=request_ip(
-            request.client.host if request.client else None,
-            request.headers.get("x-forwarded-for"),
-            request.headers.get("cf-connecting-ip"),
-        ),
-    )
+        session_token = new_session_token()
+        session = Session(
+            user_id=user.id,
+            token_hash=hash_token(session_token),
+            expires_at=session_expiry(payload.remember_me),
+            last_seen_at=datetime.now(timezone.utc),
+            user_agent=request.headers.get("user-agent"),
+            ip_address=request_ip(
+                request.client.host if request.client else None,
+                request.headers.get("x-forwarded-for"),
+                request.headers.get("cf-connecting-ip"),
+            ),
+        )
 
-    db.add(session)
-    await db.commit()
-    background_tasks.add_task(_refresh_train_reservations_after_sign_in_background, user_id=user.id)
+        db.add(session)
+        await db.commit()
+        background_tasks.add_task(_refresh_train_reservations_after_sign_in_background, user_id=user.id)
 
-    response = JSONResponse(content=AuthResponse(user=user_to_out(user)).model_dump(mode="json"))
-    if background_tasks.tasks:
-        response.background = background_tasks
-    set_session_cookie(response, session_token, payload.remember_me)
-    return response
+        response = JSONResponse(content=AuthResponse(user=user_to_out(user)).model_dump(mode="json"))
+        if background_tasks.tasks:
+            response.background = background_tasks
+        set_session_cookie(response, session_token, payload.remember_me)
+        outcome = "success"
+        return response
+    finally:
+        duration_ms = int((time.perf_counter() - started_at) * 1000)
+        logger.info("Auth login processed", extra={"outcome": outcome, "duration_ms": duration_ms})
 
 
 async def get_current_session_optional(
@@ -565,17 +575,19 @@ async def update_account(
     if "new_password" in provided:
         if payload.new_password is None:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="New password cannot be empty")
-        updates["password_hash"] = hash_password(payload.new_password)
+        updates["password_hash"] = await async_hash_password(payload.new_password)
 
     if not updates and requested_email_change_to is None:
         return AuthResponse(user=user_to_out(current_user))
 
     sensitive_update = requested_email_change_to is not None or "password_hash" in updates
     if sensitive_update:
-        has_valid_password = bool(payload.current_password) and verify_password(
-            payload.current_password or "",
-            current_user.password_hash,
-        )
+        has_valid_password = False
+        if payload.current_password:
+            has_valid_password = await async_verify_password(
+                payload.current_password,
+                current_user.password_hash,
+            )
         has_valid_step_up = bool(payload.passkey_step_up_token) and await consume_passkey_step_up_token(
             db,
             user_id=current_user.id,
@@ -632,7 +644,7 @@ async def verify_current_password(
     payload: PasswordVerifyRequest,
     current_user: User = Depends(get_current_user),
 ) -> MessageResponse:
-    if not verify_password(payload.current_password, current_user.password_hash):
+    if not await async_verify_password(payload.current_password, current_user.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Current password is invalid")
     return MessageResponse(message="Password verified")
 
@@ -875,7 +887,7 @@ async def reset_password(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired reset code")
 
     token.used_at = now
-    user.password_hash = hash_password(payload.new_password)
+    user.password_hash = await async_hash_password(payload.new_password)
     await db.commit()
     return MessageResponse(message="Password reset complete")
 

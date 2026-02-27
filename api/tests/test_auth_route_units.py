@@ -530,7 +530,10 @@ async def test_login_rehashes_password_when_policy_changes(db_session, monkeypat
     await db_session.commit()
 
     old_hash = user.password_hash
-    monkeypatch.setattr(auth_routes, "password_needs_rehash", lambda _hash: True)
+    async def _rehash_needed(_password_hash: str) -> bool:
+        return True
+
+    monkeypatch.setattr(auth_routes, "async_password_needs_rehash", _rehash_needed)
 
     response = await auth_routes.login(
         payload=LoginRequest(email=email, password="SuperSecret123", remember_me=False),

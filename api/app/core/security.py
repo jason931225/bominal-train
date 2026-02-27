@@ -11,6 +11,7 @@ Security notes:
 - Token hashes stored in DB, not raw tokens
 """
 
+import asyncio
 import hashlib
 import secrets
 from datetime import datetime, timedelta, timezone
@@ -45,6 +46,11 @@ def hash_password(password: str) -> str:
     return password_hasher.hash(password)
 
 
+async def async_hash_password(password: str) -> str:
+    """Hash a password using Argon2id without blocking the event loop."""
+    return await asyncio.to_thread(hash_password, password)
+
+
 def verify_password(password: str, password_hash: str) -> bool:
     """Verify a password against its Argon2id hash.
     
@@ -61,12 +67,22 @@ def verify_password(password: str, password_hash: str) -> bool:
         return False
 
 
+async def async_verify_password(password: str, password_hash: str) -> bool:
+    """Verify a password without blocking the event loop."""
+    return await asyncio.to_thread(verify_password, password, password_hash)
+
+
 def password_needs_rehash(password_hash: str) -> bool:
     """Return True when stored hash params differ from current policy."""
     try:
         return password_hasher.check_needs_rehash(password_hash)
     except (InvalidHashError, VerificationError):
         return False
+
+
+async def async_password_needs_rehash(password_hash: str) -> bool:
+    """Check if password hash policy changed without blocking the event loop."""
+    return await asyncio.to_thread(password_needs_rehash, password_hash)
 
 
 def new_session_token() -> str:

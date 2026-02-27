@@ -163,3 +163,54 @@ def test_password_needs_rehash_handles_invalid_hash_errors(monkeypatch: pytest.M
 
     monkeypatch.setattr(security, "password_hasher", _BrokenHasher())
     assert security.password_needs_rehash("not-a-valid-hash") is False
+
+
+@pytest.mark.asyncio
+async def test_async_hash_password_offloads_to_thread(monkeypatch: pytest.MonkeyPatch) -> None:
+    recorded: dict[str, object] = {}
+
+    def _fake_hash(password: str) -> str:
+        recorded["password"] = password
+        return "hashed-value"
+
+    async def _fake_to_thread(fn, *args):  # noqa: ANN001
+        recorded["fn"] = fn
+        recorded["args"] = args
+        return fn(*args)
+
+    monkeypatch.setattr(security, "hash_password", _fake_hash)
+    monkeypatch.setattr(security.asyncio, "to_thread", _fake_to_thread)
+
+    result = await security.async_hash_password("super-secret")
+    assert result == "hashed-value"
+    assert recorded["fn"] is _fake_hash
+    assert recorded["args"] == ("super-secret",)
+    assert recorded["password"] == "super-secret"
+
+
+@pytest.mark.asyncio
+async def test_async_verify_and_rehash_helpers_offload_to_thread(monkeypatch: pytest.MonkeyPatch) -> None:
+    recorded_verify: dict[str, object] = {}
+    recorded_rehash: dict[str, object] = {}
+
+    def _fake_verify(password: str, password_hash: str) -> bool:
+        recorded_verify["password"] = password
+        recorded_verify["password_hash"] = password_hash
+        return True
+
+    def _fake_needs_rehash(password_hash: str) -> bool:
+        recorded_rehash["password_hash"] = password_hash
+        return True
+
+    async def _fake_to_thread(fn, *args):  # noqa: ANN001
+        return fn(*args)
+
+    monkeypatch.setattr(security, "verify_password", _fake_verify)
+    monkeypatch.setattr(security, "password_needs_rehash", _fake_needs_rehash)
+    monkeypatch.setattr(security.asyncio, "to_thread", _fake_to_thread)
+
+    assert await security.async_verify_password("plain", "argon2-hash") is True
+    assert recorded_verify == {"password": "plain", "password_hash": "argon2-hash"}
+
+    assert await security.async_password_needs_rehash("argon2-hash") is True
+    assert recorded_rehash == {"password_hash": "argon2-hash"}
