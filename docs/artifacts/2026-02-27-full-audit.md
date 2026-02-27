@@ -1,76 +1,111 @@
-# 2026-02-27 Full Audit — Release/Deploy Readiness Snapshot (Refreshed)
+# 2026-02-27 Full Audit — 1.0.0 Big-Bang Release Readiness (Renewed)
 
 ## Scope
 
-This artifact records a release-readiness baseline refresh plus governance/policy/docs drift checks.
+This artifact records execution of the renewed 1.0.0 full release audit plan with:
+
+- governance/policy runtime parity gates
+- functional verification for auth and train/task processes
+- payment-path verification through Evervault relay/function boundaries only
+- no real payment attempt
 
 Canonical references:
 
-- `docs/playbooks/release-1.0.0-deploy-readiness.md`
-- `docs/governance/ENGINEERING_QUALITY.md`
-- `docs/governance/CHANGE_MANAGEMENT.md`
-- `docs/governance/DOCUMENTATION_POLICY.md`
+- `docs/governance/SECRETS_RESIDENCY_POLICY.md`
+- `docs/governance/FREE_TIER_BUDGET_POLICY.md`
+- `.github/workflows/ci-infra-quality-gates.yml`
+- `.github/workflows/cd-deploy-production.yml`
+- `docs/humans/operations/DEPLOYMENT.md`
+- `docs/humans/operations/RUNBOOK.md`
 
-## Environment
+## Execution Context
 
 - Repository: `bominal`
-- Branch commit audited: `HEAD` at runtime
-- Execution context: local non-production audit run
-- Refresh date: `2026-02-27`
+- Audit date: `2026-02-27`
+- Audit evidence root: `artifacts/release-audit-20260227T221136Z/`
+- Lanes executed:
+  - `current` (initial run)
+  - `current-remediated` (post-remediation rerun)
+  - `origin-main` (clean baseline worktree)
 
-## Commands Executed (Refresh Set)
+## Lane Outcomes
 
-### Docs/governance validators
+| Lane | Pass | Fail | Notes |
+|---|---:|---:|---|
+| `current` | 7 | 9 | Functional failures caused by host cache permission drift (`~/.cache/uv`, `~/.npm`). |
+| `current-remediated` | 16 | 0 | All gates passed after environment remediation. |
+| `origin-main` | 16 | 0 | Full baseline parity with remediated lane. |
 
-- `bash infra/tests/test_docs_pointers.sh`
-- `bash infra/tests/test_docs_audience_split.sh`
-- `bash infra/tests/test_intent_routing.sh`
-- `bash infra/tests/test_docs_consistency.sh`
-- `bash infra/tests/test_changelog.sh`
+## Remediation Ledger
 
-### Release/deploy policy validators
+### R1 — Host cache permission drift (Environment Drift)
 
-- `python3 infra/scripts/version_guard.py validate`
-- `python3 infra/scripts/version_guard.py resolve --commit HEAD`
-- `bash infra/tests/test_versioning.sh`
-- `bash infra/tests/test_predeploy_check.sh`
-- `bash infra/tests/test_deploy_preflight.sh`
-- `bash infra/tests/test_setup_gsm_master_key.sh`
-- `bash infra/tests/test_sync_supabase_auth_templates.sh`
+- Symptom:
+  - `uv` cache initialization failed at `~/.cache/uv`.
+  - `npm ci` failed at `~/.npm/_cacache`.
+- Impact:
+  - functional checks failed despite policy checks passing.
+- Action:
+  - rerun with writable cache overrides:
+    - `UV_CACHE_DIR=/Users/jasonlee/bominal/.cache/uv` (workspace lane)
+    - `NPM_CONFIG_CACHE=/Users/jasonlee/bominal/.cache/npm` (workspace lane)
+    - `UV_CACHE_DIR=/tmp/bominal-uv-cache` (origin-main lane)
+    - `NPM_CONFIG_CACHE=/tmp/bominal-npm-cache` (origin-main lane)
+- Result:
+  - all previously failing functional gates turned green.
+- Classification:
+  - environment drift (not code/runtime contract regression).
 
-## Results Summary
+## Gate Matrix (Final)
 
-### Passing checks
+| Gate ID | Check | `current-remediated` | `origin-main` |
+|---|---|---|---|
+| `G01` | `test_docs_no_duplicate_security_sections.sh` | PASS | PASS |
+| `G02` | `test_policy_runtime_parity.sh` | PASS | PASS |
+| `G03` | `test_secret_residency_contract.sh` | PASS | PASS |
+| `G04` | `test_payment_boundary_regressions.sh` | PASS | PASS |
+| `G05` | `test_sync_edge_secrets_from_gsm.sh` | PASS | PASS |
+| `G06` | `test_free_tier_status_report.sh` | PASS | PASS |
+| `G07` | `test_ensure_uv_api_venv.sh` | PASS | PASS |
+| `F00` | `ensure-uv-api-venv.sh` bootstrap | PASS | PASS |
+| `F-AUTH-01` | auth/session test suite | PASS | PASS |
+| `F-TRAIN-01` | train/task functional suite | PASS | PASS |
+| `F-TRAIN-EDGE-OFF` | edge notify off matrix | PASS | PASS |
+| `F-TRAIN-EDGE-ON` | edge notify on matrix | PASS | PASS |
+| `F-PAY-API-01` | payment API boundary suite | PASS | PASS |
+| `F-PAY-WEB-DEPS` | web deps install for payment/train UI tests | PASS | PASS |
+| `F-PAY-WEB-01` | wallet Evervault UI test | PASS | PASS |
+| `F-TRAIN-WEB-01` | train dashboard UI tests | PASS | PASS |
 
-- Docs pointer and audience-split checks pass.
-- Intent routing and docs consistency checks pass.
-- Changelog structure check passes.
-- Version guard and versioning checks pass in this clone.
-- Predeploy and deploy-preflight checks pass.
-- GSM setup and Supabase auth-template sync validators pass.
+## Payment Hard-Blocker Assessment
 
-### Hardening actions landed after refresh
+Payment verification was performed without attempting a real payment:
 
-1. Governance and runtime anti-drift gates were added as blocking checks:
-   - `infra/tests/test_docs_no_duplicate_security_sections.sh`
-   - `infra/tests/test_policy_runtime_parity.sh`
-   - `infra/tests/test_secret_residency_contract.sh`
-   - `infra/tests/test_payment_boundary_regressions.sh`
-2. Secret-source implementation was extended:
-   - deploy-time GSM resolution for `INTERNAL_API_KEY` and `RESEND_API_KEY`
-   - predeploy ambiguity guards for secret sources
-   - edge secret sync automation via `infra/scripts/sync-edge-secrets-from-gsm.sh`
-3. Free-tier governance controls were formalized:
-   - canonical policy `docs/governance/FREE_TIER_BUDGET_POLICY.md`
-   - weekly report automation `infra/scripts/free_tier_status_report.sh`
+- boundary regression gate passed (`G04`)
+- wallet/payment API suite passed (`F-PAY-API-01`)
+- web Evervault wallet payload suite passed (`F-PAY-WEB-01`)
+- Evervault plaintext/CVV rejection contract remained enforced via policy/runtime and wallet-schema checks
 
-## Status
+No charge execution, card submission to live payment provider, or real payment mutation was performed.
 
-- **Current status: GO** for governance/policy/docs drift hardening baseline, with ongoing weekly free-tier evidence collection required.
-- This artifact supersedes the earlier blocker-focused snapshot and should be kept in sync with active CI gate coverage.
+## Go/No-Go Decision
+
+- **Payment blocker status:** PASS
+- **Governance + functional matrix status:** PASS in both final lanes
+- **Decision:** **GO** for 1.0.0 release readiness under current policy contracts
+
+## Evidence Pointers
+
+- Initial lane matrix: `artifacts/release-audit-20260227T221136Z/current/matrix.tsv`
+- Remediated lane matrix: `artifacts/release-audit-20260227T221136Z/current-remediated/matrix.tsv`
+- Baseline lane matrix: `artifacts/release-audit-20260227T221136Z/origin-main/matrix.tsv`
+- Per-gate logs:
+  - `artifacts/release-audit-20260227T221136Z/current/logs/`
+  - `artifacts/release-audit-20260227T221136Z/current-remediated/logs/`
+  - `artifacts/release-audit-20260227T221136Z/origin-main/logs/`
 
 ## Follow-Up Actions
 
-1. Run weekly `free_tier_status_report.sh` evidence capture and store dated artifacts.
-2. Keep GSM secret version counts below policy ceiling (`<=6` active versions per family).
-3. Keep Edge notify secret sync step in release runbook before enabling `EDGE_TASK_NOTIFY_ENABLED=true`.
+1. Keep weekly `free_tier_status_report.sh` evidence collection active per policy.
+2. Keep GSM active secret versions under `<=6` per family.
+3. Keep edge secret sync step before any rollout with `EDGE_TASK_NOTIFY_ENABLED=true`.
