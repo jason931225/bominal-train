@@ -15,6 +15,7 @@ from sqlalchemy.orm import joinedload
 
 from app.http.deps import auth_rate_limit, get_current_approved_user, get_current_user
 from app.core.config import get_settings
+from app.core.supabase_jwt import SupabaseJWTError, verify_supabase_jwt
 from app.core.security import (
     async_hash_password,
     async_password_needs_rehash,
@@ -963,24 +964,46 @@ async def supabase_callback_exchange(
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ) -> Response:
-    callback_session = await exchange_supabase_token_hash(token_hash=payload.token_hash, token_type=payload.type)
-    if callback_session is None:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired authentication link")
+    callback_user_id: str
+    callback_email: str
+    callback_access_token: str
+
+    if payload.token_hash:
+        callback_session = await exchange_supabase_token_hash(token_hash=payload.token_hash, token_type=payload.type)
+        if callback_session is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired authentication link")
+        callback_user_id = callback_session.user_id
+        callback_email = callback_session.email
+        callback_access_token = callback_session.access_token
+    else:
+        raw_access_token = str(payload.access_token or "").strip()
+        if not raw_access_token:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired authentication link")
+        try:
+            claims = verify_supabase_jwt(raw_access_token)
+        except SupabaseJWTError:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired authentication link")
+
+        callback_user_id = str(claims.get("sub") or "").strip()
+        if not callback_user_id:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired authentication link")
+        callback_email = str(claims.get("email") or "").strip().lower()
+        callback_access_token = raw_access_token
 
     if payload.type == "recovery":
         logger.info("Supabase callback exchange completed", extra={"mode": "recovery"})
         return SupabaseCallbackExchangeResponse(
             mode="recovery",
             redirect_to=f"{_public_base_url()}/reset-password?mode=supabase",
-            access_token=callback_session.access_token,
+            access_token=callback_access_token,
         )
 
     user = await get_or_create_local_user_from_supabase_claims(
         db,
-        claims={"sub": callback_session.user_id, "email": callback_session.email},
+        claims={"sub": callback_user_id, "email": callback_email},
     )
-    if user.supabase_user_id != callback_session.user_id:
-        user.supabase_user_id = callback_session.user_id
+    if user.supabase_user_id != callback_user_id:
+        user.supabase_user_id = callback_user_id
 
     session_token, session = _new_user_session(user, request, remember_me=False)
     db.add(session)
@@ -990,7 +1013,7 @@ async def supabase_callback_exchange(
     response_payload = SupabaseCallbackExchangeResponse(
         mode="magiclink",
         redirect_to="/modules/train",
-        access_token=callback_session.access_token,
+        access_token=callback_access_token,
     )
     response = JSONResponse(content=response_payload.model_dump(mode="json"))
     if background_tasks.tasks:
