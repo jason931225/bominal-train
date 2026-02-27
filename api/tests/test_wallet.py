@@ -2,8 +2,8 @@ import fakeredis.aioredis
 import pytest
 from sqlalchemy import select
 
-import app.services.system_payment as system_payment
-from app.db.models import Secret, User
+from app.core.security import hash_token, new_session_token, session_expiry
+from app.db.models import Secret, Session as AuthSession, User
 from app.services.wallet import (
     LEGACY_PAYMENT_CVV_REDIS_KEY_PREFIX,
     PAYMENT_CVV_REDIS_KEY_PREFIX,
@@ -35,14 +35,16 @@ async def _register_and_login(client, db_session, *, email: str) -> str:
     user.access_status = "approved"
     await db_session.commit()
 
-    login_res = await client.post(
-        "/api/auth/login",
-        json={"email": email, "password": "SuperSecret123", "remember_me": True},
+    session_token = new_session_token()
+    db_session.add(
+        AuthSession(
+            user_id=user.id,
+            token_hash=hash_token(session_token),
+            expires_at=session_expiry(remember_me=True),
+        )
     )
-    assert login_res.status_code == 200
-    cookie = login_res.cookies.get("bominal_session")
-    assert cookie
-    return cookie
+    await db_session.commit()
+    return session_token
 
 
 @pytest.mark.asyncio
@@ -62,6 +64,35 @@ async def test_payment_card_save_rejects_legacy_cvv_field(client, db_session):
         },
     )
     assert save_res.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_payment_card_save_supports_evervault_payload_shape(client, db_session, monkeypatch):
+    cookie = await _register_and_login(client, db_session, email="wallet-evervault@example.com")
+    monkeypatch.setattr("app.schemas.wallet.get_settings", lambda: type("S", (), {"payment_provider": "evervault"})())
+
+    save_res = await client.post(
+        "/api/wallet/payment-card",
+        cookies={"bominal_session": cookie},
+        json={
+            "encrypted_card_number": "ev:card",
+            "encrypted_pin2": "ev:pin2",
+            "encrypted_birth_date": "ev:birth",
+            "encrypted_expiry": "ev:expiry",
+            "last4": "1234",
+            "brand": "visa",
+        },
+    )
+    assert save_res.status_code == 200
+    payload = save_res.json()
+    assert payload["configured"] is True
+    assert payload["source"] == "evervault"
+    assert payload["card_masked"] == "**** **** **** 1234"
+    assert payload["brand"] == "visa"
+
+    configured_res = await client.get("/api/wallet/payment-card/configured", cookies={"bominal_session": cookie})
+    assert configured_res.status_code == 200
+    assert configured_res.json() == {"configured": True}
 
 
 @pytest.mark.asyncio
@@ -152,12 +183,18 @@ async def test_payment_card_configured_endpoint_returns_minimal_boolean(client, 
     assert before_res.status_code == 200
     assert before_res.json() == {"configured": False}
 
-    monkeypatch.setattr(system_payment.settings, "app_env", "production")
-    monkeypatch.setattr(system_payment.settings, "backend_pay_cardnumber", "4111-1111-1111-1111")
-    monkeypatch.setattr(system_payment.settings, "backend_pay_expirymm", "12")
-    monkeypatch.setattr(system_payment.settings, "backend_pay_expiryyy", "99")
-    monkeypatch.setattr(system_payment.settings, "backend_pay_dob", "19900101")
-    monkeypatch.setattr(system_payment.settings, "backend_pay_nn", "12")
+    save_res = await client.post(
+        "/api/wallet/payment-card",
+        cookies={"bominal_session": cookie},
+        json={
+            "card_number": "4111 1111 1111 1111",
+            "expiry_month": 12,
+            "expiry_year": 2099,
+            "birth_date": "1990-01-01",
+            "pin2": "12",
+        },
+    )
+    assert save_res.status_code == 200
 
     after_res = await client.get("/api/wallet/payment-card/configured", cookies={"bominal_session": cookie})
     assert after_res.status_code == 200

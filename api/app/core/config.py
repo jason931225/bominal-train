@@ -306,6 +306,10 @@ class Settings(BaseSettings):
         alias="PAYMENT_PROVIDER_ALLOWED_HOSTS",
     )
     payment_transport_trust_env: bool = Field(default=False, alias="PAYMENT_TRANSPORT_TRUST_ENV")
+    payment_provider: str = Field(default="legacy", alias="PAYMENT_PROVIDER")
+    payment_evervault_enforce: bool = Field(default=False, alias="PAYMENT_EVERVAULT_ENFORCE")
+    autopay_require_user_wallet: bool = Field(default=True, alias="AUTOPAY_REQUIRE_USER_WALLET")
+    autopay_allow_server_fallback: bool = Field(default=False, alias="AUTOPAY_ALLOW_SERVER_FALLBACK")
     restaurant_provider_egress_proxy_url: str | None = Field(
         default=None,
         alias="RESTAURANT_PROVIDER_EGRESS_PROXY_URL",
@@ -389,6 +393,14 @@ class Settings(BaseSettings):
         normalized = value.strip().lower()
         if normalized not in {"smtp", "resend", "log", "disabled"}:
             raise ValueError("EMAIL_PROVIDER must be one of: smtp, resend, log, disabled")
+        return normalized
+
+    @field_validator("payment_provider")
+    @classmethod
+    def validate_payment_provider(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"legacy", "evervault"}:
+            raise ValueError("PAYMENT_PROVIDER must be one of: legacy, evervault")
         return normalized
 
     @field_validator("auth_mode")
@@ -500,6 +512,15 @@ class Settings(BaseSettings):
                 )
             if self.app_env.lower() == "production" and not self.payment_provider_allowed_hosts:
                 raise ValueError("PAYMENT_PROVIDER_ALLOWED_HOSTS must be set in production")
+            if self.payment_provider == "evervault" and self.payment_evervault_enforce:
+                if not self.autopay_require_user_wallet:
+                    raise ValueError(
+                        "AUTOPAY_REQUIRE_USER_WALLET must be true when PAYMENT_PROVIDER=evervault and PAYMENT_EVERVAULT_ENFORCE=true"
+                    )
+                if self.autopay_allow_server_fallback:
+                    raise ValueError(
+                        "AUTOPAY_ALLOW_SERVER_FALLBACK must be false when PAYMENT_PROVIDER=evervault and PAYMENT_EVERVAULT_ENFORCE=true"
+                    )
         if self.smtp_use_ssl and self.smtp_starttls:
             raise ValueError("SMTP_USE_SSL and SMTP_STARTTLS cannot both be true")
         if self.email_provider == "resend" and not self.resend_api_key:
