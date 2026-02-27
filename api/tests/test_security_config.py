@@ -56,6 +56,49 @@ def test_parses_provider_allowlist_from_csv(monkeypatch) -> None:
     assert settings.payment_provider_allowed_hosts == ["app.srail.or.kr", "smart.letskorail.com"]
 
 
+def test_production_allows_gsm_master_key_without_env_master_key(monkeypatch) -> None:
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("MASTER_KEY", "")
+    monkeypatch.setenv("INTERNAL_API_KEY", "internal-key")
+    monkeypatch.setenv("GSM_MASTER_KEY_ENABLED", "true")
+    monkeypatch.setenv("GCP_PROJECT_ID", "bominal")
+    monkeypatch.setenv("GSM_MASTER_KEY_SECRET_ID", "bominal-master-key")
+    monkeypatch.setenv("GSM_MASTER_KEY_VERSION", "5")
+    monkeypatch.setenv("GSM_MASTER_KEY_ALLOW_ENV_FALLBACK", "false")
+
+    settings = Settings(_env_file=None)
+    assert settings.gsm_master_key_enabled is True
+    assert settings.resolved_gsm_master_key_project_id == "bominal"
+
+
+def test_production_rejects_gsm_latest_version(monkeypatch) -> None:
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("MASTER_KEY", "")
+    monkeypatch.setenv("INTERNAL_API_KEY", "internal-key")
+    monkeypatch.setenv("GSM_MASTER_KEY_ENABLED", "true")
+    monkeypatch.setenv("GCP_PROJECT_ID", "bominal")
+    monkeypatch.setenv("GSM_MASTER_KEY_SECRET_ID", "bominal-master-key")
+    monkeypatch.setenv("GSM_MASTER_KEY_VERSION", "latest")
+    monkeypatch.setenv("GSM_MASTER_KEY_ALLOW_ENV_FALLBACK", "false")
+
+    with pytest.raises(ValueError, match="must be pinned"):
+        Settings(_env_file=None)
+
+
+def test_production_rejects_gsm_env_fallback(monkeypatch) -> None:
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("MASTER_KEY", _VALID_MASTER_KEY)
+    monkeypatch.setenv("INTERNAL_API_KEY", "internal-key")
+    monkeypatch.setenv("GSM_MASTER_KEY_ENABLED", "true")
+    monkeypatch.setenv("GCP_PROJECT_ID", "bominal")
+    monkeypatch.setenv("GSM_MASTER_KEY_SECRET_ID", "bominal-master-key")
+    monkeypatch.setenv("GSM_MASTER_KEY_VERSION", "2")
+    monkeypatch.setenv("GSM_MASTER_KEY_ALLOW_ENV_FALLBACK", "true")
+
+    with pytest.raises(ValueError, match="ALLOW_ENV_FALLBACK must be false"):
+        Settings(_env_file=None)
+
+
 def test_parses_optional_egress_proxy_urls(monkeypatch) -> None:
     monkeypatch.setenv("APP_ENV", "development")
     monkeypatch.setenv("TRAIN_PROVIDER_EGRESS_PROXY_URL", " http://egress-train:8080 ")

@@ -7,7 +7,7 @@ Environment Variables:
     See Settings class fields for all supported environment variables.
     
 Security:
-    - MASTER_KEY must be overridden in production (used for envelope encryption)
+    - Production requires a non-default master-key source (env `MASTER_KEY` or GSM settings)
     - INTERNAL_API_KEY must be set in production (for internal service auth)
 """
 
@@ -151,9 +151,16 @@ class Settings(BaseSettings):
         default=DEFAULT_MASTER_KEY_B64,
         alias="MASTER_KEY",
     )
+    master_key_override: str | None = Field(default=None, alias="MASTER_KEY_OVERRIDE")
     master_keys_by_version: dict[int, str] | None = Field(default=None, alias="MASTER_KEYS_BY_VERSION")
     kek_version: int = Field(default=1, alias="KEK_VERSION")
     kek_retirement_window_days: int = Field(default=30, alias="KEK_RETIREMENT_WINDOW_DAYS")
+    gcp_project_id: str | None = Field(default=None, alias="GCP_PROJECT_ID")
+    gsm_master_key_enabled: bool = Field(default=False, alias="GSM_MASTER_KEY_ENABLED")
+    gsm_master_key_project_id: str | None = Field(default=None, alias="GSM_MASTER_KEY_PROJECT_ID")
+    gsm_master_key_secret_id: str = Field(default="bominal-master-key", alias="GSM_MASTER_KEY_SECRET_ID")
+    gsm_master_key_version: str = Field(default="latest", alias="GSM_MASTER_KEY_VERSION")
+    gsm_master_key_allow_env_fallback: bool = Field(default=True, alias="GSM_MASTER_KEY_ALLOW_ENV_FALLBACK")
     auth_mode: str = Field(default="legacy", alias="AUTH_MODE")
     supabase_url: str | None = Field(default=None, alias="SUPABASE_URL")
     supabase_jwks_url: str | None = Field(default=None, alias="SUPABASE_JWKS_URL")
@@ -425,18 +432,39 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def validate_security_settings(self) -> "Settings":
         # Keep local developer convenience, but hard-stop weak defaults in production.
-        if self.app_env.lower() == "production" and self.master_key == DEFAULT_MASTER_KEY_B64:
-            raise ValueError("MASTER_KEY must be overridden in production")
-        if self.app_env.lower() == "production" and not self.internal_api_key:
+        if self.is_production and not self.internal_api_key:
             raise ValueError("INTERNAL_API_KEY must be set in production")
+        if self.gsm_master_key_enabled:
+            if not self.resolved_gsm_master_key_project_id:
+                raise ValueError(
+                    "GSM_MASTER_KEY_PROJECT_ID or GCP_PROJECT_ID is required when GSM_MASTER_KEY_ENABLED=true"
+                )
+            if not str(self.gsm_master_key_secret_id or "").strip():
+                raise ValueError("GSM_MASTER_KEY_SECRET_ID is required when GSM_MASTER_KEY_ENABLED=true")
+            version = str(self.gsm_master_key_version or "").strip()
+            if not version:
+                raise ValueError("GSM_MASTER_KEY_VERSION is required when GSM_MASTER_KEY_ENABLED=true")
+            if self.is_production and version.lower() == "latest":
+                raise ValueError("GSM_MASTER_KEY_VERSION must be pinned in production (latest is not allowed)")
+            if self.is_production and self.gsm_master_key_allow_env_fallback:
+                raise ValueError(
+                    "GSM_MASTER_KEY_ALLOW_ENV_FALLBACK must be false in production when GSM_MASTER_KEY_ENABLED=true"
+                )
+        elif self.is_production and self.master_key == DEFAULT_MASTER_KEY_B64:
+            raise ValueError("MASTER_KEY must be overridden in production")
         if self.internal_identity_ttl_seconds < 1:
             raise ValueError("INTERNAL_IDENTITY_TTL_SECONDS must be >= 1")
         if self.kek_retirement_window_days < 1:
             raise ValueError("KEK_RETIREMENT_WINDOW_DAYS must be >= 1")
         if self.master_keys_by_version is not None:
-            if self.kek_version not in self.master_keys_by_version and not self.master_key:
+            has_active_master_key_source = bool(
+                str(self.master_key_override or "").strip()
+                or str(self.master_key or "").strip()
+                or self.gsm_master_key_enabled
+            )
+            if self.kek_version not in self.master_keys_by_version and not has_active_master_key_source:
                 raise ValueError(
-                    "MASTER_KEYS_BY_VERSION must include KEK_VERSION or MASTER_KEY must be set"
+                    "MASTER_KEYS_BY_VERSION must include KEK_VERSION or an active master-key source must be set"
                 )
         if self.payment_enabled and is_upstash_redis_url(self.resolved_redis_url_cde):
             raise ValueError(
@@ -521,6 +549,12 @@ class Settings(BaseSettings):
         if self.supabase_auth_api_key:
             return self.supabase_auth_api_key
         return self.supabase_service_role_key
+
+    @property
+    def resolved_gsm_master_key_project_id(self) -> str | None:
+        if self.gsm_master_key_project_id:
+            return self.gsm_master_key_project_id
+        return self.gcp_project_id
 
 
 @lru_cache
