@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+
+CONFIG_FILE="$ROOT_DIR/api/app/core/config.py"
+PREDEPLOY_FILE="$ROOT_DIR/infra/scripts/predeploy-check.sh"
+DEPLOY_FILE="$ROOT_DIR/infra/scripts/deploy.sh"
+COMPOSE_FILE="$ROOT_DIR/infra/docker-compose.prod.yml"
+WALLET_SCHEMA_FILE="$ROOT_DIR/api/app/schemas/wallet.py"
+
+assert_contains() {
+  local pattern="$1"
+  local file="$2"
+  local message="$3"
+  if ! rg -n -- "$pattern" "$file" >/dev/null; then
+    echo "FAIL: $message ($file)" >&2
+    exit 1
+  fi
+}
+
+assert_contains "alias=\"INTERNAL_API_KEY_SECRET_ID\"" "$CONFIG_FILE" "config missing INTERNAL_API_KEY secret id alias"
+assert_contains "alias=\"INTERNAL_API_KEY_SECRET_VERSION\"" "$CONFIG_FILE" "config missing INTERNAL_API_KEY secret version alias"
+assert_contains "alias=\"RESEND_API_KEY_SECRET_ID\"" "$CONFIG_FILE" "config missing RESEND_API_KEY secret id alias"
+assert_contains "alias=\"RESEND_API_KEY_SECRET_VERSION\"" "$CONFIG_FILE" "config missing RESEND_API_KEY secret version alias"
+
+assert_contains "INTERNAL_API_KEY and INTERNAL_API_KEY_SECRET_ID cannot both be set" "$PREDEPLOY_FILE" "predeploy missing internal key ambiguity guard"
+assert_contains "RESEND API key source is ambiguous" "$PREDEPLOY_FILE" "predeploy missing resend source ambiguity guard"
+assert_contains "RESEND_API_KEY_VAULT_NAME is allowed only when EDGE_TASK_NOTIFY_ENABLED=true" "$PREDEPLOY_FILE" "predeploy missing resend vault edge-mode guard"
+assert_contains "RESEND_API_KEY_SECRET_VERSION" "$PREDEPLOY_FILE" "predeploy missing resend secret version contract"
+assert_contains "INTERNAL_API_KEY_SECRET_VERSION" "$PREDEPLOY_FILE" "predeploy missing internal secret version contract"
+assert_contains "PAYMENT_PROVIDER" "$PREDEPLOY_FILE" "predeploy missing payment-provider contract checks"
+
+assert_contains "load_runtime_api_secrets_from_gsm" "$DEPLOY_FILE" "deploy missing runtime secret loader"
+assert_contains "INTERNAL_API_KEY_SECRET_ID" "$DEPLOY_FILE" "deploy missing internal gsm reference resolution"
+assert_contains "RESEND_API_KEY_SECRET_ID" "$DEPLOY_FILE" "deploy missing resend gsm reference resolution"
+assert_contains "export INTERNAL_API_KEY" "$DEPLOY_FILE" "deploy does not export INTERNAL_API_KEY runtime value"
+
+assert_contains "INTERNAL_API_KEY:[[:space:]]+\\$\\{INTERNAL_API_KEY:-\\}" "$COMPOSE_FILE" "compose api/worker missing INTERNAL_API_KEY passthrough"
+assert_contains "RESEND_API_KEY:[[:space:]]+\\$\\{RESEND_API_KEY:-\\}" "$COMPOSE_FILE" "compose api/worker missing RESEND_API_KEY passthrough"
+
+assert_contains "field is no longer accepted" "$WALLET_SCHEMA_FILE" "wallet schema must reject cvv plaintext input"
+assert_contains "plaintext card fields are not accepted when PAYMENT_PROVIDER=evervault" "$WALLET_SCHEMA_FILE" "wallet schema must reject plaintext fallback in evervault mode"
+
+echo "OK: policy/runtime parity checks passed."

@@ -1,79 +1,76 @@
-# 2026-02-27 Full Audit — Release/Deploy Readiness Snapshot
+# 2026-02-27 Full Audit — Release/Deploy Readiness Snapshot (Refreshed)
 
 ## Scope
 
-This audit executes the canonical release-readiness checks described by:
+This artifact records a release-readiness baseline refresh plus governance/policy/docs drift checks.
+
+Canonical references:
 
 - `docs/playbooks/release-1.0.0-deploy-readiness.md`
 - `docs/governance/ENGINEERING_QUALITY.md`
 - `docs/governance/CHANGE_MANAGEMENT.md`
+- `docs/governance/DOCUMENTATION_POLICY.md`
 
 ## Environment
 
 - Repository: `bominal`
 - Branch commit audited: `HEAD` at runtime
-- Execution context: local containerized dev environment (non-production)
+- Execution context: local non-production audit run
+- Refresh date: `2026-02-27`
 
-## Commands Executed
+## Commands Executed (Refresh Set)
 
-### Documentation and governance validators
+### Docs/governance validators
 
 - `bash infra/tests/test_docs_pointers.sh`
+- `bash infra/tests/test_docs_audience_split.sh`
 - `bash infra/tests/test_intent_routing.sh`
 - `bash infra/tests/test_docs_consistency.sh`
 - `bash infra/tests/test_changelog.sh`
 
-### Release/version and deploy-preflight validators
+### Release/deploy policy validators
 
 - `python3 infra/scripts/version_guard.py validate`
 - `python3 infra/scripts/version_guard.py resolve --commit HEAD`
 - `bash infra/tests/test_versioning.sh`
 - `bash infra/tests/test_predeploy_check.sh`
 - `bash infra/tests/test_deploy_preflight.sh`
-
-### Code quality checks
-
-- `PYTHONPATH=. pytest -q` (from `api/`)
-- `npm run -s lint` (from `web/`)
-- `npx tsc --noEmit` (from `web/`)
+- `bash infra/tests/test_setup_gsm_master_key.sh`
+- `bash infra/tests/test_sync_supabase_auth_templates.sh`
 
 ## Results Summary
 
 ### Passing checks
 
-- Docs pointer library, intent routing, docs consistency, and changelog validators all passed.
-- Deploy preflight tests passed (`test_predeploy_check.sh`, `test_deploy_preflight.sh`).
-- Web TypeScript type check passed (`npx tsc --noEmit`).
+- Docs pointer and audience-split checks pass.
+- Intent routing and docs consistency checks pass.
+- Changelog structure check passes.
+- Version guard and versioning checks pass in this clone.
+- Predeploy and deploy-preflight checks pass.
+- GSM setup and Supabase auth-template sync validators pass.
 
-### Blocking findings
+### Hardening actions landed after refresh
 
-1. **Versioning guard cannot validate in this clone**
-   - `version_guard.py` and `test_versioning.sh` fail because baseline commit `d2061306546cbb981fa14f75ca07fc9de9a7e2fd` is not available in local history.
-   - Impact: release-version parity cannot be fully audited in this environment until history includes the baseline anchor.
+1. Governance and runtime anti-drift gates were added as blocking checks:
+   - `infra/tests/test_docs_no_duplicate_security_sections.sh`
+   - `infra/tests/test_policy_runtime_parity.sh`
+   - `infra/tests/test_secret_residency_contract.sh`
+   - `infra/tests/test_payment_boundary_regressions.sh`
+2. Secret-source implementation was extended:
+   - deploy-time GSM resolution for `INTERNAL_API_KEY` and `RESEND_API_KEY`
+   - predeploy ambiguity guards for secret sources
+   - edge secret sync automation via `infra/scripts/sync-edge-secrets-from-gsm.sh`
+3. Free-tier governance controls were formalized:
+   - canonical policy `docs/governance/FREE_TIER_BUDGET_POLICY.md`
+   - weekly report automation `infra/scripts/free_tier_status_report.sh`
 
-2. **API test suite blocked by Python runtime mismatch**
-   - `PYTHONPATH=. pytest -q` fails during collection because `enum.StrEnum` is unavailable under Python `3.10.19`.
-   - Impact: API regression signal is incomplete; run under Python 3.11+ (or adjust compatibility) before release sign-off.
+## Status
 
-3. **Web lint gate fails on warning budget**
-   - `npm run -s lint` reports warnings (Next.js script strategy, React hook dependency warnings, and unused eslint-disable), and exits non-zero because warning maximum is `0`.
-   - Impact: quality gate remains red until warnings are fixed or policy changes explicitly allow them.
+- **Current status: GO** for governance/policy/docs drift hardening baseline, with ongoing weekly free-tier evidence collection required.
+- This artifact supersedes the earlier blocker-focused snapshot and should be kept in sync with active CI gate coverage.
 
-## Go/No-Go Assessment
+## Follow-Up Actions
 
-- **Current status: NO-GO for 1.0.0 release sign-off** in this environment.
-- Reasoning:
-  - Version mapping parity checks are currently blocked by missing baseline history.
-  - API automated tests are not executable under current runtime.
-  - Web lint quality gate is red.
-
-## Recommended Next Actions
-
-1. Fetch/restore full git history containing baseline commit `d2061306546cbb981fa14f75ca07fc9de9a7e2fd`, then rerun version guard commands.
-2. Run API test suite on Python 3.11+ (or add runtime compatibility handling if 3.10 must be supported).
-3. Resolve web lint warnings in:
-   - `web/components/theme-init-script.tsx`
-   - `web/components/train/train-dashboard.tsx`
-   - `web/components/train/train-task-detail.tsx`
-   - `web/lib/train/task-events.ts`
-4. Re-run the full release-readiness command set from `docs/playbooks/release-1.0.0-deploy-readiness.md` and capture green evidence.
+1. Run weekly `free_tier_status_report.sh` evidence capture and store dated artifacts.
+2. Keep GSM secret version counts below policy ceiling (`<=6` active versions per family).
+3. Keep Edge notify secret sync step in release runbook before enabling `EDGE_TASK_NOTIFY_ENABLED=true`.

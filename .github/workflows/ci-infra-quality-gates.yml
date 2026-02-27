@@ -231,6 +231,18 @@ jobs:
         run: |
           bash infra/tests/test_sync_supabase_auth_templates.sh
 
+      - name: Validate edge secret sync script
+        run: |
+          bash infra/tests/test_sync_edge_secrets_from_gsm.sh
+
+      - name: Validate free-tier status report script
+        run: |
+          bash infra/tests/test_free_tier_status_report.sh
+
+      - name: Validate uv API venv bootstrap script
+        run: |
+          bash infra/tests/test_ensure_uv_api_venv.sh
+
       - name: Validate changed-image rolling deploy path
         run: |
           bash infra/tests/test_deploy_changed_image_rollout.sh
@@ -247,6 +259,18 @@ jobs:
         run: |
           bash infra/tests/test_docs_consistency.sh
 
+      - name: Validate docs security-section duplication guard
+        run: |
+          bash infra/tests/test_docs_no_duplicate_security_sections.sh
+
+      - name: Validate policy/runtime parity contracts
+        run: |
+          bash infra/tests/test_policy_runtime_parity.sh
+
+      - name: Validate secret residency contracts
+        run: |
+          bash infra/tests/test_secret_residency_contract.sh
+
       - name: Validate CI/CD workflow efficiency policies
         run: |
           bash infra/tests/test_ci_cd_workflow_efficiency.sh
@@ -254,6 +278,10 @@ jobs:
       - name: Validate sensitive log scanner
         run: |
           bash infra/tests/test_sensitive_log_scan.sh
+
+      - name: Validate payment boundary regressions
+        run: |
+          bash infra/tests/test_payment_boundary_regressions.sh
 
       - name: Validate egress Caddyfile guards
         run: |

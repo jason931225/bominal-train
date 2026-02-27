@@ -113,6 +113,10 @@ Evervault secret sourcing (production):
   - policy: `docs/governance/DEPRECATION_POLICY.md`
   - guard command: `python3 infra/scripts/deprecation_guard.py enforce-deploy ...`
   - host requirement: `python3` available on deploy VM
+- Host-side Python verification protocol:
+  - `uv` must be installed on the VM.
+  - host-side `pytest` runs must execute through a `uv`-managed `api/.venv`.
+  - bootstrap helper: `bash infra/scripts/ensure-uv-api-venv.sh`
 - Emergency bypass (approval required):
   - `PREDEPLOY_ALLOW_DEPRECATION_BYPASS=true`
 
@@ -292,7 +296,7 @@ Optional:
 - validates critical contracts (Supabase URLs, `MASTER_KEY` format, unresolved placeholders).
 
 If you choose manual editing instead, required values are:
-- `infra/env/prod/api.env`: `INTERNAL_API_KEY`, `DATABASE_URL`, `SYNC_DATABASE_URL`, `AUTH_MODE=supabase`, `SUPABASE_URL`, `SUPABASE_JWT_ISSUER`, `SUPABASE_AUTH_ENABLED=true`, `SUPABASE_AUTH_API_KEY` (or `SUPABASE_SERVICE_ROLE_KEY` fallback), `SUPABASE_STORAGE_ENABLED=true`, `SUPABASE_SERVICE_ROLE_KEY`, sender-domain placeholder in `EMAIL_FROM_ADDRESS`, passkey origin settings (`PASSKEY_RP_ID`, `PASSKEY_ORIGIN`), optional provider session-cache knobs (`TRAIN_PROVIDER_CLIENT_CACHE_SECONDS`, `TRAIN_PROVIDER_CLIENT_CACHE_MAX_ENTRIES`), optional edge-notify knobs (`EDGE_TASK_NOTIFY_ENABLED`, `SUPABASE_EDGE_FUNCTIONS_BASE_URL`, `SUPABASE_EDGE_TASK_NOTIFY_FUNCTION_NAME`, `SUPABASE_EDGE_TIMEOUT_SECONDS`), optional Evervault settings (`EVERVAULT_APP_ID`/`EVERVAULT_APP_ID_SECRET_ID`, `EVERVAULT_API_KEY`/`EVERVAULT_API_KEY_SECRET_ID`), and a valid master-key source (`MASTER_KEY` or GSM settings)
+- `infra/env/prod/api.env`: `DATABASE_URL`, `SYNC_DATABASE_URL`, `AUTH_MODE=supabase`, `SUPABASE_URL`, `SUPABASE_JWT_ISSUER`, `SUPABASE_AUTH_ENABLED=true`, `SUPABASE_AUTH_API_KEY` (or `SUPABASE_SERVICE_ROLE_KEY` fallback), `SUPABASE_STORAGE_ENABLED=true`, `SUPABASE_SERVICE_ROLE_KEY`, sender-domain placeholder in `EMAIL_FROM_ADDRESS`, passkey origin settings (`PASSKEY_RP_ID`, `PASSKEY_ORIGIN`), optional provider session-cache knobs (`TRAIN_PROVIDER_CLIENT_CACHE_SECONDS`, `TRAIN_PROVIDER_CLIENT_CACHE_MAX_ENTRIES`), optional edge-notify knobs (`EDGE_TASK_NOTIFY_ENABLED`, `SUPABASE_EDGE_FUNCTIONS_BASE_URL`, `SUPABASE_EDGE_TASK_NOTIFY_FUNCTION_NAME`, `SUPABASE_EDGE_TIMEOUT_SECONDS`), optional Evervault settings (`EVERVAULT_APP_ID`/`EVERVAULT_APP_ID_SECRET_ID`, `EVERVAULT_API_KEY`/`EVERVAULT_API_KEY_SECRET_ID`), and valid secret sources for `MASTER_KEY`, `INTERNAL_API_KEY`, and `RESEND_API_KEY` (prefer GSM references)
 - `infra/env/prod/api.env`: optional Supabase Auth redirect overrides:
   - `SUPABASE_AUTH_SITE_URL` (defaults to `NEXT_PUBLIC_API_BASE_URL`, then `https://$CADDY_SITE_ADDRESS`)
   - `SUPABASE_AUTH_REDIRECT_URLS` (comma-separated allow-list; defaults to `<site_url>/auth/callback,<site_url>/reset-password,<site_url>/login`)
@@ -316,6 +320,22 @@ Production master-key source contract:
 - If `GSM_MASTER_KEY_ENABLED=false`:
   - `MASTER_KEY` must be set to a base64-encoded 32-byte key
 
+Production internal API key source contract:
+- Configure exactly one source:
+  - `INTERNAL_API_KEY`, or
+  - `INTERNAL_API_KEY_SECRET_ID` + pinned `INTERNAL_API_KEY_SECRET_VERSION`
+- `INTERNAL_API_KEY_SECRET_ID` requires `GCP_PROJECT_ID`.
+- `deploy.sh` resolves GSM references and injects runtime `INTERNAL_API_KEY` into `api`/`worker`.
+
+Production Resend key source contract (`EMAIL_PROVIDER=resend`):
+- Configure exactly one source:
+  - `RESEND_API_KEY`, or
+  - `RESEND_API_KEY_SECRET_ID` + pinned `RESEND_API_KEY_SECRET_VERSION`, or
+  - `RESEND_API_KEY_VAULT_NAME` (edge-only contract)
+- `RESEND_API_KEY_VAULT_NAME` is allowed only when `EDGE_TASK_NOTIFY_ENABLED=true` and `SUPABASE_VAULT_ENABLED=true`.
+- `RESEND_API_KEY_SECRET_ID` requires `GCP_PROJECT_ID`.
+- `deploy.sh` resolves GSM references and injects runtime `RESEND_API_KEY` into `api`/`worker`.
+
 Optional helper to automate GSM setup from existing `MASTER_KEY` in `api.env`:
 
 ```bash
@@ -337,7 +357,7 @@ Production URL scheme enforcement (predeploy gate):
 - Supabase auth redirect URLs must resolve to `https://`, must not use localhost/loopback hosts, and must include `/auth/callback`.
 - `EMAIL_PROVIDER=disabled`: Resend credentials may remain unset
 - `EMAIL_PROVIDER=smtp`: `SMTP_HOST`, `SMTP_PORT`, and SMTP credentials/TLS settings as required
-- `EMAIL_PROVIDER=resend`: configure either `RESEND_API_KEY`, or `RESEND_API_KEY_VAULT_NAME` with `SUPABASE_VAULT_ENABLED=true`
+- `EMAIL_PROVIDER=resend`: configure exactly one source (`RESEND_API_KEY`, `RESEND_API_KEY_SECRET_ID` + pinned version, or edge-only `RESEND_API_KEY_VAULT_NAME` with `SUPABASE_VAULT_ENABLED=true` and `EDGE_TASK_NOTIFY_ENABLED=true`)
 - `TRAIN_PROVIDER_EGRESS_PROXY_URL` / `RESTAURANT_PROVIDER_EGRESS_PROXY_URL`: set to internal egress gateways when outbound provider traffic must be centralized through path-allowlist proxies
 - `NEXT_PUBLIC_FONT_BASE_URL`: optional remote font base URL (must be `https://` when set). Expected files at that base path: `NotoSansKR-Regular.woff2`, `NotoSerifKR-Regular.woff2`, `NotoSerifKR-SemiBold.woff2`, `NotoSerifKR-Bold.woff2`, `DynaPuff-SemiBold.woff2`
 
@@ -371,6 +391,23 @@ bash infra/scripts/sync-supabase-auth-templates.sh --apply
 ```
 
 `--apply` requires `SUPABASE_MANAGEMENT_API_TOKEN` (or `SUPABASE_ACCESS_TOKEN`).
+
+### 3.2) Sync Supabase Edge notify secrets from GSM
+
+When `EDGE_TASK_NOTIFY_ENABLED=true`, sync delivery secrets for `task-notify` from authoritative GSM:
+
+```bash
+bash infra/scripts/sync-edge-secrets-from-gsm.sh --dry-run
+bash infra/scripts/sync-edge-secrets-from-gsm.sh --apply
+```
+
+Expected source/target:
+- source: `RESEND_API_KEY_SECRET_ID` + `RESEND_API_KEY_SECRET_VERSION` in GSM
+- target edge secrets: `RESEND_API_KEY`, `EMAIL_FROM_ADDRESS`, optional `EMAIL_FROM_NAME`
+
+Rollback:
+- disable edge notify (`EDGE_TASK_NOTIFY_ENABLED=false`) and redeploy to force queue-only delivery
+- or resync previous GSM version by pinning older `RESEND_API_KEY_SECRET_VERSION` then rerunning `--apply`
 
 Deprecation gate behavior:
 - `predeploy-check.sh` validates the registry and enforces production deprecation deadlines.
@@ -411,6 +448,13 @@ sudo bash infra/scripts/vm-docker-bootstrap.sh
 ```
 
 This installs Docker, creates a `bominal` user, and adds 1GB swap.
+It also installs `uv` at `/usr/local/bin/uv` for host-side Python venv execution.
+
+Verify after bootstrap:
+
+```bash
+uv --version
+```
 
 ### 2) Clone repo and configure
 
@@ -439,6 +483,19 @@ openssl rand -base64 32
 
 # INTERNAL_API_KEY
 openssl rand -hex 32
+```
+
+Prepare API host venv for any host-side Python checks:
+
+```bash
+bash infra/scripts/ensure-uv-api-venv.sh
+```
+
+Run host-side API tests through uv-managed venv (if needed):
+
+```bash
+cd api
+uv run --python .venv/bin/python -m pytest -q
 ```
 
 ### 3) Deploy

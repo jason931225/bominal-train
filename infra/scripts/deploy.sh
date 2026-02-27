@@ -16,6 +16,8 @@
 #   API_IMAGE        - Override monolithic API image URL
 #   WORKER_IMAGE     - Override worker image URL
 #   WEB_IMAGE        - Override web image URL
+#   INTERNAL_API_KEY - Optional runtime override (can be GSM-resolved via *_SECRET_ID/_VERSION)
+#   RESEND_API_KEY   - Optional runtime override (can be GSM-resolved via *_SECRET_ID/_VERSION)
 #   DEPLOY_DOCKER_PRUNE_UNUSED_IMAGES - prune unused images post-verify (default: true)
 #   DEPLOY_DOCKER_PRUNE_BUILD_CACHE   - prune build cache post-verify (default: true)
 #   DEPLOY_DOCKER_KEEP_BOMINAL_IMAGES - retain latest N bominal image tags; when >0, skips full image prune -a and
@@ -403,6 +405,123 @@ env_key_value() {
       }
     }
   ' "$file"
+}
+
+secret_version_is_latest() {
+  local version="$1"
+  local normalized
+  normalized="$(printf '%s' "$version" | tr '[:upper:]' '[:lower:]')"
+  [[ "$normalized" == "latest" ]]
+}
+
+require_pinned_secret_version() {
+  local version="$1"
+  local label="$2"
+  if [[ -z "$version" ]]; then
+    log_error "$label secret version is required when secret id is configured."
+    return 1
+  fi
+  if secret_version_is_latest "$version"; then
+    log_error "$label secret version must be pinned in production (latest is not allowed)."
+    return 1
+  fi
+  return 0
+}
+
+read_secret_from_gsm() {
+  local gcp_project_id="$1"
+  local secret_id="$2"
+  local secret_version="$3"
+  gcloud secrets versions access "$secret_version" \
+    --secret="$secret_id" \
+    --project="$gcp_project_id" 2>/dev/null || true
+}
+
+load_runtime_api_secrets_from_gsm() {
+  local api_env_file="$REPO_DIR/infra/env/prod/api.env"
+  if [[ ! -f "$api_env_file" ]]; then
+    log_warn "Skipping runtime API secret GSM load: missing $api_env_file"
+    return 0
+  fi
+
+  local gcp_project_id
+  local internal_api_key internal_secret_id internal_secret_version
+  local resend_api_key resend_secret_id resend_secret_version resend_vault_name
+  local requires_gcloud
+  gcp_project_id="${GCP_PROJECT_ID:-$(env_key_value "$api_env_file" "GCP_PROJECT_ID")}"
+  requires_gcloud="false"
+
+  internal_api_key="${INTERNAL_API_KEY:-$(env_key_value "$api_env_file" "INTERNAL_API_KEY")}"
+  internal_secret_id="${INTERNAL_API_KEY_SECRET_ID:-$(env_key_value "$api_env_file" "INTERNAL_API_KEY_SECRET_ID")}"
+  internal_secret_version="${INTERNAL_API_KEY_SECRET_VERSION:-$(env_key_value "$api_env_file" "INTERNAL_API_KEY_SECRET_VERSION")}"
+
+  if [[ -n "$internal_api_key" && -n "$internal_secret_id" ]]; then
+    log_error "Ambiguous INTERNAL_API_KEY source: set either INTERNAL_API_KEY or INTERNAL_API_KEY_SECRET_ID, not both."
+    return 1
+  fi
+
+  if [[ -z "$internal_api_key" && -z "$internal_secret_id" ]]; then
+    log_error "Missing INTERNAL_API_KEY source: set INTERNAL_API_KEY or INTERNAL_API_KEY_SECRET_ID."
+    return 1
+  fi
+
+  if [[ -n "$internal_secret_id" ]]; then
+    requires_gcloud="true"
+    require_pinned_secret_version "$internal_secret_version" "INTERNAL_API_KEY" || return 1
+  fi
+
+  resend_api_key="${RESEND_API_KEY:-$(env_key_value "$api_env_file" "RESEND_API_KEY")}"
+  resend_secret_id="${RESEND_API_KEY_SECRET_ID:-$(env_key_value "$api_env_file" "RESEND_API_KEY_SECRET_ID")}"
+  resend_secret_version="${RESEND_API_KEY_SECRET_VERSION:-$(env_key_value "$api_env_file" "RESEND_API_KEY_SECRET_VERSION")}"
+  resend_vault_name="${RESEND_API_KEY_VAULT_NAME:-$(env_key_value "$api_env_file" "RESEND_API_KEY_VAULT_NAME")}"
+
+  if [[ -n "$resend_secret_id" ]]; then
+    if [[ -n "$resend_api_key" || -n "$resend_vault_name" ]]; then
+      log_error "Ambiguous RESEND API key source: RESEND_API_KEY_SECRET_ID cannot be combined with RESEND_API_KEY/RESEND_API_KEY_VAULT_NAME."
+      return 1
+    fi
+    requires_gcloud="true"
+    require_pinned_secret_version "$resend_secret_version" "RESEND_API_KEY" || return 1
+  fi
+
+  if [[ "$requires_gcloud" == "true" ]]; then
+    if [[ -z "$gcp_project_id" ]]; then
+      log_error "GCP_PROJECT_ID is required for GSM-backed runtime secret resolution."
+      return 1
+    fi
+    if ! command -v gcloud >/dev/null 2>&1; then
+      log_error "GSM-backed runtime secret resolution requires gcloud CLI."
+      return 1
+    fi
+  fi
+
+  if [[ -n "$internal_secret_id" ]]; then
+    internal_api_key="$(read_secret_from_gsm "$gcp_project_id" "$internal_secret_id" "$internal_secret_version")"
+    if [[ -z "$internal_api_key" ]]; then
+      log_error "Failed to load INTERNAL_API_KEY from GSM secret '$internal_secret_id'."
+      return 1
+    fi
+  fi
+
+  if [[ -n "$resend_secret_id" ]]; then
+    resend_api_key="$(read_secret_from_gsm "$gcp_project_id" "$resend_secret_id" "$resend_secret_version")"
+    if [[ -z "$resend_api_key" ]]; then
+      log_error "Failed to load RESEND_API_KEY from GSM secret '$resend_secret_id'."
+      return 1
+    fi
+  fi
+
+  if [[ -z "$internal_api_key" ]]; then
+    log_error "Resolved INTERNAL_API_KEY is empty."
+    return 1
+  fi
+
+  export INTERNAL_API_KEY="$internal_api_key"
+  if [[ -n "$resend_api_key" ]]; then
+    export RESEND_API_KEY="$resend_api_key"
+  fi
+
+  log_ok "Runtime API secrets loaded (values redacted)"
 }
 
 load_evervault_runtime_secrets() {
@@ -1099,6 +1218,7 @@ main() {
     --rollback|-r)
       run_preflight_checks
       resolve_master_key_override_from_gsm
+      load_runtime_api_secrets_from_gsm
       configure_docker_auth
       load_evervault_runtime_secrets
       do_rollback
@@ -1129,6 +1249,8 @@ main() {
       echo "  WORKER_IMAGE     Override worker image URL"
       echo "  WEB_IMAGE        Override web image URL"
       echo "  MASTER_KEY_OVERRIDE Deploy-time runtime override for MASTER_KEY (set automatically when GSM is enabled)"
+      echo "  INTERNAL_API_KEY Deploy-time runtime override for INTERNAL_API_KEY (can be GSM-resolved)"
+      echo "  RESEND_API_KEY   Deploy-time runtime override for RESEND_API_KEY (can be GSM-resolved)"
       echo "  DEPLOY_HISTORY_DIR Override deployment history dir (default: /opt/bominal/deployments)"
       echo "  DEPLOY_FAIL_ON_DIRTY_REPO=true  Block deploy when tracked repo changes are present"
       echo ""
@@ -1142,6 +1264,7 @@ main() {
 
   run_preflight_checks
   resolve_master_key_override_from_gsm
+  load_runtime_api_secrets_from_gsm
   configure_docker_auth
   resolve_ghcr_namespace
   load_evervault_runtime_secrets

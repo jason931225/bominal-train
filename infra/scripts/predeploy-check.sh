@@ -119,6 +119,32 @@ is_truthy() {
   esac
 }
 
+is_placeholder_value() {
+  local value="$1"
+  case "$value" in
+    *CHANGE_ME*|*REPLACE_ME*|*TODO*|*"<no value>"*)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+has_meaningful_value() {
+  local value="$1"
+  local normalized
+  normalized="${value#"${value%%[![:space:]]*}"}"
+  normalized="${normalized%"${normalized##*[![:space:]]}"}"
+  if [[ -z "$normalized" ]]; then
+    return 1
+  fi
+  if is_placeholder_value "$normalized"; then
+    return 1
+  fi
+  return 0
+}
+
 require_positive_number() {
   local value="$1"
   local name="$2"
@@ -141,6 +167,19 @@ require_positive_integer() {
   fi
   if [[ "$value" -le 0 ]]; then
     log_error "$name must be > 0 (got: ${value})"
+    exit 1
+  fi
+}
+
+require_pinned_secret_version() {
+  local value="$1"
+  local name="$2"
+  if [[ -z "$value" ]]; then
+    log_error "$name is required when corresponding *_SECRET_ID is configured."
+    exit 1
+  fi
+  if [[ "$(printf '%s' "$value" | tr '[:upper:]' '[:lower:]')" == "latest" ]]; then
+    log_error "$name must be pinned in production (latest is not allowed)."
     exit 1
   fi
 }
@@ -369,11 +408,40 @@ required_api_keys=(
   "SYNC_DATABASE_URL"
   "AUTH_MODE"
   "EMAIL_PROVIDER"
-  "INTERNAL_API_KEY"
 )
 for key in "${required_api_keys[@]}"; do
   require_env_key_nonempty "infra/env/prod/api.env" "$key"
 done
+
+internal_api_key="$(env_key_value "infra/env/prod/api.env" "INTERNAL_API_KEY")"
+internal_api_key_secret_id="$(env_key_value "infra/env/prod/api.env" "INTERNAL_API_KEY_SECRET_ID")"
+internal_api_key_secret_version="$(env_key_value "infra/env/prod/api.env" "INTERNAL_API_KEY_SECRET_VERSION")"
+gcp_project_id="$(env_key_value "infra/env/prod/api.env" "GCP_PROJECT_ID")"
+
+internal_api_key_set=0
+internal_api_key_secret_set=0
+if has_meaningful_value "$internal_api_key"; then
+  internal_api_key_set=1
+fi
+if has_meaningful_value "$internal_api_key_secret_id"; then
+  internal_api_key_secret_set=1
+fi
+
+if [[ "$internal_api_key_set" -eq 1 && "$internal_api_key_secret_set" -eq 1 ]]; then
+  log_error "INTERNAL_API_KEY and INTERNAL_API_KEY_SECRET_ID cannot both be set."
+  exit 1
+fi
+if [[ "$internal_api_key_set" -ne 1 && "$internal_api_key_secret_set" -ne 1 ]]; then
+  log_error "Set INTERNAL_API_KEY or INTERNAL_API_KEY_SECRET_ID."
+  exit 1
+fi
+if [[ "$internal_api_key_secret_set" -eq 1 ]]; then
+  if [[ -z "$gcp_project_id" ]]; then
+    log_error "INTERNAL_API_KEY_SECRET_ID requires GCP_PROJECT_ID."
+    exit 1
+  fi
+  require_pinned_secret_version "${internal_api_key_secret_version:-}" "INTERNAL_API_KEY_SECRET_VERSION"
+fi
 
 gsm_master_key_enabled="$(env_key_value "infra/env/prod/api.env" "GSM_MASTER_KEY_ENABLED" | tr '[:upper:]' '[:lower:]')"
 if [[ -z "$gsm_master_key_enabled" ]]; then
@@ -438,6 +506,24 @@ fi
 
 payment_provider_mode="$(env_key_value "infra/env/prod/api.env" "PAYMENT_PROVIDER" | tr '[:upper:]' '[:lower:]')"
 if [[ "$payment_provider_mode" == "evervault" ]]; then
+  payment_evervault_enforce="$(env_key_value "infra/env/prod/api.env" "PAYMENT_EVERVAULT_ENFORCE" | tr '[:upper:]' '[:lower:]')"
+  autopay_require_user_wallet="$(env_key_value "infra/env/prod/api.env" "AUTOPAY_REQUIRE_USER_WALLET" | tr '[:upper:]' '[:lower:]')"
+  autopay_allow_server_fallback="$(env_key_value "infra/env/prod/api.env" "AUTOPAY_ALLOW_SERVER_FALLBACK" | tr '[:upper:]' '[:lower:]')"
+  require_boolean_like "${payment_evervault_enforce:-}" "PAYMENT_EVERVAULT_ENFORCE"
+  require_boolean_like "${autopay_require_user_wallet:-}" "AUTOPAY_REQUIRE_USER_WALLET"
+  require_boolean_like "${autopay_allow_server_fallback:-}" "AUTOPAY_ALLOW_SERVER_FALLBACK"
+  if ! is_truthy "$payment_evervault_enforce"; then
+    log_error "PAYMENT_PROVIDER=evervault requires PAYMENT_EVERVAULT_ENFORCE=true in production."
+    exit 1
+  fi
+  if ! is_truthy "$autopay_require_user_wallet"; then
+    log_error "PAYMENT_PROVIDER=evervault requires AUTOPAY_REQUIRE_USER_WALLET=true in production."
+    exit 1
+  fi
+  if is_truthy "$autopay_allow_server_fallback"; then
+    log_error "PAYMENT_PROVIDER=evervault requires AUTOPAY_ALLOW_SERVER_FALLBACK=false in production."
+    exit 1
+  fi
   require_env_key_nonempty "infra/env/prod/web.env" "NEXT_PUBLIC_EVERVAULT_TEAM_ID"
   require_env_key_nonempty "infra/env/prod/web.env" "NEXT_PUBLIC_EVERVAULT_APP_ID"
 fi
@@ -519,19 +605,51 @@ esac
 
 if [[ "$email_provider" == "resend" ]]; then
   resend_api_key="$(env_key_value "infra/env/prod/api.env" "RESEND_API_KEY")"
+  resend_api_key_secret_id="$(env_key_value "infra/env/prod/api.env" "RESEND_API_KEY_SECRET_ID")"
+  resend_api_key_secret_version="$(env_key_value "infra/env/prod/api.env" "RESEND_API_KEY_SECRET_VERSION")"
   resend_api_key_vault_name="$(env_key_value "infra/env/prod/api.env" "RESEND_API_KEY_VAULT_NAME")"
-  if [[ -z "$resend_api_key" && -z "$resend_api_key_vault_name" ]]; then
-    log_error "EMAIL_PROVIDER=resend requires RESEND_API_KEY or RESEND_API_KEY_VAULT_NAME."
+  resend_api_key_set=0
+  resend_api_key_secret_set=0
+  resend_api_key_vault_set=0
+  if has_meaningful_value "$resend_api_key"; then
+    resend_api_key_set=1
+  fi
+  if has_meaningful_value "$resend_api_key_secret_id"; then
+    resend_api_key_secret_set=1
+  fi
+  if has_meaningful_value "$resend_api_key_vault_name"; then
+    resend_api_key_vault_set=1
+  fi
+
+  configured_sources=$((resend_api_key_set + resend_api_key_secret_set + resend_api_key_vault_set))
+  if [[ "$configured_sources" -eq 0 ]]; then
+    log_error "EMAIL_PROVIDER=resend requires exactly one source: RESEND_API_KEY, RESEND_API_KEY_SECRET_ID, or RESEND_API_KEY_VAULT_NAME."
     exit 1
   fi
-  if [[ -n "$resend_api_key_vault_name" ]]; then
+  if [[ "$configured_sources" -gt 1 ]]; then
+    log_error "RESEND API key source is ambiguous; set only one of RESEND_API_KEY, RESEND_API_KEY_SECRET_ID, RESEND_API_KEY_VAULT_NAME."
+    exit 1
+  fi
+  if [[ "$resend_api_key_secret_set" -eq 1 ]]; then
+    if [[ -z "$gcp_project_id" ]]; then
+      log_error "RESEND_API_KEY_SECRET_ID requires GCP_PROJECT_ID."
+      exit 1
+    fi
+    require_pinned_secret_version "${resend_api_key_secret_version:-}" "RESEND_API_KEY_SECRET_VERSION"
+  fi
+  if [[ "$resend_api_key_vault_set" -eq 1 ]]; then
     supabase_vault_enabled="$(env_key_value "infra/env/prod/api.env" "SUPABASE_VAULT_ENABLED" | tr '[:upper:]' '[:lower:]')"
     if ! is_truthy "$supabase_vault_enabled"; then
       log_error "RESEND_API_KEY_VAULT_NAME requires SUPABASE_VAULT_ENABLED=true."
       exit 1
     fi
+    if ! is_truthy "$edge_task_notify_enabled"; then
+      log_error "RESEND_API_KEY_VAULT_NAME is allowed only when EDGE_TASK_NOTIFY_ENABLED=true."
+      exit 1
+    fi
     require_env_key_nonempty "infra/env/prod/api.env" "SUPABASE_URL"
   fi
+  require_env_key_nonempty "infra/env/prod/api.env" "EMAIL_FROM_ADDRESS"
 fi
 
 if [[ "$email_provider" == "smtp" ]]; then

@@ -77,6 +77,11 @@ Envelope decrypt behavior:
     - `GSM_MASTER_KEY_ALLOW_ENV_FALLBACK=false`
     - missing GSM fetch is fail-closed for runtime startup
 
+Secret residency/source-of-truth policy:
+
+- canonical source split is defined in `docs/governance/SECRETS_RESIDENCY_POLICY.md`
+- production predeploy gates reject ambiguous secret sources for `INTERNAL_API_KEY` and `RESEND_API_KEY`
+
 ## Payment data handling
 
 - Payment card persisted encrypted in `secrets`
@@ -308,125 +313,6 @@ Guardrails override implementation shortcuts. If this policy conflicts with feat
 
 - Sensitive fields are redacted via `redact_sensitive`
 - Task attempts/artifacts store safe metadata only (`meta_json_safe`, `data_json_safe`)
-
-## PCI relay worker isolation policy
-
-This policy applies to any component that receives raw PAN/expiry, decrypts payment payloads, or submits card data to external providers.
-
-### CDE boundary
-
-The Cardholder Data Environment (CDE) includes:
-
-- API code paths that decrypt wallet secrets
-- Workers that construct provider payment requests
-- Envelope decryption logic and runtime memory that holds decrypted PAN
-
-The CDE explicitly excludes:
-
-- Web layer
-- Queue payloads
-- `meta_json_safe` / `data_json_safe` records
-- Artifacts that are not explicitly safe metadata
-- Logs and observability payload bodies
-
-No raw cardholder data may enter non-CDE systems.
-
-### Ephemeral relay worker requirements (mandatory)
-
-Any worker performing payment submission MUST satisfy all requirements below:
-
-- Stateless runtime:
-  - MUST NOT persist card data to Postgres.
-  - MUST NOT serialize card data into ARQ jobs.
-  - MUST NOT write card data to disk, artifacts, or task attempts.
-- Memory lifetime:
-  - MUST decrypt card payload only immediately before provider submission.
-  - MUST drop decrypted references after submission (best-effort zeroization in language/runtime limits).
-  - MUST re-fetch encrypted secret on retry; MUST NOT reuse persisted plaintext payload.
-- Logging prohibition:
-  - MUST NOT log request or response bodies containing card data.
-  - MUST disable HTTP client debug payload logging.
-  - MUST apply redaction middleware to PAN/CVV/token/header/cookie patterns.
-
-Violation of this section is CRITICAL.
-
-### Redaction enforcement architecture
-
-- `redact_sensitive()` is mandatory at every logging and persistence boundary where untrusted/provider payloads can flow.
-- Global exception handlers MUST redact emitted context.
-- Structured logging formatters MUST redact message, exception text, and `extra` fields before emission.
-- Provider traces written to `meta_json_safe` / `data_json_safe` MUST pass through redaction first.
-
-### Legacy CVV key cleanup policy
-
-- CVV inputs are rejected by wallet APIs and are not cached.
-- CDE Redis endpoint (`REDIS_URL_CDE` or fallback `REDIS_URL`) MUST NOT be Upstash-hosted.
-- Legacy CVV keys from prior releases MUST be removed with:
-  - `python -m app.admin_cli secret purge-payment-cvv --yes`
-- CVV MUST NEVER appear in Postgres, queue payloads, artifacts, or logs.
-
-### Queue safety contract
-
-ARQ payloads MUST NOT contain:
-
-- PAN/CVV/expiry
-- decrypted secrets
-- raw provider request or response payloads
-- session tokens or authorization headers
-
-Only safe identifiers may be queued (`task_id`, provider IDs, reference IDs, idempotency keys, safe metadata references).
-
-### Provider payload safety contract
-
-Persistable provider fields are limited to safe metadata:
-
-- `meta_json_safe`
-- `data_json_safe`
-- masked identifiers (for example: last 4 digits)
-- provider reservation IDs
-- provider status/error codes
-
-Never persist:
-
-- full card number
-- CVV
-- full raw provider request JSON
-- raw provider response JSON containing sensitive fields
-
-### Network egress and SSRF controls
-
-Workers handling payment MUST:
-
-- connect only to configured provider domain allowlist (`PAYMENT_PROVIDER_ALLOWED_HOSTS`)
-- enforce TLS certificate verification
-- disable proxy inheritance by default (`PAYMENT_TRANSPORT_TRUST_ENV=false` unless explicitly approved)
-- enforce bounded connect/read/total timeouts
-- reject user-input hostnames and dynamic outbound host routing
-- when egress gateways are configured:
-  - `TRAIN_PROVIDER_EGRESS_PROXY_URL` MUST target internal `egress-train`
-  - if `RESTAURANT_MODULE_ENABLED=true`, `RESTAURANT_PROVIDER_EGRESS_PROXY_URL` MUST target internal `egress-restaurant`
-  - egress gateways MUST deny unmatched paths and methods (fail closed)
-  - egress gateways MUST not expose administrative control surfaces
-
-### Crash/dump safety
-
-Production runtime MUST:
-
-- disable core dumps for payment execution paths
-- avoid stack traces that include decrypted payloads
-- avoid exception messages that include request/response bodies with sensitive fields
-
-### Severity classification and deploy gate
-
-The following are automatically CRITICAL and block deploy:
-
-- plaintext PAN persistence anywhere
-- any CVV collection/caching/persistence
-- logging of provider payment payloads
-- queue serialization of card data
-- reintroduction of CVV cache write paths
-- envelope encryption bypass
-- TLS verification disabled on provider payment egress
 
 ## Rate limiting
 
