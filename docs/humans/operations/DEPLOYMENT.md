@@ -300,6 +300,9 @@ bash infra/scripts/setup-gsm-master-key.sh --project-id <gcp_project_id>
 python3 infra/scripts/setup-gsm-master-key.py --project-id <gcp_project_id>
 ```
 
+By default, helper IAM bindings target `bominal-runtime@<project>.iam.gserviceaccount.com`.
+Override with `--runtime-service-account-email <sa_email>` when needed.
+
 Production URL scheme enforcement (predeploy gate):
 - `SUPABASE_URL` and `SUPABASE_JWT_ISSUER` must be `https://`.
 - `CORS_ORIGINS` entries must be `https://`.

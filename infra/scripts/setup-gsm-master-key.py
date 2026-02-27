@@ -8,14 +8,11 @@ import os
 import re
 import shutil
 import subprocess
-import sys
 import tempfile
 from pathlib import Path
-from urllib import error, request
 
-METADATA_VM_SA_URL = (
-    "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/email"
-)
+DEFAULT_RUNTIME_SERVICE_ACCOUNT_NAME = "bominal-runtime"
+DEFAULT_DEPLOY_SUBSCRIPTION = "bominal-deploy-requests-vm"
 
 
 class ScriptError(RuntimeError):
@@ -86,28 +83,6 @@ def validate_master_key_b64(master_key: str) -> str:
     if len(decoded) != 32:
         raise ScriptError(f"MASTER_KEY must decode to 32 bytes (got {len(decoded)} bytes).")
     return normalized
-
-
-def fetch_vm_service_account_email() -> str:
-    req = request.Request(
-        METADATA_VM_SA_URL,
-        headers={"Metadata-Flavor": "Google"},
-        method="GET",
-    )
-    try:
-        with request.urlopen(req, timeout=5.0) as response:
-            payload = response.read().decode("utf-8").strip()
-    except error.URLError as exc:
-        raise ScriptError(
-            "Unable to resolve VM service account from metadata server. "
-            "Pass --vm-service-account explicitly."
-        ) from exc
-    if not payload:
-        raise ScriptError(
-            "Metadata server returned an empty VM service account. "
-            "Pass --vm-service-account explicitly."
-        )
-    return payload
 
 
 def ensure_secret_api_enabled(project_id: str, *, dry_run: bool) -> None:
@@ -206,7 +181,7 @@ def verify_secret_version_exists(project_id: str, secret_id: str, version: str, 
 def add_secret_accessor_binding(
     project_id: str,
     secret_id: str,
-    vm_service_account: str,
+    runtime_service_account: str,
     *,
     dry_run: bool,
 ) -> None:
@@ -218,9 +193,35 @@ def add_secret_accessor_binding(
         "--project",
         project_id,
         "--member",
-        f"serviceAccount:{vm_service_account}",
+        f"serviceAccount:{runtime_service_account}",
         "--role",
         "roles/secretmanager.secretAccessor",
+    ]
+    if dry_run:
+        log("INFO", f"Dry-run: would run {' '.join(cmd)}")
+        return
+    run_cmd(cmd)
+
+
+def add_deploy_subscription_binding(
+    project_id: str,
+    subscription: str,
+    runtime_service_account: str,
+    *,
+    dry_run: bool,
+) -> None:
+    cmd = [
+        "gcloud",
+        "pubsub",
+        "subscriptions",
+        "add-iam-policy-binding",
+        subscription,
+        "--project",
+        project_id,
+        "--member",
+        f"serviceAccount:{runtime_service_account}",
+        "--role",
+        "roles/pubsub.subscriber",
     ]
     if dry_run:
         log("INFO", f"Dry-run: would run {' '.join(cmd)}")
@@ -290,6 +291,27 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--project-id", default="", help="GCP project id (fallback: api.env GCP_PROJECT_ID)")
     parser.add_argument("--secret-id", default="bominal-master-key", help="Secret Manager secret id")
     parser.add_argument(
+        "--runtime-service-account-email",
+        default="",
+        help=(
+            "Explicit runtime service-account email for IAM bindings "
+            "(default: <runtime-service-account-name>@<project-id>.iam.gserviceaccount.com)"
+        ),
+    )
+    parser.add_argument(
+        "--runtime-service-account-name",
+        default=DEFAULT_RUNTIME_SERVICE_ACCOUNT_NAME,
+        help=(
+            "Runtime service-account name used when --runtime-service-account-email is omitted "
+            f"(default: {DEFAULT_RUNTIME_SERVICE_ACCOUNT_NAME})"
+        ),
+    )
+    parser.add_argument(
+        "--deploy-subscription",
+        default=DEFAULT_DEPLOY_SUBSCRIPTION,
+        help=f"Deploy Pub/Sub subscription name for subscriber IAM binding (default: {DEFAULT_DEPLOY_SUBSCRIPTION})",
+    )
+    parser.add_argument(
         "--master-key",
         default="",
         help="Base64 32-byte master key payload (fallback: api.env MASTER_KEY)",
@@ -299,13 +321,25 @@ def parse_args() -> argparse.Namespace:
         default="",
         help="Existing secret version to pin. If omitted, script adds a new secret version from MASTER_KEY.",
     )
+    # Backward-compatible alias for older invocations.
     parser.add_argument(
         "--vm-service-account",
         default="",
-        help="VM service-account email for secretAccessor binding (fallback: metadata server)",
+        help=argparse.SUPPRESS,
     )
     parser.add_argument("--skip-enable-api", action="store_true", help="Skip gcloud services enable")
-    parser.add_argument("--skip-iam-binding", action="store_true", help="Skip IAM binding step")
+    parser.add_argument(
+        "--skip-secret-iam-binding",
+        "--skip-iam-binding",
+        dest="skip_secret_iam_binding",
+        action="store_true",
+        help="Skip Secret Manager secretAccessor IAM binding",
+    )
+    parser.add_argument(
+        "--skip-pubsub-binding",
+        action="store_true",
+        help="Skip Pub/Sub subscriber IAM binding for deploy subscription",
+    )
     parser.add_argument("--dry-run", action="store_true", help="Preview actions without mutating state")
     parser.add_argument("--no-backup", action="store_true", help="Skip api.env backup before writing")
     return parser.parse_args()
@@ -349,23 +383,30 @@ def main() -> int:
         else:
             pinned_version = add_secret_version(project_id, secret_id, master_key_b64, dry_run=args.dry_run)
 
-        vm_sa = ""
-        if not args.skip_iam_binding:
-            vm_sa = (args.vm_service_account or "").strip()
-            if not vm_sa:
-                if args.dry_run:
-                    vm_sa = "CHANGE_ME_VM_SERVICE_ACCOUNT"
-                    log(
-                        "WARN",
-                        "Dry-run: metadata lookup skipped for VM service account. "
-                        "Pass --vm-service-account for exact IAM preview.",
-                    )
-                else:
-                    vm_sa = fetch_vm_service_account_email()
+        runtime_sa = (args.runtime_service_account_email or args.vm_service_account or "").strip()
+        if not runtime_sa:
+            runtime_sa_name = (args.runtime_service_account_name or "").strip()
+            if not runtime_sa_name:
+                raise ScriptError(
+                    "Runtime service account name is empty. Set --runtime-service-account-name "
+                    "or --runtime-service-account-email."
+                )
+            runtime_sa = f"{runtime_sa_name}@{project_id}.iam.gserviceaccount.com"
+        if "@" not in runtime_sa:
+            raise ScriptError(f"Runtime service-account email is invalid: {runtime_sa}")
+
+        if not args.skip_secret_iam_binding:
             add_secret_accessor_binding(
                 project_id,
                 secret_id,
-                vm_sa,
+                runtime_sa,
+                dry_run=args.dry_run,
+            )
+        if not args.skip_pubsub_binding:
+            add_deploy_subscription_binding(
+                project_id,
+                args.deploy_subscription,
+                runtime_sa,
                 dry_run=args.dry_run,
             )
 
@@ -387,8 +428,14 @@ def main() -> int:
         log("OK", "GSM master-key setup complete.")
         log("INFO", f"api.env: {api_env}")
         log("INFO", f"Pinned version: {pinned_version}")
-        if vm_sa:
-            log("INFO", f"secretAccessor IAM member: serviceAccount:{vm_sa}")
+        log("INFO", f"Runtime service account: {runtime_sa}")
+        if not args.skip_secret_iam_binding:
+            log("INFO", f"secretAccessor IAM member: serviceAccount:{runtime_sa}")
+        if not args.skip_pubsub_binding:
+            log(
+                "INFO",
+                f"pubsub subscriber IAM member on {args.deploy_subscription}: serviceAccount:{runtime_sa}",
+            )
         log("INFO", "Next steps:")
         log("INFO", "  1) bash infra/scripts/predeploy-check.sh --skip-smoke-tests")
         log("INFO", "  2) sudo -u bominal /opt/bominal/repo/infra/scripts/deploy.sh")
