@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from datetime import datetime
 from typing import Any
+from types import SimpleNamespace
 
 import pytest
 
@@ -438,6 +439,42 @@ async def test_ktx_pay_get_reservations_ticket_info_cancel_and_refund_branches(m
     )
     assert pay_ok.ok is True
     assert pay_ok.data["paid"] is True
+
+    relay_client = KTXClient(transport=_QueuedTransport([]))
+    relay_client._logged_in_user_ids.add(user_id)  # noqa: SLF001
+    monkeypatch.setattr(relay_client, "get_reservations", _reservation_unpaid)
+    monkeypatch.setattr(relay_client, "ticket_info", _ticket_info_with_wct)
+    relay_captured: dict[str, Any] = {}
+
+    async def _relay_submit(**kwargs):  # noqa: ANN003
+        relay_captured.update(kwargs)
+        return SimpleNamespace(
+            status_code=200,
+            text=json.dumps({"strResult": "SUCC"}),
+            relay_url="https://relay.example/payment",
+            relay_id="relay_ktx",
+            relay_domain="relay.example",
+        )
+
+    monkeypatch.setattr(
+        "app.modules.train.providers.ktx_client.submit_ktx_payment_via_evervault_relay",
+        _relay_submit,
+    )
+    relay_ok = await relay_client.pay(
+        reservation_id="PNR-1",
+        user_id=user_id,
+        payment_card={
+            "source": "evervault",
+            "card_number": "ev:card",
+            "card_password": "ev:pin2",
+            "validation_number": "ev:birth",
+            "card_expire": "ev:expiry",
+        },
+    )
+    assert relay_ok.ok is True
+    assert relay_ok.data["paid"] is True
+    assert relay_captured["form_data"]["hidStlCrCrdNo1"] == "ev:card"
+    assert relay_client._transport.requests == []  # noqa: SLF001
 
     not_logged_in_reservations = await KTXClient(transport=_QueuedTransport([])).get_reservations(user_id="u2")
     assert not_logged_in_reservations.ok is False

@@ -155,6 +155,46 @@ def test_config_and_schema_validation_small_gaps():
         )
 
 
+def test_payment_card_schema_mode_enforcement_and_cvv_rejection(monkeypatch):
+    monkeypatch.setattr("app.schemas.wallet.get_settings", lambda: SimpleNamespace(payment_provider="legacy"))
+    with pytest.raises(ValueError, match="encrypted card payload is not accepted"):
+        PaymentCardSetRequest(
+            encrypted_card_number="ev:card",
+            encrypted_pin2="ev:pin2",
+            encrypted_birth_date="ev:birth",
+            encrypted_expiry="ev:expiry",
+            last4="1234",
+        )
+
+    monkeypatch.setattr("app.schemas.wallet.get_settings", lambda: SimpleNamespace(payment_provider="evervault"))
+    with pytest.raises(ValueError, match="plaintext card fields are not accepted"):
+        PaymentCardSetRequest(
+            card_number="4111 1111 1111 1111",
+            expiry_month=12,
+            expiry_year=2099,
+            birth_date=date(1990, 1, 1),
+            pin2="12",
+        )
+    with pytest.raises(ValueError, match="cvv field is no longer accepted"):
+        PaymentCardSetRequest(
+            encrypted_card_number="ev:card",
+            encrypted_pin2="ev:pin2",
+            encrypted_birth_date="ev:birth",
+            encrypted_expiry="ev:expiry",
+            last4="1234",
+            cvv="123",
+        )
+    payload = PaymentCardSetRequest(
+        encrypted_card_number="ev:card",
+        encrypted_pin2="ev:pin2",
+        encrypted_birth_date="ev:birth",
+        encrypted_expiry="ev:expiry",
+        last4="1234",
+        brand="visa",
+    )
+    assert payload.source == "evervault"
+
+
 def test_password_needs_rehash_handles_invalid_hash_errors(monkeypatch: pytest.MonkeyPatch) -> None:
     class _BrokenHasher:
         @staticmethod

@@ -173,7 +173,12 @@ docker compose -f infra/docker-compose.prod.yml exec redis redis-cli CONFIG GET 
 docker compose -f infra/docker-compose.prod.yml exec redis redis-cli CONFIG GET appendonly
 
 # Validate provider egress allowlist and timeout envs are set.
-docker compose -f infra/docker-compose.prod.yml exec api env | rg 'PAYMENT_PROVIDER_ALLOWED_HOSTS|TRAIN_PROVIDER_TIMEOUT_|PAYMENT_TRANSPORT_TRUST_ENV|PROVIDER_EGRESS_PROXY_URL'
+docker compose -f infra/docker-compose.prod.yml exec api env | rg 'PAYMENT_PROVIDER_ALLOWED_HOSTS|PAYMENT_PROVIDER|PAYMENT_EVERVAULT_ENFORCE|AUTOPAY_REQUIRE_USER_WALLET|AUTOPAY_ALLOW_SERVER_FALLBACK|TRAIN_PROVIDER_TIMEOUT_|PAYMENT_TRANSPORT_TRUST_ENV|PROVIDER_EGRESS_PROXY_URL'
+
+# Validate Evervault runtime credentials are injected and gsm references are configured.
+docker compose -f infra/docker-compose.prod.yml exec api env | rg 'EVERVAULT_APP_ID|EVERVAULT_API_KEY'
+rg -n 'EVERVAULT_(APP_ID|API_KEY|API_BASE_URL|RELAY_CACHE_SECONDS|KTX_PAYMENT_RELAY_ID|SRT_PAYMENT_RELAY_ID)(_SECRET_(ID|VERSION))?=' infra/env/prod/api.env
+rg -n 'NEXT_PUBLIC_EVERVAULT_(TEAM_ID|APP_ID)=' infra/env/prod/web.env
 
 # Confirm egress gateways are healthy and deny unknown routes by default.
 docker compose -f infra/docker-compose.prod.yml exec egress-train wget --spider -q http://127.0.0.1:8080/health
@@ -622,6 +627,45 @@ bominal-deploy
 2. Verify worker is healthy and consuming `train:queue`.
 3. Trigger `/api/notifications/email/test` from an authenticated session.
 4. Inspect API/worker logs for redacted delivery errors (no payload bodies).
+
+## 6.2) Train terminal notifications via Supabase Edge Function
+
+When `EDGE_TASK_NOTIFY_ENABLED=true`, worker terminal notifications attempt edge invoke first (`task-notify`) and fall back to queue delivery on failure.
+
+Checks:
+
+1. Confirm API env values in `infra/env/prod/api.env`:
+   - `EDGE_TASK_NOTIFY_ENABLED=true`
+   - `SUPABASE_SERVICE_ROLE_KEY` set
+   - `SUPABASE_EDGE_TASK_NOTIFY_FUNCTION_NAME=task-notify` (or your override)
+   - `SUPABASE_EDGE_FUNCTIONS_BASE_URL` unset (default) or valid `https://`
+2. Confirm edge function secrets are configured:
+   - `RESEND_API_KEY`
+   - `EMAIL_FROM_ADDRESS`
+   - optional `EMAIL_FROM_NAME`
+3. Inspect worker logs for edge invoke status:
+   - success path records `edge:task-notify` as notification job marker in task spec
+   - failure path logs warning and continues with queue fallback
+
+Recovery:
+
+1. If edge invoke fails persistently, set `EDGE_TASK_NOTIFY_ENABLED=false` and redeploy to force queue-only notification delivery.
+2. If fallback queue path also fails, use section `6.1` checks for Resend provider configuration.
+
+## 6.3) Train Data API/GraphQL read-path toggles
+
+Train list/detail reads can be switched to direct Supabase paths with automatic fallback to VM API:
+
+1. `NEXT_PUBLIC_TRAIN_READS_VIA_DATA_API=true` enables list bootstrap reads from `public.v_train_task_list_compact`.
+2. `NEXT_PUBLIC_TRAIN_DETAIL_VIA_GRAPHQL=true` enables task detail reads from `/graphql/v1`.
+
+Checks:
+
+1. Confirm browser auth/realtime base keys are present in `infra/env/prod/web.env`:
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+2. Keep feature flags off (`false`) during rollback or if RLS/view schema is not ready.
+3. Verify task list/detail still loads with flags enabled; on read-path errors, UI should transparently fallback to `/api/train/tasks` and `/api/train/tasks/{id}`.
 
 ## 7) Restaurant task policy behavior (stage scaffold)
 

@@ -48,6 +48,7 @@ Each service has a health check in `docker-compose.prod.yml`:
 | caddy    | `wget` (admin API port 2019) | 30s |
 
 Production profile currently disables the restaurant module (`RESTAURANT_MODULE_ENABLED=false`) and does not run `egress-restaurant`.
+`infra/scripts/deploy.sh` now enforces this at runtime by trimming stale `bominal-egress-restaurant` containers before deploy/rollback mutation.
 
 The `start_period` gives the container time to initialize before health checks begin counting failures.
 
@@ -73,6 +74,17 @@ Optional image override envs (for controlled/manual rollouts):
 - `API_IMAGE`, `WORKER_IMAGE`, `WEB_IMAGE`
 - Backward-compatible split overrides are still accepted but should be removed from operator automation.
 
+Evervault secret sourcing (production):
+- Keep `EVERVAULT_APP_ID` / `EVERVAULT_API_KEY` empty in `infra/env/prod/api.env`.
+- Set Secret Manager references in `infra/env/prod/api.env`:
+  - `EVERVAULT_APP_ID_SECRET_ID`, `EVERVAULT_APP_ID_SECRET_VERSION`
+  - `EVERVAULT_API_KEY_SECRET_ID`, `EVERVAULT_API_KEY_SECRET_VERSION`
+- `infra/scripts/deploy.sh` resolves these from GSM at deploy time and injects redacted runtime env vars for `api` and `worker`.
+- `GCP_PROJECT_ID` must be set in `infra/env/prod/api.env` when GSM secret IDs are used.
+- If `PAYMENT_PROVIDER=evervault`, set browser encryption vars in `infra/env/prod/web.env`:
+  - `NEXT_PUBLIC_EVERVAULT_TEAM_ID`
+  - `NEXT_PUBLIC_EVERVAULT_APP_ID`
+
 ### Deploy Script Safety Controls
 
 - Single-run deploy lock (default path: `/tmp/bominal-deploy.lock`) blocks concurrent invocations.
@@ -88,6 +100,9 @@ Optional image override envs (for controlled/manual rollouts):
 - Threshold knobs:
   - `DEPLOY_MIN_TOTAL_MEMORY_MB` (default `900`)
   - `DEPLOY_MIN_TOTAL_SWAP_MB` (default `900`)
+- e2-micro tuned service limits in production compose:
+  - `api=352M`, `web=224M`, `worker=128M`, `egress-train=64M`, `redis=48M`, `caddy=64M`
+  - explicit service-limit total: `880M` (keeps host-level headroom)
 - Deprecation deploy gate is enforced during predeploy:
   - registry: `docs/deprecations/registry.json`
   - policy: `docs/governance/DEPRECATION_POLICY.md`
@@ -272,9 +287,9 @@ Optional:
 - validates critical contracts (Supabase URLs, `MASTER_KEY` format, unresolved placeholders).
 
 If you choose manual editing instead, required values are:
-- `infra/env/prod/api.env`: `INTERNAL_API_KEY`, `DATABASE_URL`, `SYNC_DATABASE_URL`, `AUTH_MODE=supabase`, `SUPABASE_URL`, `SUPABASE_JWT_ISSUER`, `SUPABASE_AUTH_ENABLED=true`, `SUPABASE_AUTH_API_KEY` (or `SUPABASE_SERVICE_ROLE_KEY` fallback), `SUPABASE_STORAGE_ENABLED=true`, `SUPABASE_SERVICE_ROLE_KEY`, `RESEND_API_KEY`, sender-domain placeholder in `EMAIL_FROM_ADDRESS`, plus passkey origin settings (`PASSKEY_RP_ID`, `PASSKEY_ORIGIN`), and a valid master-key source (`MASTER_KEY` or GSM settings)
+- `infra/env/prod/api.env`: `INTERNAL_API_KEY`, `DATABASE_URL`, `SYNC_DATABASE_URL`, `AUTH_MODE=supabase`, `SUPABASE_URL`, `SUPABASE_JWT_ISSUER`, `SUPABASE_AUTH_ENABLED=true`, `SUPABASE_AUTH_API_KEY` (or `SUPABASE_SERVICE_ROLE_KEY` fallback), `SUPABASE_STORAGE_ENABLED=true`, `SUPABASE_SERVICE_ROLE_KEY`, sender-domain placeholder in `EMAIL_FROM_ADDRESS`, passkey origin settings (`PASSKEY_RP_ID`, `PASSKEY_ORIGIN`), optional provider session-cache knobs (`TRAIN_PROVIDER_CLIENT_CACHE_SECONDS`, `TRAIN_PROVIDER_CLIENT_CACHE_MAX_ENTRIES`), optional edge-notify knobs (`EDGE_TASK_NOTIFY_ENABLED`, `SUPABASE_EDGE_FUNCTIONS_BASE_URL`, `SUPABASE_EDGE_TASK_NOTIFY_FUNCTION_NAME`, `SUPABASE_EDGE_TIMEOUT_SECONDS`), optional Evervault settings (`EVERVAULT_APP_ID`/`EVERVAULT_APP_ID_SECRET_ID`, `EVERVAULT_API_KEY`/`EVERVAULT_API_KEY_SECRET_ID`), and a valid master-key source (`MASTER_KEY` or GSM settings)
 - `infra/env/prod/pay.env`: backend-only auto-pay card data (`CARDNUMBER`, `EXPIRYMM`, `EXPIRYYY`, `DOB`, `NN`)
-- `infra/env/prod/web.env`: `NEXT_PUBLIC_API_BASE_URL`, `API_SERVER_URL` (`http://api:8000` for monolithic API runtime)
+- `infra/env/prod/web.env`: `NEXT_PUBLIC_API_BASE_URL`, `API_SERVER_URL` (`http://api:8000` for monolithic API runtime), and Supabase browser auth/realtime/read-path keys (`NEXT_PUBLIC_SUPABASE_DIRECT_AUTH_ENABLED`, `NEXT_PUBLIC_SUPABASE_REALTIME_ENABLED`, `NEXT_PUBLIC_SUPABASE_REALTIME_DELTA_READ_ENABLED`, `NEXT_PUBLIC_TRAIN_READS_VIA_DATA_API`, `NEXT_PUBLIC_TRAIN_DETAIL_VIA_GRAPHQL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`)
 - `infra/env/prod/caddy.env`: `CADDY_SITE_ADDRESS`, `CADDY_ACME_EMAIL`
 - `infra/env/prod/deploy.env` (optional helper): set `GHCR_USERNAME` + `GHCR_TOKEN` when GHCR packages are private
 
@@ -282,6 +297,7 @@ Production auth/storage mode (hard gate):
 - `AUTH_MODE` must be `supabase`
 - `SUPABASE_AUTH_ENABLED` must be `true` and requires `SUPABASE_AUTH_API_KEY` or `SUPABASE_SERVICE_ROLE_KEY`, plus positive `SUPABASE_AUTH_TIMEOUT_SECONDS`
 - `SUPABASE_STORAGE_ENABLED` must be `true` and requires `SUPABASE_SERVICE_ROLE_KEY`
+- When `EDGE_TASK_NOTIFY_ENABLED=true`, `SUPABASE_SERVICE_ROLE_KEY` is required; `SUPABASE_EDGE_FUNCTIONS_BASE_URL` must be `https://` when set; and `SUPABASE_EDGE_TIMEOUT_SECONDS` must be positive when set.
 
 Production master-key source contract:
 - If `GSM_MASTER_KEY_ENABLED=true`:
@@ -308,9 +324,11 @@ Production URL scheme enforcement (predeploy gate):
 - `CORS_ORIGINS` entries must be `https://`.
 - `RESEND_API_BASE_URL` must be `https://` when set.
 - `NEXT_PUBLIC_API_BASE_URL` may be empty (recommended same-origin) or must be `https://` if set.
+- When any of `NEXT_PUBLIC_SUPABASE_DIRECT_AUTH_ENABLED=true`, `NEXT_PUBLIC_SUPABASE_REALTIME_ENABLED=true`, `NEXT_PUBLIC_SUPABASE_REALTIME_DELTA_READ_ENABLED=true`, `NEXT_PUBLIC_TRAIN_READS_VIA_DATA_API=true`, or `NEXT_PUBLIC_TRAIN_DETAIL_VIA_GRAPHQL=true`, `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` are required, and `NEXT_PUBLIC_SUPABASE_URL` must be `https://`.
 - `API_SERVER_URL` must be an absolute `http(s)://` URL.
 - `EMAIL_PROVIDER=disabled`: Resend credentials may remain unset
 - `EMAIL_PROVIDER=smtp`: `SMTP_HOST`, `SMTP_PORT`, and SMTP credentials/TLS settings as required
+- `EMAIL_PROVIDER=resend`: configure either `RESEND_API_KEY`, or `RESEND_API_KEY_VAULT_NAME` with `SUPABASE_VAULT_ENABLED=true`
 - `TRAIN_PROVIDER_EGRESS_PROXY_URL` / `RESTAURANT_PROVIDER_EGRESS_PROXY_URL`: set to internal egress gateways when outbound provider traffic must be centralized through path-allowlist proxies
 - `NEXT_PUBLIC_FONT_BASE_URL`: optional remote font base URL (must be `https://` when set). Expected files at that base path: `NotoSansKR-Regular.woff2`, `NotoSerifKR-Regular.woff2`, `NotoSerifKR-SemiBold.woff2`, `NotoSerifKR-Bold.woff2`, `DynaPuff-SemiBold.woff2`
 

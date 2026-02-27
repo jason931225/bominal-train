@@ -22,3 +22,28 @@ export const NEXT_PUBLIC_RESTAURANT_MODULE_ENABLED = envFlagEnabled(
   process.env.NEXT_PUBLIC_RESTAURANT_MODULE_ENABLED,
   true,
 );
+
+export const NEXT_PUBLIC_SUPABASE_DIRECT_AUTH_ENABLED = envFlagEnabled(
+  process.env.NEXT_PUBLIC_SUPABASE_DIRECT_AUTH_ENABLED,
+  false,
+);
+
+export const NEXT_PUBLIC_SUPABASE_REALTIME_ENABLED = envFlagEnabled(
+  process.env.NEXT_PUBLIC_SUPABASE_REALTIME_ENABLED,
+  false,
+);
+
+export const NEXT_PUBLIC_SUPABASE_REALTIME_DELTA_READ_ENABLED = envFlagEnabled(
+  process.env.NEXT_PUBLIC_SUPABASE_REALTIME_DELTA_READ_ENABLED,
+  true,
+);
+
+export const NEXT_PUBLIC_TRAIN_READS_VIA_DATA_API = envFlagEnabled(
+  process.env.NEXT_PUBLIC_TRAIN_READS_VIA_DATA_API,
+  false,
+);
+
+export const NEXT_PUBLIC_TRAIN_DETAIL_VIA_GRAPHQL = envFlagEnabled(
+  process.env.NEXT_PUBLIC_TRAIN_DETAIL_VIA_GRAPHQL,
+  false,
+);
