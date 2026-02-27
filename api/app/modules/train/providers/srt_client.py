@@ -13,6 +13,7 @@ from app.modules.train.providers.base import ProviderOutcome, ProviderSchedule
 from app.modules.train.providers.transport import AsyncTransport, HttpxTransport
 from app.modules.train.stations import SRT_STATION_CODE, station_code_for_name
 from app.modules.train.timezone import KST, now_kst
+from app.services.evervault import EvervaultRelayError, submit_srt_payment_via_evervault_relay
 
 SRT_MOBILE = "https://app.srail.or.kr:443"
 SRT_API_ENDPOINTS = {
@@ -1039,14 +1040,44 @@ class SRTClient:
             "pageUrl": "",
         }
 
-        response = await self._transport.request(
-            method="POST",
-            url=SRT_API_ENDPOINTS["payment"],
-            headers=SRT_DEFAULT_HEADERS,
-            data=request_data,
-            timeout=20.0,
-        )
-        if response.status_code >= 500:
+        relay_http_trace: dict[str, Any] | None = None
+        card_source = str(payment_card.get("source") or "").strip().lower()
+        if card_source == "evervault":
+            try:
+                relay_response = await submit_srt_payment_via_evervault_relay(
+                    payment_url=SRT_API_ENDPOINTS["payment"],
+                    provider_headers=SRT_DEFAULT_HEADERS,
+                    form_data=request_data,
+                    timeout=20.0,
+                )
+            except EvervaultRelayError as exc:
+                return ProviderOutcome(
+                    ok=False,
+                    retryable=exc.retryable,
+                    error_code=exc.error_code,
+                    error_message_safe=exc.error_message_safe,
+                    data={"reservation_id": reservation_id},
+                )
+            response_status_code = relay_response.status_code
+            response_text = relay_response.text
+            response_url = relay_response.relay_url
+            relay_http_trace = {
+                "relay_id": relay_response.relay_id,
+                "relay_domain": relay_response.relay_domain,
+            }
+        else:
+            response = await self._transport.request(
+                method="POST",
+                url=SRT_API_ENDPOINTS["payment"],
+                headers=SRT_DEFAULT_HEADERS,
+                data=request_data,
+                timeout=20.0,
+            )
+            response_status_code = response.status_code
+            response_text = response.text
+            response_url = SRT_API_ENDPOINTS["payment"]
+
+        if response_status_code >= 500:
             return ProviderOutcome(
                 ok=False,
                 retryable=True,
@@ -1056,7 +1087,7 @@ class SRTClient:
             )
 
         try:
-            payload = json.loads(response.text)
+            payload = json.loads(response_text)
         except json.JSONDecodeError:
             return ProviderOutcome(
                 ok=False,
@@ -1089,8 +1120,9 @@ class SRTClient:
                 "paid": True,
                 "http_trace": {
                     "endpoint": "payment",
-                    "url": SRT_API_ENDPOINTS["payment"],
-                    "status_code": response.status_code,
+                    "url": response_url,
+                    "status_code": response_status_code,
+                    "relay": relay_http_trace,
                     "request": {
                         "pnrNo": reservation_id,
                         "jrnyCnt": "1",

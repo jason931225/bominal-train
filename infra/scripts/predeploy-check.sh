@@ -132,6 +132,19 @@ require_positive_number() {
   }
 }
 
+require_positive_integer() {
+  local value="$1"
+  local name="$2"
+  if ! [[ "$value" =~ ^[0-9]+$ ]]; then
+    log_error "$name must be a positive integer (got: ${value:-<empty>})"
+    exit 1
+  fi
+  if [[ "$value" -le 0 ]]; then
+    log_error "$name must be > 0 (got: ${value})"
+    exit 1
+  fi
+}
+
 require_https_url() {
   local value="$1"
   local name="$2"
@@ -337,6 +350,34 @@ else
   require_env_key_nonempty "infra/env/prod/api.env" "MASTER_KEY"
 fi
 
+evervault_app_id="$(env_key_value "infra/env/prod/api.env" "EVERVAULT_APP_ID")"
+evervault_api_key="$(env_key_value "infra/env/prod/api.env" "EVERVAULT_API_KEY")"
+evervault_app_id_secret_id="$(env_key_value "infra/env/prod/api.env" "EVERVAULT_APP_ID_SECRET_ID")"
+evervault_api_key_secret_id="$(env_key_value "infra/env/prod/api.env" "EVERVAULT_API_KEY_SECRET_ID")"
+evervault_config_present=0
+if [[ -n "$evervault_app_id" || -n "$evervault_api_key" || -n "$evervault_app_id_secret_id" || -n "$evervault_api_key_secret_id" ]]; then
+  evervault_config_present=1
+fi
+if [[ "$evervault_config_present" -eq 1 ]]; then
+  if [[ -z "$evervault_app_id" && -z "$evervault_app_id_secret_id" ]]; then
+    log_error "Evervault config requires EVERVAULT_APP_ID or EVERVAULT_APP_ID_SECRET_ID."
+    exit 1
+  fi
+  if [[ -z "$evervault_api_key" && -z "$evervault_api_key_secret_id" ]]; then
+    log_error "Evervault config requires EVERVAULT_API_KEY or EVERVAULT_API_KEY_SECRET_ID."
+    exit 1
+  fi
+  if [[ -n "$evervault_app_id_secret_id" || -n "$evervault_api_key_secret_id" ]]; then
+    require_env_key_nonempty "infra/env/prod/api.env" "GCP_PROJECT_ID"
+  fi
+fi
+
+payment_provider_mode="$(env_key_value "infra/env/prod/api.env" "PAYMENT_PROVIDER" | tr '[:upper:]' '[:lower:]')"
+if [[ "$payment_provider_mode" == "evervault" ]]; then
+  require_env_key_nonempty "infra/env/prod/web.env" "NEXT_PUBLIC_EVERVAULT_TEAM_ID"
+  require_env_key_nonempty "infra/env/prod/web.env" "NEXT_PUBLIC_EVERVAULT_APP_ID"
+fi
+
 database_url="$(env_key_value "infra/env/prod/api.env" "DATABASE_URL")"
 sync_database_url="$(env_key_value "infra/env/prod/api.env" "SYNC_DATABASE_URL")"
 require_supabase_database_url "$database_url" "DATABASE_URL"
@@ -386,6 +427,22 @@ if ! is_truthy "$supabase_storage_enabled"; then
 fi
 require_env_key_nonempty "infra/env/prod/api.env" "SUPABASE_SERVICE_ROLE_KEY"
 
+edge_task_notify_enabled="$(env_key_value "infra/env/prod/api.env" "EDGE_TASK_NOTIFY_ENABLED")"
+if [[ -n "$edge_task_notify_enabled" ]]; then
+  require_boolean_like "$edge_task_notify_enabled" "EDGE_TASK_NOTIFY_ENABLED"
+fi
+if is_truthy "$edge_task_notify_enabled"; then
+  require_env_key_nonempty "infra/env/prod/api.env" "SUPABASE_SERVICE_ROLE_KEY"
+  supabase_edge_functions_base_url="$(env_key_value "infra/env/prod/api.env" "SUPABASE_EDGE_FUNCTIONS_BASE_URL")"
+  if [[ -n "$supabase_edge_functions_base_url" ]]; then
+    require_https_url "$supabase_edge_functions_base_url" "SUPABASE_EDGE_FUNCTIONS_BASE_URL"
+  fi
+  supabase_edge_timeout_seconds="$(env_key_value "infra/env/prod/api.env" "SUPABASE_EDGE_TIMEOUT_SECONDS")"
+  if [[ -n "$supabase_edge_timeout_seconds" ]]; then
+    require_positive_number "$supabase_edge_timeout_seconds" "SUPABASE_EDGE_TIMEOUT_SECONDS"
+  fi
+fi
+
 email_provider="$(env_key_value "infra/env/prod/api.env" "EMAIL_PROVIDER" | tr '[:upper:]' '[:lower:]')"
 case "$email_provider" in
   smtp|resend|log|disabled)
@@ -397,7 +454,20 @@ case "$email_provider" in
 esac
 
 if [[ "$email_provider" == "resend" ]]; then
-  require_env_key_nonempty "infra/env/prod/api.env" "RESEND_API_KEY"
+  resend_api_key="$(env_key_value "infra/env/prod/api.env" "RESEND_API_KEY")"
+  resend_api_key_vault_name="$(env_key_value "infra/env/prod/api.env" "RESEND_API_KEY_VAULT_NAME")"
+  if [[ -z "$resend_api_key" && -z "$resend_api_key_vault_name" ]]; then
+    log_error "EMAIL_PROVIDER=resend requires RESEND_API_KEY or RESEND_API_KEY_VAULT_NAME."
+    exit 1
+  fi
+  if [[ -n "$resend_api_key_vault_name" ]]; then
+    supabase_vault_enabled="$(env_key_value "infra/env/prod/api.env" "SUPABASE_VAULT_ENABLED" | tr '[:upper:]' '[:lower:]')"
+    if ! is_truthy "$supabase_vault_enabled"; then
+      log_error "RESEND_API_KEY_VAULT_NAME requires SUPABASE_VAULT_ENABLED=true."
+      exit 1
+    fi
+    require_env_key_nonempty "infra/env/prod/api.env" "SUPABASE_URL"
+  fi
 fi
 
 if [[ "$email_provider" == "smtp" ]]; then
@@ -418,6 +488,15 @@ fi
 payment_enabled="$(env_key_value "infra/env/prod/api.env" "PAYMENT_ENABLED" | tr '[:upper:]' '[:lower:]')"
 if [[ -z "$payment_enabled" ]]; then
   payment_enabled="true"
+fi
+
+worker_max_jobs="$(env_key_value "infra/env/prod/api.env" "WORKER_MAX_JOBS")"
+if [[ -n "$worker_max_jobs" ]]; then
+  require_positive_integer "$worker_max_jobs" "WORKER_MAX_JOBS"
+  if [[ "$worker_max_jobs" -gt 50 ]]; then
+    log_error "WORKER_MAX_JOBS must be <= 50 in production (got: $worker_max_jobs)"
+    exit 1
+  fi
 fi
 
 if is_truthy "$payment_enabled"; then
@@ -481,6 +560,34 @@ done
 
 next_public_api_base_url="$(env_key_value "infra/env/prod/web.env" "NEXT_PUBLIC_API_BASE_URL")"
 require_https_url_or_empty "$next_public_api_base_url" "NEXT_PUBLIC_API_BASE_URL"
+
+next_public_supabase_direct_auth_enabled="$(env_key_value "infra/env/prod/web.env" "NEXT_PUBLIC_SUPABASE_DIRECT_AUTH_ENABLED")"
+next_public_supabase_realtime_enabled="$(env_key_value "infra/env/prod/web.env" "NEXT_PUBLIC_SUPABASE_REALTIME_ENABLED")"
+next_public_supabase_realtime_delta_read_enabled="$(env_key_value "infra/env/prod/web.env" "NEXT_PUBLIC_SUPABASE_REALTIME_DELTA_READ_ENABLED")"
+next_public_train_reads_via_data_api="$(env_key_value "infra/env/prod/web.env" "NEXT_PUBLIC_TRAIN_READS_VIA_DATA_API")"
+next_public_train_detail_via_graphql="$(env_key_value "infra/env/prod/web.env" "NEXT_PUBLIC_TRAIN_DETAIL_VIA_GRAPHQL")"
+if [[ -n "$next_public_supabase_direct_auth_enabled" ]]; then
+  require_boolean_like "$next_public_supabase_direct_auth_enabled" "NEXT_PUBLIC_SUPABASE_DIRECT_AUTH_ENABLED"
+fi
+if [[ -n "$next_public_supabase_realtime_enabled" ]]; then
+  require_boolean_like "$next_public_supabase_realtime_enabled" "NEXT_PUBLIC_SUPABASE_REALTIME_ENABLED"
+fi
+if [[ -n "$next_public_supabase_realtime_delta_read_enabled" ]]; then
+  require_boolean_like "$next_public_supabase_realtime_delta_read_enabled" "NEXT_PUBLIC_SUPABASE_REALTIME_DELTA_READ_ENABLED"
+fi
+if [[ -n "$next_public_train_reads_via_data_api" ]]; then
+  require_boolean_like "$next_public_train_reads_via_data_api" "NEXT_PUBLIC_TRAIN_READS_VIA_DATA_API"
+fi
+if [[ -n "$next_public_train_detail_via_graphql" ]]; then
+  require_boolean_like "$next_public_train_detail_via_graphql" "NEXT_PUBLIC_TRAIN_DETAIL_VIA_GRAPHQL"
+fi
+
+if is_truthy "$next_public_supabase_direct_auth_enabled" || is_truthy "$next_public_supabase_realtime_enabled" || is_truthy "$next_public_supabase_realtime_delta_read_enabled" || is_truthy "$next_public_train_reads_via_data_api" || is_truthy "$next_public_train_detail_via_graphql"; then
+  require_env_key_nonempty "infra/env/prod/web.env" "NEXT_PUBLIC_SUPABASE_URL"
+  require_env_key_nonempty "infra/env/prod/web.env" "NEXT_PUBLIC_SUPABASE_ANON_KEY"
+  next_public_supabase_url="$(env_key_value "infra/env/prod/web.env" "NEXT_PUBLIC_SUPABASE_URL")"
+  require_https_url "$next_public_supabase_url" "NEXT_PUBLIC_SUPABASE_URL"
+fi
 
 next_public_font_base_url="$(env_key_value "infra/env/prod/web.env" "NEXT_PUBLIC_FONT_BASE_URL")"
 if [[ -n "$next_public_font_base_url" ]]; then

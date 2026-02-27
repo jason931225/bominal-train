@@ -1896,7 +1896,7 @@ async def pay_task(db: AsyncSession, *, task_id: UUID, user: User) -> TaskAction
             await db.commit()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Server-wide payment settings are not configured.",
+            detail="Payment settings are not configured for this account.",
         )
 
     client = client_cache.get(provider)

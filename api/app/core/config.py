@@ -172,6 +172,13 @@ class Settings(BaseSettings):
     supabase_storage_bucket: str = Field(default="artifacts-safe", alias="SUPABASE_STORAGE_BUCKET")
     supabase_service_role_key: str | None = Field(default=None, alias="SUPABASE_SERVICE_ROLE_KEY")
     supabase_storage_enabled: bool = Field(default=False, alias="SUPABASE_STORAGE_ENABLED")
+    edge_task_notify_enabled: bool = Field(default=False, alias="EDGE_TASK_NOTIFY_ENABLED")
+    supabase_edge_functions_base_url: str | None = Field(default=None, alias="SUPABASE_EDGE_FUNCTIONS_BASE_URL")
+    supabase_edge_task_notify_function_name: str = Field(
+        default="task-notify",
+        alias="SUPABASE_EDGE_TASK_NOTIFY_FUNCTION_NAME",
+    )
+    supabase_edge_timeout_seconds: float = Field(default=8.0, alias="SUPABASE_EDGE_TIMEOUT_SECONDS")
     passkey_enabled: bool = Field(default=True, alias="PASSKEY_ENABLED")
     passkey_rp_id: str | None = Field(default=None, alias="PASSKEY_RP_ID")
     passkey_origin: str | None = Field(default=None, alias="PASSKEY_ORIGIN")
@@ -306,6 +313,16 @@ class Settings(BaseSettings):
         alias="PAYMENT_PROVIDER_ALLOWED_HOSTS",
     )
     payment_transport_trust_env: bool = Field(default=False, alias="PAYMENT_TRANSPORT_TRUST_ENV")
+    payment_provider: str = Field(default="legacy", alias="PAYMENT_PROVIDER")
+    payment_evervault_enforce: bool = Field(default=False, alias="PAYMENT_EVERVAULT_ENFORCE")
+    autopay_require_user_wallet: bool = Field(default=True, alias="AUTOPAY_REQUIRE_USER_WALLET")
+    autopay_allow_server_fallback: bool = Field(default=False, alias="AUTOPAY_ALLOW_SERVER_FALLBACK")
+    evervault_app_id: str | None = Field(default=None, alias="EVERVAULT_APP_ID")
+    evervault_api_key: str | None = Field(default=None, alias="EVERVAULT_API_KEY")
+    evervault_api_base_url: str = Field(default="https://api.evervault.com", alias="EVERVAULT_API_BASE_URL")
+    evervault_relay_cache_seconds: int = Field(default=300, alias="EVERVAULT_RELAY_CACHE_SECONDS")
+    evervault_ktx_payment_relay_id: str | None = Field(default=None, alias="EVERVAULT_KTX_PAYMENT_RELAY_ID")
+    evervault_srt_payment_relay_id: str | None = Field(default=None, alias="EVERVAULT_SRT_PAYMENT_RELAY_ID")
     restaurant_provider_egress_proxy_url: str | None = Field(
         default=None,
         alias="RESTAURANT_PROVIDER_EGRESS_PROXY_URL",
@@ -389,6 +406,14 @@ class Settings(BaseSettings):
         normalized = value.strip().lower()
         if normalized not in {"smtp", "resend", "log", "disabled"}:
             raise ValueError("EMAIL_PROVIDER must be one of: smtp, resend, log, disabled")
+        return normalized
+
+    @field_validator("payment_provider")
+    @classmethod
+    def validate_payment_provider(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"legacy", "evervault"}:
+            raise ValueError("PAYMENT_PROVIDER must be one of: legacy, evervault")
         return normalized
 
     @field_validator("auth_mode")
@@ -503,6 +528,13 @@ class Settings(BaseSettings):
                 raise ValueError("PASSKEY_ORIGIN or APP_PUBLIC_BASE_URL must be set when PASSKEY_ENABLED=true")
         if self.supabase_storage_enabled and not self.supabase_service_role_key:
             raise ValueError("SUPABASE_SERVICE_ROLE_KEY is required when SUPABASE_STORAGE_ENABLED=true")
+        if self.edge_task_notify_enabled:
+            if not self.supabase_url:
+                raise ValueError("SUPABASE_URL must be set when EDGE_TASK_NOTIFY_ENABLED=true")
+            if not self.supabase_service_role_key:
+                raise ValueError("SUPABASE_SERVICE_ROLE_KEY is required when EDGE_TASK_NOTIFY_ENABLED=true")
+            if self.supabase_edge_timeout_seconds <= 0:
+                raise ValueError("SUPABASE_EDGE_TIMEOUT_SECONDS must be > 0 when EDGE_TASK_NOTIFY_ENABLED=true")
         if self.payment_enabled:
             if self.payment_cvv_ttl_min_seconds < 1:
                 raise ValueError("PAYMENT_CVV_TTL_MIN_SECONDS must be >= 1")
@@ -514,6 +546,21 @@ class Settings(BaseSettings):
                 )
             if self.app_env.lower() == "production" and not self.payment_provider_allowed_hosts:
                 raise ValueError("PAYMENT_PROVIDER_ALLOWED_HOSTS must be set in production")
+            if self.payment_provider == "evervault" and self.payment_evervault_enforce:
+                if not self.autopay_require_user_wallet:
+                    raise ValueError(
+                        "AUTOPAY_REQUIRE_USER_WALLET must be true when PAYMENT_PROVIDER=evervault and PAYMENT_EVERVAULT_ENFORCE=true"
+                    )
+                if self.autopay_allow_server_fallback:
+                    raise ValueError(
+                        "AUTOPAY_ALLOW_SERVER_FALLBACK must be false when PAYMENT_PROVIDER=evervault and PAYMENT_EVERVAULT_ENFORCE=true"
+                    )
+                if not self.evervault_app_id or not self.evervault_api_key:
+                    raise ValueError(
+                        "EVERVAULT_APP_ID and EVERVAULT_API_KEY are required when PAYMENT_PROVIDER=evervault and PAYMENT_EVERVAULT_ENFORCE=true"
+                    )
+            if self.evervault_relay_cache_seconds < 0:
+                raise ValueError("EVERVAULT_RELAY_CACHE_SECONDS must be >= 0")
         if self.smtp_use_ssl and self.smtp_starttls:
             raise ValueError("SMTP_USE_SSL and SMTP_STARTTLS cannot both be true")
         if self.email_provider == "resend" and not self.resend_api_key:
@@ -555,6 +602,13 @@ class Settings(BaseSettings):
         if self.gsm_master_key_project_id:
             return self.gsm_master_key_project_id
         return self.gcp_project_id
+
+    def resolved_supabase_edge_functions_base_url(self) -> str | None:
+        if self.supabase_edge_functions_base_url:
+            return self.supabase_edge_functions_base_url.rstrip("/")
+        if not self.supabase_url:
+            return None
+        return f"{self.supabase_url.rstrip('/')}/functions/v1"
 
 
 @lru_cache

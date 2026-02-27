@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from datetime import date, datetime, timedelta, timezone
+from typing import Any
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -15,7 +16,7 @@ from app.core.redis import get_cde_redis_pool
 from app.core.time import utc_now
 from app.db.models import Secret, User
 from app.schemas.wallet import PaymentCardConfiguredResponse, PaymentCardSetRequest, PaymentCardStatusResponse
-from app.services.system_payment import get_serverwide_payment_card_for_execution, is_serverwide_payment_configured
+from app.services.system_payment import get_serverwide_payment_card_for_execution
 
 settings = get_settings()
 
@@ -64,6 +65,7 @@ def _build_execution_payment_card(
     expiry_year_2digit: int,
 ) -> dict[str, int | str]:
     return {
+        "source": "legacy",
         "card_number": card_number,
         "card_password": pin2,
         "validation_number": birth_date.strftime("%y%m%d"),
@@ -71,6 +73,87 @@ def _build_execution_payment_card(
         "card_type": "J",
         "installment": 0,
     }
+
+
+def _build_evervault_execution_payment_card(
+    *,
+    encrypted_card_number: str,
+    encrypted_pin2: str,
+    encrypted_birth_date: str,
+    encrypted_expiry: str,
+    last4: str,
+    brand: str | None,
+) -> dict[str, Any]:
+    encrypted_fields = {
+        "encrypted_card_number": encrypted_card_number,
+        "encrypted_pin2": encrypted_pin2,
+        "encrypted_birth_date": encrypted_birth_date,
+        "encrypted_expiry": encrypted_expiry,
+    }
+    return {
+        "source": "evervault",
+        # Provider clients currently consume these keys for payment payload composition.
+        "card_number": encrypted_card_number,
+        "card_password": encrypted_pin2,
+        "validation_number": encrypted_birth_date,
+        "card_expire": encrypted_expiry,
+        "card_type": "J",
+        "installment": 0,
+        "encrypted_fields": encrypted_fields,
+        "safe_meta": {"last4": last4, "brand": brand},
+    }
+
+
+def _execution_payment_card_from_secret_payload(payload: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(payload, dict):
+        return None
+
+    source = str(payload.get("source") or "legacy").strip().lower()
+    if source == "evervault":
+        encrypted_card_number = str(payload.get("encrypted_card_number") or "").strip()
+        encrypted_pin2 = str(payload.get("encrypted_pin2") or "").strip()
+        encrypted_birth_date = str(payload.get("encrypted_birth_date") or "").strip()
+        encrypted_expiry = str(payload.get("encrypted_expiry") or "").strip()
+        last4 = _digits_only(str(payload.get("last4") or ""))
+        brand_raw = str(payload.get("brand") or "").strip()
+        brand = brand_raw or None
+        if not all((encrypted_card_number, encrypted_pin2, encrypted_birth_date, encrypted_expiry)):
+            return None
+        if len(last4) != 4:
+            return None
+        return _build_evervault_execution_payment_card(
+            encrypted_card_number=encrypted_card_number,
+            encrypted_pin2=encrypted_pin2,
+            encrypted_birth_date=encrypted_birth_date,
+            encrypted_expiry=encrypted_expiry,
+            last4=last4,
+            brand=brand,
+        )
+
+    card_number = _digits_only(str(payload.get("card_number") or ""))
+    pin2 = _digits_only(str(payload.get("pin2") or ""))
+    birth_date_iso = str(payload.get("birth_date") or "")
+    expiry_month = payload.get("expiry_month")
+    expiry_year = payload.get("expiry_year")
+    if not card_number or len(card_number) < 12 or len(card_number) > 19:
+        return None
+    if len(pin2) != 2:
+        return None
+    try:
+        parsed_expiry_month = int(expiry_month)
+        parsed_expiry_year = int(expiry_year)
+        parsed_birth_date = datetime.fromisoformat(birth_date_iso).date()
+    except Exception:
+        return None
+    if not (1 <= parsed_expiry_month <= 12):
+        return None
+    return _build_execution_payment_card(
+        card_number=card_number,
+        pin2=pin2,
+        birth_date=parsed_birth_date,
+        expiry_month=parsed_expiry_month,
+        expiry_year_2digit=parsed_expiry_year % 100,
+    )
 
 
 def _backend_env_payment_card_for_execution() -> dict[str, int | str] | None:
@@ -266,6 +349,24 @@ async def get_payment_card_status(
     except Exception:
         return PaymentCardStatusResponse(configured=False, detail="Payment card could not be loaded")
 
+    source = str(payload.get("source") or "legacy").strip().lower()
+    if source == "evervault":
+        last4 = _digits_only(str(payload.get("last4") or ""))
+        encrypted_card_number = str(payload.get("encrypted_card_number") or "").strip()
+        encrypted_pin2 = str(payload.get("encrypted_pin2") or "").strip()
+        encrypted_birth_date = str(payload.get("encrypted_birth_date") or "").strip()
+        encrypted_expiry = str(payload.get("encrypted_expiry") or "").strip()
+        if len(last4) != 4 or not all((encrypted_card_number, encrypted_pin2, encrypted_birth_date, encrypted_expiry)):
+            return PaymentCardStatusResponse(configured=False, detail="Saved payment card data is invalid")
+        brand_raw = str(payload.get("brand") or "").strip()
+        return PaymentCardStatusResponse(
+            configured=True,
+            card_masked=f"**** **** **** {last4}",
+            source="evervault",
+            brand=brand_raw or None,
+            updated_at=secret.updated_at,
+        )
+
     card_number = str(payload.get("card_number") or "")
     expiry_month = payload.get("expiry_month")
     expiry_year = payload.get("expiry_year")
@@ -280,6 +381,7 @@ async def get_payment_card_status(
         card_masked=_mask_card_number(card_number),
         expiry_month=parsed_expiry_month,
         expiry_year=parsed_expiry_year,
+        source="legacy",
         updated_at=secret.updated_at,
     )
 
@@ -289,8 +391,14 @@ async def get_payment_card_configured(
     *,
     user: User,
 ) -> PaymentCardConfiguredResponse:
-    _ = user
-    return PaymentCardConfiguredResponse(configured=await is_serverwide_payment_configured(db))
+    secret = await _latest_payment_secret_for_user(db, user_id=user.id)
+    if secret is None:
+        return PaymentCardConfiguredResponse(configured=False)
+    try:
+        payload = decrypt_secret(secret)
+    except Exception:
+        return PaymentCardConfiguredResponse(configured=False)
+    return PaymentCardConfiguredResponse(configured=_execution_payment_card_from_secret_payload(payload) is not None)
 
 
 async def get_payment_card_for_execution(
@@ -298,7 +406,20 @@ async def get_payment_card_for_execution(
     *,
     user_id: UUID,
 ) -> dict | None:
-    _ = user_id
+    secret = await _latest_payment_secret_for_user(db, user_id=user_id)
+    if secret is not None:
+        try:
+            payload = decrypt_secret(secret)
+        except Exception:
+            payload = None
+        execution_card = _execution_payment_card_from_secret_payload(payload)
+        if execution_card is not None:
+            return execution_card
+
+    if settings.autopay_require_user_wallet:
+        return None
+    if not settings.autopay_allow_server_fallback:
+        return None
     return await get_serverwide_payment_card_for_execution(db)
 
 
@@ -309,20 +430,55 @@ async def set_payment_card(
     payload: PaymentCardSetRequest,
 ) -> PaymentCardStatusResponse:
     now = utc_now()
-    now_utc = now.astimezone(timezone.utc)
-    if payload.expiry_year < now_utc.year or (
-        payload.expiry_year == now_utc.year and payload.expiry_month < now_utc.month
-    ):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Card expiry date is in the past")
+    secret_payload: dict[str, Any]
+    status_payload: dict[str, Any]
 
-    secret_payload = {
-        "card_number": payload.card_number,
-        "expiry_month": payload.expiry_month,
-        "expiry_year": payload.expiry_year,
-        "birth_date": payload.birth_date.isoformat(),
-        "pin2": payload.pin2,
-        "updated_at": now.isoformat(),
-    }
+    if payload.source == "evervault":
+        secret_payload = {
+            "source": "evervault",
+            "encrypted_card_number": payload.encrypted_card_number,
+            "encrypted_pin2": payload.encrypted_pin2,
+            "encrypted_birth_date": payload.encrypted_birth_date,
+            "encrypted_expiry": payload.encrypted_expiry,
+            "last4": payload.last4,
+            "brand": payload.brand,
+            "updated_at": now.isoformat(),
+        }
+        status_payload = {
+            "card_masked": f"**** **** **** {payload.last4}",
+            "source": "evervault",
+            "brand": payload.brand,
+        }
+    else:
+        assert payload.expiry_year is not None
+        assert payload.expiry_month is not None
+        assert payload.birth_date is not None
+        assert payload.card_number is not None
+        assert payload.pin2 is not None
+
+        now_utc = now.astimezone(timezone.utc)
+        if payload.expiry_year < now_utc.year or (
+            payload.expiry_year == now_utc.year and payload.expiry_month < now_utc.month
+        ):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Card expiry date is in the past")
+
+        secret_payload = {
+            "source": "legacy",
+            "card_number": payload.card_number,
+            "expiry_month": payload.expiry_month,
+            "expiry_year": payload.expiry_year,
+            "birth_date": payload.birth_date.isoformat(),
+            "pin2": payload.pin2,
+            "updated_at": now.isoformat(),
+        }
+        status_payload = {
+            "card_masked": _mask_card_number(payload.card_number),
+            "expiry_month": payload.expiry_month,
+            "expiry_year": payload.expiry_year,
+            "source": "legacy",
+            "brand": None,
+        }
+
     encrypted_secret = build_encrypted_secret(
         user_id=user.id,
         kind=SECRET_KIND_PAYMENT_CARD,
@@ -344,9 +500,11 @@ async def set_payment_card(
     await db.commit()
     return PaymentCardStatusResponse(
         configured=True,
-        card_masked=_mask_card_number(payload.card_number),
-        expiry_month=payload.expiry_month,
-        expiry_year=payload.expiry_year,
+        card_masked=status_payload.get("card_masked"),
+        expiry_month=status_payload.get("expiry_month"),
+        expiry_year=status_payload.get("expiry_year"),
+        source=status_payload.get("source"),
+        brand=status_payload.get("brand"),
         updated_at=now,
     )
 

@@ -85,6 +85,8 @@ export type WalletPaymentCardStatus = {
   card_masked: string | null;
   expiry_month: number | null;
   expiry_year: number | null;
+  source?: "legacy" | "evervault" | string | null;
+  brand?: string | null;
   updated_at: string | null;
   detail: string | null;
 };
@@ -123,6 +125,7 @@ export type TrainTaskSummary = {
   ticket_train_no?: string | null;
   ticket_seat_count?: number | null;
   ticket_seats?: string[] | null;
+  ticket_seat_classes?: string[] | null;
 };
 
 export type TrainTaskAttempt = {

@@ -43,9 +43,10 @@ from app.modules.train.events import publish_task_state_event, publish_task_tick
 from app.modules.train.queue import enqueue_train_task
 from app.modules.train.rate_limiter import RedisTokenBucketLimiter
 from app.modules.train.ticket_sync import fetch_ticket_sync_snapshot
-from app.schemas.notification import EmailTemplateBlock, EmailTemplateJobPayload
+from app.schemas.notification import EmailJobPayload, EmailTemplateBlock, EmailTemplateJobPayload
 from app.services.email_queue import enqueue_template_email
-from app.services.email_template import format_completion_summary
+from app.services.email_template import Block, format_completion_summary, render_email
+from app.services.supabase_edge import send_task_notification_via_edge
 from app.services.system_payment import is_payment_runtime_enabled
 from app.services.wallet import get_payment_card_for_execution
 
@@ -925,6 +926,45 @@ async def _enqueue_terminal_notification(
         },
     )
     job_id: str | None = None
+
+    if settings.edge_task_notify_enabled:
+        try:
+            rendered = render_email(
+                subject=template_payload.subject,
+                preheader=template_payload.preheader,
+                theme=template_payload.theme,
+                context=template_payload.context,
+                blocks=[Block(type=block.type, data=block.data) for block in template_payload.blocks],
+            )
+            edge_payload = EmailJobPayload(
+                to_email=template_payload.to_email,
+                subject=rendered.subject,
+                text_body=rendered.text,
+                html_body=rendered.html,
+                tags=template_payload.tags,
+                headers=template_payload.headers,
+                metadata=template_payload.metadata,
+                message_id=template_payload.message_id or f"{task.id}-{final_state.lower()}",
+                idempotency_key=template_payload.idempotency_key or f"task:{task.id}:state:{final_state}:v1",
+            )
+            edge_sent = await send_task_notification_via_edge(edge_payload)
+        except Exception as exc:  # noqa: BLE001 - fallback to queue must remain soft-fail
+            logger.warning(
+                "Edge terminal notification invoke failed for task %s: %s",
+                task.id,
+                type(exc).__name__,
+            )
+            edge_sent = False
+
+        if edge_sent:
+            next_spec = dict(spec)
+            next_spec[SPEC_KEY_NOTIFY_EMAIL_SENT_AT] = utc_now().isoformat()
+            next_spec[SPEC_KEY_NOTIFY_EMAIL_STATE] = final_state
+            next_spec[SPEC_KEY_NOTIFY_EMAIL_JOB_ID] = f"edge:{settings.supabase_edge_task_notify_function_name}"
+            task.spec_json = next_spec
+            task.updated_at = utc_now()
+            await db.commit()
+            return
 
     try:
         job_id = await enqueue_template_email(template_payload)
