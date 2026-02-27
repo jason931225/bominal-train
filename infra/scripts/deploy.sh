@@ -671,14 +671,14 @@ deploy_services() {
     calculate_rollout_changes
 
     log_info "Ensuring redis service is healthy..."
-    if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait redis; then
+    if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait --remove-orphans redis; then
       log_error "Failed to deploy redis service"
       return 1
     fi
 
     if [[ "$DEPLOY_API_CHANGED" == "true" ]]; then
       log_info "Deploying API service..."
-      if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait --no-deps api; then
+      if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait --remove-orphans --no-deps api; then
         log_error "Failed to deploy api service"
         return 1
       fi
@@ -688,7 +688,7 @@ deploy_services() {
 
     if [[ "$DEPLOY_WORKER_CHANGED" == "true" ]]; then
       log_info "Deploying worker service..."
-      if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait --no-deps worker; then
+      if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait --remove-orphans --no-deps worker; then
         log_error "Failed to deploy worker service"
         return 1
       fi
@@ -698,7 +698,7 @@ deploy_services() {
 
     if [[ "$DEPLOY_WEB_CHANGED" == "true" ]]; then
       log_info "Deploying web service..."
-      if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait --no-deps web; then
+      if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait --remove-orphans --no-deps web; then
         log_error "Failed to deploy web service"
         return 1
       fi
@@ -709,7 +709,7 @@ deploy_services() {
     # Keep Caddy reconciliation isolated so unchanged dependencies are not
     # implicitly recreated during rolling updates.
     log_info "Ensuring Caddy is healthy..."
-    if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait --no-deps caddy; then
+    if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait --remove-orphans --no-deps caddy; then
       log_error "Failed to deploy Caddy service"
       return 1
     fi
@@ -717,7 +717,7 @@ deploy_services() {
   fi
 
   log_warn "No running bominal containers detected. Using first-deploy bootstrap path."
-  if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait redis api worker web caddy; then
+  if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait --remove-orphans redis api worker web caddy; then
     log_error "Failed to deploy services in bootstrap path"
     return 1
   fi
