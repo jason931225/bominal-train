@@ -42,6 +42,7 @@ DEPLOY_FAIL_ON_DIRTY_REPO="${DEPLOY_FAIL_ON_DIRTY_REPO:-false}"
 DEPLOY_API_CHANGED="true"
 DEPLOY_WORKER_CHANGED="true"
 DEPLOY_WEB_CHANGED="true"
+PROD_API_ENV_FILE="infra/env/prod/api.env"
 
 # Registry configuration
 GHCR_NAMESPACE="${GHCR_NAMESPACE:-ghcr.io/jason931225/bominal}"
@@ -57,6 +58,163 @@ log_info()  { echo -e "${BLUE}[INFO]${NC} $*"; }
 log_ok()    { echo -e "${GREEN}[OK]${NC} $*"; }
 log_warn()  { echo -e "${YELLOW}[WARN]${NC} $*"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $*"; }
+
+read_env_file_value() {
+  local file="$1"
+  local key="$2"
+  awk -F'=' -v key="$key" '
+    /^[[:space:]]*#/ {next}
+    /^[[:space:]]*$/ {next}
+    {
+      k=$1
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", k)
+      if (k == key) {
+        v=$0
+        sub(/^[^=]*=/, "", v)
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", v)
+        gsub(/^"/, "", v)
+        gsub(/"$/, "", v)
+        print v
+        exit
+      }
+    }
+  ' "$file"
+}
+
+is_truthy_bool() {
+  local value="$1"
+  local normalized
+  normalized="$(printf '%s' "$value" | tr '[:upper:]' '[:lower:]')"
+  case "$normalized" in
+    true|1|yes)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+is_falsey_bool() {
+  local value="$1"
+  local normalized
+  normalized="$(printf '%s' "$value" | tr '[:upper:]' '[:lower:]')"
+  case "$normalized" in
+    false|0|no)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+validate_master_key_b64() {
+  local candidate="$1"
+  local source="$2"
+
+  if ! command -v python3 >/dev/null 2>&1; then
+    log_error "python3 is required to validate ${source} MASTER_KEY payload."
+    return 1
+  fi
+
+  if ! python3 - <<'PY' "$candidate" "$source"; then
+import base64
+import sys
+
+value = (sys.argv[1] or "").strip()
+source = sys.argv[2]
+if not value:
+    print(f"{source} master key is empty", file=sys.stderr)
+    raise SystemExit(1)
+try:
+    decoded = base64.b64decode(value, validate=True)
+except Exception:
+    print(f"{source} master key is not valid base64", file=sys.stderr)
+    raise SystemExit(1)
+if len(decoded) != 32:
+    print(f"{source} master key must decode to 32 bytes", file=sys.stderr)
+    raise SystemExit(1)
+PY
+    return 1
+  fi
+
+  return 0
+}
+
+resolve_master_key_override_from_gsm() {
+  export MASTER_KEY_OVERRIDE=""
+
+  if [[ ! -f "$PROD_API_ENV_FILE" ]]; then
+    return 0
+  fi
+
+  local gsm_enabled
+  gsm_enabled="$(read_env_file_value "$PROD_API_ENV_FILE" "GSM_MASTER_KEY_ENABLED" | tr '[:upper:]' '[:lower:]')"
+  if ! is_truthy_bool "${gsm_enabled:-false}"; then
+    return 0
+  fi
+
+  if ! command -v gcloud >/dev/null 2>&1; then
+    log_error "GSM_MASTER_KEY_ENABLED=true but gcloud CLI is not available on deploy host."
+    return 1
+  fi
+
+  local project_id secret_id secret_version allow_fallback secret_value
+  project_id="$(read_env_file_value "$PROD_API_ENV_FILE" "GSM_MASTER_KEY_PROJECT_ID")"
+  if [[ -z "$project_id" ]]; then
+    project_id="$(read_env_file_value "$PROD_API_ENV_FILE" "GCP_PROJECT_ID")"
+  fi
+  secret_id="$(read_env_file_value "$PROD_API_ENV_FILE" "GSM_MASTER_KEY_SECRET_ID")"
+  secret_version="$(read_env_file_value "$PROD_API_ENV_FILE" "GSM_MASTER_KEY_VERSION")"
+  allow_fallback="$(read_env_file_value "$PROD_API_ENV_FILE" "GSM_MASTER_KEY_ALLOW_ENV_FALLBACK" | tr '[:upper:]' '[:lower:]')"
+
+  if [[ -z "$project_id" ]]; then
+    log_error "GSM_MASTER_KEY_ENABLED=true requires GSM_MASTER_KEY_PROJECT_ID or GCP_PROJECT_ID in $PROD_API_ENV_FILE"
+    return 1
+  fi
+  if [[ -z "$secret_id" ]]; then
+    log_error "GSM_MASTER_KEY_ENABLED=true requires GSM_MASTER_KEY_SECRET_ID in $PROD_API_ENV_FILE"
+    return 1
+  fi
+  if [[ -z "$secret_version" ]]; then
+    log_error "GSM_MASTER_KEY_ENABLED=true requires GSM_MASTER_KEY_VERSION in $PROD_API_ENV_FILE"
+    return 1
+  fi
+  if [[ "$(printf '%s' "$secret_version" | tr '[:upper:]' '[:lower:]')" == "latest" ]]; then
+    log_error "GSM_MASTER_KEY_VERSION must be pinned in production (latest is not allowed)."
+    return 1
+  fi
+  if [[ -z "$allow_fallback" ]]; then
+    log_error "GSM_MASTER_KEY_ALLOW_ENV_FALLBACK must be explicitly set to false in $PROD_API_ENV_FILE"
+    return 1
+  fi
+  if ! is_truthy_bool "$allow_fallback" && ! is_falsey_bool "$allow_fallback"; then
+    log_error "GSM_MASTER_KEY_ALLOW_ENV_FALLBACK must be one of true|false|1|0|yes|no."
+    return 1
+  fi
+  if is_truthy_bool "$allow_fallback"; then
+    log_error "GSM_MASTER_KEY_ALLOW_ENV_FALLBACK must be false in production."
+    return 1
+  fi
+
+  log_info "Resolving runtime MASTER_KEY from Secret Manager (${project_id}/${secret_id}@${secret_version})..."
+  secret_value="$(gcloud secrets versions access "$secret_version" \
+    --secret="$secret_id" \
+    --project="$project_id" 2>/dev/null || true)"
+  if [[ -z "$secret_value" ]]; then
+    log_error "Failed to fetch master key from Secret Manager (${project_id}/${secret_id}@${secret_version})."
+    return 1
+  fi
+
+  if ! validate_master_key_b64 "$secret_value" "Secret Manager"; then
+    log_error "Secret Manager payload did not contain a valid base64-encoded 32-byte MASTER_KEY."
+    return 1
+  fi
+
+  export MASTER_KEY_OVERRIDE="$secret_value"
+  log_ok "Runtime MASTER_KEY resolved from Secret Manager."
+}
 
 acquire_deploy_lock() {
   mkdir -p "$(dirname "$DEPLOY_LOCK_FILE")"
@@ -743,6 +901,7 @@ main() {
   case "${target_commit:-}" in
     --rollback|-r)
       run_preflight_checks
+      resolve_master_key_override_from_gsm
       configure_docker_auth
       do_rollback
       verify_deployment
@@ -771,6 +930,7 @@ main() {
       echo "  API_IMAGE        Override API image URL"
       echo "  WORKER_IMAGE     Override worker image URL"
       echo "  WEB_IMAGE        Override web image URL"
+      echo "  MASTER_KEY_OVERRIDE Deploy-time runtime override for MASTER_KEY (set automatically when GSM is enabled)"
       echo "  DEPLOY_HISTORY_DIR Override deployment history dir (default: /opt/bominal/deployments)"
       echo "  DEPLOY_FAIL_ON_DIRTY_REPO=true  Block deploy when tracked repo changes are present"
       echo ""
@@ -783,6 +943,7 @@ main() {
   esac
 
   run_preflight_checks
+  resolve_master_key_override_from_gsm
   configure_docker_auth
   resolve_ghcr_namespace
 

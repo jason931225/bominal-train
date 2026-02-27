@@ -293,11 +293,49 @@ required_api_keys=(
   "AUTH_MODE"
   "EMAIL_PROVIDER"
   "INTERNAL_API_KEY"
-  "MASTER_KEY"
 )
 for key in "${required_api_keys[@]}"; do
   require_env_key_nonempty "infra/env/prod/api.env" "$key"
 done
+
+gsm_master_key_enabled="$(env_key_value "infra/env/prod/api.env" "GSM_MASTER_KEY_ENABLED" | tr '[:upper:]' '[:lower:]')"
+if [[ -z "$gsm_master_key_enabled" ]]; then
+  gsm_master_key_enabled="false"
+fi
+
+if is_truthy "$gsm_master_key_enabled"; then
+  gsm_master_key_project_id="$(env_key_value "infra/env/prod/api.env" "GSM_MASTER_KEY_PROJECT_ID")"
+  if [[ -z "$gsm_master_key_project_id" ]]; then
+    gsm_master_key_project_id="$(env_key_value "infra/env/prod/api.env" "GCP_PROJECT_ID")"
+  fi
+  gsm_master_key_secret_id="$(env_key_value "infra/env/prod/api.env" "GSM_MASTER_KEY_SECRET_ID")"
+  gsm_master_key_version="$(env_key_value "infra/env/prod/api.env" "GSM_MASTER_KEY_VERSION")"
+  gsm_master_key_allow_env_fallback="$(env_key_value "infra/env/prod/api.env" "GSM_MASTER_KEY_ALLOW_ENV_FALLBACK" | tr '[:upper:]' '[:lower:]')"
+
+  if [[ -z "$gsm_master_key_project_id" ]]; then
+    log_error "GSM_MASTER_KEY_ENABLED=true requires GSM_MASTER_KEY_PROJECT_ID or GCP_PROJECT_ID."
+    exit 1
+  fi
+  if [[ -z "$gsm_master_key_secret_id" ]]; then
+    log_error "GSM_MASTER_KEY_ENABLED=true requires GSM_MASTER_KEY_SECRET_ID."
+    exit 1
+  fi
+  if [[ -z "$gsm_master_key_version" ]]; then
+    log_error "GSM_MASTER_KEY_ENABLED=true requires GSM_MASTER_KEY_VERSION."
+    exit 1
+  fi
+  if [[ "$(printf '%s' "$gsm_master_key_version" | tr '[:upper:]' '[:lower:]')" == "latest" ]]; then
+    log_error "GSM_MASTER_KEY_VERSION must be pinned in production (latest is not allowed)."
+    exit 1
+  fi
+  require_boolean_like "${gsm_master_key_allow_env_fallback:-}" "GSM_MASTER_KEY_ALLOW_ENV_FALLBACK"
+  if is_truthy "$gsm_master_key_allow_env_fallback"; then
+    log_error "GSM_MASTER_KEY_ALLOW_ENV_FALLBACK must be false in production."
+    exit 1
+  fi
+else
+  require_env_key_nonempty "infra/env/prod/api.env" "MASTER_KEY"
+fi
 
 database_url="$(env_key_value "infra/env/prod/api.env" "DATABASE_URL")"
 sync_database_url="$(env_key_value "infra/env/prod/api.env" "SYNC_DATABASE_URL")"

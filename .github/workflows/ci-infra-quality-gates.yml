@@ -215,6 +215,10 @@ jobs:
         run: |
           bash infra/tests/test_predeploy_check.sh
 
+      - name: Validate GSM master-key setup scripts
+        run: |
+          bash infra/tests/test_setup_gsm_master_key.sh
+
       - name: Validate Supabase auth template sync script
         run: |
           bash infra/tests/test_sync_supabase_auth_templates.sh

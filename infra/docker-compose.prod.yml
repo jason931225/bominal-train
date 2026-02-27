@@ -40,6 +40,8 @@ services:
     env_file:
       - ./env/prod/api.env
       - ./env/prod/pay.env
+    environment:
+      MASTER_KEY_OVERRIDE: ${MASTER_KEY_OVERRIDE:-}
     deploy:
       resources:
         limits:
@@ -70,6 +72,8 @@ services:
     env_file:
       - ./env/prod/api.env
       - ./env/prod/pay.env
+    environment:
+      MASTER_KEY_OVERRIDE: ${MASTER_KEY_OVERRIDE:-}
     deploy:
       resources:
         limits:

@@ -334,7 +334,15 @@ Checklist:
 3. Verify env files exist:
    - `infra/env/prod/api.env`
    - `infra/env/prod/web.env`
-4. Re-run deploy script:
+4. If `GSM_MASTER_KEY_ENABLED=true`, verify VM service account can access the pinned secret version:
+
+```bash
+gcloud secrets versions access "$GSM_MASTER_KEY_VERSION" \
+  --secret="$GSM_MASTER_KEY_SECRET_ID" \
+  --project="${GSM_MASTER_KEY_PROJECT_ID:-$GCP_PROJECT_ID}" >/dev/null
+```
+
+5. Re-run deploy script:
 
 ```bash
 sudo -u bominal /opt/bominal/repo/infra/scripts/deploy.sh

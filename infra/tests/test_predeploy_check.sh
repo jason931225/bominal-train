@@ -114,6 +114,95 @@ make_valid_registry
 # Valid env files with skip smoke checks should pass.
 PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" BOMINAL_ROOT_DIR="$TMP_DIR/repo" "$SCRIPT" --skip-smoke-tests >/dev/null
 
+# GSM-enabled deploys should pass without MASTER_KEY in api.env.
+cat >"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF'
+GCP_PROJECT_ID=test-project
+DATABASE_URL=postgresql+asyncpg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:5432/postgres?ssl=require
+SYNC_DATABASE_URL=postgresql+psycopg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:5432/postgres?sslmode=require
+AUTH_MODE=supabase
+SUPABASE_URL=https://test-ref.supabase.co
+SUPABASE_JWT_ISSUER=https://test-ref.supabase.co/auth/v1
+SUPABASE_AUTH_ENABLED=true
+SUPABASE_AUTH_API_KEY=anon-key
+SUPABASE_AUTH_TIMEOUT_SECONDS=12
+SUPABASE_STORAGE_ENABLED=true
+SUPABASE_SERVICE_ROLE_KEY=service-role-key
+EMAIL_PROVIDER=disabled
+INTERNAL_API_KEY=abc123
+GSM_MASTER_KEY_ENABLED=true
+GSM_MASTER_KEY_SECRET_ID=bominal-master-key
+GSM_MASTER_KEY_VERSION=3
+GSM_MASTER_KEY_ALLOW_ENV_FALLBACK=false
+EOF
+PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" BOMINAL_ROOT_DIR="$TMP_DIR/repo" "$SCRIPT" --skip-smoke-tests >/dev/null
+
+# GSM-enabled production must pin secret version (latest not allowed).
+cat >"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF'
+GCP_PROJECT_ID=test-project
+DATABASE_URL=postgresql+asyncpg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:5432/postgres?ssl=require
+SYNC_DATABASE_URL=postgresql+psycopg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:5432/postgres?sslmode=require
+AUTH_MODE=supabase
+SUPABASE_URL=https://test-ref.supabase.co
+SUPABASE_JWT_ISSUER=https://test-ref.supabase.co/auth/v1
+SUPABASE_AUTH_ENABLED=true
+SUPABASE_AUTH_API_KEY=anon-key
+SUPABASE_AUTH_TIMEOUT_SECONDS=12
+SUPABASE_STORAGE_ENABLED=true
+SUPABASE_SERVICE_ROLE_KEY=service-role-key
+EMAIL_PROVIDER=disabled
+INTERNAL_API_KEY=abc123
+GSM_MASTER_KEY_ENABLED=true
+GSM_MASTER_KEY_SECRET_ID=bominal-master-key
+GSM_MASTER_KEY_VERSION=latest
+GSM_MASTER_KEY_ALLOW_ENV_FALLBACK=false
+EOF
+assert_fails "gsm latest version must fail" env PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" BOMINAL_ROOT_DIR="$TMP_DIR/repo" "$SCRIPT" --skip-smoke-tests
+
+# GSM-enabled production must disable env fallback.
+cat >"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF'
+GCP_PROJECT_ID=test-project
+DATABASE_URL=postgresql+asyncpg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:5432/postgres?ssl=require
+SYNC_DATABASE_URL=postgresql+psycopg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:5432/postgres?sslmode=require
+AUTH_MODE=supabase
+SUPABASE_URL=https://test-ref.supabase.co
+SUPABASE_JWT_ISSUER=https://test-ref.supabase.co/auth/v1
+SUPABASE_AUTH_ENABLED=true
+SUPABASE_AUTH_API_KEY=anon-key
+SUPABASE_AUTH_TIMEOUT_SECONDS=12
+SUPABASE_STORAGE_ENABLED=true
+SUPABASE_SERVICE_ROLE_KEY=service-role-key
+EMAIL_PROVIDER=disabled
+INTERNAL_API_KEY=abc123
+GSM_MASTER_KEY_ENABLED=true
+GSM_MASTER_KEY_SECRET_ID=bominal-master-key
+GSM_MASTER_KEY_VERSION=3
+GSM_MASTER_KEY_ALLOW_ENV_FALLBACK=true
+EOF
+assert_fails "gsm env fallback true must fail" env PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" BOMINAL_ROOT_DIR="$TMP_DIR/repo" "$SCRIPT" --skip-smoke-tests
+
+# GSM-enabled production requires project id resolution.
+cat >"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF'
+DATABASE_URL=postgresql+asyncpg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:5432/postgres?ssl=require
+SYNC_DATABASE_URL=postgresql+psycopg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:5432/postgres?sslmode=require
+AUTH_MODE=supabase
+SUPABASE_URL=https://test-ref.supabase.co
+SUPABASE_JWT_ISSUER=https://test-ref.supabase.co/auth/v1
+SUPABASE_AUTH_ENABLED=true
+SUPABASE_AUTH_API_KEY=anon-key
+SUPABASE_AUTH_TIMEOUT_SECONDS=12
+SUPABASE_STORAGE_ENABLED=true
+SUPABASE_SERVICE_ROLE_KEY=service-role-key
+EMAIL_PROVIDER=disabled
+INTERNAL_API_KEY=abc123
+GSM_MASTER_KEY_ENABLED=true
+GSM_MASTER_KEY_SECRET_ID=bominal-master-key
+GSM_MASTER_KEY_VERSION=3
+GSM_MASTER_KEY_ALLOW_ENV_FALLBACK=false
+EOF
+assert_fails "gsm missing project id must fail" env PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" BOMINAL_ROOT_DIR="$TMP_DIR/repo" "$SCRIPT" --skip-smoke-tests
+make_valid_envs
+make_valid_registry
+
 # Leading-zero month values should be treated as decimal and avoid bash octal warnings.
 cat >"$TMP_DIR/repo/infra/env/prod/pay.env" <<'EOF'
 CARDNUMBER=4111111111111111
