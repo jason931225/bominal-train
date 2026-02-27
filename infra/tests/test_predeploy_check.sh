@@ -55,6 +55,10 @@ EOF
   cat >"$TMP_DIR/repo/infra/env/prod/web.env" <<'EOF'
 NEXT_PUBLIC_API_BASE_URL=https://example.com
 API_SERVER_URL=http://api:8000
+NEXT_PUBLIC_SUPABASE_DIRECT_AUTH_ENABLED=true
+NEXT_PUBLIC_SUPABASE_REALTIME_ENABLED=true
+NEXT_PUBLIC_SUPABASE_URL=https://test-ref.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=anon-key
 EOF
   cat >"$TMP_DIR/repo/infra/env/prod/pay.env" <<'EOF'
 CARDNUMBER=4111111111111111
@@ -296,6 +300,52 @@ MASTER_KEY=base64-secret
 EOF
 assert_fails "resend requires api key" env PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" BOMINAL_ROOT_DIR="$TMP_DIR/repo" "$SCRIPT" --skip-smoke-tests
 
+# Resend provider can use Supabase Vault secret name in place of RESEND_API_KEY.
+make_valid_envs
+cat >"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF'
+GCP_PROJECT_ID=test-project
+DATABASE_URL=postgresql+asyncpg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:5432/postgres?ssl=require
+SYNC_DATABASE_URL=postgresql+psycopg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:5432/postgres?sslmode=require
+AUTH_MODE=supabase
+SUPABASE_URL=https://test-ref.supabase.co
+SUPABASE_JWT_ISSUER=https://test-ref.supabase.co/auth/v1
+SUPABASE_AUTH_ENABLED=true
+SUPABASE_AUTH_API_KEY=anon-key
+SUPABASE_AUTH_TIMEOUT_SECONDS=12
+SUPABASE_STORAGE_ENABLED=true
+SUPABASE_SERVICE_ROLE_KEY=service-role-key
+SUPABASE_VAULT_ENABLED=true
+EMAIL_PROVIDER=resend
+RESEND_API_KEY=
+RESEND_API_KEY_VAULT_NAME=resend_api_key
+INTERNAL_API_KEY=abc123
+MASTER_KEY=base64-secret
+EOF
+PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" BOMINAL_ROOT_DIR="$TMP_DIR/repo" "$SCRIPT" --skip-smoke-tests >/dev/null
+
+# Vault-based resend secret reference requires SUPABASE_VAULT_ENABLED=true.
+make_valid_envs
+cat >"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF'
+GCP_PROJECT_ID=test-project
+DATABASE_URL=postgresql+asyncpg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:5432/postgres?ssl=require
+SYNC_DATABASE_URL=postgresql+psycopg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:5432/postgres?sslmode=require
+AUTH_MODE=supabase
+SUPABASE_URL=https://test-ref.supabase.co
+SUPABASE_JWT_ISSUER=https://test-ref.supabase.co/auth/v1
+SUPABASE_AUTH_ENABLED=true
+SUPABASE_AUTH_API_KEY=anon-key
+SUPABASE_AUTH_TIMEOUT_SECONDS=12
+SUPABASE_STORAGE_ENABLED=true
+SUPABASE_SERVICE_ROLE_KEY=service-role-key
+SUPABASE_VAULT_ENABLED=false
+EMAIL_PROVIDER=resend
+RESEND_API_KEY=
+RESEND_API_KEY_VAULT_NAME=resend_api_key
+INTERNAL_API_KEY=abc123
+MASTER_KEY=base64-secret
+EOF
+assert_fails "vault resend secret requires supabase vault enabled" env PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" BOMINAL_ROOT_DIR="$TMP_DIR/repo" "$SCRIPT" --skip-smoke-tests
+
 # Public web API base URL must be HTTPS when set.
 make_valid_envs
 cat >"$TMP_DIR/repo/infra/env/prod/web.env" <<'EOF'
@@ -303,6 +353,58 @@ NEXT_PUBLIC_API_BASE_URL=http://example.com
 API_SERVER_URL=http://api:8000
 EOF
 assert_fails "web public api base must be https" env PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" BOMINAL_ROOT_DIR="$TMP_DIR/repo" "$SCRIPT" --skip-smoke-tests
+
+# Web Supabase direct auth/realtime enabled requires browser URL + anon key.
+make_valid_envs
+cat >"$TMP_DIR/repo/infra/env/prod/web.env" <<'EOF'
+NEXT_PUBLIC_API_BASE_URL=https://example.com
+API_SERVER_URL=http://api:8000
+NEXT_PUBLIC_SUPABASE_DIRECT_AUTH_ENABLED=true
+NEXT_PUBLIC_SUPABASE_REALTIME_ENABLED=true
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+EOF
+assert_fails "web supabase realtime/auth requires supabase browser config" env PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" BOMINAL_ROOT_DIR="$TMP_DIR/repo" "$SCRIPT" --skip-smoke-tests
+
+# Web Supabase browser URL must be HTTPS when direct auth/realtime enabled.
+make_valid_envs
+cat >"$TMP_DIR/repo/infra/env/prod/web.env" <<'EOF'
+NEXT_PUBLIC_API_BASE_URL=https://example.com
+API_SERVER_URL=http://api:8000
+NEXT_PUBLIC_SUPABASE_DIRECT_AUTH_ENABLED=true
+NEXT_PUBLIC_SUPABASE_REALTIME_ENABLED=true
+NEXT_PUBLIC_SUPABASE_URL=http://supabase.local
+NEXT_PUBLIC_SUPABASE_ANON_KEY=anon-key
+EOF
+assert_fails "web supabase browser url must be https" env PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" BOMINAL_ROOT_DIR="$TMP_DIR/repo" "$SCRIPT" --skip-smoke-tests
+
+# Data API/GraphQL read flags also require browser Supabase config.
+make_valid_envs
+cat >"$TMP_DIR/repo/infra/env/prod/web.env" <<'EOF'
+NEXT_PUBLIC_API_BASE_URL=https://example.com
+API_SERVER_URL=http://api:8000
+NEXT_PUBLIC_TRAIN_READS_VIA_DATA_API=true
+NEXT_PUBLIC_TRAIN_DETAIL_VIA_GRAPHQL=true
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+EOF
+assert_fails "web supabase data api/graphql flags require supabase browser config" env PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" BOMINAL_ROOT_DIR="$TMP_DIR/repo" "$SCRIPT" --skip-smoke-tests
+
+# Edge notify timeout must be positive when enabled.
+make_valid_envs
+cat >>"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF'
+EDGE_TASK_NOTIFY_ENABLED=true
+SUPABASE_EDGE_TIMEOUT_SECONDS=0
+EOF
+assert_fails "edge notify timeout must be positive when enabled" env PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" BOMINAL_ROOT_DIR="$TMP_DIR/repo" "$SCRIPT" --skip-smoke-tests
+
+# Edge notify base URL override must be HTTPS when set.
+make_valid_envs
+cat >>"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF'
+EDGE_TASK_NOTIFY_ENABLED=true
+SUPABASE_EDGE_FUNCTIONS_BASE_URL=http://edge.local/functions/v1
+EOF
+assert_fails "edge notify base url must be https when configured" env PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" BOMINAL_ROOT_DIR="$TMP_DIR/repo" "$SCRIPT" --skip-smoke-tests
 
 # CORS origins must be HTTPS in production.
 make_valid_envs
@@ -331,6 +433,19 @@ INTERNAL_API_KEY=abc123
 MASTER_KEY=base64-secret
 EOF
 assert_fails "resend api base url must be https" env PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" BOMINAL_ROOT_DIR="$TMP_DIR/repo" "$SCRIPT" --skip-smoke-tests
+
+# Worker max jobs must be a bounded positive integer when set.
+make_valid_envs
+cat >>"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF'
+WORKER_MAX_JOBS=0
+EOF
+assert_fails "worker max jobs must be positive" env PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" BOMINAL_ROOT_DIR="$TMP_DIR/repo" "$SCRIPT" --skip-smoke-tests
+
+make_valid_envs
+cat >>"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF'
+WORKER_MAX_JOBS=51
+EOF
+assert_fails "worker max jobs must be bounded" env PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" BOMINAL_ROOT_DIR="$TMP_DIR/repo" "$SCRIPT" --skip-smoke-tests
 
 # Overdue production deprecation with active references should fail deploy gate.
 make_valid_envs

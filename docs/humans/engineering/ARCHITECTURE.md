@@ -89,6 +89,11 @@ Module contract:
 - Production deploy/predeploy gates enforce `AUTH_MODE=supabase`.
 - Session cookie behavior remains `HttpOnly`, `SameSite=Lax`, and `Secure` only in production.
 - Local authorization source of truth remains `users.role_id` / `roles.name` (JWT role claims are not trusted for privilege).
+- Direct frontend-to-Supabase auth is supported behind web feature flags:
+  - web sign-in/sign-up can hit Supabase Auth directly
+  - API session cookie bootstrap occurs at `POST /api/auth/supabase/session`
+  - legacy password endpoints remain available during migration and emit deprecation/sunset headers
+- Server-side web auth resolution (`web/lib/server-auth.ts`) calls `GET /api/auth/me` with timeout-bounded retry (`8s` timeout, single short backoff retry) to reduce transient false sign-out redirects on back/forward navigation under temporary API latency.
 - Passkeys (WebAuthn) are optional and supported in session-auth flows:
   - authenticated enrollment (`/api/auth/passkeys/register/options`, `/api/auth/passkeys/register/verify`)
   - passkey login bootstrap (`/api/auth/passkeys/auth/options`, `/api/auth/passkeys/auth/verify`)
@@ -99,7 +104,7 @@ Module contract:
 
 ### API access tiers
 
-- Public routes: register/login/logout/password-reset and email-verification request endpoints.
+- Public routes: register/login/logout/password-reset, Supabase session bootstrap (`/api/auth/supabase/session`), and email-verification request endpoints.
 - Authenticated routes: account profile routes, modules, train, wallet, notifications.
 - Internal-only routes: `/api/internal/*` guarded by either:
   - `X-Internal-Api-Key` against `INTERNAL_API_KEY`, or
@@ -122,21 +127,38 @@ Train request path:
 Task list performance controls:
 
 - `/api/train/tasks` supports bounded list reads via `limit` query (`1..500`, default `200`).
+- `/api/train/tasks` supports payload shape control via `view=full|compact`:
+  - `full` preserves full task summary payload.
+  - `compact` trims list-path `spec_json` to UI-critical keys and reduces nested ranked-row metadata.
 - Latest attempt/ticket summary rows are selected using per-task latest-row ranking queries (window-function strategy) instead of loading full per-task histories in list view.
 - PostgreSQL task-summary paths use `DISTINCT ON` plus descending `(task_id, timestamp, id)` indexes for latest attempt/artifact retrieval; non-Postgres test backends fall back to ranking-query compatibility path.
 - Train list reads use partial indexes for active and terminal states (`user_id + created_at desc`) to reduce tail latency for bounded list fetches.
-- Train dashboard fetches active/completed tasks on initial load, then refreshes on state-change events and explicit triggers (visibility restore, action mutations).
+- Train dashboard fetches active/completed tasks on initial load, then applies realtime task/ticket deltas client-side for known tasks.
+- Visibility restore and unknown-task events use a Supabase Data API delta reconciliation pass against `task_realtime_events`; full list API reload is reserved for unknown/missed deltas.
+- Train list bootstrap can read from Supabase Data API view `public.v_train_task_list_compact` when `NEXT_PUBLIC_TRAIN_READS_VIA_DATA_API=true`, with automatic fallback to `/api/train/tasks` on read-path errors.
+- Supabase read-model view `public.v_train_task_list_compact` projects latest-attempt metadata and ticket/list-bucket summary for compact dashboard cards.
+- Owner-scoped RLS read policies are enabled for `tasks`, `task_attempts`, and `artifacts` to support direct Supabase Data API/GraphQL user reads without exposing cross-user data.
 - Frontend task list state updates are key-compared before commit to avoid unnecessary rerender churn when payloads are unchanged.
+- List endpoints use short private revalidation caching (`Cache-Control: private, max-age=5, must-revalidate`) plus weak ETag for conditional GET (`If-None-Match`) to reduce repeated transfer bytes.
 - Performance regression safeguards include hybrid benchmark gate scripts (relative improvement + absolute ceilings) and frontend live-update behavior unit tests in CI.
 - Dashboard/task-detail/top-nav-alert live updates:
   - API publishes per-user train task state events to Redis channel `train:task-events:user:{user_id}` on user-visible state transitions.
-  - High-frequency internal retry states (`RUNNING`, `RESERVING`, `PAYING`, `POLLING`) are intentionally suppressed from SSE emits to avoid refetch churn in web clients.
-  - UI subscribes through SSE endpoint `/api/train/tasks/events` and refreshes dashboard lists, task detail, and top-nav attention only on emitted state-change events.
+  - High-frequency internal retry states (`RUNNING`, `RESERVING`, `PAYING`, `POLLING`) are intentionally suppressed from publish emits to avoid refetch churn in web clients.
+  - UI live updates are Supabase Realtime-first (`public.task_realtime_events` on publication `bominal_realtime`) when `NEXT_PUBLIC_SUPABASE_REALTIME_ENABLED=true` and a valid browser Supabase session token is available.
+  - Web live-event subscriptions are managed through shared cross-module realtime helpers in `web/lib/realtime/` (`client.ts`, `subscription.ts`, `registry.ts`, `types.ts`), with train-specific mapping adapters layered in module code (`web/lib/train/task-events.ts`).
+  - SSE transport is intentionally disabled; no `/api/train/tasks/events` stream is served.
   - Dashboard, task-detail, and top-nav attention do not use fixed-interval task polling.
+  - Event-driven reconciliation is dedupe-throttled client-side to avoid burst list refetch loops on repeated terminal/ticket transitions.
+  - `public.task_realtime_events` is maintained by DB triggers and owner-scoped RLS, includes ticket/list-bucket projection fields, suppresses no-op updates, and is shared across Realtime/Data API/GraphQL consumers.
+- Task-detail read path can use Supabase GraphQL (`/graphql/v1`) when `NEXT_PUBLIC_TRAIN_DETAIL_VIA_GRAPHQL=true`, with automatic fallback to `/api/train/tasks/{id}`.
 
 Worker provider-search retry delay model:
 
-- Worker retry timing for provider search/reserve paths uses a **single stretched-exponential mean curve** with multiplicative **mean-preserving gamma jitter** (implemented in `api/app/modules/train/worker.py`).
+- Worker retry timing for provider polling paths keeps the existing **stretched-exponential base curve** and adds two runtime overlays:
+  - lane-aware provider limiter (`priority` lane bypass, polling lane capped per provider)
+  - stress-mode delay floor anchors (`24h=1.25s`, `48h=2.5s`, `72h=4.0s`) applied only when provider polling contention is observed.
+- Polling jitter now supports a mean-reverting OU-style stateful multiplier per task key (with bounded clamp) while preserving the existing gamma fallback for non-keyed calls.
+- Priority/manual operations (`reserve`, `pay`, `cancel`, explicit refresh/search`) can run on `priority` lane when `TRAIN_PRIORITY_EXEMPT_FROM_CAPS=true`; polling traffic remains capped by `TRAIN_POLL_GLOBAL_REFILL_PER_SECOND` + `TRAIN_POLL_GLOBAL_BUCKET_CAPACITY`.
 - Definitions:
   - `t`: seconds until departure/expiry.
   - `M`: `TRAIN_POLL_MAX_SECONDS`.
@@ -159,6 +181,7 @@ Worker bootstrap compatibility:
 
 - Worker containers run via `python -m app.worker_entrypoint <settings-class>`.
 - The entrypoint creates an explicit event loop before invoking ARQ worker settings, which is required for Python 3.14+ runtime compatibility.
+- Terminal train-task email notifications can be delivered directly through Supabase Edge Function `task-notify` when `EDGE_TASK_NOTIFY_ENABLED=true`; worker falls back to queue-based template email delivery when edge invoke is disabled or fails.
 
 Provider integration:
 
@@ -171,6 +194,10 @@ Provider integration:
 - Factory switching by env:
   - `TRAIN_PROVIDER_MODE`: `mock` | `hybrid` | `real`
   - `TRAIN_PROVIDER_TRANSPORT`: `auto` | `curl_cffi` | `httpx`
+- Provider client instances are cached per `(mode, provider, user)` for session continuity across API/worker calls:
+  - `TRAIN_PROVIDER_CLIENT_CACHE_SECONDS` controls TTL for live/hybrid clients (default `600`).
+  - `TRAIN_PROVIDER_CLIENT_CACHE_MAX_ENTRIES` bounds memory by evicting oldest-expiring entries first (default `256`).
+  - cache entries are invalidated when provider credentials are updated/cleared.
 - Optional egress routing by domain set:
   - `TRAIN_PROVIDER_EGRESS_PROXY_URL` routes train-provider calls through `egress-train`
   - `RESTAURANT_PROVIDER_EGRESS_PROXY_URL` routes restaurant-provider calls through `egress-restaurant` when the restaurant module is enabled
@@ -179,7 +206,7 @@ Provider integration:
   - Unpaid reservation expiry is determined by `stlFlg != "Y"` and KST comparison `now > iseLmtDt+iseLmtTm`.
   - Sold-out standby fallback is allowed only when `rsvWaitPsbCd` contains `"9"`.
   - `reserve_info`/`ticket_info` no-data signals (for example `조회자료가 없습니다.`) are mapped to `reservation_not_found`.
-  - Passenger payload fields are emitted per passenger index (`psgTpCd{n}`, `psgInfoPerPrnb{n}`, seat-attribute keys).
+  - Passenger payload fields are emitted per passenger index (`psgTpCd{n}`, `psgInfoPerPrnb{n}`, seat-attribute keys), including adults (`1`), children (`5`), seniors (`4`), disability 1-3 (`2`), and disability 4-6 (`3`).
 
 ### Restaurant policy architecture (stage scaffold)
 
