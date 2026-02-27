@@ -482,9 +482,11 @@ describe("train dashboard helpers", () => {
 
   it("handles schedule-title formatting and primitive helpers", () => {
     expect(formatScheduleTitleDate("2026-02-22")).toBe("02/22/2026");
+    expect(formatScheduleTitleDate("20260222")).toBe("02/22/2026");
     expect(formatScheduleTitleDate("")).toBe("MM/DD/YYYY");
     expect(formatScheduleTitleDate("bad")).toBe("MM/DD/YYYY");
     expect(formatScheduleDateWithWeekday("2026-02-23")).toBe("02/23/2026 (Monday)");
+    expect(formatScheduleDateWithWeekday("20260223")).toBe("02/23/2026 (Monday)");
     expect(formatScheduleDateWithWeekday("")).toBe("MM/DD/YYYY (Weekday)");
     expect(formatScheduleDateWithWeekday("bad")).toBe("MM/DD/YYYY (Weekday)");
 
@@ -614,6 +616,35 @@ describe("train dashboard helpers", () => {
     expect(dateOnly.travelDateLabel).toBe("02/22/2026 (Sunday)");
     expect(dateOnly.scheduleLabel).toBe("02/22/2026");
     expect(dateOnly.scheduleOptionCount).toBe(0);
+
+    const providerDiscoveredDate = taskInfoFromSpec(
+      makeTask("task-3b", "COMPLETED", {
+        spec_json: {
+          dep: "서울",
+          arr: "부산",
+          date: "20260222",
+          passengers: { adults: 1, children: 0 },
+          selected_trains_ranked: [{ rank: 1, departure_at: "2026-02-22T13:10:00+09:00", provider: "KTX" }],
+        },
+      }),
+    );
+    expect(providerDiscoveredDate.travelDateLabel).toBe("02/22/2026 (Sunday)");
+    expect(providerDiscoveredDate.scheduleLabel).toBe("02/22/2026 13:10");
+    expect(providerDiscoveredDate.primaryDepartureLabel).toBe("13:10");
+
+    const invalidDateFallsBackToDeparture = taskInfoFromSpec(
+      makeTask("task-3c", "COMPLETED", {
+        spec_json: {
+          dep: "서울",
+          arr: "부산",
+          date: "invalid",
+          passengers: { adults: 1, children: 0 },
+          selected_trains_ranked: [{ rank: 1, departure_at: "2026-02-24T07:45:00+09:00", provider: "KTX" }],
+        },
+      }),
+    );
+    expect(invalidDateFallsBackToDeparture.travelDateLabel).toBe("02/24/2026 (Tuesday)");
+    expect(invalidDateFallsBackToDeparture.scheduleLabel).toBe("02/24/2026 07:45");
 
     const fullyFallback = taskInfoFromSpec(
       makeTask("task-4", "POLLING", {

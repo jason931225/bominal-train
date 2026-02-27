@@ -333,6 +333,29 @@ describe("TrainDashboard polling behavior", () => {
     expect(srtToggle).toHaveAttribute("aria-pressed", "false");
   });
 
+  it("keeps date and time search controls width-constrained for mobile layouts", async () => {
+    await renderDashboard();
+
+    const dateInput = screen.getByLabelText("Date");
+    const timeStartInput = screen.getByLabelText("Time start");
+    const timeEndInput = screen.getByLabelText("Time end");
+
+    const dateLabel = dateInput.closest("label");
+    const timeStartLabel = timeStartInput.closest("label");
+    const timeEndLabel = timeEndInput.closest("label");
+    const timeGrid = timeStartLabel?.parentElement;
+
+    expect(dateLabel).not.toBeNull();
+    expect(timeStartLabel).not.toBeNull();
+    expect(timeEndLabel).not.toBeNull();
+    expect(timeGrid).not.toBeNull();
+
+    expect(dateLabel).toHaveClass("min-w-0");
+    expect(timeStartLabel).toHaveClass("min-w-0");
+    expect(timeEndLabel).toHaveClass("min-w-0");
+    expect(timeGrid).toHaveClass("min-w-0");
+  });
+
   it("shows no-schedules notice (not error) when search returns empty schedules with provider errors", async () => {
     searchStatus = 200;
     searchBody = {
