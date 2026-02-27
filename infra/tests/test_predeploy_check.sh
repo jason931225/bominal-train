@@ -50,6 +50,8 @@ SUPABASE_STORAGE_ENABLED=true
 SUPABASE_SERVICE_ROLE_KEY=service-role-key
 EMAIL_PROVIDER=disabled
 INTERNAL_API_KEY=abc123
+INTERNAL_API_KEY_SECRET_ID=
+INTERNAL_API_KEY_SECRET_VERSION=
 MASTER_KEY=base64-secret
 EOF
   cat >"$TMP_DIR/repo/infra/env/prod/web.env" <<'EOF'
@@ -207,6 +209,73 @@ assert_fails "gsm missing project id must fail" env PATH="$TMP_DIR/bin:$PATH" PR
 make_valid_envs
 make_valid_registry
 
+# INTERNAL_API_KEY can be sourced from GSM secret reference.
+cat >"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF'
+GCP_PROJECT_ID=test-project
+DATABASE_URL=postgresql+asyncpg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:5432/postgres?ssl=require
+SYNC_DATABASE_URL=postgresql+psycopg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:5432/postgres?sslmode=require
+AUTH_MODE=supabase
+SUPABASE_URL=https://test-ref.supabase.co
+SUPABASE_JWT_ISSUER=https://test-ref.supabase.co/auth/v1
+SUPABASE_AUTH_ENABLED=true
+SUPABASE_AUTH_API_KEY=anon-key
+SUPABASE_AUTH_TIMEOUT_SECONDS=12
+SUPABASE_STORAGE_ENABLED=true
+SUPABASE_SERVICE_ROLE_KEY=service-role-key
+EMAIL_PROVIDER=disabled
+INTERNAL_API_KEY=
+INTERNAL_API_KEY_SECRET_ID=bominal-internal-api-key
+INTERNAL_API_KEY_SECRET_VERSION=4
+MASTER_KEY=base64-secret
+EOF
+PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" BOMINAL_ROOT_DIR="$TMP_DIR/repo" "$SCRIPT" --skip-smoke-tests >/dev/null
+
+# INTERNAL_API_KEY source ambiguity should fail.
+cat >"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF'
+GCP_PROJECT_ID=test-project
+DATABASE_URL=postgresql+asyncpg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:5432/postgres?ssl=require
+SYNC_DATABASE_URL=postgresql+psycopg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:5432/postgres?sslmode=require
+AUTH_MODE=supabase
+SUPABASE_URL=https://test-ref.supabase.co
+SUPABASE_JWT_ISSUER=https://test-ref.supabase.co/auth/v1
+SUPABASE_AUTH_ENABLED=true
+SUPABASE_AUTH_API_KEY=anon-key
+SUPABASE_AUTH_TIMEOUT_SECONDS=12
+SUPABASE_STORAGE_ENABLED=true
+SUPABASE_SERVICE_ROLE_KEY=service-role-key
+EMAIL_PROVIDER=disabled
+INTERNAL_API_KEY=abc123
+INTERNAL_API_KEY_SECRET_ID=bominal-internal-api-key
+INTERNAL_API_KEY_SECRET_VERSION=4
+MASTER_KEY=base64-secret
+EOF
+assert_fails "internal api key source ambiguity must fail" env PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" BOMINAL_ROOT_DIR="$TMP_DIR/repo" "$SCRIPT" --skip-smoke-tests
+make_valid_envs
+make_valid_registry
+
+# INTERNAL_API_KEY GSM source requires pinned version.
+cat >"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF'
+GCP_PROJECT_ID=test-project
+DATABASE_URL=postgresql+asyncpg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:5432/postgres?ssl=require
+SYNC_DATABASE_URL=postgresql+psycopg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:5432/postgres?sslmode=require
+AUTH_MODE=supabase
+SUPABASE_URL=https://test-ref.supabase.co
+SUPABASE_JWT_ISSUER=https://test-ref.supabase.co/auth/v1
+SUPABASE_AUTH_ENABLED=true
+SUPABASE_AUTH_API_KEY=anon-key
+SUPABASE_AUTH_TIMEOUT_SECONDS=12
+SUPABASE_STORAGE_ENABLED=true
+SUPABASE_SERVICE_ROLE_KEY=service-role-key
+EMAIL_PROVIDER=disabled
+INTERNAL_API_KEY=
+INTERNAL_API_KEY_SECRET_ID=bominal-internal-api-key
+INTERNAL_API_KEY_SECRET_VERSION=latest
+MASTER_KEY=base64-secret
+EOF
+assert_fails "internal api key gsm latest version must fail" env PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" BOMINAL_ROOT_DIR="$TMP_DIR/repo" "$SCRIPT" --skip-smoke-tests
+make_valid_envs
+make_valid_registry
+
 # Leading-zero month values should be treated as decimal and avoid bash octal warnings.
 cat >"$TMP_DIR/repo/infra/env/prod/pay.env" <<'EOF'
 CARDNUMBER=4111111111111111
@@ -237,6 +306,9 @@ PATH="$TMP_DIR/bin:$PATH" \
 # PAYMENT_PROVIDER=evervault requires browser-side Evervault env vars.
 cat >>"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF'
 PAYMENT_PROVIDER=evervault
+PAYMENT_EVERVAULT_ENFORCE=true
+AUTOPAY_REQUIRE_USER_WALLET=true
+AUTOPAY_ALLOW_SERVER_FALLBACK=false
 EOF
 assert_fails "evervault payment mode requires NEXT_PUBLIC_EVERVAULT_TEAM_ID and NEXT_PUBLIC_EVERVAULT_APP_ID" \
   env PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" BOMINAL_ROOT_DIR="$TMP_DIR/repo" \
@@ -246,6 +318,9 @@ make_valid_registry
 
 cat >>"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF'
 PAYMENT_PROVIDER=evervault
+PAYMENT_EVERVAULT_ENFORCE=true
+AUTOPAY_REQUIRE_USER_WALLET=true
+AUTOPAY_ALLOW_SERVER_FALLBACK=false
 EOF
 cat >>"$TMP_DIR/repo/infra/env/prod/web.env" <<'EOF'
 NEXT_PUBLIC_EVERVAULT_TEAM_ID=team_test_123
@@ -253,6 +328,23 @@ NEXT_PUBLIC_EVERVAULT_APP_ID=app_test_123
 EOF
 PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" BOMINAL_ROOT_DIR="$TMP_DIR/repo" \
   "$SCRIPT" --skip-smoke-tests >/dev/null
+make_valid_envs
+make_valid_registry
+
+# PAYMENT_PROVIDER=evervault must reject server fallback in production.
+cat >>"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF'
+PAYMENT_PROVIDER=evervault
+PAYMENT_EVERVAULT_ENFORCE=true
+AUTOPAY_REQUIRE_USER_WALLET=true
+AUTOPAY_ALLOW_SERVER_FALLBACK=true
+EOF
+cat >>"$TMP_DIR/repo/infra/env/prod/web.env" <<'EOF'
+NEXT_PUBLIC_EVERVAULT_TEAM_ID=team_test_123
+NEXT_PUBLIC_EVERVAULT_APP_ID=app_test_123
+EOF
+assert_fails "evervault payment mode must disable server fallback" \
+  env PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" BOMINAL_ROOT_DIR="$TMP_DIR/repo" \
+  "$SCRIPT" --skip-smoke-tests
 make_valid_envs
 make_valid_registry
 
@@ -405,6 +497,7 @@ DATABASE_URL=postgresql+asyncpg://postgres.test-ref:strong-password@aws-0-us-cen
 SYNC_DATABASE_URL=postgresql+psycopg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:5432/postgres?sslmode=require
 AUTH_MODE=legacy
 EMAIL_PROVIDER=resend
+EMAIL_FROM_ADDRESS=no-reply@example.com
 RESEND_API_KEY=
 INTERNAL_API_KEY=abc123
 MASTER_KEY=base64-secret
@@ -425,8 +518,10 @@ SUPABASE_AUTH_API_KEY=anon-key
 SUPABASE_AUTH_TIMEOUT_SECONDS=12
 SUPABASE_STORAGE_ENABLED=true
 SUPABASE_SERVICE_ROLE_KEY=service-role-key
+EDGE_TASK_NOTIFY_ENABLED=true
 SUPABASE_VAULT_ENABLED=true
 EMAIL_PROVIDER=resend
+EMAIL_FROM_ADDRESS=no-reply@example.com
 RESEND_API_KEY=
 RESEND_API_KEY_VAULT_NAME=resend_api_key
 INTERNAL_API_KEY=abc123
@@ -448,14 +543,111 @@ SUPABASE_AUTH_API_KEY=anon-key
 SUPABASE_AUTH_TIMEOUT_SECONDS=12
 SUPABASE_STORAGE_ENABLED=true
 SUPABASE_SERVICE_ROLE_KEY=service-role-key
+EDGE_TASK_NOTIFY_ENABLED=true
 SUPABASE_VAULT_ENABLED=false
 EMAIL_PROVIDER=resend
+EMAIL_FROM_ADDRESS=no-reply@example.com
 RESEND_API_KEY=
 RESEND_API_KEY_VAULT_NAME=resend_api_key
 INTERNAL_API_KEY=abc123
 MASTER_KEY=base64-secret
 EOF
 assert_fails "vault resend secret requires supabase vault enabled" env PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" BOMINAL_ROOT_DIR="$TMP_DIR/repo" "$SCRIPT" --skip-smoke-tests
+
+# Vault-based resend secret reference requires edge notify mode.
+make_valid_envs
+cat >"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF'
+GCP_PROJECT_ID=test-project
+DATABASE_URL=postgresql+asyncpg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:5432/postgres?ssl=require
+SYNC_DATABASE_URL=postgresql+psycopg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:5432/postgres?sslmode=require
+AUTH_MODE=supabase
+SUPABASE_URL=https://test-ref.supabase.co
+SUPABASE_JWT_ISSUER=https://test-ref.supabase.co/auth/v1
+SUPABASE_AUTH_ENABLED=true
+SUPABASE_AUTH_API_KEY=anon-key
+SUPABASE_AUTH_TIMEOUT_SECONDS=12
+SUPABASE_STORAGE_ENABLED=true
+SUPABASE_SERVICE_ROLE_KEY=service-role-key
+EDGE_TASK_NOTIFY_ENABLED=false
+SUPABASE_VAULT_ENABLED=true
+EMAIL_PROVIDER=resend
+EMAIL_FROM_ADDRESS=no-reply@example.com
+RESEND_API_KEY=
+RESEND_API_KEY_VAULT_NAME=resend_api_key
+INTERNAL_API_KEY=abc123
+MASTER_KEY=base64-secret
+EOF
+assert_fails "vault resend secret requires edge notify mode" env PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" BOMINAL_ROOT_DIR="$TMP_DIR/repo" "$SCRIPT" --skip-smoke-tests
+
+# Resend provider can use GSM secret reference.
+make_valid_envs
+cat >"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF'
+GCP_PROJECT_ID=test-project
+DATABASE_URL=postgresql+asyncpg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:5432/postgres?ssl=require
+SYNC_DATABASE_URL=postgresql+psycopg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:5432/postgres?sslmode=require
+AUTH_MODE=supabase
+SUPABASE_URL=https://test-ref.supabase.co
+SUPABASE_JWT_ISSUER=https://test-ref.supabase.co/auth/v1
+SUPABASE_AUTH_ENABLED=true
+SUPABASE_AUTH_API_KEY=anon-key
+SUPABASE_AUTH_TIMEOUT_SECONDS=12
+SUPABASE_STORAGE_ENABLED=true
+SUPABASE_SERVICE_ROLE_KEY=service-role-key
+EMAIL_PROVIDER=resend
+EMAIL_FROM_ADDRESS=no-reply@example.com
+RESEND_API_KEY=
+RESEND_API_KEY_SECRET_ID=bominal-resend-api-key
+RESEND_API_KEY_SECRET_VERSION=3
+INTERNAL_API_KEY=abc123
+MASTER_KEY=base64-secret
+EOF
+PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" BOMINAL_ROOT_DIR="$TMP_DIR/repo" "$SCRIPT" --skip-smoke-tests >/dev/null
+
+# Resend GSM secret reference requires pinned version.
+cat >"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF'
+GCP_PROJECT_ID=test-project
+DATABASE_URL=postgresql+asyncpg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:5432/postgres?ssl=require
+SYNC_DATABASE_URL=postgresql+psycopg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:5432/postgres?sslmode=require
+AUTH_MODE=supabase
+SUPABASE_URL=https://test-ref.supabase.co
+SUPABASE_JWT_ISSUER=https://test-ref.supabase.co/auth/v1
+SUPABASE_AUTH_ENABLED=true
+SUPABASE_AUTH_API_KEY=anon-key
+SUPABASE_AUTH_TIMEOUT_SECONDS=12
+SUPABASE_STORAGE_ENABLED=true
+SUPABASE_SERVICE_ROLE_KEY=service-role-key
+EMAIL_PROVIDER=resend
+EMAIL_FROM_ADDRESS=no-reply@example.com
+RESEND_API_KEY=
+RESEND_API_KEY_SECRET_ID=bominal-resend-api-key
+RESEND_API_KEY_SECRET_VERSION=latest
+INTERNAL_API_KEY=abc123
+MASTER_KEY=base64-secret
+EOF
+assert_fails "resend gsm latest version must fail" env PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" BOMINAL_ROOT_DIR="$TMP_DIR/repo" "$SCRIPT" --skip-smoke-tests
+
+# Resend source ambiguity should fail.
+cat >"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF'
+GCP_PROJECT_ID=test-project
+DATABASE_URL=postgresql+asyncpg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:5432/postgres?ssl=require
+SYNC_DATABASE_URL=postgresql+psycopg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:5432/postgres?sslmode=require
+AUTH_MODE=supabase
+SUPABASE_URL=https://test-ref.supabase.co
+SUPABASE_JWT_ISSUER=https://test-ref.supabase.co/auth/v1
+SUPABASE_AUTH_ENABLED=true
+SUPABASE_AUTH_API_KEY=anon-key
+SUPABASE_AUTH_TIMEOUT_SECONDS=12
+SUPABASE_STORAGE_ENABLED=true
+SUPABASE_SERVICE_ROLE_KEY=service-role-key
+EMAIL_PROVIDER=resend
+EMAIL_FROM_ADDRESS=no-reply@example.com
+RESEND_API_KEY=re_test_key
+RESEND_API_KEY_SECRET_ID=bominal-resend-api-key
+RESEND_API_KEY_SECRET_VERSION=2
+INTERNAL_API_KEY=abc123
+MASTER_KEY=base64-secret
+EOF
+assert_fails "resend key source ambiguity must fail" env PATH="$TMP_DIR/bin:$PATH" PREDEPLOY_DEPRECATION_GUARD_SCRIPT="$GUARD_SCRIPT" BOMINAL_ROOT_DIR="$TMP_DIR/repo" "$SCRIPT" --skip-smoke-tests
 
 # Public web API base URL must be HTTPS when set.
 make_valid_envs

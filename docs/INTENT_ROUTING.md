@@ -15,9 +15,11 @@ Keyword-to-pointer routing map to reduce discovery cost and token usage.
 | `governance` / `policy` | `docs/governance/README.md` | `docs/README.md` |
 | `approval` / `permission` / `access` | `docs/governance/APPROVALS_AND_PERMISSIONS.md` | `docs/agents/PERMISSIONS.md` |
 | `guardrail` / `safety` | `docs/agents/GUARDRAILS.md` | `docs/governance/SECURITY_POLICY.md` |
+| `secret` / `key` / `vault` / `gsm` | `docs/governance/SECRETS_RESIDENCY_POLICY.md` | `docs/governance/SECURITY_POLICY.md`, `docs/humans/operations/DEPLOYMENT.md` |
 | `deploy` | `docs/humans/operations/DEPLOYMENT.md` | `docs/governance/CHANGE_MANAGEMENT.md` |
 | `rollback` | `docs/humans/operations/DEPLOYMENT.md` | `docs/humans/operations/RUNBOOK.md` |
 | `incident` | `docs/governance/INCIDENT_MANAGEMENT.md` | `docs/humans/operations/RUNBOOK.md` |
+| `free tier` / `budget` / `quota` | `docs/governance/FREE_TIER_BUDGET_POLICY.md` | `docs/humans/operations/RUNBOOK.md` |
 | `quality` / `testing` / `warnings` | `docs/governance/ENGINEERING_QUALITY.md` | `docs/humans/engineering/CONTRIBUTING.md` |
 | `reliability` / `observability` | `docs/governance/RELIABILITY_OBSERVABILITY.md` | `docs/governance/PRODUCTION_POLICY.md` |
 | `security` / `cde` / `pci` | `docs/governance/SECURITY_POLICY.md` | `docs/humans/security/SECURITY.md`, `docs/security/compliance-matrix.md` |

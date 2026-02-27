@@ -4,6 +4,22 @@ Operational procedures for local/dev/prod maintenance.
 
 ## Service commands
 
+Host Python verification protocol:
+
+- On VM host, use `uv` + `api/.venv` for Python test commands.
+- Bootstrap/repair venv + pytest with:
+
+```bash
+bash infra/scripts/ensure-uv-api-venv.sh
+```
+
+- Run host-side API tests via uv-managed interpreter:
+
+```bash
+cd api
+uv run --python .venv/bin/python -m pytest -q
+```
+
 ### VM production (Debian 12 + Docker deploy)
 
 **Shell Aliases** (available after SSH login):
@@ -198,27 +214,31 @@ docker compose -f infra/docker-compose.prod.yml logs --since=30m api worker | rg
 docker compose -f infra/docker-compose.prod.yml exec api python -m app.admin_cli secret purge-payment-cvv --yes
 ```
 
-Hosted service budget checks (non-CDE Upstash + Supabase free-tier planning):
+Hosted service budget checks (free-tier aware):
 
-- Upstash (non-CDE Redis only):
-  - Commands/month: `500000`
-  - Bandwidth/month: `50 GB`
-  - Storage: `256 MB`
-  - Requests/second: `10000`
-- Supabase:
-  - DB size: `0.5 GB`
-  - Egress: `5 GB`
-  - Cached egress: `5 GB`
-  - MAU: `50000` (first-party), `50000` (third-party)
-  - Storage: `1 GB`
-  - Realtime peak connections: `200`
-  - Realtime messages: `2000000`
-  - Edge invocations/month: `500000`
+- Use live sources instead of hardcoded quota values:
+  - Supabase billing/usage: `https://supabase.com/docs/guides/platform/billing-on-supabase`
+  - Supabase usage controls: `https://supabase.com/docs/guides/platform/manage-your-usage`
+  - GCP Always Free catalog: `https://cloud.google.com/free/docs/free-cloud-features`
+  - Cloud Scheduler pricing: `https://cloud.google.com/scheduler/pricing`
+  - Pub/Sub pricing: `https://cloud.google.com/pubsub/pricing`
+  - Cloud Run pricing: `https://cloud.google.com/run/pricing`
+- Check-date discipline:
+  - Record `last_checked_at` (UTC date) whenever updating operational budgets.
+  - Attach a usage screenshot or export link for Supabase and GCP in weekly ops notes.
+- Weekly free-tier evidence collection:
+  - Supabase: project usage dashboard snapshot + current warning/hard-alert percentages.
+  - GCP: billing usage summary + Secret Manager active-version count.
+- Generate weekly evidence template:
+  - `bash infra/scripts/free_tier_status_report.sh --output docs/artifacts/free-tier-status-$(date -u +%F).md`
+- Policy thresholds are defined in `docs/governance/FREE_TIER_BUDGET_POLICY.md`:
+  - warning `>=70%`
+  - hard alert `>=85%`
 
 Operational policy:
 
 - Keep CDE Redis on a separate non-Upstash endpoint (`REDIS_URL_CDE`).
-- Keep Upstash traffic for queue/rate-limit/non-sensitive cache only (`REDIS_URL_NON_CDE`).
+- Keep non-CDE Redis traffic (queue/rate-limit/non-sensitive cache) on `REDIS_URL_NON_CDE`.
 - Set warning thresholds at 70% and hard alerts at 85% of each limit.
 - If any hard alert is reached, disable non-critical background jobs and increase polling intervals before quota exhaustion.
 
@@ -629,7 +649,10 @@ bominal-deploy
 
 1. Check API env values in `infra/env/prod/api.env`:
    - `EMAIL_PROVIDER=resend`
-   - `RESEND_API_KEY` set
+   - exactly one key source configured:
+     - `RESEND_API_KEY`, or
+     - `RESEND_API_KEY_SECRET_ID` + pinned `RESEND_API_KEY_SECRET_VERSION`, or
+     - edge-only `RESEND_API_KEY_VAULT_NAME` with `SUPABASE_VAULT_ENABLED=true` and `EDGE_TASK_NOTIFY_ENABLED=true`
    - `EMAIL_FROM_ADDRESS` uses a verified Resend sender/domain
 2. Verify worker is healthy and consuming `train:queue`.
 3. Trigger `/api/notifications/email/test` from an authenticated session.
@@ -650,6 +673,9 @@ Checks:
    - `RESEND_API_KEY`
    - `EMAIL_FROM_ADDRESS`
    - optional `EMAIL_FROM_NAME`
+   - sync from GSM with:
+     - `bash infra/scripts/sync-edge-secrets-from-gsm.sh --dry-run`
+     - `bash infra/scripts/sync-edge-secrets-from-gsm.sh --apply`
 3. Inspect worker logs for edge invoke status:
    - success path records `edge:task-notify` as notification job marker in task spec
    - failure path logs warning and continues with queue fallback
@@ -658,6 +684,7 @@ Recovery:
 
 1. If edge invoke fails persistently, set `EDGE_TASK_NOTIFY_ENABLED=false` and redeploy to force queue-only notification delivery.
 2. If fallback queue path also fails, use section `6.1` checks for Resend provider configuration.
+3. If edge secret drift is suspected, pin a known-good `RESEND_API_KEY_SECRET_VERSION` and rerun `sync-edge-secrets-from-gsm.sh --apply`.
 
 ## 6.3) Train Data API/GraphQL read-path toggles
 

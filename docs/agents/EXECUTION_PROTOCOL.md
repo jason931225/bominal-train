@@ -20,6 +20,11 @@ Before staging:
 4. Verify each behavior change has directly relevant tests.
 5. Resolve warnings in touched scope or record explicit owner/rationale.
 
+Host Python test execution policy:
+- On VM/host (outside containers), run Python test commands through a `uv`-managed venv.
+- Use `infra/scripts/ensure-uv-api-venv.sh` before host-side `pytest` execution.
+- Do not rely on global/system `pytest`.
+
 ## Docs-Last Prerequisite
 
 Before completion claims:

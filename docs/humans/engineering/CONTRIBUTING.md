@@ -118,7 +118,13 @@ Local Docker cleanup helper:
 Backend tests:
 
 ```bash
-(cd api && ./.venv/bin/pytest -q)
+(cd api && uv run --python .venv/bin/python -m pytest -q)
+```
+
+If `api/.venv` or `pytest` is missing, bootstrap with:
+
+```bash
+bash infra/scripts/ensure-uv-api-venv.sh
 ```
 
 - Backend coverage floor is enforced via pytest config:
@@ -151,7 +157,8 @@ Coverage ignore policy (mandatory):
 Assertiveness and mutation gates (risk-based):
 
 ```bash
-python3 infra/scripts/check_assertive_tests.py api/tests
+bash infra/scripts/ensure-uv-api-venv.sh
+uv run --python api/.venv/bin/python python infra/scripts/check_assertive_tests.py api/tests
 node infra/scripts/check_assertive_tests_web.mjs web
 bash infra/scripts/run_mutation_api.sh
 npm run --prefix web test:mutation

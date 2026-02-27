@@ -43,7 +43,7 @@ def main() -> int:
             needle="redacted = _PAN_CANDIDATE_RE.sub(lambda match: _mask_pan(match.group(0)), redacted)",
             replacement="redacted = redacted",
             test_cmd=[
-                "python3",
+                sys.executable,
                 "-m",
                 "pytest",
                 "--override-ini=addopts=",
@@ -57,7 +57,7 @@ def main() -> int:
             needle="if key is None:",
             replacement="if False and key is None:",
             test_cmd=[
-                "python3",
+                sys.executable,
                 "-m",
                 "pytest",
                 "--override-ini=addopts=",

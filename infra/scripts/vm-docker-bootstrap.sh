@@ -18,6 +18,11 @@ if ! command -v docker >/dev/null 2>&1; then
   curl -fsSL https://get.docker.com | sh
 fi
 
+if ! command -v uv >/dev/null 2>&1; then
+  echo "==> Installing uv (Astral) to /usr/local/bin"
+  curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
+fi
+
 systemctl enable --now docker
 
 if ! id "$APP_USER" >/dev/null 2>&1; then

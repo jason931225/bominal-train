@@ -43,6 +43,8 @@ Pointer format convention (mandatory):
 - [PTR-GOV-007] `docs/governance/DEPRECATION_POLICY.md` - deprecation lifecycle policy.
 - [PTR-GOV-008] `docs/governance/DOCUMENTATION_POLICY.md` - documentation policy and anti-drift rules.
 - [PTR-GOV-009] `docs/governance/APPROVALS_AND_PERMISSIONS.md` - approvals and auditability policy.
+- [PTR-GOV-010] `docs/governance/SECRETS_RESIDENCY_POLICY.md` - authoritative secret residency and source-of-truth contracts.
+- [PTR-GOV-011] `docs/governance/FREE_TIER_BUDGET_POLICY.md` - hosted free-tier threshold and evidence policy.
 
 ### Human Procedures
 
@@ -86,3 +88,10 @@ Pointer format convention (mandatory):
 - [PTR-OPS-003] `infra/tests/test_docs_consistency.sh` - docs consistency validator.
 - [PTR-OPS-004] `infra/tests/test_docs_audience_split.sh` - audience-split structure validator.
 - [PTR-OPS-005] `infra/tests/test_versioning.sh` - version mapping validator.
+- [PTR-OPS-006] `infra/tests/test_docs_no_duplicate_security_sections.sh` - duplicate section guard for security documentation.
+- [PTR-OPS-007] `infra/tests/test_policy_runtime_parity.sh` - policy/runtime parity validator for payment and secret-source contracts.
+- [PTR-OPS-008] `infra/tests/test_secret_residency_contract.sh` - secret residency contract validator for env/policy alignment.
+- [PTR-OPS-009] `infra/tests/test_payment_boundary_regressions.sh` - payment boundary regression and forbidden-pattern validator.
+- [PTR-OPS-010] `infra/tests/test_sync_edge_secrets_from_gsm.sh` - edge secret sync automation validator.
+- [PTR-OPS-011] `infra/tests/test_free_tier_status_report.sh` - free-tier status report automation validator.
+- [PTR-OPS-012] `infra/tests/test_ensure_uv_api_venv.sh` - uv-managed API venv/bootstrap validator.

@@ -23,7 +23,7 @@
 ## Coordination Model
 
 This repository uses branch/PR coordination as the default concurrency model.
-`docs/governance/CHANGE_MANAGEMENT.md` and `docs/governance/CHANGE_MANAGEMENT.md` are retired.
+`docs/LOCK.md` and `docs/REQUEST.md` are retired.
 
 ## Migration Safety
 
