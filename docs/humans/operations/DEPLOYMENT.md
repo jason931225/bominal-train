@@ -272,7 +272,7 @@ Optional:
 - validates critical contracts (Supabase URLs, `MASTER_KEY` format, unresolved placeholders).
 
 If you choose manual editing instead, required values are:
-- `infra/env/prod/api.env`: `INTERNAL_API_KEY`, `MASTER_KEY`, `DATABASE_URL`, `SYNC_DATABASE_URL`, `AUTH_MODE=supabase`, `SUPABASE_URL`, `SUPABASE_JWT_ISSUER`, `SUPABASE_AUTH_ENABLED=true`, `SUPABASE_AUTH_API_KEY` (or `SUPABASE_SERVICE_ROLE_KEY` fallback), `SUPABASE_STORAGE_ENABLED=true`, `SUPABASE_SERVICE_ROLE_KEY`, `RESEND_API_KEY`, sender-domain placeholder in `EMAIL_FROM_ADDRESS`, plus passkey origin settings (`PASSKEY_RP_ID`, `PASSKEY_ORIGIN`)
+- `infra/env/prod/api.env`: `INTERNAL_API_KEY`, `DATABASE_URL`, `SYNC_DATABASE_URL`, `AUTH_MODE=supabase`, `SUPABASE_URL`, `SUPABASE_JWT_ISSUER`, `SUPABASE_AUTH_ENABLED=true`, `SUPABASE_AUTH_API_KEY` (or `SUPABASE_SERVICE_ROLE_KEY` fallback), `SUPABASE_STORAGE_ENABLED=true`, `SUPABASE_SERVICE_ROLE_KEY`, `RESEND_API_KEY`, sender-domain placeholder in `EMAIL_FROM_ADDRESS`, plus passkey origin settings (`PASSKEY_RP_ID`, `PASSKEY_ORIGIN`), and a valid master-key source (`MASTER_KEY` or GSM settings)
 - `infra/env/prod/pay.env`: backend-only auto-pay card data (`CARDNUMBER`, `EXPIRYMM`, `EXPIRYYY`, `DOB`, `NN`)
 - `infra/env/prod/web.env`: `NEXT_PUBLIC_API_BASE_URL`, `API_SERVER_URL` (`http://api:8000` for monolithic API runtime)
 - `infra/env/prod/caddy.env`: `CADDY_SITE_ADDRESS`, `CADDY_ACME_EMAIL`
@@ -282,6 +282,15 @@ Production auth/storage mode (hard gate):
 - `AUTH_MODE` must be `supabase`
 - `SUPABASE_AUTH_ENABLED` must be `true` and requires `SUPABASE_AUTH_API_KEY` or `SUPABASE_SERVICE_ROLE_KEY`, plus positive `SUPABASE_AUTH_TIMEOUT_SECONDS`
 - `SUPABASE_STORAGE_ENABLED` must be `true` and requires `SUPABASE_SERVICE_ROLE_KEY`
+
+Production master-key source contract:
+- If `GSM_MASTER_KEY_ENABLED=true`:
+  - provide `GSM_MASTER_KEY_PROJECT_ID` (or `GCP_PROJECT_ID`), `GSM_MASTER_KEY_SECRET_ID`, and pinned `GSM_MASTER_KEY_VERSION`
+  - `GSM_MASTER_KEY_VERSION=latest` is rejected
+  - `GSM_MASTER_KEY_ALLOW_ENV_FALLBACK` must be `false`
+  - `deploy.sh` fetches the secret and injects it as runtime-only `MASTER_KEY_OVERRIDE` for `api` and `worker`
+- If `GSM_MASTER_KEY_ENABLED=false`:
+  - `MASTER_KEY` must be set to a base64-encoded 32-byte key
 
 Production URL scheme enforcement (predeploy gate):
 - `SUPABASE_URL` and `SUPABASE_JWT_ISSUER` must be `https://`.
@@ -296,11 +305,13 @@ Production URL scheme enforcement (predeploy gate):
 
 Production note: `DATABASE_URL` / `SYNC_DATABASE_URL` must target Supabase Postgres (`*.supabase.co`) with TLS required (`sslmode=require` or equivalent). Local development must use Docker-local Postgres/Redis (no VM/remote Postgres URLs).
 
-Generate secure `MASTER_KEY`:
+Generate secure `MASTER_KEY` (required only when GSM is disabled):
 
 ```bash
 openssl rand -base64 32
 ```
+
+If using GSM, store the generated value as the Secret Manager payload value and pin a concrete version in `GSM_MASTER_KEY_VERSION`.
 
 ### 3) Run predeploy checks
 

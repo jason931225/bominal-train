@@ -45,6 +45,10 @@ Secrets table uses envelope encryption:
 - AES-256-GCM for payload encryption
 - DEK wrapped by KEK (`MASTER_KEY`) via AES-256-GCM
 - `kek_version` stored per secret for key-version awareness
+- Active KEK source resolution order:
+  - deploy-time `MASTER_KEY_OVERRIDE` (runtime-only env injected by deploy)
+  - GCP Secret Manager (`GSM_MASTER_KEY_*` settings)
+  - `MASTER_KEY` env fallback (disabled in production when GSM is enabled)
 
 Used for:
 
@@ -68,6 +72,10 @@ Envelope decrypt behavior:
     - new writes always use current `KEK_VERSION`;
     - decrypt keeps working as long as old versions remain in `MASTER_KEYS_BY_VERSION`;
     - rewrap converges to the currently active `KEK_VERSION` after rerun/background completion.
+  - Production GSM policy:
+    - `GSM_MASTER_KEY_VERSION` must be pinned (no `latest`)
+    - `GSM_MASTER_KEY_ALLOW_ENV_FALLBACK=false`
+    - missing GSM fetch is fail-closed for runtime startup
 
 ## Payment data handling
 
