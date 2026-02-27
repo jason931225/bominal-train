@@ -129,9 +129,10 @@ class Settings(BaseSettings):
     session_activity_debounce_seconds: int = Field(default=60, alias="SESSION_ACTIVITY_DEBOUNCE_SECONDS", ge=0)
     auth_registration_enabled: bool = Field(default=True, alias="AUTH_REGISTRATION_ENABLED")
     access_approval_required: bool = Field(default=True, alias="ACCESS_APPROVAL_REQUIRED")
-    # e2-micro-safe Argon2id defaults; override in env for larger instances.
+    # Argon2id defaults tuned for interactive logins on small instances.
+    # 20 MiB memory cost tracks OWASP guidance while keeping CPU load reasonable.
     password_hash_time_cost: int = Field(default=2, alias="PASSWORD_HASH_TIME_COST")
-    password_hash_memory_cost_kib: int = Field(default=16384, alias="PASSWORD_HASH_MEMORY_COST_KIB")
+    password_hash_memory_cost_kib: int = Field(default=20480, alias="PASSWORD_HASH_MEMORY_COST_KIB")
     password_hash_parallelism: int = Field(default=1, alias="PASSWORD_HASH_PARALLELISM")
 
     rate_limit_window_seconds: int = Field(default=60, alias="RATE_LIMIT_WINDOW_SECONDS")
