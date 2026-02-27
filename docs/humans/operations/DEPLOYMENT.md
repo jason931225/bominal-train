@@ -81,6 +81,9 @@ Evervault secret sourcing (production):
   - `EVERVAULT_API_KEY_SECRET_ID`, `EVERVAULT_API_KEY_SECRET_VERSION`
 - `infra/scripts/deploy.sh` resolves these from GSM at deploy time and injects redacted runtime env vars for `api` and `worker`.
 - `GCP_PROJECT_ID` must be set in `infra/env/prod/api.env` when GSM secret IDs are used.
+- If `PAYMENT_PROVIDER=evervault`, set browser encryption vars in `infra/env/prod/web.env`:
+  - `NEXT_PUBLIC_EVERVAULT_TEAM_ID`
+  - `NEXT_PUBLIC_EVERVAULT_APP_ID`
 
 ### Deploy Script Safety Controls
 

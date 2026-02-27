@@ -4,6 +4,7 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 
 import { useLocale } from "@/components/locale-provider";
 import { clientApiBaseUrl } from "@/lib/api-base";
+import { encryptPaymentFields } from "@/lib/evervault";
 import { UI_BUTTON_OUTLINE, UI_BUTTON_PRIMARY, UI_CARD_MD, UI_FIELD, UI_KICKER, UI_TITLE_MD } from "@/lib/ui";
 import type { WalletPaymentCardStatus } from "@/lib/types";
 
@@ -22,6 +23,22 @@ const EMPTY_FORM: PaymentFormState = {
   birthDate: "",
   pin2: "",
 };
+
+const EVERVAULT_TEAM_ID = (process.env.NEXT_PUBLIC_EVERVAULT_TEAM_ID ?? "").trim();
+const EVERVAULT_APP_ID = (process.env.NEXT_PUBLIC_EVERVAULT_APP_ID ?? "").trim();
+
+function digitsOnly(value: string): string {
+  return value.replace(/\D/g, "");
+}
+
+function birthDateToYyMmDd(value: string): string | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+  if (!match) {
+    return null;
+  }
+  const [, year, month, day] = match;
+  return `${year.slice(-2)}${month}${day}`;
+}
 
 async function parseApiErrorMessage(response: Response, fallback: string): Promise<string> {
   const contentType = response.headers.get("content-type") ?? "";
@@ -74,6 +91,9 @@ export function PaymentSettingsPanel() {
     event.preventDefault();
     const expiryMonth = Number(form.expiryMonth);
     const expiryYear = Number(form.expiryYear);
+    const cardNumberDigits = digitsOnly(form.cardNumber);
+    const pin2Digits = digitsOnly(form.pin2);
+    const birthDateYyMmDd = birthDateToYyMmDd(form.birthDate);
     if (!Number.isInteger(expiryMonth) || expiryMonth < 1 || expiryMonth > 12) {
       setError(t("wallet.expiryMonthError"));
       return;
@@ -82,22 +102,43 @@ export function PaymentSettingsPanel() {
       setError(t("wallet.expiryYearError"));
       return;
     }
+    if (cardNumberDigits.length < 12 || cardNumberDigits.length > 19 || pin2Digits.length !== 2 || !birthDateYyMmDd) {
+      setError(t("wallet.saveError"));
+      return;
+    }
 
     setSubmitting(true);
     setError(null);
     setNotice(null);
     try {
+      let requestBody: Record<string, string | number | null>;
+      if (EVERVAULT_TEAM_ID && EVERVAULT_APP_ID) {
+        const encryptedPayload = await encryptPaymentFields(
+          {
+            card_number: cardNumberDigits,
+            pin2: pin2Digits,
+            birth_date: birthDateYyMmDd,
+            expiry: `${String(expiryYear % 100).padStart(2, "0")}${String(expiryMonth).padStart(2, "0")}`,
+            last4: cardNumberDigits.slice(-4),
+          },
+          { teamId: EVERVAULT_TEAM_ID, appId: EVERVAULT_APP_ID },
+        );
+        requestBody = encryptedPayload;
+      } else {
+        requestBody = {
+          card_number: cardNumberDigits,
+          expiry_month: expiryMonth,
+          expiry_year: expiryYear,
+          birth_date: form.birthDate,
+          pin2: pin2Digits,
+        };
+      }
+
       const response = await fetch(`${clientApiBaseUrl}/api/wallet/payment-card`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          card_number: form.cardNumber,
-          expiry_month: expiryMonth,
-          expiry_year: expiryYear,
-          birth_date: form.birthDate,
-          pin2: form.pin2,
-        }),
+        body: JSON.stringify(requestBody),
       });
       if (!response.ok) {
         setError(await parseApiErrorMessage(response, t("wallet.saveError")));

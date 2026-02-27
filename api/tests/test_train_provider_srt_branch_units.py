@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from datetime import datetime
 from typing import Any
+from types import SimpleNamespace
 
 import pytest
 
@@ -919,6 +920,42 @@ async def test_srt_additional_branch_coverage_for_helpers_filters_and_standby(mo
     )
     assert pay_status_rows_dict.ok is False
     assert pay_status_rows_dict.error_code == "srt_payment_fail_P"
+
+    relay_client = SRTClient(transport=_QueuedTransport([]))
+    relay_client._logged_in_user_ids.add("u1")  # noqa: SLF001
+    relay_client._membership_number_by_user_id["u1"] = "M-1"  # noqa: SLF001
+    monkeypatch.setattr(relay_client, "get_reservations", _reservation_unpaid_min)
+    relay_captured: dict[str, Any] = {}
+
+    async def _relay_submit(**kwargs):  # noqa: ANN003
+        relay_captured.update(kwargs)
+        return SimpleNamespace(
+            status_code=200,
+            text=json.dumps({"outDataSets": {"dsOutput0": [{"strResult": "SUCC"}]}}),
+            relay_url="https://relay.example/payment",
+            relay_id="relay_srt",
+            relay_domain="relay.example",
+        )
+
+    monkeypatch.setattr(
+        "app.modules.train.providers.srt_client.submit_srt_payment_via_evervault_relay",
+        _relay_submit,
+    )
+    relay_ok = await relay_client.pay(
+        reservation_id="PNR-1",
+        user_id="u1",
+        payment_card={
+            "source": "evervault",
+            "card_number": "ev:card",
+            "card_password": "ev:pin2",
+            "validation_number": "ev:birth",
+            "card_expire": "ev:expiry",
+        },
+    )
+    assert relay_ok.ok is True
+    assert relay_ok.data["paid"] is True
+    assert relay_captured["form_data"]["stlCrCrdNo1"] == "ev:card"
+    assert relay_client._transport.requests == []  # noqa: SLF001
 
     reservations_filter_client = SRTClient(
         transport=_QueuedTransport(

@@ -80,6 +80,18 @@ def test_evervault_enforce_requires_user_wallet(monkeypatch) -> None:
     monkeypatch.setenv("AUTOPAY_ALLOW_SERVER_FALLBACK", "false")
     with pytest.raises(ValueError, match="AUTOPAY_REQUIRE_USER_WALLET must be true"):
         Settings(_env_file=None)
+
+
+def test_evervault_enforce_requires_runtime_credentials(monkeypatch) -> None:
+    monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.setenv("PAYMENT_PROVIDER", "evervault")
+    monkeypatch.setenv("PAYMENT_EVERVAULT_ENFORCE", "true")
+    monkeypatch.setenv("AUTOPAY_REQUIRE_USER_WALLET", "true")
+    monkeypatch.setenv("AUTOPAY_ALLOW_SERVER_FALLBACK", "false")
+    monkeypatch.delenv("EVERVAULT_APP_ID", raising=False)
+    monkeypatch.delenv("EVERVAULT_API_KEY", raising=False)
+    with pytest.raises(ValueError, match="EVERVAULT_APP_ID and EVERVAULT_API_KEY"):
+        Settings(_env_file=None)
 def test_parses_optional_egress_proxy_urls(monkeypatch) -> None:
     monkeypatch.setenv("APP_ENV", "development")
     monkeypatch.setenv("TRAIN_PROVIDER_EGRESS_PROXY_URL", " http://egress-train:8080 ")

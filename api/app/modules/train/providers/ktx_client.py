@@ -15,6 +15,7 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from app.modules.train.providers.base import ProviderOutcome, ProviderSchedule
 from app.modules.train.providers.transport import AsyncTransport, HttpxTransport
 from app.modules.train.timezone import KST
+from app.services.evervault import EvervaultRelayError, submit_ktx_payment_via_evervault_relay
 
 KORAIL_MOBILE = "https://smart.letskorail.com:443/classes/com.korail.mobile"
 KTX_API_ENDPOINTS = {
@@ -847,14 +848,44 @@ class KTXClient:
             "hiduserYn": "Y",
         }
 
-        response = await self._transport.request(
-            method="POST",
-            url=KTX_API_ENDPOINTS["payment"],
-            headers=KTX_DEFAULT_HEADERS,
-            data=request_data,
-            timeout=20.0,
-        )
-        if response.status_code >= 500:
+        relay_http_trace: dict[str, Any] | None = None
+        card_source = str(payment_card.get("source") or "").strip().lower()
+        if card_source == "evervault":
+            try:
+                relay_response = await submit_ktx_payment_via_evervault_relay(
+                    payment_url=KTX_API_ENDPOINTS["payment"],
+                    provider_headers=KTX_DEFAULT_HEADERS,
+                    form_data=request_data,
+                    timeout=20.0,
+                )
+            except EvervaultRelayError as exc:
+                return ProviderOutcome(
+                    ok=False,
+                    retryable=exc.retryable,
+                    error_code=exc.error_code,
+                    error_message_safe=exc.error_message_safe,
+                    data={"reservation_id": reservation_id},
+                )
+            response_status_code = relay_response.status_code
+            response_text = relay_response.text
+            response_url = relay_response.relay_url
+            relay_http_trace = {
+                "relay_id": relay_response.relay_id,
+                "relay_domain": relay_response.relay_domain,
+            }
+        else:
+            response = await self._transport.request(
+                method="POST",
+                url=KTX_API_ENDPOINTS["payment"],
+                headers=KTX_DEFAULT_HEADERS,
+                data=request_data,
+                timeout=20.0,
+            )
+            response_status_code = response.status_code
+            response_text = response.text
+            response_url = KTX_API_ENDPOINTS["payment"]
+
+        if response_status_code >= 500:
             return ProviderOutcome(
                 ok=False,
                 retryable=True,
@@ -864,7 +895,7 @@ class KTXClient:
             )
 
         try:
-            payload = json.loads(response.text)
+            payload = json.loads(response_text)
         except json.JSONDecodeError:
             return ProviderOutcome(
                 ok=False,
@@ -886,8 +917,9 @@ class KTXClient:
                 "paid": True,
                 "http_trace": {
                     "endpoint": "payment",
-                    "url": KTX_API_ENDPOINTS["payment"],
-                    "status_code": response.status_code,
+                    "url": response_url,
+                    "status_code": response_status_code,
+                    "relay": relay_http_trace,
                     "request": {
                         "hidPnrNo": reservation_id,
                         "hidWctNo": wct_no,
