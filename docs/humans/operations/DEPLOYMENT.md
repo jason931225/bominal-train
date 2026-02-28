@@ -42,7 +42,7 @@ Each service has a health check in `docker-compose.prod.yml`:
 |----------|--------------|--------------|
 | redis    | `redis-cli ping` | 0s |
 | egress-train | `wget --spider` (port 8080/health) | 10s |
-| api | Python urllib (port 8000/health) | 120s |
+| api | Python urllib (port 8000/health/live) | 300s |
 | worker | Python proc check for `app.worker.WorkerSettings` | 15s |
 | web      | `wget --spider` (port 3000) | 60s |
 | caddy    | `wget` (admin API port 2019) | 30s |
