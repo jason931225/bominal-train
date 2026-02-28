@@ -24,7 +24,6 @@ cd "$ROOT_DIR"
 
 required_files=(
   "infra/env/prod/api.env"
-  "infra/env/prod/pay.env"
   "infra/env/prod/web.env"
   "infra/env/prod/caddy.env"
 )
@@ -486,6 +485,8 @@ evervault_app_id="$(env_key_value "infra/env/prod/api.env" "EVERVAULT_APP_ID")"
 evervault_api_key="$(env_key_value "infra/env/prod/api.env" "EVERVAULT_API_KEY")"
 evervault_app_id_secret_id="$(env_key_value "infra/env/prod/api.env" "EVERVAULT_APP_ID_SECRET_ID")"
 evervault_api_key_secret_id="$(env_key_value "infra/env/prod/api.env" "EVERVAULT_API_KEY_SECRET_ID")"
+evervault_app_id_secret_version="$(env_key_value "infra/env/prod/api.env" "EVERVAULT_APP_ID_SECRET_VERSION")"
+evervault_api_key_secret_version="$(env_key_value "infra/env/prod/api.env" "EVERVAULT_API_KEY_SECRET_VERSION")"
 evervault_config_present=0
 if [[ -n "$evervault_app_id" || -n "$evervault_api_key" || -n "$evervault_app_id_secret_id" || -n "$evervault_api_key_secret_id" ]]; then
   evervault_config_present=1
@@ -502,31 +503,15 @@ if [[ "$evervault_config_present" -eq 1 ]]; then
   if [[ -n "$evervault_app_id_secret_id" || -n "$evervault_api_key_secret_id" ]]; then
     require_env_key_nonempty "infra/env/prod/api.env" "GCP_PROJECT_ID"
   fi
+  if [[ -n "$evervault_app_id_secret_id" ]]; then
+    require_pinned_secret_version "${evervault_app_id_secret_version:-}" "EVERVAULT_APP_ID_SECRET_VERSION"
+  fi
+  if [[ -n "$evervault_api_key_secret_id" ]]; then
+    require_pinned_secret_version "${evervault_api_key_secret_version:-}" "EVERVAULT_API_KEY_SECRET_VERSION"
+  fi
 fi
 
 payment_provider_mode="$(env_key_value "infra/env/prod/api.env" "PAYMENT_PROVIDER" | tr '[:upper:]' '[:lower:]')"
-if [[ "$payment_provider_mode" == "evervault" ]]; then
-  payment_evervault_enforce="$(env_key_value "infra/env/prod/api.env" "PAYMENT_EVERVAULT_ENFORCE" | tr '[:upper:]' '[:lower:]')"
-  autopay_require_user_wallet="$(env_key_value "infra/env/prod/api.env" "AUTOPAY_REQUIRE_USER_WALLET" | tr '[:upper:]' '[:lower:]')"
-  autopay_allow_server_fallback="$(env_key_value "infra/env/prod/api.env" "AUTOPAY_ALLOW_SERVER_FALLBACK" | tr '[:upper:]' '[:lower:]')"
-  require_boolean_like "${payment_evervault_enforce:-}" "PAYMENT_EVERVAULT_ENFORCE"
-  require_boolean_like "${autopay_require_user_wallet:-}" "AUTOPAY_REQUIRE_USER_WALLET"
-  require_boolean_like "${autopay_allow_server_fallback:-}" "AUTOPAY_ALLOW_SERVER_FALLBACK"
-  if ! is_truthy "$payment_evervault_enforce"; then
-    log_error "PAYMENT_PROVIDER=evervault requires PAYMENT_EVERVAULT_ENFORCE=true in production."
-    exit 1
-  fi
-  if ! is_truthy "$autopay_require_user_wallet"; then
-    log_error "PAYMENT_PROVIDER=evervault requires AUTOPAY_REQUIRE_USER_WALLET=true in production."
-    exit 1
-  fi
-  if is_truthy "$autopay_allow_server_fallback"; then
-    log_error "PAYMENT_PROVIDER=evervault requires AUTOPAY_ALLOW_SERVER_FALLBACK=false in production."
-    exit 1
-  fi
-  require_env_key_nonempty "infra/env/prod/web.env" "NEXT_PUBLIC_EVERVAULT_TEAM_ID"
-  require_env_key_nonempty "infra/env/prod/web.env" "NEXT_PUBLIC_EVERVAULT_APP_ID"
-fi
 
 database_url="$(env_key_value "infra/env/prod/api.env" "DATABASE_URL")"
 sync_database_url="$(env_key_value "infra/env/prod/api.env" "SYNC_DATABASE_URL")"
@@ -672,6 +657,14 @@ if [[ -z "$payment_enabled" ]]; then
   payment_enabled="true"
 fi
 
+for legacy_key in CARDNUMBER EXPIRYMM EXPIRYYY DOB NN; do
+  legacy_value="$(env_key_value "infra/env/prod/api.env" "$legacy_key")"
+  if has_meaningful_value "$legacy_value"; then
+    log_error "Legacy backend card alias '$legacy_key' is forbidden in infra/env/prod/api.env."
+    exit 1
+  fi
+done
+
 worker_max_jobs="$(env_key_value "infra/env/prod/api.env" "WORKER_MAX_JOBS")"
 if [[ -n "$worker_max_jobs" ]]; then
   require_positive_integer "$worker_max_jobs" "WORKER_MAX_JOBS"
@@ -682,53 +675,43 @@ if [[ -n "$worker_max_jobs" ]]; then
 fi
 
 if is_truthy "$payment_enabled"; then
-  echo "==> Checking required backend auto-pay settings"
-  for key in CARDNUMBER EXPIRYMM EXPIRYYY DOB NN; do
-    require_env_key_nonempty "infra/env/prod/pay.env" "$key"
-  done
+  payment_provider_mode="${payment_provider_mode:-evervault}"
+  payment_evervault_enforce="$(env_key_value "infra/env/prod/api.env" "PAYMENT_EVERVAULT_ENFORCE" | tr '[:upper:]' '[:lower:]')"
+  autopay_require_user_wallet="$(env_key_value "infra/env/prod/api.env" "AUTOPAY_REQUIRE_USER_WALLET" | tr '[:upper:]' '[:lower:]')"
+  autopay_allow_server_fallback="$(env_key_value "infra/env/prod/api.env" "AUTOPAY_ALLOW_SERVER_FALLBACK" | tr '[:upper:]' '[:lower:]')"
 
-  pay_cardnumber_raw="$(env_key_value "infra/env/prod/pay.env" "CARDNUMBER")"
-  pay_cardnumber="${pay_cardnumber_raw//[^0-9]/}"
-  if [[ ! "$pay_cardnumber" =~ ^[0-9]{13,19}$ ]]; then
-    log_error "CARDNUMBER in infra/env/prod/pay.env must contain 13-19 digits."
+  if [[ "$payment_provider_mode" != "evervault" ]]; then
+    log_error "PAYMENT_ENABLED=true requires PAYMENT_PROVIDER=evervault in production."
     exit 1
   fi
 
-  pay_expirymm="$(env_key_value "infra/env/prod/pay.env" "EXPIRYMM")"
-  pay_expiryyy="$(env_key_value "infra/env/prod/pay.env" "EXPIRYYY")"
-  pay_dob="$(env_key_value "infra/env/prod/pay.env" "DOB")"
-  pay_nn="$(env_key_value "infra/env/prod/pay.env" "NN")"
+  require_boolean_like "${payment_evervault_enforce:-}" "PAYMENT_EVERVAULT_ENFORCE"
+  require_boolean_like "${autopay_require_user_wallet:-}" "AUTOPAY_REQUIRE_USER_WALLET"
+  require_boolean_like "${autopay_allow_server_fallback:-}" "AUTOPAY_ALLOW_SERVER_FALLBACK"
+  if ! is_truthy "$payment_evervault_enforce"; then
+    log_error "PAYMENT_ENABLED=true requires PAYMENT_EVERVAULT_ENFORCE=true."
+    exit 1
+  fi
+  if ! is_truthy "$autopay_require_user_wallet"; then
+    log_error "PAYMENT_ENABLED=true requires AUTOPAY_REQUIRE_USER_WALLET=true."
+    exit 1
+  fi
+  if is_truthy "$autopay_allow_server_fallback"; then
+    log_error "PAYMENT_ENABLED=true requires AUTOPAY_ALLOW_SERVER_FALLBACK=false."
+    exit 1
+  fi
 
-  if [[ ! "$pay_expirymm" =~ ^[0-9]{2}$ ]]; then
-    log_error "EXPIRYMM in infra/env/prod/pay.env must be exactly 2 digits (MM)."
+  if [[ -z "$evervault_app_id" && -z "$evervault_app_id_secret_id" ]]; then
+    log_error "PAYMENT_ENABLED=true requires EVERVAULT_APP_ID or EVERVAULT_APP_ID_SECRET_ID."
     exit 1
   fi
-  if (( 10#$pay_expirymm < 1 || 10#$pay_expirymm > 12 )); then
-    log_error "EXPIRYMM in infra/env/prod/pay.env must be between 01 and 12."
+  if [[ -z "$evervault_api_key" && -z "$evervault_api_key_secret_id" ]]; then
+    log_error "PAYMENT_ENABLED=true requires EVERVAULT_API_KEY or EVERVAULT_API_KEY_SECRET_ID."
     exit 1
   fi
-  if [[ ! "$pay_expiryyy" =~ ^[0-9]{2}$ ]]; then
-    log_error "EXPIRYYY in infra/env/prod/pay.env must be exactly 2 digits (YY)."
-    exit 1
-  fi
-  if [[ ! "$pay_nn" =~ ^[0-9]{2}$ ]]; then
-    log_error "NN in infra/env/prod/pay.env must be exactly 2 digits."
-    exit 1
-  fi
-  if [[ ! "$pay_dob" =~ ^[0-9]{8}$ ]]; then
-    log_error "DOB in infra/env/prod/pay.env must be exactly 8 digits (YYYYMMDD)."
-    exit 1
-  fi
-  if ! python3 - <<'PY' "$pay_dob"
-import datetime
-import sys
-dob = sys.argv[1]
-datetime.datetime.strptime(dob, "%Y%m%d")
-PY
-  then
-    log_error "DOB in infra/env/prod/pay.env must be a valid date formatted as YYYYMMDD."
-    exit 1
-  fi
+
+  require_env_key_nonempty "infra/env/prod/web.env" "NEXT_PUBLIC_EVERVAULT_TEAM_ID"
+  require_env_key_nonempty "infra/env/prod/web.env" "NEXT_PUBLIC_EVERVAULT_APP_ID"
 fi
 
 echo "==> Checking required Web settings"

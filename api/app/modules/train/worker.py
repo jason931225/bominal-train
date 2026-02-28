@@ -2027,6 +2027,12 @@ async def _run_train_task_inner(
                         await _mark_failed(db, task)
                     return
 
+            # Fail-closed: if admin kill switch changed while this task was running,
+            # stop before dispatching any payment to Evervault/provider endpoints.
+            if not await is_payment_runtime_enabled(db):
+                await _mark_completed(db, task)
+                return
+
             task.state = "PAYING"
             task.updated_at = utc_now()
             await db.commit()
@@ -2268,6 +2274,11 @@ async def _run_train_task_inner(
             return
 
         if not auto_pay_enabled:
+            await _mark_completed(db, task)
+            return
+
+        # Fail-closed: re-check runtime kill switch immediately before pay dispatch.
+        if not await is_payment_runtime_enabled(db):
             await _mark_completed(db, task)
             return
 

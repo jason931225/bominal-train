@@ -10,13 +10,11 @@ API_EXAMPLE="$ENV_DIR/api.env.example"
 WEB_EXAMPLE="$ENV_DIR/web.env.example"
 CADDY_EXAMPLE="$ENV_DIR/caddy.env.example"
 DEPLOY_EXAMPLE="$ENV_DIR/deploy.env.example"
-PAY_EXAMPLE="$ENV_DIR/pay.env.example"
 
 API_ENV="$ENV_DIR/api.env"
 WEB_ENV="$ENV_DIR/web.env"
 CADDY_ENV="$ENV_DIR/caddy.env"
 DEPLOY_ENV="$ENV_DIR/deploy.env"
-PAY_ENV="$ENV_DIR/pay.env"
 
 usage() {
   cat <<'USAGE'
@@ -24,7 +22,6 @@ Usage: bash infra/scripts/bootstrap-prod-env.sh
 
 Interactive production env bootstrap for:
 - infra/env/prod/api.env
-- infra/env/prod/pay.env
 - infra/env/prod/web.env
 - infra/env/prod/caddy.env
 - optional infra/env/prod/deploy.env
@@ -213,7 +210,6 @@ extract_project_ref() {
 
 validate_no_placeholders() {
   require_no_env_placeholders "$API_ENV"
-  require_no_env_placeholders "$PAY_ENV"
   require_no_env_placeholders "$WEB_ENV"
   require_no_env_placeholders "$CADDY_ENV"
   if [[ -f "$DEPLOY_ENV" ]]; then
@@ -231,13 +227,11 @@ main() {
   ensure_file_exists "$WEB_EXAMPLE"
   ensure_file_exists "$CADDY_EXAMPLE"
   ensure_file_exists "$DEPLOY_EXAMPLE"
-  ensure_file_exists "$PAY_EXAMPLE"
 
   log_info "Bootstrapping production env files in ${ENV_DIR#$ROOT_DIR/}"
   log_warn "Sensitive values are prompted interactively and not echoed."
 
   backup_and_copy_example "$API_EXAMPLE" "$API_ENV"
-  backup_and_copy_example "$PAY_EXAMPLE" "$PAY_ENV"
   backup_and_copy_example "$WEB_EXAMPLE" "$WEB_ENV"
   backup_and_copy_example "$CADDY_EXAMPLE" "$CADDY_ENV"
 
@@ -320,17 +314,6 @@ PY
   local resend_api_key
   resend_api_key="$(prompt_value "RESEND_API_KEY" "" true true)"
 
-  local pay_cardnumber
-  pay_cardnumber="$(prompt_value "CARDNUMBER (backend auto-pay)" "" true true)"
-  local pay_expirymm
-  pay_expirymm="$(prompt_value "EXPIRYMM (MM)" "" true false)"
-  local pay_expiryyy
-  pay_expiryyy="$(prompt_value "EXPIRYYY (YY)" "" true false)"
-  local pay_dob
-  pay_dob="$(prompt_value "DOB (YYYYMMDD)" "" true false)"
-  local pay_nn
-  pay_nn="$(prompt_value "NN (PIN 2-digit)" "" true true)"
-
   local next_public_api_base_url
   next_public_api_base_url="$(prompt_value "NEXT_PUBLIC_API_BASE_URL (blank for same-origin)" "" false false)"
   if [[ -n "$next_public_api_base_url" ]]; then
@@ -367,6 +350,10 @@ PY
   set_env_key "$API_ENV" "TRAIN_POLL_FORCE_MAX_RATE" "false"
   set_env_key "$API_ENV" "TRAIN_PERSIST_ALL_ATTEMPTS" "false"
   set_env_key "$API_ENV" "PAYMENT_ENABLED" "true"
+  set_env_key "$API_ENV" "PAYMENT_PROVIDER" "evervault"
+  set_env_key "$API_ENV" "PAYMENT_EVERVAULT_ENFORCE" "true"
+  set_env_key "$API_ENV" "AUTOPAY_REQUIRE_USER_WALLET" "true"
+  set_env_key "$API_ENV" "AUTOPAY_ALLOW_SERVER_FALLBACK" "false"
   set_env_key "$API_ENV" "PASSKEY_ENABLED" "true"
   set_env_key "$API_ENV" "PASSKEY_RP_ID" "$passkey_rp_id"
   set_env_key "$API_ENV" "PASSKEY_ORIGIN" "$passkey_origin"
@@ -376,12 +363,6 @@ PY
   set_env_key "$API_ENV" "EMAIL_REPLY_TO" "$email_reply_to"
   set_env_key "$API_ENV" "RESEND_API_KEY" "$resend_api_key"
   set_env_key "$API_ENV" "RESEND_API_BASE_URL" "https://api.resend.com"
-
-  set_env_key "$PAY_ENV" "CARDNUMBER" "$pay_cardnumber"
-  set_env_key "$PAY_ENV" "EXPIRYMM" "$pay_expirymm"
-  set_env_key "$PAY_ENV" "EXPIRYYY" "$pay_expiryyy"
-  set_env_key "$PAY_ENV" "DOB" "$pay_dob"
-  set_env_key "$PAY_ENV" "NN" "$pay_nn"
 
   set_env_key "$WEB_ENV" "NEXT_PUBLIC_API_BASE_URL" "$next_public_api_base_url"
   set_env_key "$WEB_ENV" "API_SERVER_URL" "$api_server_url"
@@ -408,7 +389,6 @@ PY
   log_info "Production env bootstrap complete."
   log_info "Generated files:"
   log_info "- ${API_ENV#$ROOT_DIR/}"
-  log_info "- ${PAY_ENV#$ROOT_DIR/}"
   log_info "- ${WEB_ENV#$ROOT_DIR/}"
   log_info "- ${CADDY_ENV#$ROOT_DIR/}"
   if [[ -f "$DEPLOY_ENV" ]]; then

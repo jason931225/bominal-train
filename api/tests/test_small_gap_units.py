@@ -132,13 +132,9 @@ def test_constants_and_schema_validator_error_paths():
 def test_config_and_schema_validation_small_gaps():
     assert Settings.parse_optional_proxy_url(None) is None
 
-    with pytest.raises(ValueError, match="(12 to 19 digits|at least 12 characters)"):
+    with pytest.raises(ValueError, match="evervault payload requires encrypted fields and last4"):
         PaymentCardSetRequest(
-            card_number="1234 5678 901",
-            expiry_month=1,
-            expiry_year=2030,
-            birth_date=date(1990, 1, 1),
-            pin2="12",
+            encrypted_card_number="ev:card",
         )
 
     with pytest.raises(ValueError, match="subject cannot be blank"):
@@ -155,18 +151,7 @@ def test_config_and_schema_validation_small_gaps():
         )
 
 
-def test_payment_card_schema_mode_enforcement_and_cvv_rejection(monkeypatch):
-    monkeypatch.setattr("app.schemas.wallet.get_settings", lambda: SimpleNamespace(payment_provider="legacy"))
-    with pytest.raises(ValueError, match="encrypted card payload is not accepted"):
-        PaymentCardSetRequest(
-            encrypted_card_number="ev:card",
-            encrypted_pin2="ev:pin2",
-            encrypted_birth_date="ev:birth",
-            encrypted_expiry="ev:expiry",
-            last4="1234",
-        )
-
-    monkeypatch.setattr("app.schemas.wallet.get_settings", lambda: SimpleNamespace(payment_provider="evervault"))
+def test_payment_card_schema_mode_enforcement_and_cvv_rejection():
     with pytest.raises(ValueError, match="plaintext card fields are not accepted"):
         PaymentCardSetRequest(
             card_number="4111 1111 1111 1111",

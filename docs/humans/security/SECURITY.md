@@ -87,6 +87,8 @@ Secret residency/source-of-truth policy:
 - Payment card persisted encrypted in `secrets`
 - CVV is not accepted by wallet APIs
 - CVV is never cached or persisted by bominal
+- Server-wide backend card override/fallback custody is retired; payment execution is wallet-scoped Evervault payload only.
+- `infra/env/prod/pay.env` and backend card alias env fields (`CARDNUMBER`, `EXPIRYMM`, `EXPIRYYY`, `DOB`, `NN`) are not part of active production contract.
 - Redis routing is split by purpose:
   - `REDIS_URL_NON_CDE`: queueing, rate limiting, non-sensitive cache
   - `REDIS_URL_CDE`: CDE runtime-sensitive flows

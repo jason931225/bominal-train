@@ -10,11 +10,12 @@ _VALID_MASTER_KEY = base64.b64encode(b"x" * 32).decode("utf-8")
 
 @pytest.fixture(autouse=True)
 def _enable_payment_guards_by_default(monkeypatch):
-    monkeypatch.setenv("PAYMENT_ENABLED", "true")
+    monkeypatch.setenv("PAYMENT_ENABLED", "false")
 
 
 def test_rejects_invalid_cvv_ttl_bounds(monkeypatch) -> None:
     monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.setenv("PAYMENT_ENABLED", "true")
     monkeypatch.setenv("PAYMENT_CVV_TTL_SECONDS", "1200")
     monkeypatch.setenv("PAYMENT_CVV_TTL_MIN_SECONDS", "60")
     monkeypatch.setenv("PAYMENT_CVV_TTL_MAX_SECONDS", "900")
@@ -37,8 +38,15 @@ def test_payment_disabled_skips_cde_upstash_and_ttl_guards(monkeypatch) -> None:
 
 def test_requires_provider_allowlist_in_production(monkeypatch) -> None:
     monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("PAYMENT_ENABLED", "true")
     monkeypatch.setenv("MASTER_KEY", _VALID_MASTER_KEY)
     monkeypatch.setenv("INTERNAL_API_KEY", "internal-key")
+    monkeypatch.setenv("PAYMENT_PROVIDER", "evervault")
+    monkeypatch.setenv("PAYMENT_EVERVAULT_ENFORCE", "true")
+    monkeypatch.setenv("AUTOPAY_REQUIRE_USER_WALLET", "true")
+    monkeypatch.setenv("AUTOPAY_ALLOW_SERVER_FALLBACK", "false")
+    monkeypatch.setenv("EVERVAULT_APP_ID", "app_test")
+    monkeypatch.setenv("EVERVAULT_API_KEY", "key_test")
     monkeypatch.setenv("PAYMENT_PROVIDER_ALLOWED_HOSTS", "")
     with pytest.raises(ValueError):
         Settings(_env_file=None)
@@ -46,8 +54,15 @@ def test_requires_provider_allowlist_in_production(monkeypatch) -> None:
 
 def test_parses_provider_allowlist_from_csv(monkeypatch) -> None:
     monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("PAYMENT_ENABLED", "true")
     monkeypatch.setenv("MASTER_KEY", _VALID_MASTER_KEY)
     monkeypatch.setenv("INTERNAL_API_KEY", "internal-key")
+    monkeypatch.setenv("PAYMENT_PROVIDER", "evervault")
+    monkeypatch.setenv("PAYMENT_EVERVAULT_ENFORCE", "true")
+    monkeypatch.setenv("AUTOPAY_REQUIRE_USER_WALLET", "true")
+    monkeypatch.setenv("AUTOPAY_ALLOW_SERVER_FALLBACK", "false")
+    monkeypatch.setenv("EVERVAULT_APP_ID", "app_test")
+    monkeypatch.setenv("EVERVAULT_API_KEY", "key_test")
     monkeypatch.setenv("PAYMENT_PROVIDER_ALLOWED_HOSTS", "app.srail.or.kr, smart.letskorail.com")
     settings = Settings(
         _env_file=None,
@@ -106,6 +121,7 @@ def test_production_rejects_gsm_env_fallback(monkeypatch) -> None:
 
 def test_evervault_enforce_rejects_server_fallback(monkeypatch) -> None:
     monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.setenv("PAYMENT_ENABLED", "true")
     monkeypatch.setenv("PAYMENT_PROVIDER", "evervault")
     monkeypatch.setenv("PAYMENT_EVERVAULT_ENFORCE", "true")
     monkeypatch.setenv("AUTOPAY_REQUIRE_USER_WALLET", "true")
@@ -114,8 +130,22 @@ def test_evervault_enforce_rejects_server_fallback(monkeypatch) -> None:
         Settings(_env_file=None)
 
 
+def test_payment_enabled_requires_evervault_provider(monkeypatch) -> None:
+    monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.setenv("PAYMENT_ENABLED", "true")
+    monkeypatch.setenv("PAYMENT_PROVIDER", "legacy")
+    monkeypatch.setenv("PAYMENT_EVERVAULT_ENFORCE", "true")
+    monkeypatch.setenv("AUTOPAY_REQUIRE_USER_WALLET", "true")
+    monkeypatch.setenv("AUTOPAY_ALLOW_SERVER_FALLBACK", "false")
+    monkeypatch.setenv("EVERVAULT_APP_ID", "app_test")
+    monkeypatch.setenv("EVERVAULT_API_KEY", "key_test")
+    with pytest.raises(ValueError, match="PAYMENT_PROVIDER must be evervault when PAYMENT_ENABLED=true"):
+        Settings(_env_file=None)
+
+
 def test_evervault_enforce_requires_user_wallet(monkeypatch) -> None:
     monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.setenv("PAYMENT_ENABLED", "true")
     monkeypatch.setenv("PAYMENT_PROVIDER", "evervault")
     monkeypatch.setenv("PAYMENT_EVERVAULT_ENFORCE", "true")
     monkeypatch.setenv("AUTOPAY_REQUIRE_USER_WALLET", "false")
@@ -126,6 +156,7 @@ def test_evervault_enforce_requires_user_wallet(monkeypatch) -> None:
 
 def test_evervault_enforce_requires_runtime_credentials(monkeypatch) -> None:
     monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.setenv("PAYMENT_ENABLED", "true")
     monkeypatch.setenv("PAYMENT_PROVIDER", "evervault")
     monkeypatch.setenv("PAYMENT_EVERVAULT_ENFORCE", "true")
     monkeypatch.setenv("AUTOPAY_REQUIRE_USER_WALLET", "true")
@@ -134,6 +165,8 @@ def test_evervault_enforce_requires_runtime_credentials(monkeypatch) -> None:
     monkeypatch.delenv("EVERVAULT_API_KEY", raising=False)
     with pytest.raises(ValueError, match="EVERVAULT_APP_ID and EVERVAULT_API_KEY"):
         Settings(_env_file=None)
+
+
 def test_parses_optional_egress_proxy_urls(monkeypatch) -> None:
     monkeypatch.setenv("APP_ENV", "development")
     monkeypatch.setenv("TRAIN_PROVIDER_EGRESS_PROXY_URL", " http://egress-train:8080 ")

@@ -315,7 +315,7 @@ class Settings(BaseSettings):
         alias="PAYMENT_PROVIDER_ALLOWED_HOSTS",
     )
     payment_transport_trust_env: bool = Field(default=False, alias="PAYMENT_TRANSPORT_TRUST_ENV")
-    payment_provider: str = Field(default="legacy", alias="PAYMENT_PROVIDER")
+    payment_provider: str = Field(default="evervault", alias="PAYMENT_PROVIDER")
     payment_evervault_enforce: bool = Field(default=False, alias="PAYMENT_EVERVAULT_ENFORCE")
     autopay_require_user_wallet: bool = Field(default=True, alias="AUTOPAY_REQUIRE_USER_WALLET")
     autopay_allow_server_fallback: bool = Field(default=False, alias="AUTOPAY_ALLOW_SERVER_FALLBACK")
@@ -332,12 +332,6 @@ class Settings(BaseSettings):
     restaurant_module_enabled: bool = Field(default=True, alias="RESTAURANT_MODULE_ENABLED")
     payment_enabled: bool = Field(default=True, alias="PAYMENT_ENABLED")
     payment_require_cvv_kek_version: bool = Field(default=False, alias="PAYMENT_REQUIRE_CVV_KEK_VERSION")
-    backend_pay_cardnumber: str | None = Field(default=None, alias="CARDNUMBER")
-    backend_pay_expirymm: str | None = Field(default=None, alias="EXPIRYMM")
-    backend_pay_expiryyy: str | None = Field(default=None, alias="EXPIRYYY")
-    backend_pay_dob: str | None = Field(default=None, alias="DOB")
-    backend_pay_nn: str | None = Field(default=None, alias="NN")
-
     email_provider: str = Field(default="smtp", alias="EMAIL_PROVIDER")
     email_from_name: str = Field(default="bominal", alias="EMAIL_FROM_NAME")
     email_from_address: str = Field(default="no-reply@bominal.local", alias="EMAIL_FROM_ADDRESS")
@@ -550,19 +544,16 @@ class Settings(BaseSettings):
                 )
             if self.app_env.lower() == "production" and not self.payment_provider_allowed_hosts:
                 raise ValueError("PAYMENT_PROVIDER_ALLOWED_HOSTS must be set in production")
-            if self.payment_provider == "evervault" and self.payment_evervault_enforce:
-                if not self.autopay_require_user_wallet:
-                    raise ValueError(
-                        "AUTOPAY_REQUIRE_USER_WALLET must be true when PAYMENT_PROVIDER=evervault and PAYMENT_EVERVAULT_ENFORCE=true"
-                    )
-                if self.autopay_allow_server_fallback:
-                    raise ValueError(
-                        "AUTOPAY_ALLOW_SERVER_FALLBACK must be false when PAYMENT_PROVIDER=evervault and PAYMENT_EVERVAULT_ENFORCE=true"
-                    )
-                if not self.evervault_app_id or not self.evervault_api_key:
-                    raise ValueError(
-                        "EVERVAULT_APP_ID and EVERVAULT_API_KEY are required when PAYMENT_PROVIDER=evervault and PAYMENT_EVERVAULT_ENFORCE=true"
-                    )
+            if self.payment_provider != "evervault":
+                raise ValueError("PAYMENT_PROVIDER must be evervault when PAYMENT_ENABLED=true")
+            if not self.payment_evervault_enforce:
+                raise ValueError("PAYMENT_EVERVAULT_ENFORCE must be true when PAYMENT_ENABLED=true")
+            if not self.autopay_require_user_wallet:
+                raise ValueError("AUTOPAY_REQUIRE_USER_WALLET must be true when PAYMENT_ENABLED=true")
+            if self.autopay_allow_server_fallback:
+                raise ValueError("AUTOPAY_ALLOW_SERVER_FALLBACK must be false when PAYMENT_ENABLED=true")
+            if not self.evervault_app_id or not self.evervault_api_key:
+                raise ValueError("EVERVAULT_APP_ID and EVERVAULT_API_KEY are required when PAYMENT_ENABLED=true")
             if self.evervault_relay_cache_seconds < 0:
                 raise ValueError("EVERVAULT_RELAY_CACHE_SECONDS must be >= 0")
         if self.smtp_use_ssl and self.smtp_starttls:
