@@ -211,6 +211,18 @@ docker compose -f infra/docker-compose.prod.yml exec api env | rg 'EVERVAULT_APP
 rg -n 'EVERVAULT_(APP_ID|API_KEY|API_BASE_URL|RELAY_CACHE_SECONDS|KTX_PAYMENT_RELAY_ID|SRT_PAYMENT_RELAY_ID|KTX_PAYMENT_RELAY_DOMAIN|SRT_PAYMENT_RELAY_DOMAIN)(_SECRET_(ID|VERSION))?=' infra/env/prod/api.env
 rg -n 'NEXT_PUBLIC_EVERVAULT_(TEAM_ID|APP_ID)=' infra/env/prod/web.env
 
+# Troubleshooting-only relay verification.
+# Default deploy flow keeps this disabled to avoid relay-credit-consuming probes.
+# Auth-only mode (no provider relay POST probes, no relay credit consumption):
+DEPLOY_EVERVAULT_RELAY_VERIFY_ENABLED=true \
+DEPLOY_EVERVAULT_RELAY_PROVIDER_PROBES_ENABLED=false \
+bash infra/scripts/evervault-relay-probe.sh
+
+# Provider probe mode (can consume relay credits; enable only for troubleshooting):
+DEPLOY_EVERVAULT_RELAY_VERIFY_ENABLED=true \
+DEPLOY_EVERVAULT_RELAY_PROVIDER_PROBES_ENABLED=true \
+bash infra/scripts/evervault-relay-probe.sh --include-provider-probes
+
 # Confirm kill-switch runtime guard remains wired in payment dispatch paths.
 rg -n 'if not await is_payment_runtime_enabled\(db\):' api/app/modules/train/service.py api/app/modules/train/worker.py
 

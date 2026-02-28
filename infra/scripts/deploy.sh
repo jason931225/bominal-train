@@ -43,12 +43,15 @@ SMOKE_MAX_ATTEMPTS="${SMOKE_MAX_ATTEMPTS:-30}"
 SMOKE_RETRY_DELAY_SECONDS="${SMOKE_RETRY_DELAY_SECONDS:-2}"
 DEPLOY_MIN_TOTAL_MEMORY_MB="${DEPLOY_MIN_TOTAL_MEMORY_MB:-900}"
 DEPLOY_MIN_TOTAL_SWAP_MB="${DEPLOY_MIN_TOTAL_SWAP_MB:-900}"
+DEPLOY_EVERVAULT_RELAY_VERIFY_ENABLED="${DEPLOY_EVERVAULT_RELAY_VERIFY_ENABLED:-false}"
+DEPLOY_EVERVAULT_RELAY_PROVIDER_PROBES_ENABLED="${DEPLOY_EVERVAULT_RELAY_PROVIDER_PROBES_ENABLED:-false}"
 DEPLOY_LOCK_FALLBACK_DIR=""
 DEPLOY_FAIL_ON_DIRTY_REPO="${DEPLOY_FAIL_ON_DIRTY_REPO:-false}"
 DEPLOY_API_CHANGED="true"
 DEPLOY_WORKER_CHANGED="true"
 DEPLOY_WEB_CHANGED="true"
 PROD_API_ENV_FILE="infra/env/prod/api.env"
+EVERVAULT_RELAY_PROBE_SCRIPT="${EVERVAULT_RELAY_PROBE_SCRIPT:-$SCRIPT_DIR/evervault-relay-probe.sh}"
 
 # Registry configuration
 GHCR_NAMESPACE="${GHCR_NAMESPACE:-ghcr.io/jason931225/bominal}"
@@ -1044,6 +1047,30 @@ verify_deployment() {
   log_ok "All health checks passed!"
 }
 
+run_optional_evervault_relay_verify() {
+  if ! is_truthy_bool "$DEPLOY_EVERVAULT_RELAY_VERIFY_ENABLED"; then
+    log_info "Skipping Evervault relay verification (DEPLOY_EVERVAULT_RELAY_VERIFY_ENABLED=$DEPLOY_EVERVAULT_RELAY_VERIFY_ENABLED)"
+    return 0
+  fi
+
+  if [[ ! -f "$EVERVAULT_RELAY_PROBE_SCRIPT" ]]; then
+    log_error "Evervault relay probe script not found: $EVERVAULT_RELAY_PROBE_SCRIPT"
+    return 1
+  fi
+
+  local -a probe_args=()
+  if is_truthy_bool "$DEPLOY_EVERVAULT_RELAY_PROVIDER_PROBES_ENABLED"; then
+    probe_args+=("--include-provider-probes")
+  fi
+
+  log_warn "Running Evervault relay verification in troubleshooting mode (provider probes enabled: $DEPLOY_EVERVAULT_RELAY_PROVIDER_PROBES_ENABLED)"
+  if ! bash "$EVERVAULT_RELAY_PROBE_SCRIPT" "${probe_args[@]}"; then
+    log_error "Evervault relay verification failed."
+    return 1
+  fi
+  log_ok "Evervault relay verification passed."
+}
+
 show_status() {
   log_info "Current deployment status:"
   "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" ps
@@ -1253,6 +1280,8 @@ main() {
       echo "  RESEND_API_KEY   Deploy-time runtime override for RESEND_API_KEY (can be GSM-resolved)"
       echo "  DEPLOY_HISTORY_DIR Override deployment history dir (default: /opt/bominal/deployments)"
       echo "  DEPLOY_FAIL_ON_DIRTY_REPO=true  Block deploy when tracked repo changes are present"
+      echo "  DEPLOY_EVERVAULT_RELAY_VERIFY_ENABLED=true  Run optional Evervault relay verification (troubleshooting only)"
+      echo "  DEPLOY_EVERVAULT_RELAY_PROVIDER_PROBES_ENABLED=true  Include provider relay POST probes (can consume relay credits)"
       echo ""
       echo "Examples:"
       echo "  $0"
@@ -1355,7 +1384,7 @@ main() {
 
   deploy_services
 
-  if verify_deployment; then
+  if verify_deployment && run_optional_evervault_relay_verify; then
     save_deployment "$deploy_commit" "$api_digest" "$worker_digest" "$web_digest"
     cleanup_docker
     log_ok "Deployment of $deploy_commit complete!"
