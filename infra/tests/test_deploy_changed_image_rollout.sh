@@ -191,43 +191,43 @@ run_case 0 0 0 1 "$UNCHANGED_CALLS" "$UNCHANGED_OUT"
 run_case 1 0 0 1 "$API_ONLY_CALLS" "$API_ONLY_OUT"
 run_case 0 0 0 0 "$MISSING_WORKER_CALLS" "$MISSING_WORKER_OUT"
 
-if ! matches_pattern "up -d --wait redis$" "$UNCHANGED_CALLS"; then
+if ! matches_pattern "up -d --wait( --remove-orphans)? redis$" "$UNCHANGED_CALLS"; then
   echo "FAIL: unchanged-image case did not run base redis stage" >&2
   cat "$UNCHANGED_CALLS" >&2
   exit 1
 fi
 
-if matches_pattern "up -d --wait --no-deps api|up -d --wait --no-deps worker|up -d --wait --no-deps web" "$UNCHANGED_CALLS"; then
+if matches_pattern "up -d --wait( --remove-orphans)? --no-deps api|up -d --wait( --remove-orphans)? --no-deps worker|up -d --wait( --remove-orphans)? --no-deps web" "$UNCHANGED_CALLS"; then
   echo "FAIL: unchanged-image case unexpectedly rolled services" >&2
   cat "$UNCHANGED_CALLS" >&2
   exit 1
 fi
 
-if ! matches_pattern "up -d --wait --no-deps caddy" "$UNCHANGED_CALLS"; then
+if ! matches_pattern "up -d --wait( --remove-orphans)? --no-deps caddy" "$UNCHANGED_CALLS"; then
   echo "FAIL: unchanged-image case did not run isolated caddy reconciliation" >&2
   cat "$UNCHANGED_CALLS" >&2
   exit 1
 fi
 
-if ! matches_pattern "up -d --wait --no-deps api" "$API_ONLY_CALLS"; then
+if ! matches_pattern "up -d --wait( --remove-orphans)? --no-deps api" "$API_ONLY_CALLS"; then
   echo "FAIL: api-only case did not roll api service" >&2
   cat "$API_ONLY_CALLS" >&2
   exit 1
 fi
 
-if matches_pattern "up -d --wait --no-deps worker|up -d --wait --no-deps web" "$API_ONLY_CALLS"; then
+if matches_pattern "up -d --wait( --remove-orphans)? --no-deps worker|up -d --wait( --remove-orphans)? --no-deps web" "$API_ONLY_CALLS"; then
   echo "FAIL: api-only case rolled unrelated services" >&2
   cat "$API_ONLY_CALLS" >&2
   exit 1
 fi
 
-if ! matches_pattern "up -d --wait --no-deps worker" "$MISSING_WORKER_CALLS"; then
+if ! matches_pattern "up -d --wait( --remove-orphans)? --no-deps worker" "$MISSING_WORKER_CALLS"; then
   echo "FAIL: missing-worker case did not force worker rollout" >&2
   cat "$MISSING_WORKER_CALLS" >&2
   exit 1
 fi
 
-if matches_pattern "up -d --wait --no-deps api|up -d --wait --no-deps web" "$MISSING_WORKER_CALLS"; then
+if matches_pattern "up -d --wait( --remove-orphans)? --no-deps api|up -d --wait( --remove-orphans)? --no-deps web" "$MISSING_WORKER_CALLS"; then
   echo "FAIL: missing-worker case rolled unrelated services" >&2
   cat "$MISSING_WORKER_CALLS" >&2
   exit 1
