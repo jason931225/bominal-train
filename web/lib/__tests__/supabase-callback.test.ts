@@ -17,6 +17,13 @@ describe("resolveSupabaseConfirmPayload", () => {
     expect(payload).toEqual({ token_hash: "hash-abc123", type: "recovery" });
   });
 
+  it("supports email type for magic-link callbacks", () => {
+    const payload = resolveSupabaseConfirmPayload(
+      new URLSearchParams("token_hash=hash-abc123&type=email"),
+    );
+    expect(payload).toEqual({ token_hash: "hash-abc123", type: "email" });
+  });
+
   it("returns null when token_hash is missing", () => {
     const payload = resolveSupabaseConfirmPayload(
       new URLSearchParams("type=magiclink"),

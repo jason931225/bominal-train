@@ -430,6 +430,10 @@ bash infra/scripts/predeploy-check.sh \
 
 After production env files are finalized, sync Supabase auth email templates and auth redirect/site URL config:
 
+- confirmation template + subject
+- password recovery template + subject
+- one-time sign-in template + subject (magic-link email)
+
 ```bash
 bash infra/scripts/sync-supabase-auth-templates.sh --dry-run
 bash infra/scripts/sync-supabase-auth-templates.sh --apply

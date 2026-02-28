@@ -41,10 +41,16 @@ cat >"$TMP_DIR/repo/infra/supabase/auth-templates/reset-password.html" <<'EOF'
 <p>{{ .Token }}</p>
 EOF
 
+cat >"$TMP_DIR/repo/infra/supabase/auth-templates/magic-link-signin.html" <<'EOF'
+<a href="{{ .SiteURL }}/auth/verify?token_hash={{ .TokenHash }}&type=email">Sign in</a>
+<p>{{ .Token }}</p>
+EOF
+
 cat >"$TMP_DIR/repo/infra/supabase/auth-templates/subjects.json" <<'EOF'
 {
   "confirmation": "Verify your email for bominal",
-  "recovery": "Reset your bominal password"
+  "recovery": "Reset your bominal password",
+  "magic_link": "Sign in to your bominal account with a one-time link"
 }
 EOF
 
@@ -251,8 +257,10 @@ payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
 required = {
     "mailer_subjects_confirmation",
     "mailer_subjects_recovery",
+    "mailer_subjects_magic_link",
     "mailer_templates_confirmation_content",
     "mailer_templates_recovery_content",
+    "mailer_templates_magic_link_content",
     "site_url",
     "uri_allow_list",
 }
@@ -264,10 +272,16 @@ if payload["mailer_subjects_confirmation"] != "Verify your email for bominal":
     raise SystemExit("Unexpected confirmation subject")
 if payload["mailer_subjects_recovery"] != "Reset your bominal password":
     raise SystemExit("Unexpected recovery subject")
+if payload["mailer_subjects_magic_link"] != "Sign in to your bominal account with a one-time link":
+    raise SystemExit("Unexpected magic-link subject")
 if "{{ .TokenHash }}" not in payload["mailer_templates_confirmation_content"]:
     raise SystemExit("Confirmation template missing TokenHash placeholder")
 if "{{ .Token }}" not in payload["mailer_templates_recovery_content"]:
     raise SystemExit("Recovery template missing Token placeholder")
+if "type=email" not in payload["mailer_templates_magic_link_content"]:
+    raise SystemExit("Magic-link template missing email type callback")
+if "{{ .Token }}" not in payload["mailer_templates_magic_link_content"]:
+    raise SystemExit("Magic-link template missing Token placeholder")
 if payload["site_url"] != "https://www.bominal.com":
     raise SystemExit("Unexpected Supabase site_url")
 if "/auth/verify" not in payload["uri_allow_list"]:

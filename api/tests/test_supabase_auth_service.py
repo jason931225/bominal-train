@@ -164,7 +164,7 @@ async def test_send_supabase_magic_link_posts_otp_endpoint(monkeypatch):
 
     ok = await supabase_auth.send_supabase_magic_link(
         email="user@example.com",
-        redirect_to="https://www.bominal.com/auth/verify?type=magiclink",
+        redirect_to="https://www.bominal.com/auth/verify?type=email",
     )
     assert ok is True
     assert captured["url"] == "https://project-ref.supabase.co/auth/v1/otp"
@@ -172,7 +172,7 @@ async def test_send_supabase_magic_link_posts_otp_endpoint(monkeypatch):
         "email": "user@example.com",
         "create_user": False,
         "should_create_user": False,
-        "email_redirect_to": "https://www.bominal.com/auth/verify?type=magiclink",
+        "email_redirect_to": "https://www.bominal.com/auth/verify?type=email",
     }
 
 

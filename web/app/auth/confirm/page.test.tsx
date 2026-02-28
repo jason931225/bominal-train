@@ -31,7 +31,7 @@ describe("AuthConfirmPage", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    currentSearchParams = new URLSearchParams("token_hash=hash-abc123&type=magiclink");
+    currentSearchParams = new URLSearchParams("token_hash=hash-abc123&type=email");
     vi.stubGlobal("fetch", fetchMock);
   });
 

@@ -644,7 +644,7 @@ async def test_request_magic_link_supabase_calls_provider(client, monkeypatch):
     assert response.status_code == 200
     assert captured["email"] == "supabase-magic@example.com"
     assert captured["redirect_to"] is not None
-    assert captured["redirect_to"].endswith("/auth/verify?type=magiclink")
+    assert captured["redirect_to"].endswith("/auth/verify?type=email")
 
 
 @pytest.mark.asyncio
@@ -797,6 +797,37 @@ async def test_supabase_confirm_magiclink_sets_cookie(client, monkeypatch):
     assert response.status_code == 200
     assert response.json()["mode"] == "magiclink"
     assert response.json()["redirect_to"].startswith("/auth/passkey-setup")
+    assert response.cookies.get("bominal_session")
+    assert response.cookies.get("bominal_passkey_setup_ctx")
+
+
+@pytest.mark.asyncio
+async def test_supabase_confirm_email_type_sets_cookie(client, monkeypatch):
+    async def _fake_exchange_detailed(*, token_hash: str, token_type: str):  # noqa: ARG001
+        assert token_type == "email"
+        return SimpleNamespace(
+            session=SimpleNamespace(
+                user_id="supabase-user-002",
+                email="email-type@example.com",
+                access_token="access-token-email-123",
+            ),
+            failure=None,
+        )
+
+    monkeypatch.setattr(
+        "app.http.routes.auth.exchange_supabase_token_hash_detailed",
+        _fake_exchange_detailed,
+        raising=False,
+    )
+
+    response = await client.post(
+        "/api/auth/supabase/confirm",
+        json={"token_hash": "hash-email", "type": "email"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["mode"] == "magiclink"
+    assert payload["redirect_to"] == "/auth/passkey-setup?source=magiclink&next=/modules/train"
     assert response.cookies.get("bominal_session")
     assert response.cookies.get("bominal_passkey_setup_ctx")
 

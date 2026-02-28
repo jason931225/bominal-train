@@ -1238,7 +1238,7 @@ async def request_magic_link(
 
     if supabase_mode:
         magic_link_requested = True
-        redirect_to = f"{_public_base_url()}/auth/verify?type=magiclink"
+        redirect_to = f"{_public_base_url()}/auth/verify?type=email"
         magic_link_ok = await send_supabase_magic_link(email=email, redirect_to=redirect_to)
         if not magic_link_ok:
             logger.warning("Supabase magic-link request failed")

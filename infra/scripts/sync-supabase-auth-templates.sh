@@ -9,6 +9,7 @@ TEMPLATE_DIR="$ROOT_DIR/infra/supabase/auth-templates"
 SUBJECTS_FILE="$TEMPLATE_DIR/subjects.json"
 CONFIRM_TEMPLATE="$TEMPLATE_DIR/confirm-signup.html"
 RECOVERY_TEMPLATE="$TEMPLATE_DIR/reset-password.html"
+MAGIC_LINK_TEMPLATE="$TEMPLATE_DIR/magic-link-signin.html"
 PROD_API_ENV="$ROOT_DIR/infra/env/prod/api.env"
 PROD_WEB_ENV="$ROOT_DIR/infra/env/prod/web.env"
 PROD_CADDY_ENV="$ROOT_DIR/infra/env/prod/caddy.env"
@@ -91,28 +92,34 @@ PY
 build_payload_json() {
   local confirm_html="$1"
   local recovery_html="$2"
-  local confirmation_subject="$3"
-  local recovery_subject="$4"
-  local site_url="$5"
-  local uri_allow_list="$6"
+  local magic_link_html="$3"
+  local confirmation_subject="$4"
+  local recovery_subject="$5"
+  local magic_link_subject="$6"
+  local site_url="$7"
+  local uri_allow_list="$8"
 
-  python3 - "$confirm_html" "$recovery_html" "$confirmation_subject" "$recovery_subject" "$site_url" "$uri_allow_list" <<'PY'
+  python3 - "$confirm_html" "$recovery_html" "$magic_link_html" "$confirmation_subject" "$recovery_subject" "$magic_link_subject" "$site_url" "$uri_allow_list" <<'PY'
 import json
 import sys
 from pathlib import Path
 
 confirm_path = Path(sys.argv[1])
 recovery_path = Path(sys.argv[2])
-confirmation_subject = sys.argv[3]
-recovery_subject = sys.argv[4]
-site_url = sys.argv[5]
-uri_allow_list = sys.argv[6]
+magic_link_path = Path(sys.argv[3])
+confirmation_subject = sys.argv[4]
+recovery_subject = sys.argv[5]
+magic_link_subject = sys.argv[6]
+site_url = sys.argv[7]
+uri_allow_list = sys.argv[8]
 
 payload = {
     "mailer_subjects_confirmation": confirmation_subject,
     "mailer_subjects_recovery": recovery_subject,
+    "mailer_subjects_magic_link": magic_link_subject,
     "mailer_templates_confirmation_content": confirm_path.read_text(encoding="utf-8"),
     "mailer_templates_recovery_content": recovery_path.read_text(encoding="utf-8"),
+    "mailer_templates_magic_link_content": magic_link_path.read_text(encoding="utf-8"),
     "site_url": site_url,
     "uri_allow_list": uri_allow_list,
 }
@@ -478,9 +485,11 @@ if [[ "$mode" != "inspect" ]]; then
   require_nonempty_file "$SUBJECTS_FILE"
   require_nonempty_file "$CONFIRM_TEMPLATE"
   require_nonempty_file "$RECOVERY_TEMPLATE"
+  require_nonempty_file "$MAGIC_LINK_TEMPLATE"
 
   confirmation_subject="$(json_read_subject "$SUBJECTS_FILE" "confirmation")"
   recovery_subject="$(json_read_subject "$SUBJECTS_FILE" "recovery")"
+  magic_link_subject="$(json_read_subject "$SUBJECTS_FILE" "magic_link")"
   site_url="$(resolve_site_url)"
   uri_allow_list="$(resolve_uri_allow_list "$site_url")"
 fi
@@ -497,17 +506,20 @@ if [[ "$mode" != "inspect" ]]; then
   build_payload_json \
     "$CONFIRM_TEMPLATE" \
     "$RECOVERY_TEMPLATE" \
+    "$MAGIC_LINK_TEMPLATE" \
     "$confirmation_subject" \
     "$recovery_subject" \
+    "$magic_link_subject" \
     "$site_url" \
     "$uri_allow_list" \
     >"$payload_file"
 
   confirm_bytes="$(wc -c <"$CONFIRM_TEMPLATE" | tr -d ' ')"
   recovery_bytes="$(wc -c <"$RECOVERY_TEMPLATE" | tr -d ' ')"
+  magic_link_bytes="$(wc -c <"$MAGIC_LINK_TEMPLATE" | tr -d ' ')"
 
   log_info "Prepared Supabase auth template payload for project '${project_ref}'"
-  log_info "Template sizes: confirmation=${confirm_bytes}B recovery=${recovery_bytes}B"
+  log_info "Template sizes: confirmation=${confirm_bytes}B recovery=${recovery_bytes}B magic_link=${magic_link_bytes}B"
   log_info "Resolved Supabase site URL: ${site_url}"
   log_info "Resolved Supabase redirect allow-list: ${uri_allow_list}"
 fi
