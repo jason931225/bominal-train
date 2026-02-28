@@ -33,6 +33,7 @@ uv run --python .venv/bin/python -m pytest -q
 |-------|---------|
 | `bominal-deploy` | Zero-downtime deployment |
 | `bominal-admin` | Admin CLI for user/task/db management |
+| `bom` | `sudo -i -u bominal` |
 
 Deploy with zero-downtime (recommended):
 
