@@ -170,6 +170,112 @@ async def send_supabase_password_recovery(*, email: str, redirect_to: str | None
     return True
 
 
+async def send_supabase_magic_link(*, email: str, redirect_to: str | None = None) -> bool:
+    base_url = _auth_base_url()
+    api_key = _auth_api_key()
+    if not settings.supabase_auth_enabled or not base_url or not api_key:
+        return False
+
+    endpoint = f"{base_url}/otp"
+    body: dict[str, object] = {
+        "email": email,
+        "create_user": False,
+        "should_create_user": False,
+    }
+    normalized_redirect = str(redirect_to or "").strip()
+    if normalized_redirect:
+        body["email_redirect_to"] = normalized_redirect
+    headers = {
+        "apikey": api_key,
+        "Content-Type": "application/json",
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=_auth_timeout_seconds()) as client:
+            response = await client.post(endpoint, headers=headers, json=body)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Supabase magic-link transport failed: %s", type(exc).__name__)
+        return False
+
+    if response.status_code >= 400:
+        logger.warning("Supabase magic-link rejected request: status=%s", response.status_code)
+        return False
+    return True
+
+
+async def send_supabase_signin_otp(*, email: str) -> bool:
+    base_url = _auth_base_url()
+    api_key = _auth_api_key()
+    if not settings.supabase_auth_enabled or not base_url or not api_key:
+        return False
+
+    endpoint = f"{base_url}/otp"
+    body: dict[str, object] = {
+        "email": email,
+        "create_user": False,
+        "should_create_user": False,
+    }
+    headers = {
+        "apikey": api_key,
+        "Content-Type": "application/json",
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=_auth_timeout_seconds()) as client:
+            response = await client.post(endpoint, headers=headers, json=body)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Supabase sign-in OTP transport failed: %s", type(exc).__name__)
+        return False
+
+    if response.status_code >= 400:
+        logger.warning("Supabase sign-in OTP rejected request: status=%s", response.status_code)
+        return False
+    return True
+
+
+async def verify_supabase_signin_otp(*, email: str, code: str) -> SupabaseCallbackSession | None:
+    base_url = _auth_base_url()
+    api_key = _auth_api_key()
+    if not settings.supabase_auth_enabled or not base_url or not api_key:
+        return None
+
+    endpoint = f"{base_url}/verify"
+    headers = {
+        "apikey": api_key,
+        "Content-Type": "application/json",
+    }
+    body = {
+        "email": email,
+        "token": code,
+        "type": "email",
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=_auth_timeout_seconds()) as client:
+            response = await client.post(endpoint, headers=headers, json=body)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Supabase sign-in OTP verify transport failed: %s", type(exc).__name__)
+        return None
+
+    if response.status_code >= 400:
+        logger.warning("Supabase sign-in OTP verify rejected request: status=%s", response.status_code)
+        return None
+
+    try:
+        payload = response.json()
+    except ValueError:
+        logger.warning("Supabase sign-in OTP verify returned invalid JSON")
+        return None
+
+    access_token = str(payload.get("access_token") if isinstance(payload, dict) else "").strip()
+    if not access_token:
+        return None
+    identity = _extract_supabase_identity(payload, fallback_email=email)
+    if identity is None:
+        return None
+    return SupabaseCallbackSession(user_id=identity.user_id, email=identity.email, access_token=access_token)
+
+
 async def exchange_supabase_token_hash_detailed(*, token_hash: str, token_type: str) -> SupabaseCallbackExchangeResult:
     base_url = _auth_base_url()
     api_key = _auth_api_key()

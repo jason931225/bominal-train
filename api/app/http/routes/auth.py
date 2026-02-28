@@ -23,15 +23,18 @@ from app.core.security import (
     new_session_token,
     session_expiry,
 )
-from app.db.models import PasswordResetToken, Role, Session, User, VerificationToken
+from app.db.models import AuthChallenge, PasswordResetToken, Role, Session, User, VerificationToken
 from app.db.session import SessionLocal, get_db
 from app.schemas.auth import (
     AccountUpdateRequest,
+    AuthMethodsResponse,
     AuthResponse,
     EmailChangeConfirmRequest,
     EmailVerificationConfirmRequest,
     EmailVerificationRequest,
     LoginRequest,
+    MagicLinkConfirmRequest,
+    MagicLinkRequest,
     MessageResponse,
     PasskeyAuthenticationOptionsRequest,
     PasskeyAuthenticationOptionsResponse,
@@ -46,6 +49,8 @@ from app.schemas.auth import (
     PasswordResetConfirmRequest,
     PasswordResetRequest,
     RegisterRequest,
+    SignInOtpRequest,
+    SignInOtpVerifyRequest,
     SupabaseConfirmRequest,
     SupabaseConfirmResponse,
     SupabasePasswordResetConfirmRequest,
@@ -76,8 +81,11 @@ from app.services.auth import (
 )
 from app.services.supabase_auth import (
     exchange_supabase_token_hash_detailed,
+    send_supabase_magic_link,
     send_supabase_password_recovery,
+    send_supabase_signin_otp,
     update_supabase_password,
+    verify_supabase_signin_otp,
     verify_supabase_password,
 )
 
@@ -92,6 +100,11 @@ EMAIL_OTP_TTL_MINUTES = 10
 PASSWORD_RESET_OTP_TTL_MINUTES = 15
 VERIFICATION_PURPOSE_EMAIL = "email_verify"
 VERIFICATION_PURPOSE_EMAIL_CHANGE = "email_change"
+VERIFICATION_PURPOSE_MAGIC_LOGIN = "magic_login"
+PASSKEY_SETUP_CONTEXT_PURPOSE = "passkey_setup"
+PASSKEY_SETUP_CONTEXT_COOKIE = "bominal_passkey_setup_ctx"
+PASSKEY_SETUP_CONTEXT_TTL_SECONDS = 10 * 60
+PASSKEY_SETUP_ALLOWED_SOURCES = {"signup", "reset", "magiclink"}
 
 
 def _new_otp_code() -> str:
@@ -192,6 +205,89 @@ async def _issue_password_reset_token(db: AsyncSession, *, user_id) -> tuple[str
     return code, expires_at
 
 
+def _set_passkey_setup_context_cookie(response: Response, token: str) -> None:
+    response.set_cookie(
+        key=PASSKEY_SETUP_CONTEXT_COOKIE,
+        value=token,
+        max_age=PASSKEY_SETUP_CONTEXT_TTL_SECONDS,
+        expires=PASSKEY_SETUP_CONTEXT_TTL_SECONDS,
+        httponly=True,
+        secure=settings.is_production,
+        samesite="lax",
+        path="/",
+    )
+
+
+def _clear_passkey_setup_context_cookie(response: Response) -> None:
+    response.delete_cookie(
+        key=PASSKEY_SETUP_CONTEXT_COOKIE,
+        httponly=True,
+        secure=settings.is_production,
+        samesite="lax",
+        path="/",
+    )
+
+
+async def _issue_passkey_setup_context(db: AsyncSession, *, user_id: UUID, source: str) -> str:
+    normalized_source = source.strip().lower()
+    if normalized_source not in PASSKEY_SETUP_ALLOWED_SOURCES:
+        normalized_source = "magiclink"
+    now = utc_now()
+    active = (
+        await db.execute(
+            select(AuthChallenge)
+            .where(AuthChallenge.user_id == user_id)
+            .where(AuthChallenge.purpose == PASSKEY_SETUP_CONTEXT_PURPOSE)
+            .where(AuthChallenge.used_at.is_(None))
+            .where(AuthChallenge.expires_at > now)
+        )
+    ).scalars().all()
+    for item in active:
+        item.used_at = now
+    token = secrets.token_urlsafe(32)
+    db.add(
+        AuthChallenge(
+            user_id=user_id,
+            email=None,
+            purpose=PASSKEY_SETUP_CONTEXT_PURPOSE,
+            challenge_hash=hash_token(token),
+            challenge_b64url=normalized_source,
+            expires_at=now + timedelta(seconds=PASSKEY_SETUP_CONTEXT_TTL_SECONDS),
+        )
+    )
+    await db.commit()
+    return token
+
+
+async def _consume_passkey_setup_context(db: AsyncSession, *, user_id: UUID, token: str, source: str) -> bool:
+    normalized_token = token.strip()
+    if not normalized_token:
+        return False
+    normalized_source = source.strip().lower()
+    now = utc_now()
+    challenge = (
+        await db.execute(
+            select(AuthChallenge)
+            .where(AuthChallenge.user_id == user_id)
+            .where(AuthChallenge.purpose == PASSKEY_SETUP_CONTEXT_PURPOSE)
+            .where(AuthChallenge.challenge_hash == hash_token(normalized_token))
+            .where(AuthChallenge.used_at.is_(None))
+            .where(AuthChallenge.expires_at > now)
+        )
+    ).scalar_one_or_none()
+    if challenge is None:
+        return False
+    if normalized_source and challenge.challenge_b64url.strip().lower() != normalized_source:
+        return False
+    challenge.used_at = now
+    await db.commit()
+    return True
+
+
+def _supabase_signin_otp_enabled() -> bool:
+    return settings.auth_mode == "supabase" and settings.supabase_auth_enabled and settings.supabase_signin_otp_enabled
+
+
 def _verification_template_payload(*, email: str, display_name: str | None, code: str) -> EmailTemplateJobPayload:
     verify_query = urlencode({"email": email, "code": code})
     verify_url = f"{_public_base_url()}/api/auth/verify-email?{verify_query}"
@@ -271,6 +367,46 @@ def _password_reset_template_payload(*, email: str, code: str) -> EmailTemplateJ
         context={"reset": {"url": reset_url, "code": code, "ttl_minutes": PASSWORD_RESET_OTP_TTL_MINUTES}},
         tags=["auth", "password-reset"],
         metadata={"kind": "password_reset"},
+    )
+
+
+def _magic_link_template_payload(*, email: str, code: str) -> EmailTemplateJobPayload:
+    link_query = urlencode({"email": email, "code": code})
+    link_url = f"{_public_base_url()}/auth/magic-link?{link_query}"
+    return EmailTemplateJobPayload(
+        to_email=email,
+        subject="Your bominal sign-in link",
+        preheader="Use the link below to sign in without a password.",
+        theme="spring",
+        blocks=[
+            EmailTemplateBlock(
+                type="hero",
+                data={"title": "Sign in to bominal", "subtitle": "Use this one-time link to sign in."},
+            ),
+            EmailTemplateBlock(
+                type="cta",
+                data={
+                    "label": "Sign in",
+                    "url": {"$ref": "magic.url"},
+                    "helper_text": "Link expires in {{ magic.ttl_minutes }} minutes.",
+                },
+            ),
+            EmailTemplateBlock(
+                type="otp",
+                data={
+                    "code": {"$ref": "magic.code"},
+                    "ttl_minutes": {"$ref": "magic.ttl_minutes"},
+                    "label": "Magic link code",
+                },
+            ),
+            EmailTemplateBlock(
+                type="paragraph",
+                data={"text": "If you did not request this sign-in link, you can ignore this email."},
+            ),
+        ],
+        context={"magic": {"url": link_url, "code": code, "ttl_minutes": EMAIL_OTP_TTL_MINUTES}},
+        tags=["auth", "magic-link"],
+        metadata={"kind": "magic_link"},
     )
 
 
@@ -495,11 +631,25 @@ async def login(
         if background_tasks.tasks:
             response.background = background_tasks
         set_session_cookie(response, session_token, payload.remember_me)
+        flow_source = (request.headers.get("x-bominal-flow-source") or "").strip().lower()
+        if flow_source in PASSKEY_SETUP_ALLOWED_SOURCES:
+            passkey_setup_context_token = await _issue_passkey_setup_context(db, user_id=user.id, source=flow_source)
+            _set_passkey_setup_context_cookie(response, passkey_setup_context_token)
         outcome = "success"
         return response
     finally:
         duration_ms = int((time.perf_counter() - started_at) * 1000)
         logger.info("Auth login processed", extra={"outcome": outcome, "duration_ms": duration_ms})
+
+
+@public_router.get("/methods", response_model=AuthMethodsResponse)
+async def auth_methods() -> AuthMethodsResponse:
+    return AuthMethodsResponse(
+        password=True,
+        passkey=settings.passkey_enabled,
+        magic_link=True,
+        otp=_supabase_signin_otp_enabled(),
+    )
 
 
 async def get_current_session_optional(
@@ -892,6 +1042,100 @@ async def verify_email(
     return MessageResponse(message="Email verified successfully")
 
 
+@public_router.post("/request-magic-link", response_model=MessageResponse)
+async def request_magic_link(
+    payload: MagicLinkRequest | None = None,
+    db: AsyncSession = Depends(get_db),
+) -> MessageResponse:
+    if payload is None:
+        return MessageResponse(message="If eligible, a sign-in link has been sent")
+
+    email = payload.email.lower()
+    supabase_mode = settings.auth_mode == "supabase" and settings.supabase_auth_enabled
+    user = (await db.execute(select(User).where(User.email == email))).scalar_one_or_none()
+    local_user_found = user is not None
+    magic_link_requested = False
+    magic_link_ok = False
+    local_magic_link_enqueued = False
+
+    if supabase_mode:
+        magic_link_requested = True
+        redirect_to = f"{_public_base_url()}/auth/verify?type=magiclink"
+        magic_link_ok = await send_supabase_magic_link(email=email, redirect_to=redirect_to)
+        if not magic_link_ok:
+            logger.warning("Supabase magic-link request failed")
+    elif user is not None:
+        try:
+            code, _ = await _issue_verification_token(
+                db,
+                user_id=user.id,
+                purpose=VERIFICATION_PURPOSE_MAGIC_LOGIN,
+            )
+            enqueued_job_id = await enqueue_template_email(_magic_link_template_payload(email=user.email, code=code))
+            if enqueued_job_id is None:
+                raise RuntimeError("email_enqueue_returned_none")
+            local_magic_link_enqueued = True
+        except Exception as exc:
+            logger.warning("Failed to queue magic-link email for user %s: %s", user.id, type(exc).__name__)
+
+    logger.info(
+        "Auth magic-link requested",
+        extra={
+            "mode": "supabase" if supabase_mode else "legacy",
+            "local_user_found": local_user_found,
+            "magic_link_requested": magic_link_requested,
+            "magic_link_ok": magic_link_ok,
+            "local_magic_link_enqueued": local_magic_link_enqueued,
+        },
+    )
+    return MessageResponse(message="If eligible, a sign-in link has been sent")
+
+
+@public_router.post("/magic-link/confirm", response_model=AuthResponse, dependencies=[Depends(auth_rate_limit)])
+async def magic_link_confirm(
+    payload: MagicLinkConfirmRequest,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    if settings.auth_mode == "supabase" and settings.supabase_auth_enabled:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Use Supabase auth links for sign-in")
+
+    email = payload.email.lower()
+    user = (await db.execute(select(User).options(joinedload(User.role)).where(User.email == email))).scalar_one_or_none()
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired sign-in link")
+
+    token_hash = hash_token(payload.code)
+    now = utc_now()
+    token = (
+        await db.execute(
+            select(VerificationToken)
+            .where(VerificationToken.user_id == user.id)
+            .where(VerificationToken.purpose == VERIFICATION_PURPOSE_MAGIC_LOGIN)
+            .where(VerificationToken.token_hash == token_hash)
+            .where(VerificationToken.used_at.is_(None))
+            .where(VerificationToken.expires_at > now)
+        )
+    ).scalar_one_or_none()
+    if token is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired sign-in link")
+
+    token.used_at = now
+    session_token, session = _new_user_session(user, request, remember_me=False)
+    db.add(session)
+    await db.commit()
+    background_tasks.add_task(_refresh_train_reservations_after_sign_in_background, user_id=user.id)
+
+    response = JSONResponse(content=AuthResponse(user=user_to_out(user)).model_dump(mode="json"))
+    if background_tasks.tasks:
+        response.background = background_tasks
+    set_session_cookie(response, session_token, False)
+    passkey_setup_context_token = await _issue_passkey_setup_context(db, user_id=user.id, source="magiclink")
+    _set_passkey_setup_context_cookie(response, passkey_setup_context_token)
+    return response
+
+
 @public_router.post("/request-password-reset", response_model=MessageResponse)
 async def request_password_reset(
     payload: PasswordResetRequest | None = None,
@@ -901,47 +1145,46 @@ async def request_password_reset(
         return MessageResponse(message="If eligible, a password reset email has been sent")
 
     email = payload.email.lower()
-    user = (await db.execute(select(User).where(User.email == email))).scalar_one_or_none()
-    if user is None:
-        return MessageResponse(message="If eligible, a password reset email has been sent")
-
     supabase_mode = settings.auth_mode == "supabase" and settings.supabase_auth_enabled
+    user = (await db.execute(select(User).where(User.email == email))).scalar_one_or_none()
+    local_user_found = user is not None
     supabase_recovery_requested = False
     supabase_recovery_ok = False
+    local_reset_enqueued = False
+    local_reset_direct_fallback = False
     if supabase_mode:
         supabase_recovery_requested = True
         redirect_to = f"{_public_base_url()}/auth/verify?type=recovery"
-        supabase_recovery_ok = await send_supabase_password_recovery(email=user.email, redirect_to=redirect_to)
+        supabase_recovery_ok = await send_supabase_password_recovery(email=email, redirect_to=redirect_to)
         if not supabase_recovery_ok:
-            logger.warning("Supabase password recovery request failed for user %s", user.id)
-
-    template_payload: EmailTemplateJobPayload | None = None
-    local_reset_enqueued = False
-    local_reset_direct_fallback = False
-    try:
-        code, _ = await _issue_password_reset_token(db, user_id=user.id)
-        template_payload = _password_reset_template_payload(email=user.email, code=code)
-        enqueued_job_id = await enqueue_template_email(template_payload)
-        if enqueued_job_id is None:
-            raise RuntimeError("email_enqueue_returned_none")
-        local_reset_enqueued = True
-    except Exception as exc:
-        logger.warning("Failed to queue password reset email for user %s: %s", user.id, type(exc).__name__)
-        if template_payload is not None:
-            try:
-                await deliver_email_job({}, template_payload.model_dump(mode="json"))
-                local_reset_direct_fallback = True
-            except Exception as fallback_exc:  # noqa: BLE001
-                logger.warning(
-                    "Failed direct password reset delivery fallback for user %s: %s",
-                    user.id,
-                    type(fallback_exc).__name__,
-                )
+            logger.warning("Supabase password recovery request failed")
+    elif user is not None:
+        template_payload: EmailTemplateJobPayload | None = None
+        try:
+            code, _ = await _issue_password_reset_token(db, user_id=user.id)
+            template_payload = _password_reset_template_payload(email=user.email, code=code)
+            enqueued_job_id = await enqueue_template_email(template_payload)
+            if enqueued_job_id is None:
+                raise RuntimeError("email_enqueue_returned_none")
+            local_reset_enqueued = True
+        except Exception as exc:
+            logger.warning("Failed to queue password reset email for user %s: %s", user.id, type(exc).__name__)
+            if template_payload is not None:
+                try:
+                    await deliver_email_job({}, template_payload.model_dump(mode="json"))
+                    local_reset_direct_fallback = True
+                except Exception as fallback_exc:  # noqa: BLE001
+                    logger.warning(
+                        "Failed direct password reset delivery fallback for user %s: %s",
+                        user.id,
+                        type(fallback_exc).__name__,
+                    )
 
     logger.info(
         "Auth password reset requested",
         extra={
-            "user_id": str(user.id),
+            "mode": "supabase" if supabase_mode else "legacy",
+            "local_user_found": local_user_found,
             "supabase_recovery_requested": supabase_recovery_requested,
             "supabase_recovery_ok": supabase_recovery_ok,
             "local_reset_enqueued": local_reset_enqueued,
@@ -950,6 +1193,65 @@ async def request_password_reset(
     )
 
     return MessageResponse(message="If eligible, a password reset email has been sent")
+
+
+@public_router.post("/request-signin-otp", response_model=MessageResponse)
+async def request_signin_otp(payload: SignInOtpRequest | None = None) -> MessageResponse:
+    if payload is None:
+        return MessageResponse(message="If eligible, a sign-in code has been sent")
+
+    email = payload.email.lower()
+    otp_requested = False
+    otp_ok = False
+    if _supabase_signin_otp_enabled():
+        otp_requested = True
+        otp_ok = await send_supabase_signin_otp(email=email)
+        if not otp_ok:
+            logger.warning("Supabase sign-in OTP request failed")
+
+    logger.info(
+        "Auth sign-in OTP requested",
+        extra={
+            "mode": "supabase" if settings.auth_mode == "supabase" else "legacy",
+            "otp_requested": otp_requested,
+            "otp_ok": otp_ok,
+        },
+    )
+    return MessageResponse(message="If eligible, a sign-in code has been sent")
+
+
+@public_router.post("/verify-signin-otp", response_model=AuthResponse, dependencies=[Depends(auth_rate_limit)])
+async def verify_signin_otp(
+    payload: SignInOtpVerifyRequest,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    if not _supabase_signin_otp_enabled():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sign-in OTP is not enabled")
+
+    email = payload.email.lower()
+    identity = await verify_supabase_signin_otp(email=email, code=payload.code)
+    if identity is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired sign-in code")
+
+    user = await get_or_create_local_user_from_supabase_claims(
+        db,
+        claims={"sub": identity.user_id, "email": identity.email},
+    )
+    if user.supabase_user_id != identity.user_id:
+        user.supabase_user_id = identity.user_id
+
+    session_token, session = _new_user_session(user, request, remember_me=payload.remember_me)
+    db.add(session)
+    await db.commit()
+    background_tasks.add_task(_refresh_train_reservations_after_sign_in_background, user_id=user.id)
+
+    response = JSONResponse(content=AuthResponse(user=user_to_out(user)).model_dump(mode="json"))
+    if background_tasks.tasks:
+        response.background = background_tasks
+    set_session_cookie(response, session_token, payload.remember_me)
+    return response
 
 
 @public_router.post(
@@ -1009,13 +1311,15 @@ async def supabase_confirm(
 
     response_payload = SupabaseConfirmResponse(
         mode="magiclink",
-        redirect_to="/modules/train",
+        redirect_to="/auth/passkey-setup?source=magiclink&next=/modules/train",
         access_token=callback_access_token,
     )
     response = JSONResponse(content=response_payload.model_dump(mode="json"))
     if background_tasks.tasks:
         response.background = background_tasks
     set_session_cookie(response, session_token, False)
+    passkey_setup_context_token = await _issue_passkey_setup_context(db, user_id=user.id, source="magiclink")
+    _set_passkey_setup_context_cookie(response, passkey_setup_context_token)
     logger.info("Supabase confirm completed", extra={"mode": "magiclink", "user_id": str(user.id)})
     return response
 
@@ -1028,8 +1332,9 @@ async def supabase_confirm(
 async def reset_password_supabase(
     payload: SupabasePasswordResetConfirmRequest,
     request: Request,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
-) -> MessageResponse:
+) -> Response:
     access_token = _extract_bearer_token(request.headers.get("authorization"))
     if not access_token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Recovery token required")
@@ -1057,16 +1362,27 @@ async def reset_password_supabase(
     for auth_session in active_sessions:
         auth_session.revoked_at = now
 
+    session_token, session = _new_user_session(user, request, remember_me=False)
+    db.add(session)
     await db.commit()
+    background_tasks.add_task(_refresh_train_reservations_after_sign_in_background, user_id=user.id)
     logger.info("Supabase password reset complete", extra={"user_id": str(user.id), "revoked_sessions": len(active_sessions)})
-    return MessageResponse(message="Password reset complete")
+    response = JSONResponse(content=MessageResponse(message="Password reset complete").model_dump(mode="json"))
+    if background_tasks.tasks:
+        response.background = background_tasks
+    set_session_cookie(response, session_token, False)
+    passkey_setup_context_token = await _issue_passkey_setup_context(db, user_id=user.id, source="reset")
+    _set_passkey_setup_context_cookie(response, passkey_setup_context_token)
+    return response
 
 
 @public_router.post("/reset-password", response_model=MessageResponse)
 async def reset_password(
     payload: PasswordResetConfirmRequest,
+    request: Request,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
-) -> MessageResponse:
+) -> Response:
     email = payload.email.lower()
     user = (await db.execute(select(User).where(User.email == email))).scalar_one_or_none()
     if user is None:
@@ -1088,8 +1404,27 @@ async def reset_password(
 
     token.used_at = now
     user.password_hash = await async_hash_password(payload.new_password)
+    active_sessions = (
+        await db.execute(
+            select(Session)
+            .where(Session.user_id == user.id)
+            .where(Session.revoked_at.is_(None))
+            .where(Session.expires_at > now)
+        )
+    ).scalars().all()
+    for auth_session in active_sessions:
+        auth_session.revoked_at = now
+    session_token, session = _new_user_session(user, request, remember_me=False)
+    db.add(session)
     await db.commit()
-    return MessageResponse(message="Password reset complete")
+    background_tasks.add_task(_refresh_train_reservations_after_sign_in_background, user_id=user.id)
+    response = JSONResponse(content=MessageResponse(message="Password reset complete").model_dump(mode="json"))
+    if background_tasks.tasks:
+        response.background = background_tasks
+    set_session_cookie(response, session_token, False)
+    passkey_setup_context_token = await _issue_passkey_setup_context(db, user_id=user.id, source="reset")
+    _set_passkey_setup_context_cookie(response, passkey_setup_context_token)
+    return response
 
 
 @public_router.post("/passkeys/auth/options", response_model=PasskeyAuthenticationOptionsResponse)

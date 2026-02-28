@@ -69,6 +69,25 @@ class PasswordResetRequest(BaseModel):
     email: EmailStr
 
 
+class MagicLinkRequest(BaseModel):
+    email: EmailStr
+
+
+class MagicLinkConfirmRequest(BaseModel):
+    email: EmailStr
+    code: str = Field(min_length=4, max_length=64)
+
+
+class SignInOtpRequest(BaseModel):
+    email: EmailStr
+
+
+class SignInOtpVerifyRequest(BaseModel):
+    email: EmailStr
+    code: str = Field(min_length=4, max_length=64)
+    remember_me: bool = False
+
+
 class PasswordResetConfirmRequest(BaseModel):
     email: EmailStr
     code: str = Field(min_length=4, max_length=32)
@@ -87,6 +106,13 @@ class SupabaseConfirmResponse(BaseModel):
     mode: Literal["recovery", "magiclink"]
     redirect_to: str | None = None
     access_token: str | None = None
+
+
+class AuthMethodsResponse(BaseModel):
+    password: bool
+    passkey: bool
+    magic_link: bool
+    otp: bool
 
 
 class PasswordVerifyRequest(BaseModel):

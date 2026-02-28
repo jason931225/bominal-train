@@ -133,6 +133,133 @@ async def test_send_supabase_password_recovery_returns_false_on_http_error(monke
 
 
 @pytest.mark.asyncio
+async def test_send_supabase_magic_link_posts_otp_endpoint(monkeypatch):
+    monkeypatch.setattr(supabase_auth.settings, "supabase_auth_enabled", True, raising=False)
+    monkeypatch.setattr(supabase_auth.settings, "supabase_url", "https://project-ref.supabase.co", raising=False)
+    monkeypatch.setattr(supabase_auth.settings, "supabase_auth_api_key", "anon-key", raising=False)
+    monkeypatch.setattr(supabase_auth.settings, "supabase_service_role_key", None, raising=False)
+
+    captured: dict[str, object] = {}
+
+    class _FakeResponse:
+        status_code = 200
+
+    class _FakeClient:
+        def __init__(self, *, timeout: float):  # noqa: ARG002
+            pass
+
+        async def __aenter__(self):  # noqa: ANN204
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):  # noqa: ANN001, ANN204
+            return False
+
+        async def post(self, url: str, *, headers: dict[str, str], json: dict):  # noqa: ANN003
+            captured["url"] = url
+            captured["headers"] = headers
+            captured["json"] = json
+            return _FakeResponse()
+
+    monkeypatch.setattr(supabase_auth.httpx, "AsyncClient", lambda timeout: _FakeClient(timeout=timeout))
+
+    ok = await supabase_auth.send_supabase_magic_link(
+        email="user@example.com",
+        redirect_to="https://www.bominal.com/auth/verify?type=magiclink",
+    )
+    assert ok is True
+    assert captured["url"] == "https://project-ref.supabase.co/auth/v1/otp"
+    assert captured["json"] == {
+        "email": "user@example.com",
+        "create_user": False,
+        "should_create_user": False,
+        "email_redirect_to": "https://www.bominal.com/auth/verify?type=magiclink",
+    }
+
+
+@pytest.mark.asyncio
+async def test_send_supabase_signin_otp_posts_otp_endpoint(monkeypatch):
+    monkeypatch.setattr(supabase_auth.settings, "supabase_auth_enabled", True, raising=False)
+    monkeypatch.setattr(supabase_auth.settings, "supabase_url", "https://project-ref.supabase.co", raising=False)
+    monkeypatch.setattr(supabase_auth.settings, "supabase_auth_api_key", "anon-key", raising=False)
+    monkeypatch.setattr(supabase_auth.settings, "supabase_service_role_key", None, raising=False)
+
+    captured: dict[str, object] = {}
+
+    class _FakeResponse:
+        status_code = 200
+
+    class _FakeClient:
+        def __init__(self, *, timeout: float):  # noqa: ARG002
+            pass
+
+        async def __aenter__(self):  # noqa: ANN204
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):  # noqa: ANN001, ANN204
+            return False
+
+        async def post(self, url: str, *, headers: dict[str, str], json: dict):  # noqa: ANN003
+            captured["url"] = url
+            captured["json"] = json
+            return _FakeResponse()
+
+    monkeypatch.setattr(supabase_auth.httpx, "AsyncClient", lambda timeout: _FakeClient(timeout=timeout))
+
+    ok = await supabase_auth.send_supabase_signin_otp(email="user@example.com")
+    assert ok is True
+    assert captured["url"] == "https://project-ref.supabase.co/auth/v1/otp"
+    assert captured["json"] == {
+        "email": "user@example.com",
+        "create_user": False,
+        "should_create_user": False,
+    }
+
+
+@pytest.mark.asyncio
+async def test_verify_supabase_signin_otp_returns_session(monkeypatch):
+    monkeypatch.setattr(supabase_auth.settings, "supabase_auth_enabled", True, raising=False)
+    monkeypatch.setattr(supabase_auth.settings, "supabase_url", "https://project-ref.supabase.co", raising=False)
+    monkeypatch.setattr(supabase_auth.settings, "supabase_auth_api_key", "anon-key", raising=False)
+    monkeypatch.setattr(supabase_auth.settings, "supabase_service_role_key", None, raising=False)
+
+    captured: dict[str, object] = {}
+
+    class _FakeResponse:
+        status_code = 200
+
+        def json(self):  # noqa: ANN201
+            return {
+                "access_token": "access-token-123",
+                "user": {"id": "supabase-user-001", "email": "user@example.com"},
+            }
+
+    class _FakeClient:
+        def __init__(self, *, timeout: float):  # noqa: ARG002
+            pass
+
+        async def __aenter__(self):  # noqa: ANN204
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):  # noqa: ANN001, ANN204
+            return False
+
+        async def post(self, url: str, *, headers: dict[str, str], json: dict):  # noqa: ANN003
+            captured["url"] = url
+            captured["json"] = json
+            return _FakeResponse()
+
+    monkeypatch.setattr(supabase_auth.httpx, "AsyncClient", lambda timeout: _FakeClient(timeout=timeout))
+
+    session = await supabase_auth.verify_supabase_signin_otp(email="user@example.com", code="123456")
+    assert session is not None
+    assert session.user_id == "supabase-user-001"
+    assert session.email == "user@example.com"
+    assert session.access_token == "access-token-123"
+    assert captured["url"] == "https://project-ref.supabase.co/auth/v1/verify"
+    assert captured["json"] == {"email": "user@example.com", "token": "123456", "type": "email"}
+
+
+@pytest.mark.asyncio
 async def test_exchange_supabase_token_hash_returns_recovery_session(monkeypatch):
     monkeypatch.setattr(supabase_auth.settings, "supabase_auth_enabled", True, raising=False)
     monkeypatch.setattr(supabase_auth.settings, "supabase_url", "https://project-ref.supabase.co", raising=False)

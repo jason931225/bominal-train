@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from app.core.security import hash_token
-from app.db.models import PasswordResetToken, Secret, Session, Task, User
+from app.db.models import PasswordResetToken, Secret, Session, Task, User, VerificationToken
 from app.services.wallet import LEGACY_PAYMENT_CVV_REDIS_KEY_PREFIX, PAYMENT_CVV_REDIS_KEY_PREFIX
 from tests.conftest import MockRedisContextManager
 
@@ -241,6 +241,8 @@ async def test_request_password_reset_and_reset_password_with_otp(client, monkey
         json={"email": email, "code": otp, "new_password": "NewPass12345"},
     )
     assert reset_res.status_code == 200
+    assert reset_res.cookies.get("bominal_session")
+    assert reset_res.cookies.get("bominal_passkey_setup_ctx")
 
     old_login = await client.post(
         "/api/auth/login",
@@ -301,6 +303,7 @@ async def test_request_password_reset_uses_supabase_recovery_in_supabase_mode(cl
 
     captured: dict[str, str | None] = {"email": None, "redirect_to": None}
     enqueued = {"count": 0}
+    issued_tokens = {"count": 0}
 
     async def _fake_send_supabase_password_recovery(*, email: str, redirect_to: str | None = None):
         captured["email"] = email
@@ -311,19 +314,144 @@ async def test_request_password_reset_uses_supabase_recovery_in_supabase_mode(cl
         enqueued["count"] += 1
         return "job-reset-123"
 
+    async def _fake_issue_password_reset_token(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        issued_tokens["count"] += 1
+        return ("123456", datetime.now(timezone.utc) + timedelta(minutes=15))
+
     monkeypatch.setattr(
         "app.http.routes.auth.send_supabase_password_recovery",
         _fake_send_supabase_password_recovery,
         raising=False,
     )
     monkeypatch.setattr("app.http.routes.auth.enqueue_template_email", _fake_enqueue)
+    monkeypatch.setattr("app.http.routes.auth._issue_password_reset_token", _fake_issue_password_reset_token)
 
     response = await client.post("/api/auth/request-password-reset", json={"email": email})
     assert response.status_code == 200
     assert captured["email"] == email
     assert captured["redirect_to"] is not None
     assert captured["redirect_to"].endswith("/auth/verify?type=recovery")
-    assert enqueued["count"] == 1
+    assert enqueued["count"] == 0
+    assert issued_tokens["count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_request_password_reset_uses_supabase_recovery_even_when_local_user_missing(client, monkeypatch):
+    submitted_email = f"supabase-only-missing-{uuid4().hex[:8]}@example.com"
+
+    monkeypatch.setattr("app.http.routes.auth.settings.auth_mode", "supabase")
+    monkeypatch.setattr("app.http.routes.auth.settings.supabase_auth_enabled", True)
+    monkeypatch.setattr("app.http.routes.auth._public_base_url", lambda: "https://www.bominal.com")
+
+    captured: dict[str, str | None] = {"email": None, "redirect_to": None}
+    enqueued = {"count": 0}
+    delivered = {"count": 0}
+
+    async def _fake_send_supabase_password_recovery(*, email: str, redirect_to: str | None = None):
+        captured["email"] = email
+        captured["redirect_to"] = redirect_to
+        return True
+
+    async def _fake_enqueue(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        enqueued["count"] += 1
+        return "job-reset-123"
+
+    async def _fake_deliver_email_job(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        delivered["count"] += 1
+        return {"status": "sent"}
+
+    monkeypatch.setattr(
+        "app.http.routes.auth.send_supabase_password_recovery",
+        _fake_send_supabase_password_recovery,
+        raising=False,
+    )
+    monkeypatch.setattr("app.http.routes.auth.enqueue_template_email", _fake_enqueue)
+    monkeypatch.setattr("app.http.routes.auth.deliver_email_job", _fake_deliver_email_job, raising=False)
+
+    response = await client.post("/api/auth/request-password-reset", json={"email": submitted_email})
+    assert response.status_code == 200
+    assert captured["email"] == submitted_email
+    assert captured["redirect_to"] is not None
+    assert captured["redirect_to"].endswith("/auth/verify?type=recovery")
+    assert enqueued["count"] == 0
+    assert delivered["count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_request_password_reset_supabase_recover_failure_still_returns_generic_success(client, monkeypatch):
+    email = f"supabase-recovery-failure-{uuid4().hex[:8]}@example.com"
+    await client.post(
+        "/api/auth/register",
+        json={"email": email, "password": "SuperSecret123", "display_name": "Supabase Recovery Failure User"},
+    )
+
+    monkeypatch.setattr("app.http.routes.auth.settings.auth_mode", "supabase")
+    monkeypatch.setattr("app.http.routes.auth.settings.supabase_auth_enabled", True)
+    monkeypatch.setattr("app.http.routes.auth._public_base_url", lambda: "https://www.bominal.com")
+
+    warnings: list[str] = []
+    enqueued = {"count": 0}
+
+    async def _fake_send_supabase_password_recovery(*, email: str, redirect_to: str | None = None):  # noqa: ARG001
+        return False
+
+    async def _fake_enqueue(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        enqueued["count"] += 1
+        return "job-reset-123"
+
+    def _capture_warning(message: str, *args, **kwargs):  # noqa: ANN002, ANN003
+        formatted = message % args if args else message
+        warnings.append(formatted)
+
+    monkeypatch.setattr(
+        "app.http.routes.auth.send_supabase_password_recovery",
+        _fake_send_supabase_password_recovery,
+        raising=False,
+    )
+    monkeypatch.setattr("app.http.routes.auth.enqueue_template_email", _fake_enqueue)
+    monkeypatch.setattr("app.http.routes.auth.logger.warning", _capture_warning)
+
+    response = await client.post("/api/auth/request-password-reset", json={"email": email})
+    assert response.status_code == 200
+    assert enqueued["count"] == 0
+    assert any("Supabase password recovery request failed" in entry for entry in warnings)
+
+
+@pytest.mark.asyncio
+async def test_request_password_reset_logs_structured_outcome_fields(client, monkeypatch):
+    submitted_email = f"supabase-log-outcome-{uuid4().hex[:8]}@example.com"
+
+    monkeypatch.setattr("app.http.routes.auth.settings.auth_mode", "supabase")
+    monkeypatch.setattr("app.http.routes.auth.settings.supabase_auth_enabled", True)
+    monkeypatch.setattr("app.http.routes.auth._public_base_url", lambda: "https://www.bominal.com")
+
+    infos: list[dict[str, object]] = []
+
+    async def _fake_send_supabase_password_recovery(*, email: str, redirect_to: str | None = None):  # noqa: ARG001
+        return True
+
+    def _capture_info(message: str, *args, **kwargs):  # noqa: ANN002, ANN003
+        extra = kwargs.get("extra")
+        if isinstance(extra, dict):
+            infos.append(extra)
+
+    monkeypatch.setattr(
+        "app.http.routes.auth.send_supabase_password_recovery",
+        _fake_send_supabase_password_recovery,
+        raising=False,
+    )
+    monkeypatch.setattr("app.http.routes.auth.logger.info", _capture_info)
+
+    response = await client.post("/api/auth/request-password-reset", json={"email": submitted_email})
+    assert response.status_code == 200
+    assert infos, "expected structured info log payload"
+    extra = infos[-1]
+    assert extra.get("mode") == "supabase"
+    assert extra.get("local_user_found") is False
+    assert extra.get("supabase_recovery_requested") is True
+    assert extra.get("supabase_recovery_ok") is True
+    assert extra.get("local_reset_enqueued") is False
+    assert extra.get("local_reset_direct_fallback") is False
 
 
 @pytest.mark.asyncio
@@ -353,6 +481,155 @@ async def test_request_password_reset_falls_back_to_direct_delivery_when_enqueue
     response = await client.post("/api/auth/request-password-reset", json={"email": email})
     assert response.status_code == 200
     assert delivered["count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_auth_methods_exposes_capabilities(client, monkeypatch):
+    monkeypatch.setattr("app.http.routes.auth.settings.passkey_enabled", True)
+    monkeypatch.setattr("app.http.routes.auth.settings.auth_mode", "supabase")
+    monkeypatch.setattr("app.http.routes.auth.settings.supabase_auth_enabled", True)
+    monkeypatch.setattr("app.http.routes.auth.settings.supabase_signin_otp_enabled", True)
+
+    response = await client.get("/api/auth/methods")
+    assert response.status_code == 200
+    assert response.json() == {
+        "password": True,
+        "passkey": True,
+        "magic_link": True,
+        "otp": True,
+    }
+
+
+@pytest.mark.asyncio
+async def test_request_magic_link_legacy_enqueues_for_local_user(client, monkeypatch, db_session):
+    email = f"magic-link-{uuid4().hex[:8]}@example.com"
+    await client.post(
+        "/api/auth/register",
+        json={"email": email, "password": "SuperSecret123", "display_name": "Magic User"},
+    )
+
+    captured: dict[str, object] = {}
+
+    async def _fake_enqueue(payload, defer_seconds: float = 0.0):  # noqa: ARG001
+        captured["payload"] = payload
+        return "job-magic-1"
+
+    monkeypatch.setattr("app.http.routes.auth.enqueue_template_email", _fake_enqueue)
+    monkeypatch.setattr("app.http.routes.auth._public_base_url", lambda: "https://www.bominal.com")
+
+    response = await client.post("/api/auth/request-magic-link", json={"email": email})
+    assert response.status_code == 200
+    assert response.json()["message"] == "If eligible, a sign-in link has been sent"
+    assert "payload" in captured
+    code = _extract_otp_code(captured["payload"])
+    assert code
+
+    user = (await db_session.execute(select(User).where(User.email == email))).scalar_one()
+    token = (
+        await db_session.execute(
+            select(VerificationToken)
+            .where(VerificationToken.user_id == user.id)
+            .where(VerificationToken.purpose == "magic_login")
+            .where(VerificationToken.used_at.is_(None))
+        )
+    ).scalar_one_or_none()
+    assert token is not None
+
+
+@pytest.mark.asyncio
+async def test_magic_link_confirm_legacy_sets_session_cookie(client, monkeypatch):
+    email = f"magic-confirm-{uuid4().hex[:8]}@example.com"
+    await client.post(
+        "/api/auth/register",
+        json={"email": email, "password": "SuperSecret123", "display_name": "Magic Confirm"},
+    )
+
+    captured: dict[str, object] = {}
+
+    async def _fake_enqueue(payload, defer_seconds: float = 0.0):  # noqa: ARG001
+        captured["payload"] = payload
+        return "job-magic-2"
+
+    monkeypatch.setattr("app.http.routes.auth.enqueue_template_email", _fake_enqueue)
+    monkeypatch.setattr("app.http.routes.auth._public_base_url", lambda: "https://www.bominal.com")
+
+    request_res = await client.post("/api/auth/request-magic-link", json={"email": email})
+    assert request_res.status_code == 200
+    code = _extract_otp_code(captured["payload"])
+
+    confirm_res = await client.post(
+        "/api/auth/magic-link/confirm",
+        json={"email": email, "code": code},
+    )
+    assert confirm_res.status_code == 200
+    assert confirm_res.cookies.get("bominal_session")
+    assert confirm_res.cookies.get("bominal_passkey_setup_ctx")
+
+
+@pytest.mark.asyncio
+async def test_request_magic_link_supabase_calls_provider(client, monkeypatch):
+    monkeypatch.setattr("app.http.routes.auth.settings.auth_mode", "supabase")
+    monkeypatch.setattr("app.http.routes.auth.settings.supabase_auth_enabled", True)
+    monkeypatch.setattr("app.http.routes.auth._public_base_url", lambda: "https://www.bominal.com")
+
+    captured: dict[str, str | None] = {"email": None, "redirect_to": None}
+
+    async def _fake_send(*, email: str, redirect_to: str | None = None):
+        captured["email"] = email
+        captured["redirect_to"] = redirect_to
+        return True
+
+    monkeypatch.setattr("app.http.routes.auth.send_supabase_magic_link", _fake_send, raising=False)
+
+    response = await client.post("/api/auth/request-magic-link", json={"email": "supabase-magic@example.com"})
+    assert response.status_code == 200
+    assert captured["email"] == "supabase-magic@example.com"
+    assert captured["redirect_to"] is not None
+    assert captured["redirect_to"].endswith("/auth/verify?type=magiclink")
+
+
+@pytest.mark.asyncio
+async def test_request_signin_otp_calls_provider_only_when_enabled(client, monkeypatch):
+    captured: dict[str, str | None] = {"email": None}
+
+    async def _fake_send(*, email: str):
+        captured["email"] = email
+        return True
+
+    monkeypatch.setattr("app.http.routes.auth.send_supabase_signin_otp", _fake_send, raising=False)
+    monkeypatch.setattr("app.http.routes.auth.settings.auth_mode", "supabase")
+    monkeypatch.setattr("app.http.routes.auth.settings.supabase_auth_enabled", True)
+    monkeypatch.setattr("app.http.routes.auth.settings.supabase_signin_otp_enabled", False)
+
+    disabled_response = await client.post("/api/auth/request-signin-otp", json={"email": "otp-disabled@example.com"})
+    assert disabled_response.status_code == 200
+    assert disabled_response.json()["message"] == "If eligible, a sign-in code has been sent"
+    assert captured["email"] is None
+
+    monkeypatch.setattr("app.http.routes.auth.settings.supabase_signin_otp_enabled", True)
+    enabled_response = await client.post("/api/auth/request-signin-otp", json={"email": "otp-enabled@example.com"})
+    assert enabled_response.status_code == 200
+    assert enabled_response.json()["message"] == "If eligible, a sign-in code has been sent"
+    assert captured["email"] == "otp-enabled@example.com"
+
+
+@pytest.mark.asyncio
+async def test_verify_signin_otp_sets_session_when_enabled(client, monkeypatch):
+    monkeypatch.setattr("app.http.routes.auth.settings.auth_mode", "supabase")
+    monkeypatch.setattr("app.http.routes.auth.settings.supabase_auth_enabled", True)
+    monkeypatch.setattr("app.http.routes.auth.settings.supabase_signin_otp_enabled", True)
+
+    async def _fake_verify(*, email: str, code: str):  # noqa: ARG001
+        return SimpleNamespace(user_id="supabase-user-otp", email=email, access_token="access-otp")
+
+    monkeypatch.setattr("app.http.routes.auth.verify_supabase_signin_otp", _fake_verify, raising=False)
+
+    response = await client.post(
+        "/api/auth/verify-signin-otp",
+        json={"email": "otp-signin@example.com", "code": "123456", "remember_me": False},
+    )
+    assert response.status_code == 200
+    assert response.cookies.get("bominal_session")
 
 
 @pytest.mark.asyncio
@@ -408,7 +685,9 @@ async def test_supabase_confirm_magiclink_sets_cookie(client, monkeypatch):
     )
     assert response.status_code == 200
     assert response.json()["mode"] == "magiclink"
+    assert response.json()["redirect_to"].startswith("/auth/passkey-setup")
     assert response.cookies.get("bominal_session")
+    assert response.cookies.get("bominal_passkey_setup_ctx")
 
 
 @pytest.mark.asyncio
@@ -494,6 +773,8 @@ async def test_reset_password_supabase_updates_local_password_hash(client, monke
         json={"new_password": "NewPassword123"},
     )
     assert reset_response.status_code == 200
+    assert reset_response.cookies.get("bominal_session")
+    assert reset_response.cookies.get("bominal_passkey_setup_ctx")
 
     old_login = await client.post(
         "/api/auth/login",

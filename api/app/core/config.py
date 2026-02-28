@@ -181,6 +181,7 @@ class Settings(BaseSettings):
     supabase_auth_enabled: bool = Field(default=False, alias="SUPABASE_AUTH_ENABLED")
     supabase_auth_api_key: str | None = Field(default=None, alias="SUPABASE_AUTH_API_KEY")
     supabase_auth_timeout_seconds: float = Field(default=12.0, alias="SUPABASE_AUTH_TIMEOUT_SECONDS")
+    supabase_signin_otp_enabled: bool = Field(default=False, alias="SUPABASE_SIGNIN_OTP_ENABLED")
     supabase_storage_bucket: str = Field(default="artifacts-safe", alias="SUPABASE_STORAGE_BUCKET")
     supabase_service_role_key: str | None = Field(default=None, alias="SUPABASE_SERVICE_ROLE_KEY")
     supabase_storage_enabled: bool = Field(default=False, alias="SUPABASE_STORAGE_ENABLED")

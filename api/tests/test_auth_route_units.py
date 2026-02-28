@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from uuid import UUID, uuid4
@@ -207,6 +208,9 @@ async def test_issue_tokens_and_verification_reset_flows(db_session, monkeypatch
     reset_payload = captured["reset"]
     reset_code = str(reset_payload.context["reset"]["code"])
 
+    reset_request_context = _request_for_login()
+    reset_background = BackgroundTasks()
+
     with pytest.raises(HTTPException):
         await auth_routes.reset_password(
             payload=PasswordResetConfirmRequest(
@@ -214,6 +218,8 @@ async def test_issue_tokens_and_verification_reset_flows(db_session, monkeypatch
                 code=reset_code,
                 new_password="NewSecret123",
             ),
+            request=reset_request_context,
+            background_tasks=reset_background,
             db=db_session,
         )
     with pytest.raises(HTTPException):
@@ -223,6 +229,8 @@ async def test_issue_tokens_and_verification_reset_flows(db_session, monkeypatch
                 code="999999",
                 new_password="NewSecret123",
             ),
+            request=reset_request_context,
+            background_tasks=reset_background,
             db=db_session,
         )
     reset_done = await auth_routes.reset_password(
@@ -231,9 +239,12 @@ async def test_issue_tokens_and_verification_reset_flows(db_session, monkeypatch
             code=reset_code,
             new_password="NewSecret123",
         ),
+        request=reset_request_context,
+        background_tasks=reset_background,
         db=db_session,
     )
-    assert "reset complete" in reset_done.message.lower()
+    assert reset_done.status_code == 200
+    assert "reset complete" in json.loads(reset_done.body.decode("utf-8"))["message"].lower()
     await db_session.refresh(user)
     assert verify_password("NewSecret123", user.password_hash)
 
