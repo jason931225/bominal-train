@@ -6,15 +6,14 @@ import { z } from "zod";
 
 import { useLocale } from "@/components/locale-provider";
 import { clientApiBaseUrl } from "@/lib/api-base";
-import { registerPasskeyFromSession } from "@/lib/passkey";
 import { ROUTES } from "@/lib/routes";
 import { UI_BUTTON_PRIMARY, UI_FIELD } from "@/lib/ui";
 
 type RegisterFormData = {
   email: string;
   password: string;
+  confirm_password: string;
   display_name: string;
-  setup_passkey: boolean;
 };
 
 export function RegisterForm() {
@@ -23,8 +22,8 @@ export function RegisterForm() {
   const [form, setForm] = useState<RegisterFormData>({
     email: "",
     password: "",
+    confirm_password: "",
     display_name: "",
-    setup_passkey: false,
   });
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<keyof RegisterFormData, string>>>({});
   const [formError, setFormError] = useState<string | null>(null);
@@ -33,12 +32,17 @@ export function RegisterForm() {
   const canSubmit = useMemo(() => !submitting, [submitting]);
 
   const navigateAfterAuth = () => {
+    const destination = `${ROUTES.authPasskeySetup}?source=signup&next=${encodeURIComponent(ROUTES.modules.train)}`;
     if (typeof window !== "undefined") {
       // Full navigation ensures persistent root layout re-resolves authenticated user state.
-      window.location.assign(ROUTES.modules.train);
+      try {
+        window.location.assign(destination);
+      } catch {
+        router.push(destination);
+      }
       return;
     }
-    router.push(ROUTES.modules.train);
+    router.push(destination);
   };
 
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -49,16 +53,21 @@ export function RegisterForm() {
     const registerSchema = z.object({
       email: z.string().email(t("auth.invalidEmail")),
       password: z.string().min(8, t("auth.passwordMin")),
+      confirm_password: z.string().min(8, t("auth.passwordMin")),
       display_name: z
         .string()
         .trim()
         .min(1, t("auth.displayNameRequired"))
         .max(255, t("auth.displayNameMax")),
+    }).refine((value) => value.password === value.confirm_password, {
+      path: ["confirm_password"],
+      message: t("auth.passwordConfirmMismatch"),
     });
 
     const payload = {
       email: form.email.trim(),
       password: form.password,
+      confirm_password: form.confirm_password,
       display_name: form.display_name.trim(),
     };
 
@@ -77,11 +86,16 @@ export function RegisterForm() {
 
     setSubmitting(true);
     try {
+      const registerPayload = {
+        email: parsed.data.email,
+        password: parsed.data.password,
+        display_name: parsed.data.display_name,
+      };
       const response = await fetch(`${clientApiBaseUrl}/api/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify(parsed.data),
+        body: JSON.stringify(registerPayload),
       });
 
       if (!response.ok) {
@@ -90,14 +104,9 @@ export function RegisterForm() {
         return;
       }
 
-      if (!form.setup_passkey) {
-        router.push("/login?registered=1");
-        return;
-      }
-
       const loginResponse = await fetch(`${clientApiBaseUrl}/api/auth/login`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-bominal-flow-source": "signup" },
         credentials: "include",
         body: JSON.stringify({
           email: parsed.data.email,
@@ -108,11 +117,6 @@ export function RegisterForm() {
       if (!loginResponse.ok) {
         router.push("/login?registered=1");
         return;
-      }
-
-      const passkeyResult = await registerPasskeyFromSession(clientApiBaseUrl);
-      if (!passkeyResult.ok) {
-        setFormError(passkeyResult.error ?? t("auth.passkeySetupFailed"));
       }
       navigateAfterAuth();
     } catch {
@@ -172,15 +176,25 @@ export function RegisterForm() {
         {fieldErrors.password ? <p className="mt-1 text-xs text-rose-600">{fieldErrors.password}</p> : null}
       </div>
 
-      <label className="flex items-center gap-2 text-sm text-slate-600">
+      <div>
+        <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor="confirm_password">
+          {t("settings.confirmNewPassword")}
+        </label>
         <input
-          type="checkbox"
-          checked={form.setup_passkey}
-          onChange={(event) => setForm((prev) => ({ ...prev, setup_passkey: event.target.checked }))}
-          className="h-4 w-4 rounded border-blossom-300 text-blossom-500 focus:ring-blossom-300"
+          id="confirm_password"
+          type="password"
+          value={form.confirm_password}
+          onChange={(event) => setForm((prev) => ({ ...prev, confirm_password: event.target.value }))}
+          className={UI_FIELD}
+          autoComplete="new-password"
+          required
         />
-        {t("auth.setupPasskeyAtSignup")}
-      </label>
+        {fieldErrors.confirm_password ? (
+          <p data-testid="register-confirm-password-error" className="mt-1 text-xs text-rose-600">
+            {fieldErrors.confirm_password}
+          </p>
+        ) : null}
+      </div>
 
       {formError ? <p className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">{formError}</p> : null}
 

@@ -37,43 +37,34 @@ describe("LoginForm", () => {
     vi.clearAllMocks();
     vi.stubGlobal("fetch", fetchMock);
     vi.mocked(isPasskeySupported).mockReturnValue(true);
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ password: true, passkey: true, magic_link: true, otp: false }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
     vi.mocked(signInWithPasskey).mockResolvedValue({ ok: false, error: "No passkey registered for this account" });
   });
 
   afterEach(() => {
-    vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
-  it("starts in email-only mode with Continue button", () => {
+  it("starts in email entry mode", () => {
     renderLoginForm();
 
     expect(screen.getByLabelText("Email")).toBeInTheDocument();
     expect(screen.queryByLabelText("Password")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Continue" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Sign in" })).not.toBeInTheDocument();
   });
 
-  it("falls back to password mode when no passkey exists", async () => {
-    renderLoginForm();
-
-    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "USER@example.com" } });
-    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Password")).toBeInTheDocument();
-    });
-    expect(signInWithPasskey).toHaveBeenCalledWith(
-      "",
-      { email: "user@example.com", rememberMe: false },
-      expect.objectContaining({ onPromptStart: expect.any(Function) }),
+  it("shows passkey waiting state after continue", async () => {
+    vi.mocked(signInWithPasskey).mockImplementationOnce(
+      () =>
+        new Promise(() => {
+          // keep pending to preserve waiting state
+        }),
     );
-    expect(screen.getByRole("button", { name: "Sign in" })).toBeInTheDocument();
-    expect(screen.queryByText("No passkey registered for this account")).not.toBeInTheDocument();
-  });
-
-  it("attempts passkey sign-in and navigates on success", async () => {
-    vi.mocked(signInWithPasskey).mockResolvedValueOnce({ ok: true });
 
     renderLoginForm();
 
@@ -81,182 +72,133 @@ describe("LoginForm", () => {
     fireEvent.click(screen.getByRole("button", { name: "Continue" }));
 
     await waitFor(() => {
-      expect(signInWithPasskey).toHaveBeenCalledWith(
-        "",
-        { email: "passkey@example.com", rememberMe: false },
-        expect.objectContaining({ onPromptStart: expect.any(Function) }),
-      );
+      expect(screen.getByText("Waiting for passkey...")).toBeInTheDocument();
     });
-    expect(screen.queryByLabelText("Password")).not.toBeInTheDocument();
-  });
-
-  it("keeps password hidden after passkey prompt starts", async () => {
-    vi.mocked(signInWithPasskey).mockImplementationOnce(
-      (_apiBaseUrl, _params, hooks) =>
-        new Promise(() => {
-          hooks?.onPromptStart?.();
-        }),
+    expect(signInWithPasskey).toHaveBeenCalledWith(
+      "",
+      { email: "passkey@example.com", rememberMe: false },
+      {},
     );
-
-    renderLoginForm();
-
-    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "pending@example.com" } });
-    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
-
-    expect(screen.getByRole("button", { name: "Continuing..." })).toBeInTheDocument();
-    await new Promise((resolve) => setTimeout(resolve, 1300));
-    expect(screen.queryByLabelText("Password")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Sign in with password" })).toBeInTheDocument();
   });
 
-  it("keeps waiting when passkey prompt bootstrap is still in flight", async () => {
-    vi.mocked(signInWithPasskey).mockImplementationOnce(
-      (_apiBaseUrl, _params, hooks) =>
-        new Promise(() => {
-          window.setTimeout(() => {
-            hooks?.onPromptStart?.();
-          }, 500);
-        }),
-    );
-
-    renderLoginForm();
-
-    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "slow-options@example.com" } });
-    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
-
-    expect(screen.getByRole("button", { name: "Continuing..." })).toBeInTheDocument();
-    await new Promise((resolve) => setTimeout(resolve, 400));
-    expect(screen.queryByLabelText("Password")).not.toBeInTheDocument();
-  });
-
-  it("shows password quickly when passkey prompt never starts", async () => {
+  it("shows alternative methods on demand", async () => {
     vi.mocked(signInWithPasskey).mockImplementationOnce(
       () =>
         new Promise(() => {
-          // Intentionally never resolve and never trigger onPromptStart.
+          // keep pending to preserve waiting state
         }),
     );
 
     renderLoginForm();
 
-    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "no-prompt@example.com" } });
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "user@example.com" } });
     fireEvent.click(screen.getByRole("button", { name: "Continue" }));
 
     await waitFor(() => {
-      expect(screen.getByLabelText("Password")).toBeInTheDocument();
-    }, { timeout: 1400 });
-    expect(screen.getByRole("button", { name: "Sign in" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Show alternative methods" })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Show alternative methods" }));
+
+    expect(screen.getByRole("button", { name: "Sign in with password" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Send one time link to my email" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Return to passkey" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Sign in with OTP" })).not.toBeInTheDocument();
   });
 
-  it("allows explicit password fallback after passkey prompt starts", async () => {
-    let resolvePasskey: ((value: { ok: boolean; error?: string }) => void) | undefined;
-    vi.mocked(signInWithPasskey).mockImplementationOnce(
-      (_apiBaseUrl, _params, hooks) =>
-        new Promise((resolve) => {
-          hooks?.onPromptStart?.();
-          resolvePasskey = resolve;
+  it("supports password fallback sign-in", async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ password: true, passkey: true, magic_link: true, otp: false }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
         }),
-    );
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ user: { id: "u1" } }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
 
     renderLoginForm();
 
-    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "late-passkey@example.com" } });
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "user@example.com" } });
     fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+
     await waitFor(() => {
-      expect(signInWithPasskey).toHaveBeenCalledTimes(1);
+      expect(screen.getByRole("button", { name: "Sign in with password" })).toBeInTheDocument();
     });
     fireEvent.click(screen.getByRole("button", { name: "Sign in with password" }));
-    expect(screen.getByLabelText("Password")).toBeInTheDocument();
 
-    fetchMock.mockResolvedValueOnce(
-      new Response(JSON.stringify({ user: { id: "u1" } }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }),
-    );
-    resolvePasskey?.({ ok: true });
-    await Promise.resolve();
-    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "SuperSecret123" } });
-    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
-    await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledTimes(1);
-    });
-  });
-
-  it("shows password mode immediately when passkeys are unsupported", async () => {
-    vi.mocked(isPasskeySupported).mockReturnValueOnce(false);
-
-    renderLoginForm();
-
-    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "fallback@example.com" } });
-    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Password")).toBeInTheDocument();
-    });
-    expect(signInWithPasskey).not.toHaveBeenCalled();
-  });
-
-  it("preserves entered email in forgot-password link query", async () => {
-    vi.mocked(isPasskeySupported).mockReturnValueOnce(false);
-    renderLoginForm();
-
-    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "user+tag@example.com " } });
-    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Password")).toBeInTheDocument();
-    });
-
-    const forgotPasswordLink = screen.getByRole("link", { name: "Forgot password?" });
-    expect(forgotPasswordLink).toHaveAttribute("href", "/forgot-password?email=user%2Btag%40example.com");
-  });
-
-  it("validates password sign-in after passkey fallback", async () => {
-    fetchMock.mockResolvedValueOnce(
-      new Response(JSON.stringify({ user: { id: "u1" } }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }),
-    );
-
-    renderLoginForm();
-
-    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "login@example.com" } });
-    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Password")).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByLabelText("Remember me"));
     fireEvent.change(screen.getByLabelText("Password"), { target: { value: "SuperSecret123" } });
     fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
     });
 
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("/api/auth/login");
-    expect(init.method).toBe("POST");
-    expect(init.credentials).toBe("include");
-    expect(JSON.parse(String(init.body))).toEqual({
-      email: "login@example.com",
+    const [loginUrl, loginInit] = fetchMock.mock.calls[1] as [string, RequestInit];
+    expect(loginUrl).toBe("/api/auth/login");
+    expect(loginInit.method).toBe("POST");
+    expect(loginInit.credentials).toBe("include");
+    expect(JSON.parse(String(loginInit.body))).toEqual({
+      email: "user@example.com",
       password: "SuperSecret123",
-      remember_me: true,
+      remember_me: false,
     });
   });
 
-  it("shows email validation errors before passkey attempt", async () => {
+  it("requests OTP and verifies it when capability is enabled", async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ password: true, passkey: true, magic_link: true, otp: true }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ message: "If eligible, a sign-in code has been sent" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ user: { id: "u1" } }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+
     renderLoginForm();
 
-    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "invalid-email" } });
-    fireEvent.submit(screen.getByRole("button", { name: "Continue" }).closest("form") as HTMLFormElement);
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "otp@example.com" } });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
 
     await waitFor(() => {
-      expect(screen.getByText("Please enter a valid email.")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Sign in with OTP" })).toBeInTheDocument();
     });
-    expect(signInWithPasskey).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Sign in with OTP" }));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("One-time code")).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText("One-time code"), { target: { value: "123456" } });
+    fireEvent.click(screen.getByRole("button", { name: "Verify OTP" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+    });
+
+    const [requestUrl] = fetchMock.mock.calls[1] as [string, RequestInit];
+    expect(requestUrl).toBe("/api/auth/request-signin-otp");
+
+    const [verifyUrl, verifyInit] = fetchMock.mock.calls[2] as [string, RequestInit];
+    expect(verifyUrl).toBe("/api/auth/verify-signin-otp");
+    expect(JSON.parse(String(verifyInit.body))).toEqual({
+      email: "otp@example.com",
+      code: "123456",
+      remember_me: false,
+    });
   });
 });

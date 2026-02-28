@@ -8,6 +8,8 @@ export const ROUTES = {
   authVerify: "/auth/verify",
   authConfirm: "/auth/confirm",
   authCallback: "/auth/callback",
+  authMagicLink: "/auth/magic-link",
+  authPasskeySetup: "/auth/passkey-setup",
 
   modules: {
     train: "/modules/train",
