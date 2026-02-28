@@ -16,6 +16,7 @@ EVERVAULT_APP_ID_SECRET_ID=bominal-evervault-app-id
 EVERVAULT_API_KEY_SECRET_ID=bominal-evervault-api-key
 INTERNAL_API_KEY_SECRET_ID=bominal-internal-api-key
 RESEND_API_KEY_SECRET_ID=bominal-resend-api-key
+SUPABASE_MANAGEMENT_API_TOKEN_SECRET_ID=bominal-supabase-management-api-token
 ENV
 
 cat >"$TMP_DIR/bin/gcloud" <<'GCLOUD'

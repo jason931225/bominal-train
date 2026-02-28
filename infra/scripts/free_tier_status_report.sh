@@ -173,7 +173,8 @@ if [[ -f "$API_ENV_FILE" ]]; then
     EVERVAULT_APP_ID_SECRET_ID \
     EVERVAULT_API_KEY_SECRET_ID \
     INTERNAL_API_KEY_SECRET_ID \
-    RESEND_API_KEY_SECRET_ID; do
+    RESEND_API_KEY_SECRET_ID \
+    SUPABASE_MANAGEMENT_API_TOKEN_SECRET_ID; do
     value="$(env_key_value "$API_ENV_FILE" "$key")"
     if has_meaningful_value "$value"; then
       already="false"

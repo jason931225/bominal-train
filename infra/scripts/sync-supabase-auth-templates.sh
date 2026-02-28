@@ -34,7 +34,10 @@ Project ref auto-detection order:
   4) SUPABASE_URL in infra/env/prod/api.env
 
 Auth token for --apply:
-  SUPABASE_MANAGEMENT_API_TOKEN (preferred), or SUPABASE_ACCESS_TOKEN
+  Preferred (production): SUPABASE_MANAGEMENT_API_TOKEN_SECRET_ID + pinned
+    SUPABASE_MANAGEMENT_API_TOKEN_SECRET_VERSION (+ optional
+    SUPABASE_MANAGEMENT_API_TOKEN_PROJECT_ID, else GCP_PROJECT_ID)
+  Non-production fallback: SUPABASE_MANAGEMENT_API_TOKEN or SUPABASE_ACCESS_TOKEN
 USAGE
 }
 
@@ -234,9 +237,76 @@ resolve_project_ref() {
 }
 
 resolve_management_token() {
-  local token="${SUPABASE_MANAGEMENT_API_TOKEN:-${SUPABASE_ACCESS_TOKEN:-}}"
+  local app_env token
+  local token_secret_id token_secret_version token_secret_project gcp_project
+
+  app_env="${APP_ENV:-}"
+  if [[ -z "$app_env" && -f "$PROD_API_ENV" ]]; then
+    app_env="$(env_key_value "$PROD_API_ENV" "APP_ENV")"
+  fi
+  app_env="$(printf '%s' "$app_env" | tr '[:upper:]' '[:lower:]')"
+
+  token="${SUPABASE_MANAGEMENT_API_TOKEN:-${SUPABASE_ACCESS_TOKEN:-}}"
+  token_secret_id="${SUPABASE_MANAGEMENT_API_TOKEN_SECRET_ID:-}"
+  token_secret_version="${SUPABASE_MANAGEMENT_API_TOKEN_SECRET_VERSION:-}"
+  token_secret_project="${SUPABASE_MANAGEMENT_API_TOKEN_PROJECT_ID:-}"
+  gcp_project="${GCP_PROJECT_ID:-}"
+
+  if [[ -f "$PROD_API_ENV" ]]; then
+    if [[ -z "$token_secret_id" ]]; then
+      token_secret_id="$(env_key_value "$PROD_API_ENV" "SUPABASE_MANAGEMENT_API_TOKEN_SECRET_ID")"
+    fi
+    if [[ -z "$token_secret_version" ]]; then
+      token_secret_version="$(env_key_value "$PROD_API_ENV" "SUPABASE_MANAGEMENT_API_TOKEN_SECRET_VERSION")"
+    fi
+    if [[ -z "$token_secret_project" ]]; then
+      token_secret_project="$(env_key_value "$PROD_API_ENV" "SUPABASE_MANAGEMENT_API_TOKEN_PROJECT_ID")"
+    fi
+    if [[ -z "$gcp_project" ]]; then
+      gcp_project="$(env_key_value "$PROD_API_ENV" "GCP_PROJECT_ID")"
+    fi
+  fi
+
+  if [[ -n "$token_secret_id" ]]; then
+    if [[ -z "$token_secret_version" ]]; then
+      log_error "SUPABASE_MANAGEMENT_API_TOKEN_SECRET_VERSION is required when SUPABASE_MANAGEMENT_API_TOKEN_SECRET_ID is configured."
+      return 1
+    fi
+    if [[ "$(printf '%s' "$token_secret_version" | tr '[:upper:]' '[:lower:]')" == "latest" ]]; then
+      log_error "SUPABASE_MANAGEMENT_API_TOKEN_SECRET_VERSION must be pinned (latest is not allowed)."
+      return 1
+    fi
+    if [[ -z "$token_secret_project" ]]; then
+      token_secret_project="$gcp_project"
+    fi
+    if [[ -z "$token_secret_project" ]]; then
+      log_error "SUPABASE_MANAGEMENT_API_TOKEN_PROJECT_ID or GCP_PROJECT_ID is required when SUPABASE_MANAGEMENT_API_TOKEN_SECRET_ID is configured."
+      return 1
+    fi
+    if ! command -v gcloud >/dev/null 2>&1; then
+      log_error "gcloud CLI is required to resolve SUPABASE_MANAGEMENT_API_TOKEN from GSM."
+      return 1
+    fi
+    token="$(
+      gcloud secrets versions access "$token_secret_version" \
+        --secret="$token_secret_id" \
+        --project="$token_secret_project" 2>/dev/null || true
+    )"
+    if [[ -z "$token" ]]; then
+      log_error "Failed to resolve SUPABASE_MANAGEMENT_API_TOKEN from GSM secret '$token_secret_id'."
+      return 1
+    fi
+    printf '%s' "$token"
+    return 0
+  fi
+
+  if [[ "$app_env" == "production" ]]; then
+    log_error "--apply in production requires SUPABASE_MANAGEMENT_API_TOKEN_SECRET_ID + pinned SUPABASE_MANAGEMENT_API_TOKEN_SECRET_VERSION."
+    return 1
+  fi
+
   if [[ -z "$token" ]]; then
-    log_error "--apply requires SUPABASE_MANAGEMENT_API_TOKEN (or SUPABASE_ACCESS_TOKEN)."
+    log_error "--apply requires SUPABASE_MANAGEMENT_API_TOKEN (or SUPABASE_ACCESS_TOKEN) in non-production, or GSM token reference in production."
     return 1
   fi
   printf '%s' "$token"
