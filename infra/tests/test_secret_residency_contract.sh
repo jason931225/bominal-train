@@ -69,15 +69,20 @@ fi
 
 assert_contains "INTERNAL_API_KEY_SECRET_ID" "$POLICY_FILE" "policy must define INTERNAL_API_KEY GSM residency"
 assert_contains "RESEND_API_KEY_SECRET_ID" "$POLICY_FILE" "policy must define RESEND_API_KEY GSM residency"
+assert_contains "SUPABASE_MANAGEMENT_API_TOKEN_SECRET_ID" "$POLICY_FILE" "policy must define Supabase management token GSM residency"
 assert_contains "SUPABASE_SERVICE_ROLE_KEY" "$POLICY_FILE" "policy must document bootstrap secret exceptions"
 
 assert_contains '^INTERNAL_API_KEY_SECRET_ID=' "$API_ENV_EXAMPLE" "api.env.example must include INTERNAL_API_KEY secret id key"
 assert_contains '^INTERNAL_API_KEY_SECRET_VERSION=' "$API_ENV_EXAMPLE" "api.env.example must include INTERNAL_API_KEY secret version key"
 assert_contains '^RESEND_API_KEY_SECRET_ID=' "$API_ENV_EXAMPLE" "api.env.example must include RESEND_API_KEY secret id key"
 assert_contains '^RESEND_API_KEY_SECRET_VERSION=' "$API_ENV_EXAMPLE" "api.env.example must include RESEND_API_KEY secret version key"
+assert_contains '^SUPABASE_MANAGEMENT_API_TOKEN_SECRET_ID=' "$API_ENV_EXAMPLE" "api.env.example must include supabase management token secret id"
+assert_contains '^SUPABASE_MANAGEMENT_API_TOKEN_SECRET_VERSION=' "$API_ENV_EXAMPLE" "api.env.example must include supabase management token secret version"
+assert_contains '^SUPABASE_MANAGEMENT_API_TOKEN_PROJECT_ID=' "$API_ENV_EXAMPLE" "api.env.example must include supabase management token project id"
 
 assert_contains 'INTERNAL_API_KEY and INTERNAL_API_KEY_SECRET_ID cannot both be set' "$PREDEPLOY_FILE" "predeploy must enforce internal key source exclusivity"
 assert_contains 'RESEND API key source is ambiguous' "$PREDEPLOY_FILE" "predeploy must enforce resend source exclusivity"
+assert_contains 'SUPABASE_MANAGEMENT_API_TOKEN_SECRET_ID' "$PREDEPLOY_FILE" "predeploy must enforce supabase management token gsm source"
 
 if [[ -f "$API_ENV_FILE" ]]; then
   internal_key="$(env_value "$API_ENV_FILE" "INTERNAL_API_KEY")"
@@ -88,6 +93,12 @@ if [[ -f "$API_ENV_FILE" ]]; then
   resend_secret_id="$(env_value "$API_ENV_FILE" "RESEND_API_KEY_SECRET_ID")"
   resend_secret_version="$(env_value "$API_ENV_FILE" "RESEND_API_KEY_SECRET_VERSION")"
   resend_vault_name="$(env_value "$API_ENV_FILE" "RESEND_API_KEY_VAULT_NAME")"
+  gcp_project_id="$(env_value "$API_ENV_FILE" "GCP_PROJECT_ID")"
+  supabase_management_api_token="$(env_value "$API_ENV_FILE" "SUPABASE_MANAGEMENT_API_TOKEN")"
+  supabase_access_token="$(env_value "$API_ENV_FILE" "SUPABASE_ACCESS_TOKEN")"
+  supabase_management_token_secret_id="$(env_value "$API_ENV_FILE" "SUPABASE_MANAGEMENT_API_TOKEN_SECRET_ID")"
+  supabase_management_token_secret_version="$(env_value "$API_ENV_FILE" "SUPABASE_MANAGEMENT_API_TOKEN_SECRET_VERSION")"
+  supabase_management_token_project_id="$(env_value "$API_ENV_FILE" "SUPABASE_MANAGEMENT_API_TOKEN_PROJECT_ID")"
 
   edge_enabled="$(env_value "$API_ENV_FILE" "EDGE_TASK_NOTIFY_ENABLED")"
   supabase_vault_enabled="$(env_value "$API_ENV_FILE" "SUPABASE_VAULT_ENABLED")"
@@ -148,6 +159,30 @@ if [[ -f "$API_ENV_FILE" ]]; then
   if has_meaningful_value "$resend_vault_name" && ! is_truthy "$supabase_vault_enabled"; then
     echo "FAIL: RESEND_API_KEY_VAULT_NAME requires SUPABASE_VAULT_ENABLED=true" >&2
     exit 1
+  fi
+
+  if has_meaningful_value "$supabase_management_api_token"; then
+    echo "FAIL: SUPABASE_MANAGEMENT_API_TOKEN must not be plaintext in infra/env/prod/api.env" >&2
+    exit 1
+  fi
+  if has_meaningful_value "$supabase_access_token"; then
+    echo "FAIL: SUPABASE_ACCESS_TOKEN must not be plaintext in infra/env/prod/api.env" >&2
+    exit 1
+  fi
+
+  if has_meaningful_value "$supabase_management_token_secret_id"; then
+    if ! has_meaningful_value "$supabase_management_token_secret_version"; then
+      echo "FAIL: SUPABASE_MANAGEMENT_API_TOKEN_SECRET_ID requires SUPABASE_MANAGEMENT_API_TOKEN_SECRET_VERSION" >&2
+      exit 1
+    fi
+    if [[ "$(printf '%s' "$supabase_management_token_secret_version" | tr '[:upper:]' '[:lower:]')" == "latest" ]]; then
+      echo "FAIL: SUPABASE_MANAGEMENT_API_TOKEN_SECRET_VERSION must be pinned (latest is not allowed)" >&2
+      exit 1
+    fi
+    if ! has_meaningful_value "$supabase_management_token_project_id" && ! has_meaningful_value "$gcp_project_id"; then
+      echo "FAIL: SUPABASE_MANAGEMENT_API_TOKEN_SECRET_ID requires SUPABASE_MANAGEMENT_API_TOKEN_PROJECT_ID or GCP_PROJECT_ID" >&2
+      exit 1
+    fi
   fi
 fi
 

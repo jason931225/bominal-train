@@ -145,6 +145,24 @@ fi
 CURL
 chmod +x "$TMP_DIR/bin/curl"
 
+cat >"$TMP_DIR/bin/gcloud" <<'GCLOUD'
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ -n "${GSM_CALLS_FILE:-}" ]]; then
+  printf '%s\n' "$*" >>"$GSM_CALLS_FILE"
+fi
+
+if [[ "${1:-}" == "secrets" && "${2:-}" == "versions" && "${3:-}" == "access" ]]; then
+  printf '%s\n' "${MOCK_GSM_TOKEN:-gsm-secret-token}"
+  exit 0
+fi
+
+echo "unexpected gcloud call: $*" >&2
+exit 1
+GCLOUD
+chmod +x "$TMP_DIR/bin/gcloud"
+
 # Dry run should not require token and must not call curl.
 env \
   PATH="$TMP_DIR/bin:$PATH" \
@@ -225,6 +243,46 @@ fi
 if file_contains_pattern 'secret-token' "$TMP_DIR/curl.args"; then
   echo "FAIL: raw token leaked into curl args" >&2
   cat "$TMP_DIR/curl.args" >&2
+  exit 1
+fi
+
+# Production mode must require GSM-backed token source.
+assert_fails \
+  "production apply without gsm reference must fail" \
+  env PATH="$TMP_DIR/bin:$PATH" TMP_TEST_ROOT="$TMP_DIR" BOMINAL_ROOT_DIR="$TMP_DIR/repo" APP_ENV=production SUPABASE_MANAGEMENT_API_TOKEN="secret-token" "$SCRIPT" --apply
+
+# Production mode GSM reference requires pinned version.
+assert_fails \
+  "production apply missing gsm version must fail" \
+  env PATH="$TMP_DIR/bin:$PATH" TMP_TEST_ROOT="$TMP_DIR" BOMINAL_ROOT_DIR="$TMP_DIR/repo" APP_ENV=production SUPABASE_MANAGEMENT_API_TOKEN_SECRET_ID="bominal-supabase-management-api-token" "$SCRIPT" --apply
+
+assert_fails \
+  "production apply latest gsm version must fail" \
+  env PATH="$TMP_DIR/bin:$PATH" TMP_TEST_ROOT="$TMP_DIR" BOMINAL_ROOT_DIR="$TMP_DIR/repo" APP_ENV=production SUPABASE_MANAGEMENT_API_TOKEN_SECRET_ID="bominal-supabase-management-api-token" SUPABASE_MANAGEMENT_API_TOKEN_SECRET_VERSION="latest" SUPABASE_MANAGEMENT_API_TOKEN_PROJECT_ID="bominal" "$SCRIPT" --apply
+
+# Production mode should resolve token from GSM.
+env \
+  PATH="$TMP_DIR/bin:$PATH" \
+  TMP_TEST_ROOT="$TMP_DIR" \
+  BOMINAL_ROOT_DIR="$TMP_DIR/repo" \
+  APP_ENV=production \
+  SUPABASE_MANAGEMENT_API_TOKEN_SECRET_ID="bominal-supabase-management-api-token" \
+  SUPABASE_MANAGEMENT_API_TOKEN_SECRET_VERSION="1" \
+  SUPABASE_MANAGEMENT_API_TOKEN_PROJECT_ID="bominal" \
+  GSM_CALLS_FILE="$TMP_DIR/gsm.calls" \
+  MOCK_GSM_TOKEN="gsm-token" \
+  CURL_HEADER_DUMP_FILE="$TMP_DIR/curl.gsm.headers" \
+  "$SCRIPT" --apply >/dev/null
+
+if ! file_contains_pattern 'secrets versions access 1 --secret=bominal-supabase-management-api-token --project=bominal' "$TMP_DIR/gsm.calls"; then
+  echo "FAIL: expected gcloud secret access call for gsm token resolution" >&2
+  cat "$TMP_DIR/gsm.calls" >&2
+  exit 1
+fi
+
+if ! file_contains_pattern 'Authorization: Bearer gsm-token' "$TMP_DIR/curl.gsm.headers"; then
+  echo "FAIL: gsm-resolved token was not passed as authorization header" >&2
+  cat "$TMP_DIR/curl.gsm.headers" >&2
   exit 1
 fi
 

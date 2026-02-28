@@ -78,6 +78,9 @@ SUPABASE_SERVICE_ROLE_KEY=service-role-key
 EMAIL_PROVIDER=disabled
 INTERNAL_API_KEY=abc123
 MASTER_KEY=base64-secret
+SUPABASE_MANAGEMENT_API_TOKEN_SECRET_ID=bominal-supabase-management-api-token
+SUPABASE_MANAGEMENT_API_TOKEN_SECRET_VERSION=1
+SUPABASE_MANAGEMENT_API_TOKEN_PROJECT_ID=test-project
 PAYMENT_ENABLED=true
 PAYMENT_PROVIDER=evervault
 PAYMENT_EVERVAULT_ENFORCE=true
@@ -189,6 +192,124 @@ MASTER_KEY=base64-secret
 PAYMENT_ENABLED=false
 EOF_API
 assert_fails "internal api key latest version must fail" run_predeploy
+make_valid_envs
+
+# Supabase management token source requires GSM secret id.
+cat >"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF_API'
+GCP_PROJECT_ID=test-project
+DATABASE_URL=postgresql+asyncpg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:5432/postgres?ssl=require
+SYNC_DATABASE_URL=postgresql+psycopg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:5432/postgres?sslmode=require
+AUTH_MODE=supabase
+SUPABASE_URL=https://test-ref.supabase.co
+SUPABASE_JWT_ISSUER=https://test-ref.supabase.co/auth/v1
+SUPABASE_AUTH_ENABLED=true
+SUPABASE_AUTH_API_KEY=anon-key
+SUPABASE_AUTH_TIMEOUT_SECONDS=12
+SUPABASE_STORAGE_ENABLED=true
+SUPABASE_SERVICE_ROLE_KEY=service-role-key
+EMAIL_PROVIDER=disabled
+INTERNAL_API_KEY=abc123
+MASTER_KEY=base64-secret
+SUPABASE_MANAGEMENT_API_TOKEN_SECRET_VERSION=1
+SUPABASE_MANAGEMENT_API_TOKEN_PROJECT_ID=test-project
+PAYMENT_ENABLED=false
+EOF_API
+assert_fails "missing supabase management token secret id must fail" run_predeploy
+make_valid_envs
+
+# Supabase management token secret source requires pinned version.
+cat >"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF_API'
+GCP_PROJECT_ID=test-project
+DATABASE_URL=postgresql+asyncpg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:5432/postgres?ssl=require
+SYNC_DATABASE_URL=postgresql+psycopg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:5432/postgres?sslmode=require
+AUTH_MODE=supabase
+SUPABASE_URL=https://test-ref.supabase.co
+SUPABASE_JWT_ISSUER=https://test-ref.supabase.co/auth/v1
+SUPABASE_AUTH_ENABLED=true
+SUPABASE_AUTH_API_KEY=anon-key
+SUPABASE_AUTH_TIMEOUT_SECONDS=12
+SUPABASE_STORAGE_ENABLED=true
+SUPABASE_SERVICE_ROLE_KEY=service-role-key
+EMAIL_PROVIDER=disabled
+INTERNAL_API_KEY=abc123
+MASTER_KEY=base64-secret
+SUPABASE_MANAGEMENT_API_TOKEN_SECRET_ID=bominal-supabase-management-api-token
+SUPABASE_MANAGEMENT_API_TOKEN_SECRET_VERSION=latest
+SUPABASE_MANAGEMENT_API_TOKEN_PROJECT_ID=test-project
+PAYMENT_ENABLED=false
+EOF_API
+assert_fails "supabase management token latest version must fail" run_predeploy
+make_valid_envs
+
+# Supabase management token secret source requires project id fallback path.
+cat >"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF_API'
+DATABASE_URL=postgresql+asyncpg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:5432/postgres?ssl=require
+SYNC_DATABASE_URL=postgresql+psycopg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:5432/postgres?sslmode=require
+AUTH_MODE=supabase
+SUPABASE_URL=https://test-ref.supabase.co
+SUPABASE_JWT_ISSUER=https://test-ref.supabase.co/auth/v1
+SUPABASE_AUTH_ENABLED=true
+SUPABASE_AUTH_API_KEY=anon-key
+SUPABASE_AUTH_TIMEOUT_SECONDS=12
+SUPABASE_STORAGE_ENABLED=true
+SUPABASE_SERVICE_ROLE_KEY=service-role-key
+EMAIL_PROVIDER=disabled
+INTERNAL_API_KEY=abc123
+MASTER_KEY=base64-secret
+SUPABASE_MANAGEMENT_API_TOKEN_SECRET_ID=bominal-supabase-management-api-token
+SUPABASE_MANAGEMENT_API_TOKEN_SECRET_VERSION=1
+PAYMENT_ENABLED=false
+EOF_API
+assert_fails "supabase management token secret id without project id must fail" run_predeploy
+make_valid_envs
+
+# Supabase management plaintext tokens in api.env are forbidden.
+cat >"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF_API'
+GCP_PROJECT_ID=test-project
+DATABASE_URL=postgresql+asyncpg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:5432/postgres?ssl=require
+SYNC_DATABASE_URL=postgresql+psycopg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:5432/postgres?sslmode=require
+AUTH_MODE=supabase
+SUPABASE_URL=https://test-ref.supabase.co
+SUPABASE_JWT_ISSUER=https://test-ref.supabase.co/auth/v1
+SUPABASE_AUTH_ENABLED=true
+SUPABASE_AUTH_API_KEY=anon-key
+SUPABASE_AUTH_TIMEOUT_SECONDS=12
+SUPABASE_STORAGE_ENABLED=true
+SUPABASE_SERVICE_ROLE_KEY=service-role-key
+EMAIL_PROVIDER=disabled
+INTERNAL_API_KEY=abc123
+MASTER_KEY=base64-secret
+SUPABASE_MANAGEMENT_API_TOKEN=plain-token
+SUPABASE_MANAGEMENT_API_TOKEN_SECRET_ID=bominal-supabase-management-api-token
+SUPABASE_MANAGEMENT_API_TOKEN_SECRET_VERSION=1
+SUPABASE_MANAGEMENT_API_TOKEN_PROJECT_ID=test-project
+PAYMENT_ENABLED=false
+EOF_API
+assert_fails "plaintext supabase management token in api.env must fail" run_predeploy
+make_valid_envs
+
+cat >"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF_API'
+GCP_PROJECT_ID=test-project
+DATABASE_URL=postgresql+asyncpg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:5432/postgres?ssl=require
+SYNC_DATABASE_URL=postgresql+psycopg://postgres.test-ref:strong-password@aws-0-us-central1.pooler.supabase.co:5432/postgres?sslmode=require
+AUTH_MODE=supabase
+SUPABASE_URL=https://test-ref.supabase.co
+SUPABASE_JWT_ISSUER=https://test-ref.supabase.co/auth/v1
+SUPABASE_AUTH_ENABLED=true
+SUPABASE_AUTH_API_KEY=anon-key
+SUPABASE_AUTH_TIMEOUT_SECONDS=12
+SUPABASE_STORAGE_ENABLED=true
+SUPABASE_SERVICE_ROLE_KEY=service-role-key
+EMAIL_PROVIDER=disabled
+INTERNAL_API_KEY=abc123
+MASTER_KEY=base64-secret
+SUPABASE_ACCESS_TOKEN=plain-token
+SUPABASE_MANAGEMENT_API_TOKEN_SECRET_ID=bominal-supabase-management-api-token
+SUPABASE_MANAGEMENT_API_TOKEN_SECRET_VERSION=1
+SUPABASE_MANAGEMENT_API_TOKEN_PROJECT_ID=test-project
+PAYMENT_ENABLED=false
+EOF_API
+assert_fails "plaintext supabase access token in api.env must fail" run_predeploy
 make_valid_envs
 
 # Payment enabled requires evervault-only provider contract.
@@ -324,6 +445,9 @@ INTERNAL_API_KEY=abc123
 MASTER_KEY=base64-secret
 PAYMENT_ENABLED=false
 PAYMENT_PROVIDER=legacy
+SUPABASE_MANAGEMENT_API_TOKEN_SECRET_ID=bominal-supabase-management-api-token
+SUPABASE_MANAGEMENT_API_TOKEN_SECRET_VERSION=1
+SUPABASE_MANAGEMENT_API_TOKEN_PROJECT_ID=test-project
 EOF_API
 run_predeploy >/dev/null
 make_valid_envs

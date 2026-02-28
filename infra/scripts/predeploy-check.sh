@@ -442,6 +442,34 @@ if [[ "$internal_api_key_secret_set" -eq 1 ]]; then
   require_pinned_secret_version "${internal_api_key_secret_version:-}" "INTERNAL_API_KEY_SECRET_VERSION"
 fi
 
+supabase_management_api_token="$(env_key_value "infra/env/prod/api.env" "SUPABASE_MANAGEMENT_API_TOKEN")"
+supabase_access_token="$(env_key_value "infra/env/prod/api.env" "SUPABASE_ACCESS_TOKEN")"
+supabase_management_api_token_secret_id="$(env_key_value "infra/env/prod/api.env" "SUPABASE_MANAGEMENT_API_TOKEN_SECRET_ID")"
+supabase_management_api_token_secret_version="$(env_key_value "infra/env/prod/api.env" "SUPABASE_MANAGEMENT_API_TOKEN_SECRET_VERSION")"
+supabase_management_api_token_project_id="$(env_key_value "infra/env/prod/api.env" "SUPABASE_MANAGEMENT_API_TOKEN_PROJECT_ID")"
+supabase_management_api_token_secret_set=0
+
+if has_meaningful_value "$supabase_management_api_token"; then
+  log_error "SUPABASE_MANAGEMENT_API_TOKEN must not be set in infra/env/prod/api.env; use GSM reference keys."
+  exit 1
+fi
+if has_meaningful_value "$supabase_access_token"; then
+  log_error "SUPABASE_ACCESS_TOKEN must not be set in infra/env/prod/api.env; use GSM reference keys."
+  exit 1
+fi
+if has_meaningful_value "$supabase_management_api_token_secret_id"; then
+  supabase_management_api_token_secret_set=1
+fi
+if [[ "$supabase_management_api_token_secret_set" -eq 0 ]]; then
+  log_error "Production requires SUPABASE_MANAGEMENT_API_TOKEN_SECRET_ID."
+  exit 1
+fi
+require_pinned_secret_version "${supabase_management_api_token_secret_version:-}" "SUPABASE_MANAGEMENT_API_TOKEN_SECRET_VERSION"
+if [[ -z "$supabase_management_api_token_project_id" && -z "$gcp_project_id" ]]; then
+  log_error "SUPABASE_MANAGEMENT_API_TOKEN_SECRET_ID requires SUPABASE_MANAGEMENT_API_TOKEN_PROJECT_ID or GCP_PROJECT_ID."
+  exit 1
+fi
+
 gsm_master_key_enabled="$(env_key_value "infra/env/prod/api.env" "GSM_MASTER_KEY_ENABLED" | tr '[:upper:]' '[:lower:]')"
 if [[ -z "$gsm_master_key_enabled" ]]; then
   gsm_master_key_enabled="false"

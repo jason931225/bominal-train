@@ -19,6 +19,7 @@ Define authoritative secret residency for bominal so deploy/runtime behavior is 
 - `EVERVAULT_API_KEY` via `EVERVAULT_API_KEY_SECRET_ID/_VERSION`
 - `INTERNAL_API_KEY` via `INTERNAL_API_KEY_SECRET_ID/_VERSION`
 - `RESEND_API_KEY` via `RESEND_API_KEY_SECRET_ID/_VERSION`
+- `SUPABASE_MANAGEMENT_API_TOKEN` via `SUPABASE_MANAGEMENT_API_TOKEN_SECRET_ID/_VERSION`
 
 ### Supabase Edge runtime secrets
 
@@ -57,7 +58,7 @@ These remain in `infra/env/prod/api.env` because they bootstrap runtime access a
 - Rotate one secret family at a time to prevent temporary version spikes.
 - Default cadence:
   - `MASTER_KEY`: quarterly
-  - `EVERVAULT_*`, `INTERNAL_API_KEY`, `RESEND_API_KEY`: semiannual
+  - `EVERVAULT_*`, `INTERNAL_API_KEY`, `RESEND_API_KEY`, `SUPABASE_MANAGEMENT_API_TOKEN`: semiannual
 - Incident response rotations may override cadence but must still prune old versions after verification.
 
 ## Operational Sequence

@@ -341,6 +341,12 @@ Production Resend key source contract (`EMAIL_PROVIDER=resend`):
 - `RESEND_API_KEY_SECRET_ID` requires `GCP_PROJECT_ID`.
 - `deploy.sh` resolves GSM references and injects runtime `RESEND_API_KEY` into `api`/`worker`.
 
+Production Supabase Management API token contract (`sync-supabase-auth-templates.sh --apply`):
+- Configure `SUPABASE_MANAGEMENT_API_TOKEN_SECRET_ID` + pinned `SUPABASE_MANAGEMENT_API_TOKEN_SECRET_VERSION`.
+- Configure `SUPABASE_MANAGEMENT_API_TOKEN_PROJECT_ID` or rely on `GCP_PROJECT_ID`.
+- `latest` is rejected for `SUPABASE_MANAGEMENT_API_TOKEN_SECRET_VERSION`.
+- Plaintext `SUPABASE_MANAGEMENT_API_TOKEN` and `SUPABASE_ACCESS_TOKEN` must not be stored in `infra/env/prod/api.env`.
+
 Production payment safety contract (Evervault-only, fail-closed):
 - Server-side card fallback aliases (`CARDNUMBER`, `EXPIRYMM`, `EXPIRYYY`, `DOB`, `NN`) are forbidden in `infra/env/prod/api.env`.
 - `infra/env/prod/pay.env` is retired and must not be referenced by deployment compose/runtime.
@@ -401,7 +407,12 @@ bash infra/scripts/sync-supabase-auth-templates.sh --dry-run
 bash infra/scripts/sync-supabase-auth-templates.sh --apply
 ```
 
-`--apply` requires `SUPABASE_MANAGEMENT_API_TOKEN` (or `SUPABASE_ACCESS_TOKEN`).
+`--apply` in production resolves token from GSM via:
+- `SUPABASE_MANAGEMENT_API_TOKEN_SECRET_ID`
+- `SUPABASE_MANAGEMENT_API_TOKEN_SECRET_VERSION` (pinned; no `latest`)
+- `SUPABASE_MANAGEMENT_API_TOKEN_PROJECT_ID` (optional; falls back to `GCP_PROJECT_ID`)
+
+Local/non-production fallback remains available with exported `SUPABASE_MANAGEMENT_API_TOKEN` or `SUPABASE_ACCESS_TOKEN`.
 
 ### 3.2) Sync Supabase Edge notify secrets from GSM
 
