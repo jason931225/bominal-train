@@ -61,7 +61,7 @@ fi
 assert_contains "/health/live /health/ready" "$CADDY_FILE" "caddy api matcher missing live/ready routes"
 assert_contains "handle_errors" "$CADDY_FILE" "caddy missing callback unavailability error handler"
 assert_contains "path /auth/verify\\* /auth/confirm\\*" "$CADDY_FILE" "caddy missing callback error scope matcher"
-assert_contains "host\\.docker\\.internal:3000 host\\.docker\\.internal:3001" "$CADDY_FILE" "caddy missing dual web upstream failover"
+assert_contains "web:3000 web-canary:3000" "$CADDY_FILE" "caddy missing dual web upstream failover"
 
 assert_contains "field is no longer accepted" "$WALLET_SCHEMA_FILE" "wallet schema must reject cvv plaintext input"
 assert_contains "plaintext card fields are not accepted when PAYMENT_PROVIDER=evervault" "$WALLET_SCHEMA_FILE" "wallet schema must reject plaintext fallback in evervault mode"

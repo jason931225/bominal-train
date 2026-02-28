@@ -50,7 +50,7 @@ bominal.com {
 
 	handle {
 		reverse_proxy {
-			to host.docker.internal:3000 host.docker.internal:3001
+			to web:3000 web-canary:3000
 			lb_policy first
 			lb_try_duration 3s
 			lb_try_interval 200ms
