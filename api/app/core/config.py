@@ -109,10 +109,20 @@ class Settings(BaseSettings):
         default="postgresql+asyncpg://bominal:bominal@postgres:5432/bominal",
         alias="DATABASE_URL",
     )
+    database_url_direct: str | None = Field(default=None, alias="DATABASE_URL_DIRECT")
+    database_url_target: str = Field(default="pooler", alias="DATABASE_URL_TARGET")
     sync_database_url: str = Field(
         default="postgresql+psycopg://bominal:bominal@postgres:5432/bominal",
         alias="SYNC_DATABASE_URL",
     )
+    db_pool_size: int = Field(default=5, alias="DB_POOL_SIZE")
+    db_max_overflow: int = Field(default=5, alias="DB_MAX_OVERFLOW")
+    db_pool_timeout_seconds: float = Field(default=10.0, alias="DB_POOL_TIMEOUT_SECONDS")
+    db_pool_recycle_seconds: int = Field(default=600, alias="DB_POOL_RECYCLE_SECONDS")
+    db_pool_use_lifo: bool = Field(default=True, alias="DB_POOL_USE_LIFO")
+    db_connect_timeout_seconds: float = Field(default=5.0, alias="DB_CONNECT_TIMEOUT_SECONDS")
+    db_command_timeout_seconds: float = Field(default=8.0, alias="DB_COMMAND_TIMEOUT_SECONDS")
+    db_statement_timeout_ms: int = Field(default=12000, alias="DB_STATEMENT_TIMEOUT_MS")
 
     cors_origins: Annotated[List[str], NoDecode] = Field(
         default=[
@@ -430,6 +440,14 @@ class Settings(BaseSettings):
             raise ValueError("AUTH_MODE must be one of: legacy, supabase")
         return normalized
 
+    @field_validator("database_url_target")
+    @classmethod
+    def validate_database_url_target(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"pooler", "direct"}:
+            raise ValueError("DATABASE_URL_TARGET must be one of: pooler, direct")
+        return normalized
+
     @field_validator("train_provider_retry_attempts")
     @classmethod
     def validate_train_provider_retry_attempts(cls, value: int) -> int:
@@ -447,6 +465,45 @@ class Settings(BaseSettings):
     def validate_non_negative_train_provider_float_settings(cls, value: float) -> float:
         if value < 0:
             raise ValueError("TRAIN_PROVIDER timeout/retry float settings must be non-negative")
+        return value
+
+    @field_validator("db_pool_size")
+    @classmethod
+    def validate_db_pool_size(cls, value: int) -> int:
+        if value < 1:
+            raise ValueError("DB_POOL_SIZE must be >= 1")
+        return value
+
+    @field_validator("db_max_overflow")
+    @classmethod
+    def validate_db_max_overflow(cls, value: int) -> int:
+        if value < 0:
+            raise ValueError("DB_MAX_OVERFLOW must be >= 0")
+        return value
+
+    @field_validator("db_pool_recycle_seconds")
+    @classmethod
+    def validate_db_pool_recycle_seconds(cls, value: int) -> int:
+        if value < 0:
+            raise ValueError("DB_POOL_RECYCLE_SECONDS must be >= 0")
+        return value
+
+    @field_validator("db_statement_timeout_ms")
+    @classmethod
+    def validate_db_statement_timeout_ms(cls, value: int) -> int:
+        if value < 0:
+            raise ValueError("DB_STATEMENT_TIMEOUT_MS must be >= 0")
+        return value
+
+    @field_validator(
+        "db_pool_timeout_seconds",
+        "db_connect_timeout_seconds",
+        "db_command_timeout_seconds",
+    )
+    @classmethod
+    def validate_positive_db_timeouts(cls, value: float, info) -> float:
+        if value <= 0:
+            raise ValueError(f"{info.field_name.upper()} must be > 0")
         return value
 
     @field_validator(
@@ -511,6 +568,8 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "SYNC_DATABASE_URL must point to local Postgres hostnames (postgres/localhost/127.0.0.1) in development"
                 )
+        if self.database_url_target == "direct" and not str(self.database_url_direct or "").strip():
+            raise ValueError("DATABASE_URL_DIRECT is required when DATABASE_URL_TARGET=direct")
         if self.auth_mode == "supabase":
             if not self.supabase_url:
                 raise ValueError("SUPABASE_URL must be set when AUTH_MODE is supabase")
@@ -577,6 +636,21 @@ class Settings(BaseSettings):
     @property
     def resolved_database_url_async(self) -> str:
         return normalize_async_database_url(self.database_url)
+
+    @property
+    def resolved_database_url_async_direct(self) -> str | None:
+        direct = str(self.database_url_direct or "").strip()
+        if not direct:
+            return None
+        return normalize_async_database_url(direct)
+
+    @property
+    def resolved_database_url_async_active(self) -> str:
+        if self.database_url_target == "direct":
+            if self.resolved_database_url_async_direct is None:
+                raise ValueError("DATABASE_URL_DIRECT is required when DATABASE_URL_TARGET=direct")
+            return self.resolved_database_url_async_direct
+        return self.resolved_database_url_async
 
     @property
     def resolved_redis_url_non_cde(self) -> str:

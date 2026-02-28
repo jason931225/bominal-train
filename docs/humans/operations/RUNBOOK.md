@@ -315,6 +315,34 @@ If running from a containerized shell where API is on the compose network:
 infra/scripts/benchmark-train-task-list.sh --base-url http://api:8000
 ```
 
+DB-path latency baseline (production auth slowness investigations):
+
+```bash
+# Baseline capture from running production compose stack.
+infra/scripts/db-deep-dive.sh baseline \
+  --compose-file infra/docker-compose.prod.yml \
+  --api-service api \
+  --iterations 30 \
+  --log-window-minutes 30
+
+# Pooler vs direct endpoint A/B comparison (same runtime, same sample count).
+infra/scripts/db-deep-dive.sh ab \
+  --compose-file infra/docker-compose.prod.yml \
+  --api-service api \
+  --iterations 30 \
+  --pooler-url 'postgresql+asyncpg://...pooler...' \
+  --direct-url 'postgresql+asyncpg://...direct...'
+```
+
+Deploy-time optional DB regression gate:
+
+```bash
+DB_SLO_GATE_ENABLED=true \
+DB_SLO_CONNECT_P95_MAX_MS=1200 \
+DB_SLO_AUTH_TIMEOUT_MAX=2 \
+sudo -u bominal /opt/bominal/repo/infra/scripts/deploy.sh
+```
+
 Hybrid benchmark gate check (relative improvement + absolute SLO ceilings):
 
 ```bash
