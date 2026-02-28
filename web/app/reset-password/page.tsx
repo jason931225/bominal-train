@@ -11,7 +11,7 @@ import { UI_BODY_MUTED, UI_BUTTON_OUTLINE_TOUCH, UI_CARD_LG, UI_TITLE_LG } from 
 export default async function ResetPasswordPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ email?: string; code?: string; mode?: string }>;
+  searchParams?: Promise<{ email?: string; code?: string }>;
 }) {
   const user = await getOptionalUser();
   if (user) {
@@ -23,8 +23,8 @@ export default async function ResetPasswordPage({
   const resolvedSearchParams = (await searchParams) ?? {};
   const initialEmail = resolvedSearchParams.email ?? "";
   const initialCode = resolvedSearchParams.code ?? "";
-  const hasSupabaseRecoveryContext = cookieStore.get("bominal_supabase_recovery_mode")?.value === "1";
-  const mode = resolvedSearchParams.mode === "supabase" || hasSupabaseRecoveryContext ? "supabase" : "otp";
+  const hasSupabaseRecoveryContext = Boolean(cookieStore.get("bominal_supabase_recovery_ctx")?.value);
+  const mode = hasSupabaseRecoveryContext ? "supabase" : "otp";
   const subtitle = mode === "supabase" ? t("auth.resetPasswordSupabaseSubtitle") : t("auth.resetPasswordSubtitle");
 
   return (

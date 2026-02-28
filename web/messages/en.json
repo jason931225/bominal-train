@@ -22,6 +22,7 @@
   "auth": {
     "continue": "Continue",
     "continuing": "Continuing...",
+    "authentication": "Password Recovery",
     "signIn": "Sign in",
     "signingIn": "Signing in...",
     "signOut": "Sign out",
@@ -100,6 +101,7 @@
     "passwordResetLinkDetected": "Reset link detected. Confirm your new password to continue.",
     "supabaseResetReady": "Recovery link verified. Enter your new password to finish resetting your account.",
     "supabaseRecoveryMissing": "Your recovery session is missing or expired. Request a new reset email.",
+    "callbackRecoveryContinuePrompt": "Please press continue for password recovery.",
     "callbackProcessing": "Completing sign-in link...",
     "callbackFailed": "This sign-in or recovery link is invalid or expired. Request a new link.",
     "callbackInvalidLink": "Missing link parameters. Request a new sign-in or recovery email.",

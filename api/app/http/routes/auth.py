@@ -1,5 +1,6 @@
 import logging
 import hmac
+import json
 import secrets
 import time
 from datetime import datetime, timedelta, timezone
@@ -16,6 +17,7 @@ from sqlalchemy.orm import joinedload
 
 from app.http.deps import auth_rate_limit, get_current_approved_user, get_current_user
 from app.core.config import get_settings
+from app.core.redis import get_redis_client
 from app.core.security import (
     async_hash_password,
     async_password_needs_rehash,
@@ -107,9 +109,8 @@ PASSKEY_SETUP_CONTEXT_PURPOSE = "passkey_setup"
 PASSKEY_SETUP_CONTEXT_COOKIE = "bominal_passkey_setup_ctx"
 PASSKEY_SETUP_CONTEXT_TTL_SECONDS = 10 * 60
 PASSKEY_SETUP_ALLOWED_SOURCES = {"signup", "reset", "magiclink"}
-SUPABASE_RECOVERY_MODE_COOKIE = "bominal_supabase_recovery_mode"
-SUPABASE_RECOVERY_ACCESS_COOKIE = "bominal_supabase_recovery_access"
-SUPABASE_RECOVERY_REFRESH_COOKIE = "bominal_supabase_recovery_refresh"
+SUPABASE_RECOVERY_CONTEXT_COOKIE = "bominal_supabase_recovery_ctx"
+SUPABASE_RECOVERY_CONTEXT_REDIS_PREFIX = "auth:supabase:recovery_ctx:"
 SUPABASE_RECOVERY_CONTEXT_TTL_SECONDS = 15 * 60
 
 
@@ -322,71 +323,95 @@ def _clear_passkey_setup_context_cookie(response: Response) -> None:
     )
 
 
-def _set_supabase_recovery_context_cookies(response: Response, *, access_token: str, refresh_token: str | None) -> None:
+def _supabase_recovery_context_key(token: str) -> str:
+    return f"{SUPABASE_RECOVERY_CONTEXT_REDIS_PREFIX}{token}"
+
+
+def _set_supabase_recovery_context_cookie(response: Response, *, token: str) -> None:
     response.set_cookie(
-        key=SUPABASE_RECOVERY_MODE_COOKIE,
-        value="1",
+        key=SUPABASE_RECOVERY_CONTEXT_COOKIE,
+        value=token,
         max_age=SUPABASE_RECOVERY_CONTEXT_TTL_SECONDS,
         expires=SUPABASE_RECOVERY_CONTEXT_TTL_SECONDS,
         httponly=True,
         secure=settings.is_production,
         samesite="lax",
-        path="/reset-password",
+        path="/",
     )
-    response.set_cookie(
-        key=SUPABASE_RECOVERY_ACCESS_COOKIE,
-        value=access_token,
-        max_age=SUPABASE_RECOVERY_CONTEXT_TTL_SECONDS,
-        expires=SUPABASE_RECOVERY_CONTEXT_TTL_SECONDS,
+
+
+def _clear_supabase_recovery_context_cookie(response: Response) -> None:
+    response.delete_cookie(
+        key=SUPABASE_RECOVERY_CONTEXT_COOKIE,
         httponly=True,
         secure=settings.is_production,
         samesite="lax",
-        path="/api/auth/reset-password/supabase",
+        path="/",
     )
+
+
+def _supabase_recovery_error_response(*, status_code: int, detail: str) -> JSONResponse:
+    response = JSONResponse(status_code=status_code, content={"detail": detail})
+    _clear_supabase_recovery_context_cookie(response)
+    return response
+
+
+async def _issue_supabase_recovery_context(*, access_token: str, refresh_token: str | None) -> str | None:
+    normalized_access_token = str(access_token or "").strip()
+    if not normalized_access_token:
+        return None
+    token = secrets.token_urlsafe(32)
+    payload: dict[str, str] = {"access_token": normalized_access_token}
     normalized_refresh_token = str(refresh_token or "").strip()
     if normalized_refresh_token:
-        response.set_cookie(
-            key=SUPABASE_RECOVERY_REFRESH_COOKIE,
-            value=normalized_refresh_token,
-            max_age=SUPABASE_RECOVERY_CONTEXT_TTL_SECONDS,
-            expires=SUPABASE_RECOVERY_CONTEXT_TTL_SECONDS,
-            httponly=True,
-            secure=settings.is_production,
-            samesite="lax",
-            path="/api/auth/reset-password/supabase",
-        )
+        payload["refresh_token"] = normalized_refresh_token
+
+    serialized = json.dumps(payload, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+    key = _supabase_recovery_context_key(token)
+    try:
+        redis = await get_redis_client()
+        await redis.set(key, serialized, ex=SUPABASE_RECOVERY_CONTEXT_TTL_SECONDS)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Supabase recovery context store failed: %s", type(exc).__name__)
+        return None
+    return token
+
+
+async def _consume_supabase_recovery_context(*, token: str) -> tuple[str, str | None] | None:
+    normalized_token = str(token or "").strip()
+    if not normalized_token:
+        return None
+    key = _supabase_recovery_context_key(normalized_token)
+
+    try:
+        redis = await get_redis_client()
+        raw_payload = await redis.execute_command("GETDEL", key)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Supabase recovery context consume failed: %s", type(exc).__name__)
+        return None
+
+    if raw_payload is None:
+        return None
+    if isinstance(raw_payload, bytes):
+        serialized = raw_payload.decode("utf-8", errors="ignore")
+    elif isinstance(raw_payload, str):
+        serialized = raw_payload
     else:
-        response.delete_cookie(
-            key=SUPABASE_RECOVERY_REFRESH_COOKIE,
-            httponly=True,
-            secure=settings.is_production,
-            samesite="lax",
-            path="/api/auth/reset-password/supabase",
-        )
+        return None
 
+    try:
+        payload = json.loads(serialized)
+    except ValueError:
+        return None
+    if not isinstance(payload, dict):
+        return None
 
-def _clear_supabase_recovery_context_cookies(response: Response) -> None:
-    response.delete_cookie(
-        key=SUPABASE_RECOVERY_MODE_COOKIE,
-        httponly=True,
-        secure=settings.is_production,
-        samesite="lax",
-        path="/reset-password",
-    )
-    response.delete_cookie(
-        key=SUPABASE_RECOVERY_ACCESS_COOKIE,
-        httponly=True,
-        secure=settings.is_production,
-        samesite="lax",
-        path="/api/auth/reset-password/supabase",
-    )
-    response.delete_cookie(
-        key=SUPABASE_RECOVERY_REFRESH_COOKIE,
-        httponly=True,
-        secure=settings.is_production,
-        samesite="lax",
-        path="/api/auth/reset-password/supabase",
-    )
+    access_token = str(payload.get("access_token") or "").strip()
+    refresh_token_raw = payload.get("refresh_token")
+    refresh_token = str(refresh_token_raw).strip() if isinstance(refresh_token_raw, str) else ""
+    if not access_token:
+        return None
+    return access_token, (refresh_token or None)
 
 
 async def _issue_passkey_setup_context(db: AsyncSession, *, user_id: UUID, source: str) -> str:
@@ -1470,16 +1495,21 @@ async def supabase_confirm(
 
     if payload.type == "recovery":
         logger.info("Supabase confirm completed", extra={"mode": "recovery"})
+        recovery_context_token = await _issue_supabase_recovery_context(
+            access_token=callback_access_token,
+            refresh_token=callback_refresh_token,
+        )
+        if not recovery_context_token:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Could not prepare recovery session. Request a fresh link.",
+            )
         response_payload = SupabaseConfirmResponse(
             mode="recovery",
             redirect_to=f"{_public_base_url()}/reset-password",
         )
         response = JSONResponse(content=response_payload.model_dump(mode="json"))
-        _set_supabase_recovery_context_cookies(
-            response,
-            access_token=callback_access_token,
-            refresh_token=callback_refresh_token,
-        )
+        _set_supabase_recovery_context_cookie(response, token=recovery_context_token)
         return response
 
     user = await get_or_create_local_user_from_supabase_claims(
@@ -1500,7 +1530,7 @@ async def supabase_confirm(
         access_token=callback_access_token,
     )
     response = JSONResponse(content=response_payload.model_dump(mode="json"))
-    _clear_supabase_recovery_context_cookies(response)
+    _clear_supabase_recovery_context_cookie(response)
     if background_tasks.tasks:
         response.background = background_tasks
     set_session_cookie(response, session_token, False)
@@ -1520,20 +1550,32 @@ async def reset_password_supabase(
     request: Request,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
-    supabase_recovery_access_cookie: Annotated[str | None, Cookie(alias=SUPABASE_RECOVERY_ACCESS_COOKIE)] = None,
-    supabase_recovery_refresh_cookie: Annotated[str | None, Cookie(alias=SUPABASE_RECOVERY_REFRESH_COOKIE)] = None,
+    supabase_recovery_context_cookie: Annotated[str | None, Cookie(alias=SUPABASE_RECOVERY_CONTEXT_COOKIE)] = None,
 ) -> Response:
-    access_token = _extract_bearer_token(request.headers.get("authorization")) or str(supabase_recovery_access_cookie or "").strip()
+    header_access_token = _extract_bearer_token(request.headers.get("authorization"))
+    access_token = str(header_access_token or "").strip()
+    refresh_token: str | None = None
     if not access_token:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Recovery token required")
+        context = await _consume_supabase_recovery_context(token=supabase_recovery_context_cookie or "")
+        if context is not None:
+            access_token, refresh_token = context
+
+    if not access_token:
+        return _supabase_recovery_error_response(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Recovery token required",
+        )
 
     supabase_identity = await update_supabase_password(
         access_token=access_token,
         new_password=payload.new_password,
-        refresh_token=supabase_recovery_refresh_cookie,
+        refresh_token=refresh_token,
     )
     if supabase_identity is None:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired recovery link")
+        return _supabase_recovery_error_response(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired recovery link",
+        )
 
     user = await get_or_create_local_user_from_supabase_claims(
         db,
@@ -1563,7 +1605,7 @@ async def reset_password_supabase(
     if background_tasks.tasks:
         response.background = background_tasks
     set_session_cookie(response, session_token, False)
-    _clear_supabase_recovery_context_cookies(response)
+    _clear_supabase_recovery_context_cookie(response)
     passkey_setup_context_token = await _issue_passkey_setup_context(db, user_id=user.id, source="reset")
     _set_passkey_setup_context_cookie(response, passkey_setup_context_token)
     return response

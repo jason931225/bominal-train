@@ -22,6 +22,7 @@
   "auth": {
     "continue": "계속",
     "continuing": "계속 진행 중...",
+    "authentication": "비밀번호 복구",
     "signIn": "로그인",
     "signingIn": "로그인 중...",
     "signOut": "로그아웃",
@@ -100,6 +101,7 @@
     "passwordResetLinkDetected": "재설정 링크가 확인되었습니다. 새 비밀번호를 입력해 계속하세요.",
     "supabaseResetReady": "복구 링크가 확인되었습니다. 계정 재설정을 완료하려면 새 비밀번호를 입력하세요.",
     "supabaseRecoveryMissing": "복구 세션이 없거나 만료되었습니다. 새 재설정 이메일을 요청하세요.",
+    "callbackRecoveryContinuePrompt": "비밀번호 복구를 위해 계속을 눌러주세요.",
     "callbackProcessing": "로그인 링크를 처리하는 중...",
     "callbackFailed": "로그인 또는 복구 링크가 유효하지 않거나 만료되었습니다. 새 링크를 요청하세요.",
     "callbackInvalidLink": "링크 파라미터가 없습니다. 새 로그인 또는 복구 이메일을 요청하세요.",

@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import fakeredis.aioredis
@@ -708,6 +709,11 @@ async def test_supabase_confirm_returns_recovery_mode_payload(client, monkeypatc
         _fake_exchange_detailed,
         raising=False,
     )
+    monkeypatch.setattr(
+        "app.http.routes.auth._issue_supabase_recovery_context",
+        AsyncMock(return_value="opaque-recovery-context-token"),
+        raising=False,
+    )
 
     response = await client.post(
         "/api/auth/supabase/confirm",
@@ -718,8 +724,7 @@ async def test_supabase_confirm_returns_recovery_mode_payload(client, monkeypatc
     assert payload["mode"] == "recovery"
     assert payload.get("access_token") in {None, ""}
     assert payload["redirect_to"].endswith("/reset-password")
-    assert response.cookies.get("bominal_supabase_recovery_mode") == "1"
-    assert response.cookies.get("bominal_supabase_recovery_access") == "access-token-123"
+    assert response.cookies.get("bominal_supabase_recovery_ctx") == "opaque-recovery-context-token"
 
 
 @pytest.mark.asyncio
@@ -757,13 +762,23 @@ async def test_supabase_recovery_confirm_sets_cookie_used_by_reset(client, monke
         raising=False,
     )
     monkeypatch.setattr("app.http.routes.auth.update_supabase_password", _fake_update_supabase_password, raising=False)
+    monkeypatch.setattr(
+        "app.http.routes.auth._issue_supabase_recovery_context",
+        AsyncMock(return_value="opaque-cookie-reset-context"),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "app.http.routes.auth._consume_supabase_recovery_context",
+        AsyncMock(return_value=("access-token-cookie-123", "refresh-token-cookie-123")),
+        raising=False,
+    )
 
     confirm_response = await client.post(
         "/api/auth/supabase/confirm",
         json={"token_hash": "hash-cookie-reset", "type": "recovery"},
     )
     assert confirm_response.status_code == 200
-    assert confirm_response.cookies.get("bominal_supabase_recovery_mode") == "1"
+    assert confirm_response.cookies.get("bominal_supabase_recovery_ctx") == "opaque-cookie-reset-context"
 
     reset_response = await client.post(
         "/api/auth/reset-password/supabase",
@@ -943,6 +958,31 @@ async def test_reset_password_supabase_requires_bearer_token(client):
         json={"new_password": "NewPassword123"},
     )
     assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_reset_password_supabase_clears_recovery_context_cookie_on_failure(client, monkeypatch):
+    monkeypatch.setattr(
+        "app.http.routes.auth._consume_supabase_recovery_context",
+        AsyncMock(return_value=("stale-access-token", "stale-refresh-token")),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "app.http.routes.auth.update_supabase_password",
+        AsyncMock(return_value=None),
+        raising=False,
+    )
+
+    client.cookies.set("bominal_supabase_recovery_ctx", "opaque-stale-context")
+    response = await client.post(
+        "/api/auth/reset-password/supabase",
+        json={"new_password": "NewPassword123"},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Invalid or expired recovery link"
+    set_cookie_headers = response.headers.get_list("set-cookie")
+    assert any("bominal_supabase_recovery_ctx=" in header and "Max-Age=0" in header for header in set_cookie_headers)
 
 
 @pytest.mark.asyncio

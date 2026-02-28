@@ -26,6 +26,7 @@ export default function AuthConfirmPage() {
     () => resolveSupabaseConfirmPayload(new URLSearchParams(searchParams.toString())),
     [searchParams],
   );
+  const isRecoveryConfirm = confirmPayload?.type === "recovery";
   const normalizedNext = useMemo(() => {
     const nextPath = searchParams.get("next")?.trim();
     return nextPath && nextPath.startsWith("/") ? nextPath : null;
@@ -68,7 +69,7 @@ export default function AuthConfirmPage() {
 
   return (
     <section className={`mx-auto w-full max-w-md ${UI_CARD_LG}`}>
-      <h1 className={UI_TITLE_LG}>{t("auth.signIn")}</h1>
+      <h1 className={UI_TITLE_LG}>{isRecoveryConfirm ? t("auth.authentication") : t("auth.signIn")}</h1>
       {errorMessage ? (
         <>
           <p className={`mt-2 ${UI_BODY_MUTED}`}>{errorMessage}</p>
@@ -83,7 +84,9 @@ export default function AuthConfirmPage() {
         </>
       ) : (
         <>
-          <p className={`mt-2 ${UI_BODY_MUTED}`}>{t("auth.callbackProcessing")}</p>
+          <p className={`mt-2 ${UI_BODY_MUTED}`}>
+            {isRecoveryConfirm ? t("auth.callbackRecoveryContinuePrompt") : t("auth.callbackProcessing")}
+          </p>
           <button
             type="button"
             className="mt-6 inline-flex w-full items-center justify-center rounded-xl bg-blossom-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blossom-700 disabled:cursor-not-allowed disabled:opacity-60"
@@ -92,7 +95,7 @@ export default function AuthConfirmPage() {
             }}
             disabled={submitting}
           >
-            {submitting ? t("auth.callbackProcessing") : t("auth.continue")}
+            {submitting ? t("auth.continuing") : t("auth.continue")}
           </button>
         </>
       )}

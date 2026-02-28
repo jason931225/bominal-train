@@ -416,3 +416,64 @@ async def test_update_supabase_password_uses_bearer_access_token(monkeypatch):
     assert captured["url"] == "https://project-ref.supabase.co/auth/v1/user"
     assert captured["headers"]["Authorization"] == "Bearer access-token-123"
     assert captured["json"] == {"password": "NewPassword123!"}
+
+
+@pytest.mark.asyncio
+async def test_update_supabase_password_refreshes_and_retries_after_initial_reject(monkeypatch):
+    monkeypatch.setattr(supabase_auth.settings, "supabase_auth_enabled", True, raising=False)
+    monkeypatch.setattr(supabase_auth.settings, "supabase_url", "https://project-ref.supabase.co", raising=False)
+    monkeypatch.setattr(supabase_auth.settings, "supabase_auth_api_key", "anon-key", raising=False)
+    monkeypatch.setattr(supabase_auth.settings, "supabase_service_role_key", None, raising=False)
+
+    captured_put_headers: list[dict[str, str]] = []
+    captured_refresh: dict[str, object] = {}
+
+    class _FakeResponse:
+        def __init__(self, *, status_code: int, payload: dict[str, object]):
+            self.status_code = status_code
+            self._payload = payload
+
+        def json(self):  # noqa: ANN201
+            return self._payload
+
+    class _FakeClient:
+        def __init__(self, *, timeout: float):  # noqa: ARG002
+            self._put_call_count = 0
+
+        async def __aenter__(self):  # noqa: ANN204
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):  # noqa: ANN001, ANN204
+            return False
+
+        async def put(self, url: str, *, headers: dict[str, str], json: dict):  # noqa: ANN003
+            captured_put_headers.append(headers)
+            self._put_call_count += 1
+            if self._put_call_count == 1:
+                return _FakeResponse(status_code=401, payload={"message": "expired"})
+            return _FakeResponse(status_code=200, payload={"id": "supabase-user-001", "email": "user@example.com"})
+
+        async def post(self, url: str, *, params: dict[str, str], headers: dict[str, str], json: dict):  # noqa: ANN003
+            captured_refresh["url"] = url
+            captured_refresh["params"] = params
+            captured_refresh["headers"] = headers
+            captured_refresh["json"] = json
+            return _FakeResponse(status_code=200, payload={"access_token": "fresh-access-token"})
+
+    monkeypatch.setattr(supabase_auth.httpx, "AsyncClient", lambda timeout: _FakeClient(timeout=timeout))
+
+    identity = await supabase_auth.update_supabase_password(
+        access_token="stale-access-token",
+        refresh_token="refresh-token-123",
+        new_password="NewPassword123!",
+    )
+
+    assert identity is not None
+    assert identity.user_id == "supabase-user-001"
+    assert identity.email == "user@example.com"
+    assert len(captured_put_headers) == 2
+    assert captured_put_headers[0]["Authorization"] == "Bearer stale-access-token"
+    assert captured_put_headers[1]["Authorization"] == "Bearer fresh-access-token"
+    assert captured_refresh["url"] == "https://project-ref.supabase.co/auth/v1/token"
+    assert captured_refresh["params"] == {"grant_type": "refresh_token"}
+    assert captured_refresh["json"] == {"refresh_token": "refresh-token-123"}
