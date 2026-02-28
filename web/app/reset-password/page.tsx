@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { PasswordResetConfirmForm } from "@/components/auth/password-reset-confirm-form";
@@ -18,10 +19,12 @@ export default async function ResetPasswordPage({
   }
 
   const { t } = await getServerT();
+  const cookieStore = await cookies();
   const resolvedSearchParams = (await searchParams) ?? {};
   const initialEmail = resolvedSearchParams.email ?? "";
   const initialCode = resolvedSearchParams.code ?? "";
-  const mode = resolvedSearchParams.mode === "supabase" ? "supabase" : "otp";
+  const hasSupabaseRecoveryContext = cookieStore.get("bominal_supabase_recovery_mode")?.value === "1";
+  const mode = resolvedSearchParams.mode === "supabase" || hasSupabaseRecoveryContext ? "supabase" : "otp";
   const subtitle = mode === "supabase" ? t("auth.resetPasswordSupabaseSubtitle") : t("auth.resetPasswordSubtitle");
 
   return (

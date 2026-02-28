@@ -8,7 +8,7 @@ import { z } from "zod";
 import { useLocale } from "@/components/locale-provider";
 import { clientApiBaseUrl } from "@/lib/api-base";
 import { ROUTES } from "@/lib/routes";
-import { clearSupabaseAccessToken, getSupabaseAccessToken } from "@/lib/supabase-auth";
+import { clearSupabaseAccessToken } from "@/lib/supabase-auth";
 import { UI_BUTTON_OUTLINE_TOUCH, UI_BUTTON_PRIMARY, UI_FIELD } from "@/lib/ui";
 
 type ResetMode = "otp" | "supabase";
@@ -104,15 +104,6 @@ export function PasswordResetConfirmForm({
             new_password: parsed.data.newPassword,
           })
         : JSON.stringify({ new_password: parsed.data.newPassword });
-      if (!otpMode) {
-        const accessToken = await getSupabaseAccessToken();
-        if (!accessToken) {
-          setFormError(t("auth.supabaseRecoveryMissing"));
-          return;
-        }
-        headers.Authorization = `Bearer ${accessToken}`;
-      }
-
       const response = await fetch(`${clientApiBaseUrl}${endpoint}`, {
         method: "POST",
         credentials: "include",

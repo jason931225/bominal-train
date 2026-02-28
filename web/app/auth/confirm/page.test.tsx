@@ -5,7 +5,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { LocaleProvider } from "@/components/locale-provider";
 import AuthConfirmPage from "@/app/auth/confirm/page";
-import { cacheSupabaseAccessToken } from "@/lib/supabase-auth";
 
 const replaceMock = vi.fn();
 let currentSearchParams = new URLSearchParams();
@@ -18,10 +17,6 @@ vi.mock("next/navigation", async () => {
     useSearchParams: () => currentSearchParams,
   };
 });
-
-vi.mock("@/lib/supabase-auth", () => ({
-  cacheSupabaseAccessToken: vi.fn(),
-}));
 
 function renderPage() {
   return render(
@@ -75,7 +70,30 @@ describe("AuthConfirmPage", () => {
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });
-    expect(cacheSupabaseAccessToken).toHaveBeenCalledWith("access-token-123");
     expect(replaceMock).toHaveBeenCalledWith("/modules/train");
+  });
+
+  it("routes recovery callbacks to reset-password without mode query", async () => {
+    currentSearchParams = new URLSearchParams("token_hash=hash-abc123&type=recovery");
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          mode: "recovery",
+          redirect_to: "https://www.bominal.com/reset-password",
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    );
+
+    renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+    expect(replaceMock).toHaveBeenCalledWith("/reset-password");
   });
 });

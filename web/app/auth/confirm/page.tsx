@@ -7,14 +7,12 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useLocale } from "@/components/locale-provider";
 import { clientApiBaseUrl } from "@/lib/api-base";
 import { ROUTES } from "@/lib/routes";
-import { cacheSupabaseAccessToken } from "@/lib/supabase-auth";
 import { resolveSupabaseConfirmPayload } from "@/lib/supabase-callback";
 import { UI_BODY_MUTED, UI_BUTTON_OUTLINE_TOUCH, UI_CARD_LG, UI_TITLE_LG } from "@/lib/ui";
 
 type SupabaseConfirmResponse = {
   mode: "recovery" | "magiclink";
   redirect_to?: string | null;
-  access_token?: string | null;
 };
 
 export default function AuthConfirmPage() {
@@ -54,11 +52,8 @@ export default function AuthConfirmPage() {
       }
 
       const payload = (await response.json()) as SupabaseConfirmResponse;
-      if (payload.access_token) {
-        cacheSupabaseAccessToken(payload.access_token);
-      }
       if (payload.mode === "recovery") {
-        router.replace(`${ROUTES.resetPassword}?mode=supabase`);
+        router.replace(ROUTES.resetPassword);
         return;
       }
 

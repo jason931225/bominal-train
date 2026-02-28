@@ -107,6 +107,10 @@ PASSKEY_SETUP_CONTEXT_PURPOSE = "passkey_setup"
 PASSKEY_SETUP_CONTEXT_COOKIE = "bominal_passkey_setup_ctx"
 PASSKEY_SETUP_CONTEXT_TTL_SECONDS = 10 * 60
 PASSKEY_SETUP_ALLOWED_SOURCES = {"signup", "reset", "magiclink"}
+SUPABASE_RECOVERY_MODE_COOKIE = "bominal_supabase_recovery_mode"
+SUPABASE_RECOVERY_ACCESS_COOKIE = "bominal_supabase_recovery_access"
+SUPABASE_RECOVERY_REFRESH_COOKIE = "bominal_supabase_recovery_refresh"
+SUPABASE_RECOVERY_CONTEXT_TTL_SECONDS = 15 * 60
 
 
 def _new_otp_code() -> str:
@@ -315,6 +319,73 @@ def _clear_passkey_setup_context_cookie(response: Response) -> None:
         secure=settings.is_production,
         samesite="lax",
         path="/",
+    )
+
+
+def _set_supabase_recovery_context_cookies(response: Response, *, access_token: str, refresh_token: str | None) -> None:
+    response.set_cookie(
+        key=SUPABASE_RECOVERY_MODE_COOKIE,
+        value="1",
+        max_age=SUPABASE_RECOVERY_CONTEXT_TTL_SECONDS,
+        expires=SUPABASE_RECOVERY_CONTEXT_TTL_SECONDS,
+        httponly=True,
+        secure=settings.is_production,
+        samesite="lax",
+        path="/reset-password",
+    )
+    response.set_cookie(
+        key=SUPABASE_RECOVERY_ACCESS_COOKIE,
+        value=access_token,
+        max_age=SUPABASE_RECOVERY_CONTEXT_TTL_SECONDS,
+        expires=SUPABASE_RECOVERY_CONTEXT_TTL_SECONDS,
+        httponly=True,
+        secure=settings.is_production,
+        samesite="lax",
+        path="/api/auth/reset-password/supabase",
+    )
+    normalized_refresh_token = str(refresh_token or "").strip()
+    if normalized_refresh_token:
+        response.set_cookie(
+            key=SUPABASE_RECOVERY_REFRESH_COOKIE,
+            value=normalized_refresh_token,
+            max_age=SUPABASE_RECOVERY_CONTEXT_TTL_SECONDS,
+            expires=SUPABASE_RECOVERY_CONTEXT_TTL_SECONDS,
+            httponly=True,
+            secure=settings.is_production,
+            samesite="lax",
+            path="/api/auth/reset-password/supabase",
+        )
+    else:
+        response.delete_cookie(
+            key=SUPABASE_RECOVERY_REFRESH_COOKIE,
+            httponly=True,
+            secure=settings.is_production,
+            samesite="lax",
+            path="/api/auth/reset-password/supabase",
+        )
+
+
+def _clear_supabase_recovery_context_cookies(response: Response) -> None:
+    response.delete_cookie(
+        key=SUPABASE_RECOVERY_MODE_COOKIE,
+        httponly=True,
+        secure=settings.is_production,
+        samesite="lax",
+        path="/reset-password",
+    )
+    response.delete_cookie(
+        key=SUPABASE_RECOVERY_ACCESS_COOKIE,
+        httponly=True,
+        secure=settings.is_production,
+        samesite="lax",
+        path="/api/auth/reset-password/supabase",
+    )
+    response.delete_cookie(
+        key=SUPABASE_RECOVERY_REFRESH_COOKIE,
+        httponly=True,
+        secure=settings.is_production,
+        samesite="lax",
+        path="/api/auth/reset-password/supabase",
     )
 
 
@@ -1395,14 +1466,21 @@ async def supabase_confirm(
     callback_user_id = callback_session.user_id
     callback_email = callback_session.email
     callback_access_token = callback_session.access_token
+    callback_refresh_token = getattr(callback_session, "refresh_token", None)
 
     if payload.type == "recovery":
         logger.info("Supabase confirm completed", extra={"mode": "recovery"})
-        return SupabaseConfirmResponse(
+        response_payload = SupabaseConfirmResponse(
             mode="recovery",
-            redirect_to=f"{_public_base_url()}/reset-password?mode=supabase",
-            access_token=callback_access_token,
+            redirect_to=f"{_public_base_url()}/reset-password",
         )
+        response = JSONResponse(content=response_payload.model_dump(mode="json"))
+        _set_supabase_recovery_context_cookies(
+            response,
+            access_token=callback_access_token,
+            refresh_token=callback_refresh_token,
+        )
+        return response
 
     user = await get_or_create_local_user_from_supabase_claims(
         db,
@@ -1422,6 +1500,7 @@ async def supabase_confirm(
         access_token=callback_access_token,
     )
     response = JSONResponse(content=response_payload.model_dump(mode="json"))
+    _clear_supabase_recovery_context_cookies(response)
     if background_tasks.tasks:
         response.background = background_tasks
     set_session_cookie(response, session_token, False)
@@ -1441,12 +1520,18 @@ async def reset_password_supabase(
     request: Request,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
+    supabase_recovery_access_cookie: Annotated[str | None, Cookie(alias=SUPABASE_RECOVERY_ACCESS_COOKIE)] = None,
+    supabase_recovery_refresh_cookie: Annotated[str | None, Cookie(alias=SUPABASE_RECOVERY_REFRESH_COOKIE)] = None,
 ) -> Response:
-    access_token = _extract_bearer_token(request.headers.get("authorization"))
+    access_token = _extract_bearer_token(request.headers.get("authorization")) or str(supabase_recovery_access_cookie or "").strip()
     if not access_token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Recovery token required")
 
-    supabase_identity = await update_supabase_password(access_token=access_token, new_password=payload.new_password)
+    supabase_identity = await update_supabase_password(
+        access_token=access_token,
+        new_password=payload.new_password,
+        refresh_token=supabase_recovery_refresh_cookie,
+    )
     if supabase_identity is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired recovery link")
 
@@ -1478,6 +1563,7 @@ async def reset_password_supabase(
     if background_tasks.tasks:
         response.background = background_tasks
     set_session_cookie(response, session_token, False)
+    _clear_supabase_recovery_context_cookies(response)
     passkey_setup_context_token = await _issue_passkey_setup_context(db, user_id=user.id, source="reset")
     _set_passkey_setup_context_cookie(response, passkey_setup_context_token)
     return response

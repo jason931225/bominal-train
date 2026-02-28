@@ -23,6 +23,7 @@ class SupabaseCallbackSession:
     user_id: str
     email: str
     access_token: str
+    refresh_token: str | None = None
 
 
 SupabaseConfirmFailureCategory = Literal["expired", "invalid", "transport"]
@@ -338,6 +339,7 @@ async def exchange_supabase_token_hash_detailed(*, token_hash: str, token_type: 
         return SupabaseCallbackExchangeResult(
             failure=_classify_callback_failure(status_code=response.status_code, payload=payload),
         )
+    refresh_token = str(payload.get("refresh_token") if isinstance(payload, dict) else "").strip() or None
 
     identity = _extract_supabase_identity(payload)
     if identity is None:
@@ -354,6 +356,7 @@ async def exchange_supabase_token_hash_detailed(*, token_hash: str, token_type: 
             user_id=identity.user_id,
             email=identity.email,
             access_token=access_token,
+            refresh_token=refresh_token,
         )
     )
 
@@ -363,7 +366,12 @@ async def exchange_supabase_token_hash(*, token_hash: str, token_type: str) -> S
     return result.session
 
 
-async def update_supabase_password(*, access_token: str, new_password: str) -> SupabasePasswordIdentity | None:
+async def update_supabase_password(
+    *,
+    access_token: str,
+    new_password: str,
+    refresh_token: str | None = None,
+) -> SupabasePasswordIdentity | None:
     base_url = _auth_base_url()
     api_key = _auth_api_key()
     if not settings.supabase_auth_enabled or not base_url or not api_key:
@@ -371,32 +379,74 @@ async def update_supabase_password(*, access_token: str, new_password: str) -> S
 
     normalized_access_token = str(access_token or "").strip()
     normalized_password = str(new_password or "")
+    normalized_refresh_token = str(refresh_token or "").strip()
     if not normalized_access_token or not normalized_password:
         return None
 
-    endpoint = f"{base_url}/user"
-    body = {"password": normalized_password}
-    headers = {
-        "apikey": api_key,
-        "Authorization": f"Bearer {normalized_access_token}",
-        "Content-Type": "application/json",
-    }
-
-    try:
-        async with httpx.AsyncClient(timeout=_auth_timeout_seconds()) as client:
+    async def _attempt_update(client: httpx.AsyncClient, bearer_token: str) -> tuple[httpx.Response | None, SupabasePasswordIdentity | None]:
+        endpoint = f"{base_url}/user"
+        body = {"password": normalized_password}
+        headers = {
+            "apikey": api_key,
+            "Authorization": f"Bearer {bearer_token}",
+            "Content-Type": "application/json",
+        }
+        try:
             response = await client.put(endpoint, headers=headers, json=body)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Supabase password update transport failed: %s", type(exc).__name__)
-        return None
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Supabase password update transport failed: %s", type(exc).__name__)
+            return None, None
+        if response.status_code >= 400:
+            return response, None
+        try:
+            payload = response.json()
+        except ValueError:
+            logger.warning("Supabase password update returned invalid JSON")
+            return response, None
+        return response, _extract_supabase_identity(payload)
 
-    if response.status_code >= 400:
-        logger.warning("Supabase password update rejected request: status=%s", response.status_code)
-        return None
+    async def _refresh_access_token(client: httpx.AsyncClient) -> str | None:
+        if not normalized_refresh_token:
+            return None
+        endpoint = f"{base_url}/token"
+        params = {"grant_type": "refresh_token"}
+        headers = {
+            "apikey": api_key,
+            "Content-Type": "application/json",
+        }
+        body = {"refresh_token": normalized_refresh_token}
+        try:
+            response = await client.post(endpoint, params=params, headers=headers, json=body)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Supabase password refresh transport failed: %s", type(exc).__name__)
+            return None
+        if response.status_code >= 400:
+            logger.warning("Supabase password refresh rejected request: status=%s", response.status_code)
+            return None
+        try:
+            payload = response.json()
+        except ValueError:
+            logger.warning("Supabase password refresh returned invalid JSON")
+            return None
+        refreshed_token = str(payload.get("access_token") if isinstance(payload, dict) else "").strip()
+        return refreshed_token or None
 
-    try:
-        payload = response.json()
-    except ValueError:
-        logger.warning("Supabase password update returned invalid JSON")
+    async with httpx.AsyncClient(timeout=_auth_timeout_seconds()) as client:
+        first_response, first_identity = await _attempt_update(client, normalized_access_token)
+        if first_identity is not None:
+            return first_identity
+        if first_response is None:
+            return None
+        if not normalized_refresh_token:
+            logger.warning("Supabase password update rejected request: status=%s", first_response.status_code)
+            return None
+        refreshed_access_token = await _refresh_access_token(client)
+        if not refreshed_access_token:
+            logger.warning("Supabase password update rejected request: status=%s", first_response.status_code)
+            return None
+        second_response, second_identity = await _attempt_update(client, refreshed_access_token)
+        if second_identity is not None:
+            return second_identity
+        if second_response is not None and second_response.status_code >= 400:
+            logger.warning("Supabase password update rejected request: status=%s", second_response.status_code)
         return None
-
-    return _extract_supabase_identity(payload)

@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { PasswordResetConfirmForm } from "@/components/auth/password-reset-confirm-form";
 import { LocaleProvider } from "@/components/locale-provider";
-import { clearSupabaseAccessToken, getSupabaseAccessToken } from "@/lib/supabase-auth";
+import { clearSupabaseAccessToken } from "@/lib/supabase-auth";
 
 const pushMock = vi.fn();
 
@@ -18,7 +18,6 @@ vi.mock("next/navigation", async () => {
 });
 
 vi.mock("@/lib/supabase-auth", () => ({
-  getSupabaseAccessToken: vi.fn(),
   clearSupabaseAccessToken: vi.fn(),
 }));
 
@@ -42,8 +41,7 @@ describe("PasswordResetConfirmForm", () => {
     vi.unstubAllGlobals();
   });
 
-  it("submits supabase reset endpoint with bearer token in supabase mode", async () => {
-    vi.mocked(getSupabaseAccessToken).mockResolvedValueOnce("recovery-access-token");
+  it("submits supabase reset endpoint without client-side bearer token in supabase mode", async () => {
     fetchMock.mockResolvedValueOnce(
       new Response(JSON.stringify({ message: "Password reset complete" }), {
         status: 200,
@@ -67,13 +65,18 @@ describe("PasswordResetConfirmForm", () => {
     expect(url).toBe("/api/auth/reset-password/supabase");
     expect(init.method).toBe("POST");
     expect(init.credentials).toBe("include");
-    expect((init.headers as Record<string, string>).Authorization).toBe("Bearer recovery-access-token");
+    expect((init.headers as Record<string, string>).Authorization).toBeUndefined();
     expect(JSON.parse(String(init.body))).toEqual({ new_password: "NewPassword123" });
     expect(clearSupabaseAccessToken).toHaveBeenCalledTimes(1);
   });
 
-  it("shows missing-recovery error when token is unavailable", async () => {
-    vi.mocked(getSupabaseAccessToken).mockResolvedValueOnce(null);
+  it("shows backend recovery error when supabase recovery context is missing or expired", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ detail: "Recovery token required" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
 
     renderSupabaseMode();
 
@@ -82,8 +85,8 @@ describe("PasswordResetConfirmForm", () => {
     fireEvent.click(screen.getByRole("button", { name: "Set new password" }));
 
     await waitFor(() => {
-      expect(screen.getByText("Your recovery session is missing or expired. Request a new reset email.")).toBeInTheDocument();
+      expect(screen.getByText("Recovery token required")).toBeInTheDocument();
     });
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

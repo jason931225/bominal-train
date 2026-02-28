@@ -716,8 +716,60 @@ async def test_supabase_confirm_returns_recovery_mode_payload(client, monkeypatc
     assert response.status_code == 200
     payload = response.json()
     assert payload["mode"] == "recovery"
-    assert payload["access_token"] == "access-token-123"
-    assert payload["redirect_to"].endswith("/reset-password?mode=supabase")
+    assert payload.get("access_token") in {None, ""}
+    assert payload["redirect_to"].endswith("/reset-password")
+    assert response.cookies.get("bominal_supabase_recovery_mode") == "1"
+    assert response.cookies.get("bominal_supabase_recovery_access") == "access-token-123"
+
+
+@pytest.mark.asyncio
+async def test_supabase_recovery_confirm_sets_cookie_used_by_reset(client, monkeypatch):
+    email = f"supabase-cookie-reset-{uuid4().hex[:8]}@example.com"
+    await client.post(
+        "/api/auth/register",
+        json={"email": email, "password": "OldPassword123", "display_name": "Supabase Cookie Reset User"},
+    )
+
+    async def _fake_exchange_detailed(*, token_hash: str, token_type: str):  # noqa: ARG001
+        return SimpleNamespace(
+            session=SimpleNamespace(
+                user_id="supabase-user-cookie-reset",
+                email=email,
+                access_token="access-token-cookie-123",
+                refresh_token="refresh-token-cookie-123",
+            ),
+            failure=None,
+        )
+
+    async def _fake_update_supabase_password(
+        *,
+        access_token: str,
+        new_password: str,
+        refresh_token: str | None = None,  # noqa: ARG001
+    ):
+        assert access_token == "access-token-cookie-123"
+        assert refresh_token == "refresh-token-cookie-123"
+        return type("Identity", (), {"user_id": "supabase-user-cookie-reset", "email": email})()
+
+    monkeypatch.setattr(
+        "app.http.routes.auth.exchange_supabase_token_hash_detailed",
+        _fake_exchange_detailed,
+        raising=False,
+    )
+    monkeypatch.setattr("app.http.routes.auth.update_supabase_password", _fake_update_supabase_password, raising=False)
+
+    confirm_response = await client.post(
+        "/api/auth/supabase/confirm",
+        json={"token_hash": "hash-cookie-reset", "type": "recovery"},
+    )
+    assert confirm_response.status_code == 200
+    assert confirm_response.cookies.get("bominal_supabase_recovery_mode") == "1"
+
+    reset_response = await client.post(
+        "/api/auth/reset-password/supabase",
+        json={"new_password": "NewPassword123"},
+    )
+    assert reset_response.status_code == 200
 
 
 @pytest.mark.asyncio
@@ -821,7 +873,12 @@ async def test_reset_password_supabase_updates_local_password_hash(client, monke
         json={"email": email, "password": "OldPassword123", "display_name": "Supabase Reset User"},
     )
 
-    async def _fake_update_supabase_password(*, access_token: str, new_password: str):  # noqa: ARG001
+    async def _fake_update_supabase_password(
+        *,
+        access_token: str,  # noqa: ARG001
+        new_password: str,  # noqa: ARG001
+        refresh_token: str | None = None,  # noqa: ARG001
+    ):
         return type("Identity", (), {"user_id": "supabase-user-001", "email": email})()
 
     monkeypatch.setattr("app.http.routes.auth.update_supabase_password", _fake_update_supabase_password, raising=False)
