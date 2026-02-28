@@ -6,7 +6,7 @@ API_DIR="$ROOT_DIR/api"
 VENV_PATH="${API_VENV_PATH:-$API_DIR/.venv}"
 VENV_PYTHON="$VENV_PATH/bin/python"
 
-log_info() { echo "[INFO] $*"; }
+log_info() { echo "[INFO] $*" >&2; }
 log_error() { echo "[ERROR] $*" >&2; }
 
 if ! command -v uv >/dev/null 2>&1; then
