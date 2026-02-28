@@ -213,6 +213,10 @@ gcloud compute ssh bominal-deploy --zone=us-central1-a --tunnel-through-iap \
   --command="cd /opt/bominal/repo && sudo -u bominal infra/scripts/deploy.sh"
 ```
 
+IAP tunnel policy:
+- Every `gcloud compute ssh` command for this project must include `--tunnel-through-iap`.
+- Direct/non-IAP SSH to production infrastructure is not permitted.
+
 ---
 
 ## Rollback Procedures
