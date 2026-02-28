@@ -1676,4 +1676,45 @@ describe("TrainDashboard action flows", () => {
     expect(departure.value).toContain("Suseo");
   });
 
+  it("keeps station input editable and only commits exact match on blur", async () => {
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/train/credentials/status")) {
+        return jsonResponse({
+          ktx: { configured: true, verified: true, username: "01012345678", verified_at: null, detail: null },
+          srt: { configured: true, verified: true, username: "srt-user", verified_at: null, detail: null },
+        });
+      }
+      if (url.includes("/api/wallet/payment-card")) {
+        return jsonResponse({ configured: false, card_masked: null, expiry_month: null, expiry_year: null, updated_at: null, detail: null });
+      }
+      if (url.includes("/api/train/stations")) {
+        return jsonResponse({
+          stations: [
+            { name: "수서", srt_code: "0551", srt_supported: true },
+            { name: "서울", srt_code: null, srt_supported: false },
+            { name: "부산", srt_code: "0020", srt_supported: true },
+          ],
+        });
+      }
+      if (url.includes("/api/train/tasks?")) {
+        return jsonResponse({ tasks: [] });
+      }
+      return jsonResponse({ detail: "not found" }, 404);
+    });
+
+    await renderDashboard();
+
+    const departure = screen.getAllByLabelText("Departure station")[0] as HTMLInputElement;
+    fireEvent.focus(departure);
+    fireEvent.change(departure, { target: { value: "seoul" } });
+
+    expect(departure.value).toBe("seoul");
+    const seoulOption = within(screen.getByRole("listbox")).getByRole("option", { name: /seoul/i });
+    expect(seoulOption.getAttribute("aria-selected")).toBe("false");
+
+    fireEvent.blur(departure);
+    expect(departure.value).toContain("Seoul");
+  });
+
 });

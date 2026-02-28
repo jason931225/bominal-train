@@ -1311,9 +1311,8 @@ function StationAutocompleteField({
   const handleChange = useCallback(
     (nextValue: string) => {
       setDraft(nextValue);
-      commitTopSuggestion(nextValue);
     },
-    [commitTopSuggestion],
+    [],
   );
 
   const handleKeyDown = useCallback(
