@@ -47,6 +47,11 @@ Each service has a health check in `docker-compose.prod.yml`:
 | web      | `wget --spider` (port 3000) | 60s |
 | caddy    | `wget` (admin API port 2019) | 30s |
 
+API health endpoints:
+- `GET /health/live` -> liveness-only (process up, no dependency probes).
+- `GET /health/ready` -> readiness with DB + Redis dependency probes.
+- `GET /health` remains backward-compatible and mirrors readiness.
+
 Production profile currently disables the restaurant module (`RESTAURANT_MODULE_ENABLED=false`) and does not run `egress-restaurant`.
 `infra/scripts/deploy.sh` now enforces this at runtime by trimming stale `bominal-egress-restaurant` containers before deploy/rollback mutation.
 
@@ -105,6 +110,14 @@ Evervault secret sourcing (production):
 - Repo state is checked before deployment:
   - tracked dirty state is logged
   - set `DEPLOY_FAIL_ON_DIRTY_REPO=true` to block deploy when tracked files are dirty
+- Optional DB-path regression gate after smoke health checks:
+  - enable with `DB_SLO_GATE_ENABLED=true`
+  - threshold knobs:
+    - `DB_SLO_CONNECT_P95_MAX_MS` (fail when DB connect p95 exceeds threshold)
+    - `DB_SLO_AUTH_TIMEOUT_MAX` (fail when timeout/error count exceeds threshold)
+    - `DB_SLO_CONNECT_ITERATIONS` (default `20`)
+    - `DB_SLO_LOG_WINDOW_MINUTES` (default `30`)
+  - implementation uses `infra/scripts/db-slo-check.sh`
 - Threshold knobs:
   - `DEPLOY_MIN_TOTAL_MEMORY_MB` (default `900`)
   - `DEPLOY_MIN_TOTAL_SWAP_MB` (default `900`)

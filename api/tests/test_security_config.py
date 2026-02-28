@@ -204,6 +204,52 @@ def test_resolved_database_url_async_preserves_explicit_ssl_for_asyncpg(monkeypa
     assert settings.resolved_database_url_async == settings.database_url
 
 
+def test_database_url_target_rejects_unknown_value(monkeypatch) -> None:
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("DATABASE_URL_TARGET", "hybrid")
+
+    with pytest.raises(ValueError, match="DATABASE_URL_TARGET must be one of: pooler, direct"):
+        Settings(_env_file=None)
+
+
+def test_database_url_target_direct_requires_direct_url(monkeypatch) -> None:
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("DATABASE_URL_TARGET", "direct")
+    monkeypatch.delenv("DATABASE_URL_DIRECT", raising=False)
+
+    with pytest.raises(ValueError, match="DATABASE_URL_DIRECT is required when DATABASE_URL_TARGET=direct"):
+        Settings(_env_file=None)
+
+
+def test_resolved_database_url_async_uses_direct_target(monkeypatch) -> None:
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("DATABASE_URL_TARGET", "direct")
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        "postgresql+asyncpg://user:pass@pooler.supabase.com:6543/postgres?ssl=require",
+    )
+    monkeypatch.setenv(
+        "DATABASE_URL_DIRECT",
+        "postgresql+asyncpg://user:pass@db.supabase.com:5432/postgres?sslmode=require",
+    )
+
+    settings = Settings(_env_file=None)
+
+    assert settings.resolved_database_url_async == settings.database_url
+    assert settings.resolved_database_url_async_active != settings.resolved_database_url_async
+    assert "db.supabase.com" in settings.resolved_database_url_async_active
+    assert "sslmode=" not in settings.resolved_database_url_async_active
+    assert "ssl=require" in settings.resolved_database_url_async_active
+
+
+def test_rejects_non_positive_db_pool_settings(monkeypatch) -> None:
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("DB_POOL_SIZE", "0")
+
+    with pytest.raises(ValueError, match="DB_POOL_SIZE must be >= 1"):
+        Settings(_env_file=None)
+
+
 def test_legacy_mode_allows_missing_supabase_configuration(monkeypatch) -> None:
     monkeypatch.setenv("APP_ENV", "development")
     monkeypatch.setenv("AUTH_MODE", "legacy")

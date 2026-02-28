@@ -131,6 +131,52 @@ make_valid_envs
 # Baseline should pass without pay.env.
 run_predeploy >/dev/null
 
+# Supabase direct endpoints (*.supabase.com) should pass.
+cat >"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF_API'
+GCP_PROJECT_ID=test-project
+DATABASE_URL=postgresql+asyncpg://postgres.test-ref:strong-password@db.test-ref.supabase.com:5432/postgres?ssl=require
+SYNC_DATABASE_URL=postgresql+psycopg://postgres.test-ref:strong-password@db.test-ref.supabase.com:5432/postgres?sslmode=require
+AUTH_MODE=supabase
+SUPABASE_URL=https://test-ref.supabase.co
+SUPABASE_JWT_ISSUER=https://test-ref.supabase.co/auth/v1
+SUPABASE_AUTH_ENABLED=true
+SUPABASE_AUTH_API_KEY=anon-key
+SUPABASE_AUTH_TIMEOUT_SECONDS=12
+SUPABASE_STORAGE_ENABLED=true
+SUPABASE_SERVICE_ROLE_KEY=service-role-key
+EMAIL_PROVIDER=disabled
+INTERNAL_API_KEY=abc123
+MASTER_KEY=base64-secret
+SUPABASE_MANAGEMENT_API_TOKEN_SECRET_ID=bominal-supabase-management-api-token
+SUPABASE_MANAGEMENT_API_TOKEN_SECRET_VERSION=1
+SUPABASE_MANAGEMENT_API_TOKEN_PROJECT_ID=test-project
+PAYMENT_ENABLED=true
+PAYMENT_PROVIDER=evervault
+PAYMENT_EVERVAULT_ENFORCE=true
+AUTOPAY_REQUIRE_USER_WALLET=true
+AUTOPAY_ALLOW_SERVER_FALLBACK=false
+EVERVAULT_APP_ID=app_test_123
+EVERVAULT_API_KEY_SECRET_ID=bominal-evervault-api-key
+EVERVAULT_API_KEY_SECRET_VERSION=4
+EOF_API
+run_predeploy >/dev/null
+make_valid_envs
+
+# DATABASE_URL_TARGET=direct requires DATABASE_URL_DIRECT.
+cat >>"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF_API'
+DATABASE_URL_TARGET=direct
+EOF_API
+assert_fails "direct target without direct URL must fail" run_predeploy
+make_valid_envs
+
+# DATABASE_URL_TARGET=direct passes with a valid direct URL.
+cat >>"$TMP_DIR/repo/infra/env/prod/api.env" <<'EOF_API'
+DATABASE_URL_TARGET=direct
+DATABASE_URL_DIRECT=postgresql+asyncpg://postgres.test-ref:strong-password@db.test-ref.supabase.com:5432/postgres?ssl=require
+EOF_API
+run_predeploy >/dev/null
+make_valid_envs
+
 # Missing required env file should fail.
 rm -f "$TMP_DIR/repo/infra/env/prod/caddy.env"
 assert_fails "missing caddy.env must fail" run_predeploy

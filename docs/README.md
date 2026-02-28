@@ -70,6 +70,7 @@ Pointer format convention (mandatory):
 - [PTR-PLAY-001] `docs/playbooks/README.md` - playbook index.
 - [PTR-PLAY-002] `docs/playbooks/TEMPLATE.md` - playbook template.
 - [PTR-PLAY-003] `docs/playbooks/release-1.0.0-deploy-readiness.md` - release readiness and deployment execution playbook for version 1.0.0.
+- [PTR-PLAY-004] `docs/playbooks/db-deep-dive-production.md` - production DB-path latency investigation and deploy-gate workflow.
 
 ### Registry and Compliance
 
