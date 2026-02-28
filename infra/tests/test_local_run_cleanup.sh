@@ -34,6 +34,16 @@ run_case() {
   echo "$status"
 }
 
+match_file() {
+  local pattern="$1"
+  local target="$2"
+  if command -v rg >/dev/null 2>&1; then
+    rg -q -- "$pattern" "$target"
+  else
+    grep -Eq -- "$pattern" "$target"
+  fi
+}
+
 DEFAULT_CALLS="$TMP_DIR/default.calls"
 DEFAULT_OUT="$TMP_DIR/default.out"
 default_status="$(run_case "$DEFAULT_CALLS" "$DEFAULT_OUT")"
@@ -42,12 +52,12 @@ if [[ "$default_status" -ne 0 ]]; then
   cat "$DEFAULT_OUT" >&2
   exit 1
 fi
-if ! rg -q "compose -f infra/docker-compose.yml up --build --remove-orphans" "$DEFAULT_CALLS"; then
+if ! match_file "compose -f infra/docker-compose.yml up --build --remove-orphans" "$DEFAULT_CALLS"; then
   echo "FAIL: default local-run did not start compose stack" >&2
   cat "$DEFAULT_CALLS" >&2
   exit 1
 fi
-if ! rg -q "compose -f infra/docker-compose.yml down --remove-orphans" "$DEFAULT_CALLS"; then
+if ! match_file "compose -f infra/docker-compose.yml down --remove-orphans" "$DEFAULT_CALLS"; then
   echo "FAIL: default local-run should down stack on exit" >&2
   cat "$DEFAULT_CALLS" >&2
   exit 1
@@ -61,7 +71,7 @@ if [[ "$detach_status" -ne 0 ]]; then
   cat "$DETACH_OUT" >&2
   exit 1
 fi
-if rg -q "compose -f infra/docker-compose.yml down --remove-orphans" "$DETACH_CALLS"; then
+if match_file "compose -f infra/docker-compose.yml down --remove-orphans" "$DETACH_CALLS"; then
   echo "FAIL: detached local-run should not auto-down by default" >&2
   cat "$DETACH_CALLS" >&2
   exit 1
@@ -75,7 +85,7 @@ if [[ "$forced_down_status" -ne 0 ]]; then
   cat "$FORCED_DOWN_OUT" >&2
   exit 1
 fi
-if ! rg -q "compose -f infra/docker-compose.yml down --remove-orphans" "$FORCED_DOWN_CALLS"; then
+if ! match_file "compose -f infra/docker-compose.yml down --remove-orphans" "$FORCED_DOWN_CALLS"; then
   echo "FAIL: --down-on-exit should force cleanup in detached mode" >&2
   cat "$FORCED_DOWN_CALLS" >&2
   exit 1
@@ -89,7 +99,7 @@ if [[ "$keep_status" -ne 0 ]]; then
   cat "$KEEP_OUT" >&2
   exit 1
 fi
-if rg -q "compose -f infra/docker-compose.yml down --remove-orphans" "$KEEP_CALLS"; then
+if match_file "compose -f infra/docker-compose.yml down --remove-orphans" "$KEEP_CALLS"; then
   echo "FAIL: --keep-containers should disable auto-down cleanup" >&2
   cat "$KEEP_CALLS" >&2
   exit 1
