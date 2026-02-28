@@ -93,18 +93,32 @@ Module contract:
   - web sign-in/sign-up can hit Supabase Auth directly
   - API session cookie bootstrap occurs at `POST /api/auth/supabase/session`
   - legacy password endpoints remain available during migration and emit deprecation/sunset headers
+- Password reset trigger behavior is mode-specific:
+  - `AUTH_MODE=supabase`: `POST /api/auth/request-password-reset` always triggers Supabase recovery (`/auth/v1/recover`) with redirect target `/auth/verify?type=recovery` (not gated by local user presence)
+  - `AUTH_MODE=legacy`: local OTP reset token issuance/email delivery path remains active
+- Sign-in capability discovery is API-owned via `GET /api/auth/methods` (`password`, `passkey`, `magic_link`, `otp`) so web login alternatives stay mode/config aware.
+- Request-style auth endpoints keep anti-enumeration-safe generic responses:
+  - `POST /api/auth/request-password-reset`
+  - `POST /api/auth/request-magic-link`
+  - `POST /api/auth/request-signin-otp` (only active when Supabase OTP sign-in is enabled)
+- Magic-link + OTP sign-in contracts:
+  - `AUTH_MODE=supabase`: magic-link requests call Supabase Auth (`/auth/v1/otp`) and callback confirmation redirects to `/auth/passkey-setup?source=magiclink&next=/modules/train`
+  - `AUTH_MODE=legacy`: magic-link requests issue local one-time verification tokens (`purpose=magic_login`) and confirm through `POST /api/auth/magic-link/confirm`
+  - Supabase OTP sign-in endpoints are opt-in behind `SUPABASE_SIGNIN_OTP_ENABLED`
+- Password reset confirmation endpoints now bootstrap an authenticated session cookie on success in both modes (`POST /api/auth/reset-password`, `POST /api/auth/reset-password/supabase`).
 - Server-side web auth resolution (`web/lib/server-auth.ts`) calls `GET /api/auth/me` with timeout-bounded retry (`8s` timeout, single short backoff retry) to reduce transient false sign-out redirects on back/forward navigation under temporary API latency.
 - Passkeys (WebAuthn) are optional and supported in session-auth flows:
   - authenticated enrollment (`/api/auth/passkeys/register/options`, `/api/auth/passkeys/register/verify`)
   - passkey login bootstrap (`/api/auth/passkeys/auth/options`, `/api/auth/passkeys/auth/verify`)
   - account-level passkey listing/removal (`/api/auth/passkeys`, `/api/auth/passkeys/{id}`)
+  - post-auth passkey-offer interstitial route (`/auth/passkey-setup`) is shared by sign-up, reset, and magic-link flows; users can enroll passkey or skip.
 - Account email changes are two-step:
   - settings update requests verification to the new email address
   - email value changes only after `/api/auth/account/email-change/confirm` succeeds
 
 ### API access tiers
 
-- Public routes: register/login/logout/password-reset, Supabase session bootstrap (`/api/auth/supabase/session`), and email-verification request endpoints.
+- Public routes: register/login/logout/password-reset + magic-link + auth-method discovery + optional OTP request/verify, Supabase session bootstrap (`/api/auth/supabase/session`), and email-verification request endpoints.
 - Authenticated routes: account profile routes, modules, train, wallet, notifications.
 - Internal-only routes: `/api/internal/*` guarded by either:
   - `X-Internal-Api-Key` against `INTERNAL_API_KEY`, or
