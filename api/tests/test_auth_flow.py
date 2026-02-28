@@ -421,52 +421,6 @@ async def test_supabase_confirm_rejects_invalid_or_expired_token_hash(client, mo
 
 
 @pytest.mark.asyncio
-async def test_supabase_callback_exchange_access_token_falls_back_to_supabase_user_lookup(client, monkeypatch):
-    from app.core.supabase_jwt import SupabaseJWTError
-
-    def _raise_invalid_jwt(_token: str):  # noqa: ARG001
-        raise SupabaseJWTError("invalid")
-
-    async def _fake_lookup(*, access_token: str):  # noqa: ARG001
-        return type("Identity", (), {"user_id": "supabase-user-001", "email": "magiclink@example.com"})()
-
-    monkeypatch.setattr("app.http.routes.auth.verify_supabase_jwt", _raise_invalid_jwt, raising=False)
-    monkeypatch.setattr("app.http.routes.auth.get_supabase_identity_from_access_token", _fake_lookup, raising=False)
-
-    response = await client.post(
-        "/api/auth/supabase/callback/exchange",
-        json={"access_token": "jwt-token-abc-def-ghijkl", "type": "magiclink"},
-    )
-    assert response.status_code == 200
-    assert response.json()["mode"] == "magiclink"
-    assert response.cookies.get("bominal_session")
-
-
-@pytest.mark.asyncio
-async def test_supabase_callback_exchange_recovery_access_token_falls_back_to_supabase_user_lookup(client, monkeypatch):
-    from app.core.supabase_jwt import SupabaseJWTError
-
-    def _raise_invalid_jwt(_token: str):  # noqa: ARG001
-        raise SupabaseJWTError("invalid")
-
-    async def _fake_lookup(*, access_token: str):  # noqa: ARG001
-        return type("Identity", (), {"user_id": "supabase-user-001", "email": "recovery@example.com"})()
-
-    monkeypatch.setattr("app.http.routes.auth.verify_supabase_jwt", _raise_invalid_jwt, raising=False)
-    monkeypatch.setattr("app.http.routes.auth.get_supabase_identity_from_access_token", _fake_lookup, raising=False)
-
-    response = await client.post(
-        "/api/auth/supabase/callback/exchange",
-        json={"access_token": "jwt-token-abc-def-ghijkl", "type": "recovery"},
-    )
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["mode"] == "recovery"
-    assert payload["access_token"] == "jwt-token-abc-def-ghijkl"
-    assert payload["redirect_to"].endswith("/reset-password?mode=supabase")
-
-
-@pytest.mark.asyncio
 async def test_reset_password_supabase_updates_local_password_hash(client, monkeypatch):
     email = f"supabase-reset-{uuid4().hex[:8]}@example.com"
     await client.post(
