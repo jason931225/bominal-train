@@ -11,6 +11,13 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 os.environ["TRAIN_PROVIDER_MODE"] = "mock"
 os.environ["RATE_LIMIT_MAX_REQUESTS"] = "1000000"
+os.environ["PAYMENT_ENABLED"] = "true"
+os.environ["PAYMENT_PROVIDER"] = "evervault"
+os.environ["PAYMENT_EVERVAULT_ENFORCE"] = "true"
+os.environ["AUTOPAY_REQUIRE_USER_WALLET"] = "true"
+os.environ["AUTOPAY_ALLOW_SERVER_FALLBACK"] = "false"
+os.environ["EVERVAULT_APP_ID"] = "app_test"
+os.environ["EVERVAULT_API_KEY"] = "ev:key:test"
 
 from app.core.config import get_settings
 get_settings.cache_clear()

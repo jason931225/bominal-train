@@ -131,7 +131,8 @@ Any worker performing payment submission must satisfy all of the following.
 
 Statelessness:
 
-- No card data persisted to Postgres
+- No plaintext card data (PAN/CVV/expiry/PIN2) persisted to Postgres
+- Encrypted Evervault wallet payload persistence in `secrets` is allowed for user-scoped autopay execution
 - No card data serialized into ARQ jobs
 - No card data written to disk
 - No card data written to artifacts or `task_attempt` rows
