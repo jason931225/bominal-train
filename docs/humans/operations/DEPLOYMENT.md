@@ -299,7 +299,7 @@ If you choose manual editing instead, required values are:
 - `infra/env/prod/api.env`: `DATABASE_URL`, `SYNC_DATABASE_URL`, `AUTH_MODE=supabase`, `SUPABASE_URL`, `SUPABASE_JWT_ISSUER`, `SUPABASE_AUTH_ENABLED=true`, `SUPABASE_AUTH_API_KEY` (or `SUPABASE_SERVICE_ROLE_KEY` fallback), `SUPABASE_STORAGE_ENABLED=true`, `SUPABASE_SERVICE_ROLE_KEY`, sender-domain placeholder in `EMAIL_FROM_ADDRESS`, passkey origin settings (`PASSKEY_RP_ID`, `PASSKEY_ORIGIN`), optional provider session-cache knobs (`TRAIN_PROVIDER_CLIENT_CACHE_SECONDS`, `TRAIN_PROVIDER_CLIENT_CACHE_MAX_ENTRIES`), optional edge-notify knobs (`EDGE_TASK_NOTIFY_ENABLED`, `SUPABASE_EDGE_FUNCTIONS_BASE_URL`, `SUPABASE_EDGE_TASK_NOTIFY_FUNCTION_NAME`, `SUPABASE_EDGE_TIMEOUT_SECONDS`), optional Evervault settings (`EVERVAULT_APP_ID`/`EVERVAULT_APP_ID_SECRET_ID`, `EVERVAULT_API_KEY`/`EVERVAULT_API_KEY_SECRET_ID`), and valid secret sources for `MASTER_KEY`, `INTERNAL_API_KEY`, and `RESEND_API_KEY` (prefer GSM references)
 - `infra/env/prod/api.env`: optional Supabase Auth redirect overrides:
   - `SUPABASE_AUTH_SITE_URL` (defaults to `NEXT_PUBLIC_API_BASE_URL`, then `https://$CADDY_SITE_ADDRESS`)
-  - `SUPABASE_AUTH_REDIRECT_URLS` (comma-separated allow-list; defaults to `<site_url>/auth/callback,<site_url>/reset-password,<site_url>/login`)
+  - `SUPABASE_AUTH_REDIRECT_URLS` (comma-separated allow-list; defaults to `<site_url>/auth/verify,<site_url>/auth/confirm,<site_url>/reset-password,<site_url>/login`)
 - `infra/env/prod/pay.env`: backend-only auto-pay card data (`CARDNUMBER`, `EXPIRYMM`, `EXPIRYYY`, `DOB`, `NN`)
 - `infra/env/prod/web.env`: `NEXT_PUBLIC_API_BASE_URL`, `API_SERVER_URL` (`http://api:8000` for monolithic API runtime), and Supabase browser auth/realtime/read-path keys (`NEXT_PUBLIC_SUPABASE_DIRECT_AUTH_ENABLED`, `NEXT_PUBLIC_SUPABASE_REALTIME_ENABLED`, `NEXT_PUBLIC_SUPABASE_REALTIME_DELTA_READ_ENABLED`, `NEXT_PUBLIC_TRAIN_READS_VIA_DATA_API`, `NEXT_PUBLIC_TRAIN_DETAIL_VIA_GRAPHQL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`)
 - `infra/env/prod/caddy.env`: `CADDY_SITE_ADDRESS`, `CADDY_ACME_EMAIL`
@@ -354,7 +354,7 @@ Production URL scheme enforcement (predeploy gate):
 - `NEXT_PUBLIC_API_BASE_URL` may be empty (recommended same-origin) or must be `https://` if set.
 - When any of `NEXT_PUBLIC_SUPABASE_DIRECT_AUTH_ENABLED=true`, `NEXT_PUBLIC_SUPABASE_REALTIME_ENABLED=true`, `NEXT_PUBLIC_SUPABASE_REALTIME_DELTA_READ_ENABLED=true`, `NEXT_PUBLIC_TRAIN_READS_VIA_DATA_API=true`, or `NEXT_PUBLIC_TRAIN_DETAIL_VIA_GRAPHQL=true`, `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` are required, and `NEXT_PUBLIC_SUPABASE_URL` must be `https://`.
 - `API_SERVER_URL` must be an absolute `http(s)://` URL.
-- Supabase auth redirect URLs must resolve to `https://`, must not use localhost/loopback hosts, and must include `/auth/callback`.
+- Supabase auth redirect URLs must resolve to `https://`, must not use localhost/loopback hosts, and must include `/auth/verify`.
 - `EMAIL_PROVIDER=disabled`: Resend credentials may remain unset
 - `EMAIL_PROVIDER=smtp`: `SMTP_HOST`, `SMTP_PORT`, and SMTP credentials/TLS settings as required
 - `EMAIL_PROVIDER=resend`: configure exactly one source (`RESEND_API_KEY`, `RESEND_API_KEY_SECRET_ID` + pinned version, or edge-only `RESEND_API_KEY_VAULT_NAME` with `SUPABASE_VAULT_ENABLED=true` and `EDGE_TASK_NOTIFY_ENABLED=true`)

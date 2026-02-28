@@ -22,12 +22,12 @@ mkdir -p \
   "$TMP_DIR/repo/infra/env/prod"
 
 cat >"$TMP_DIR/repo/infra/supabase/auth-templates/confirm-signup.html" <<'EOF'
-<a href="{{ .ConfirmationURL }}">Verify</a>
+<a href="{{ .SiteURL }}/auth/verify?token_hash={{ .TokenHash }}&type=signup">Verify</a>
 <p>{{ .Token }}</p>
 EOF
 
 cat >"$TMP_DIR/repo/infra/supabase/auth-templates/reset-password.html" <<'EOF'
-<a href="{{ .ConfirmationURL }}">Reset</a>
+<a href="{{ .SiteURL }}/auth/verify?token_hash={{ .TokenHash }}&type=recovery">Reset</a>
 <p>{{ .Token }}</p>
 EOF
 
@@ -192,14 +192,16 @@ if payload["mailer_subjects_confirmation"] != "Verify your email for bominal":
     raise SystemExit("Unexpected confirmation subject")
 if payload["mailer_subjects_recovery"] != "Reset your bominal password":
     raise SystemExit("Unexpected recovery subject")
-if "{{ .ConfirmationURL }}" not in payload["mailer_templates_confirmation_content"]:
-    raise SystemExit("Confirmation template missing ConfirmationURL placeholder")
+if "{{ .TokenHash }}" not in payload["mailer_templates_confirmation_content"]:
+    raise SystemExit("Confirmation template missing TokenHash placeholder")
 if "{{ .Token }}" not in payload["mailer_templates_recovery_content"]:
     raise SystemExit("Recovery template missing Token placeholder")
 if payload["site_url"] != "https://www.bominal.com":
     raise SystemExit("Unexpected Supabase site_url")
-if "/auth/callback" not in payload["uri_allow_list"]:
-    raise SystemExit("uri_allow_list missing auth callback path")
+if "/auth/verify" not in payload["uri_allow_list"]:
+    raise SystemExit("uri_allow_list missing auth verify path")
+if "/auth/confirm" not in payload["uri_allow_list"]:
+    raise SystemExit("uri_allow_list missing auth confirm path")
 if "/reset-password" not in payload["uri_allow_list"]:
     raise SystemExit("uri_allow_list missing reset-password path")
 PY

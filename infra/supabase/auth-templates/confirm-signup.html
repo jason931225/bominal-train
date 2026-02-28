@@ -22,7 +22,7 @@
                 </p>
                 <p style="margin:0 0 18px 0;">
                   <a
-                    href="{{ .ConfirmationURL }}"
+                    href="{{ .SiteURL }}/auth/verify?token_hash={{ .TokenHash }}&type=signup"
                     style="display:inline-block;background:#4c69b4;color:#ffffff;text-decoration:none;padding:12px 16px;border-radius:14px;font-weight:700;"
                   >
                     Verify email
@@ -32,7 +32,7 @@
                   If the button does not work, copy and paste this link:
                 </p>
                 <p style="margin:0 0 16px 0;font-size:12px;line-height:18px;word-break:break-all;color:#475569;">
-                  {{ .ConfirmationURL }}
+                  {{ .SiteURL }}/auth/verify?token_hash={{ .TokenHash }}&type=signup
                 </p>
                 <div style="border:1px solid #dbe5ff;border-radius:14px;padding:14px;background:#f8faff;margin:0 0 14px 0;">
                   <div style="font-size:12px;color:#475569;margin-bottom:6px;">One-time code</div>

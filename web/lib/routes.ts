@@ -5,6 +5,8 @@ export const ROUTES = {
   register: "/register",
   forgotPassword: "/forgot-password",
   resetPassword: "/reset-password",
+  authVerify: "/auth/verify",
+  authConfirm: "/auth/confirm",
   authCallback: "/auth/callback",
 
   modules: {
