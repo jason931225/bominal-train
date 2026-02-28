@@ -9,7 +9,7 @@ import { useLocale } from "@/components/locale-provider";
 import { clientApiBaseUrl } from "@/lib/api-base";
 import { ROUTES } from "@/lib/routes";
 import { clearSupabaseAccessToken, getSupabaseAccessToken } from "@/lib/supabase-auth";
-import { UI_BUTTON_PRIMARY, UI_FIELD } from "@/lib/ui";
+import { UI_BUTTON_OUTLINE_TOUCH, UI_BUTTON_PRIMARY, UI_FIELD } from "@/lib/ui";
 
 type ResetMode = "otp" | "supabase";
 
@@ -230,11 +230,9 @@ export function PasswordResetConfirmForm({
         {submitting ? t("auth.resettingPassword") : t("auth.resetPassword")}
       </button>
 
-      <p className="text-sm text-slate-600">
-        <Link href={ROUTES.forgotPassword} className="font-medium text-blossom-600 hover:text-blossom-700">
-          {t("auth.requestAnotherResetCode")}
-        </Link>
-      </p>
+      <Link href={ROUTES.forgotPassword} className={`w-full ${UI_BUTTON_OUTLINE_TOUCH}`}>
+        {t("auth.requestAnotherResetCode")}
+      </Link>
     </form>
   );
 }

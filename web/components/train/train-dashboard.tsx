@@ -3529,7 +3529,7 @@ export function TrainDashboard() {
                           ) : null}
                         </div>
                       </div>
-                      <Link href={`/modules/train/tasks/${task.id}`} className="text-xs font-medium text-blossom-600 hover:text-blossom-700">
+                      <Link href={`/modules/train/tasks/${task.id}`} className={SMALL_BUTTON_CLASS}>
                         {t("train.action.detail")}
                       </Link>
                     </div>
@@ -3730,7 +3730,7 @@ export function TrainDashboard() {
                           {t("train.label.completed")} {task.completed_at ? formatDateTimeKst(task.completed_at, locale) : "-"}
                         </p>
                       </div>
-                      <Link href={`/modules/train/tasks/${task.id}`} className="text-xs font-medium text-blossom-600 hover:text-blossom-700">
+                      <Link href={`/modules/train/tasks/${task.id}`} className={SMALL_BUTTON_CLASS}>
                         {t("train.action.detail")}
                       </Link>
                     </div>

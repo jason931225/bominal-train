@@ -9,9 +9,9 @@ from sqlalchemy.orm import joinedload
 from app.core.config import get_settings
 from app.core.rate_limit import rate_limiter
 from app.core.internal_identity import InternalIdentityError, verify_internal_service_token
-from app.core.security import hash_token
+from app.core.security import async_hash_password, hash_token
 from app.core.supabase_jwt import SupabaseJWTError, verify_supabase_jwt
-from app.db.models import Session, User
+from app.db.models import Role, Session, User
 from app.db.session import get_db
 from app.services.auth import request_ip, should_update_session_activity
 from app.services.identity import get_or_create_local_user_from_supabase_claims
@@ -107,6 +107,41 @@ async def _resolve_user_from_supabase_bearer(*, bearer_token: str, db: AsyncSess
         raise _unauthorized() from exc
 
 
+async def _resolve_dev_auth_bypass_user(*, db: AsyncSession) -> User:
+    bypass_email = settings.dev_auth_bypass_email.strip().lower()
+    if not bypass_email:
+        raise _unauthorized()
+
+    existing = await db.execute(
+        select(User).options(joinedload(User.role)).where(User.email == bypass_email)
+    )
+    user = existing.scalar_one_or_none()
+    if user is not None:
+        return user
+
+    role_result = await db.execute(select(Role).where(Role.name == settings.dev_auth_bypass_role))
+    role = role_result.scalar_one_or_none()
+    if role is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Missing role seed: {settings.dev_auth_bypass_role}",
+        )
+
+    now = datetime.now(timezone.utc)
+    user = User(
+        email=bypass_email,
+        password_hash=await async_hash_password("dev-auth-bypass-password"),
+        display_name="Dev Bypass",
+        role_id=role.id,
+        access_status="approved",
+        email_verified_at=now,
+    )
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
 async def get_current_user(
     request: Request,
     session_token: str | None = Cookie(default=None, alias=settings.session_cookie_name),
@@ -114,6 +149,13 @@ async def get_current_user(
 ) -> User:
     auth_mode = settings.auth_mode
     bearer_token = _extract_bearer_token(request.headers.get("authorization"))
+    if (
+        settings.dev_auth_bypass_enabled
+        and not settings.is_production
+        and not session_token
+        and not bearer_token
+    ):
+        return await _resolve_dev_auth_bypass_user(db=db)
 
     if auth_mode == "supabase":
         if bearer_token:

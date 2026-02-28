@@ -174,6 +174,9 @@ class Settings(BaseSettings):
     gsm_master_key_version: str = Field(default="latest", alias="GSM_MASTER_KEY_VERSION")
     gsm_master_key_allow_env_fallback: bool = Field(default=True, alias="GSM_MASTER_KEY_ALLOW_ENV_FALLBACK")
     auth_mode: str = Field(default="legacy", alias="AUTH_MODE")
+    dev_auth_bypass_enabled: bool = Field(default=False, alias="DEV_AUTH_BYPASS_ENABLED")
+    dev_auth_bypass_email: str = Field(default="dev-bypass@bominal.local", alias="DEV_AUTH_BYPASS_EMAIL")
+    dev_auth_bypass_role: str = Field(default="admin", alias="DEV_AUTH_BYPASS_ROLE")
     supabase_url: str | None = Field(default=None, alias="SUPABASE_URL")
     supabase_jwks_url: str | None = Field(default=None, alias="SUPABASE_JWKS_URL")
     supabase_jwt_issuer: str | None = Field(default=None, alias="SUPABASE_JWT_ISSUER")
@@ -441,6 +444,14 @@ class Settings(BaseSettings):
             raise ValueError("AUTH_MODE must be one of: legacy, supabase")
         return normalized
 
+    @field_validator("dev_auth_bypass_role")
+    @classmethod
+    def validate_dev_auth_bypass_role(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"admin", "user"}:
+            raise ValueError("DEV_AUTH_BYPASS_ROLE must be one of: admin, user")
+        return normalized
+
     @field_validator("database_url_target")
     @classmethod
     def validate_database_url_target(cls, value: str) -> str:
@@ -523,6 +534,8 @@ class Settings(BaseSettings):
         # Keep local developer convenience, but hard-stop weak defaults in production.
         if self.is_production and not self.internal_api_key:
             raise ValueError("INTERNAL_API_KEY must be set in production")
+        if self.is_production and self.dev_auth_bypass_enabled:
+            raise ValueError("DEV_AUTH_BYPASS_ENABLED must be false in production")
         if self.gsm_master_key_enabled:
             if not self.resolved_gsm_master_key_project_id:
                 raise ValueError(

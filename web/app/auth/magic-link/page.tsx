@@ -7,7 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useLocale } from "@/components/locale-provider";
 import { clientApiBaseUrl } from "@/lib/api-base";
 import { ROUTES } from "@/lib/routes";
-import { UI_BODY_MUTED, UI_CARD_LG, UI_TITLE_LG } from "@/lib/ui";
+import { UI_BODY_MUTED, UI_BUTTON_OUTLINE_TOUCH, UI_CARD_LG, UI_TITLE_LG } from "@/lib/ui";
 
 export default function AuthMagicLinkPage() {
   const router = useRouter();
@@ -52,11 +52,11 @@ export default function AuthMagicLinkPage() {
       {error ? (
         <>
           <p className={`mt-2 ${UI_BODY_MUTED}`}>{error}</p>
-          <div className="mt-6 space-y-3 text-sm">
-            <Link href={ROUTES.forgotPassword} className="block font-medium text-blossom-600 hover:text-blossom-700">
+          <div className="mt-6 space-y-3">
+            <Link href={ROUTES.forgotPassword} className={`w-full ${UI_BUTTON_OUTLINE_TOUCH}`}>
               {t("auth.requestPasswordReset")}
             </Link>
-            <Link href={ROUTES.login} className="block font-medium text-blossom-600 hover:text-blossom-700">
+            <Link href={ROUTES.login} className={`w-full ${UI_BUTTON_OUTLINE_TOUCH}`}>
               {t("auth.signIn")}
             </Link>
           </div>

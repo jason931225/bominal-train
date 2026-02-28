@@ -5,7 +5,7 @@ import { PasswordResetRequestForm } from "@/components/auth/password-reset-reque
 import { getServerT } from "@/lib/i18n-server";
 import { ROUTES } from "@/lib/routes";
 import { getOptionalUser, postLoginRouteForUser } from "@/lib/server-auth";
-import { UI_BODY_MUTED, UI_CARD_LG, UI_TITLE_LG } from "@/lib/ui";
+import { UI_BODY_MUTED, UI_BUTTON_OUTLINE_TOUCH, UI_CARD_LG, UI_TITLE_LG } from "@/lib/ui";
 
 export default async function ForgotPasswordPage({
   searchParams,
@@ -30,11 +30,11 @@ export default async function ForgotPasswordPage({
         <PasswordResetRequestForm initialEmail={initialEmail} />
       </div>
 
-      <p className="mt-6 text-sm text-slate-600">
-        <Link href={ROUTES.login} className="font-medium text-blossom-600 hover:text-blossom-700">
+      <div className="mt-6">
+        <Link href={ROUTES.login} className={`w-full ${UI_BUTTON_OUTLINE_TOUCH}`}>
           {t("auth.signIn")}
         </Link>
-      </p>
+      </div>
     </section>
   );
 }

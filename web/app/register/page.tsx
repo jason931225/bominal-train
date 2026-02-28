@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { RegisterForm } from "@/components/register-form";
 import { getServerT } from "@/lib/i18n-server";
 import { ROUTES } from "@/lib/routes";
-import { UI_BODY_MUTED, UI_CARD_LG, UI_TITLE_LG } from "@/lib/ui";
+import { UI_BODY_MUTED, UI_BUTTON_OUTLINE_TOUCH, UI_CARD_LG, UI_TITLE_LG } from "@/lib/ui";
 import { getOptionalUser, postLoginRouteForUser } from "@/lib/server-auth";
 
 export default async function RegisterPage() {
@@ -23,12 +23,12 @@ export default async function RegisterPage() {
         <RegisterForm />
       </div>
 
-      <p className="mt-6 text-sm text-slate-600">
-        {t("auth.alreadyHaveAccount")}{" "}
-        <Link href={ROUTES.login} className="font-medium text-blossom-600 hover:text-blossom-700">
+      <div className="mt-6 space-y-2">
+        <p className="text-sm text-slate-600">{t("auth.alreadyHaveAccount")}</p>
+        <Link href={ROUTES.login} className={`w-full ${UI_BUTTON_OUTLINE_TOUCH}`}>
           {t("auth.signIn")}
         </Link>
-      </p>
+      </div>
     </section>
   );
 }

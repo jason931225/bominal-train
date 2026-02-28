@@ -472,6 +472,24 @@ def test_settings_legacy_mode_is_allowed_and_is_production_property(monkeypatch)
     assert settings.is_production is True
 
 
+def test_settings_rejects_dev_auth_bypass_in_production(monkeypatch) -> None:
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("MASTER_KEY", _valid_master_key_b64())
+    monkeypatch.setenv("INTERNAL_API_KEY", "internal")
+    monkeypatch.setenv("EMAIL_PROVIDER", "disabled")
+    monkeypatch.setenv("PAYMENT_ENABLED", "false")
+    monkeypatch.setenv("DEV_AUTH_BYPASS_ENABLED", "true")
+    monkeypatch.setenv("DEV_AUTH_BYPASS_ROLE", "admin")
+
+    with pytest.raises(ValueError, match="DEV_AUTH_BYPASS_ENABLED must be false in production"):
+        Settings(_env_file=None)
+
+    monkeypatch.setenv("DEV_AUTH_BYPASS_ENABLED", "false")
+    monkeypatch.setenv("DEV_AUTH_BYPASS_ROLE", "invalid")
+    with pytest.raises(ValueError, match="DEV_AUTH_BYPASS_ROLE must be one of: admin, user"):
+        Settings(_env_file=None)
+
+
 def test_redaction_sensitive_key_and_nested_json_string_paths() -> None:
     masked = redact_sensitive({"password": "secret", "nested": '{"card_number":"4111111111111111"}'})
     assert masked["password"] == "[REDACTED]"

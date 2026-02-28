@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { LoginForm } from "@/components/login-form";
 import { getServerT } from "@/lib/i18n-server";
 import { ROUTES } from "@/lib/routes";
-import { UI_BODY_MUTED, UI_CARD_LG } from "@/lib/ui";
+import { UI_BODY_MUTED, UI_BUTTON_OUTLINE_TOUCH, UI_CARD_LG } from "@/lib/ui";
 import { getOptionalUser, postLoginRouteForUser } from "@/lib/server-auth";
 
 export default async function LoginPage({
@@ -40,12 +40,12 @@ export default async function LoginPage({
         <LoginForm />
       </div>
 
-      <p className="mt-6 text-sm text-slate-600">
-        {t("auth.newHere")}{" "}
-        <Link href={ROUTES.register} className="font-medium text-blossom-600 hover:text-blossom-700">
+      <div className="mt-6 space-y-2">
+        <p className="text-sm text-slate-600">{t("auth.newHere")}</p>
+        <Link href={ROUTES.register} className={`w-full ${UI_BUTTON_OUTLINE_TOUCH}`}>
           {t("auth.createAnAccount")}
         </Link>
-      </p>
+      </div>
     </section>
   );
 }

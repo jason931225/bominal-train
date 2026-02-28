@@ -394,7 +394,7 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
               {t("train.label.taskId")} {taskId}
             </p>
           </div>
-          <Link href={ROUTES.modules.train} className="text-sm font-medium text-blossom-600 hover:text-blossom-700">
+          <Link href={ROUTES.modules.train} className={SMALL_BUTTON_CLASS}>
             {t("train.backToTrain")}
           </Link>
         </div>

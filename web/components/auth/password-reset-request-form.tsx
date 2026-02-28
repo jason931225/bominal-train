@@ -7,7 +7,7 @@ import { z } from "zod";
 import { useLocale } from "@/components/locale-provider";
 import { clientApiBaseUrl } from "@/lib/api-base";
 import { ROUTES } from "@/lib/routes";
-import { UI_BUTTON_PRIMARY, UI_FIELD } from "@/lib/ui";
+import { UI_BUTTON_OUTLINE_TOUCH, UI_BUTTON_PRIMARY, UI_FIELD } from "@/lib/ui";
 
 type RequestFormState = {
   email: string;
@@ -82,11 +82,9 @@ export function PasswordResetRequestForm({ initialEmail = "" }: { initialEmail?:
         {submitting ? t("auth.requestingPasswordReset") : t("auth.requestPasswordReset")}
       </button>
 
-      <p className="text-sm text-slate-600">
-        <Link href={ROUTES.resetPassword} className="font-medium text-blossom-600 hover:text-blossom-700">
-          {t("auth.haveResetCode")}
-        </Link>
-      </p>
+      <Link href={ROUTES.resetPassword} className={`w-full ${UI_BUTTON_OUTLINE_TOUCH}`}>
+        {t("auth.haveResetCode")}
+      </Link>
     </form>
   );
 }

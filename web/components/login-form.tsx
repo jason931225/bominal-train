@@ -9,7 +9,7 @@ import { useLocale } from "@/components/locale-provider";
 import { clientApiBaseUrl } from "@/lib/api-base";
 import { isPasskeySupported, signInWithPasskey } from "@/lib/passkey";
 import { ROUTES } from "@/lib/routes";
-import { UI_BUTTON_PRIMARY, UI_FIELD } from "@/lib/ui";
+import { UI_BUTTON_OUTLINE_TOUCH, UI_BUTTON_PRIMARY, UI_FIELD } from "@/lib/ui";
 
 type LoginStep = "email_entry" | "passkey_waiting" | "password" | "alternatives" | "otp_verify";
 
@@ -494,7 +494,7 @@ export function LoginForm() {
           <p className="mt-3 text-sm font-medium text-slate-900">{t("auth.waitingForPasskey")}</p>
           <button
             type="button"
-            className="mt-3 text-sm font-medium text-slate-700 underline underline-offset-4 hover:text-slate-900"
+            className={`mt-3 w-full ${UI_BUTTON_OUTLINE_TOUCH}`}
             onClick={() => {
               cancelPasskeyAttempt();
               setStep("alternatives");
@@ -504,7 +504,7 @@ export function LoginForm() {
           </button>
           <button
             type="button"
-            className="mt-2 block w-full text-center text-sm font-medium text-slate-700 underline underline-offset-4 hover:text-slate-900"
+            className={`mt-2 w-full ${UI_BUTTON_OUTLINE_TOUCH}`}
             onClick={returnToSignIn}
           >
             {t("auth.returnToSignIn")}
@@ -566,11 +566,9 @@ export function LoginForm() {
       ) : null}
 
       {showPassword ? (
-        <p className="text-right text-sm">
-          <Link href={forgotPasswordHref} className="font-medium text-blossom-600 hover:text-blossom-700">
-            {t("auth.forgotPassword")}
-          </Link>
-        </p>
+        <Link href={forgotPasswordHref} className={`w-full ${UI_BUTTON_OUTLINE_TOUCH}`}>
+          {t("auth.forgotPassword")}
+        </Link>
       ) : null}
 
       {showOtp ? (

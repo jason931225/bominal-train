@@ -245,6 +245,7 @@ async def test_get_current_user_mode_selection(monkeypatch):
 
     monkeypatch.setattr(deps, "_resolve_user_from_supabase_bearer", _resolve_bearer)
     monkeypatch.setattr(deps, "_resolve_session_from_cookie", _resolve_cookie)
+    monkeypatch.setattr(deps.settings, "dev_auth_bypass_enabled", False)
 
     request = SimpleNamespace(headers={"authorization": "Bearer token"})
 
@@ -258,6 +259,23 @@ async def test_get_current_user_mode_selection(monkeypatch):
 
     with pytest.raises(HTTPException):
         await deps.get_current_user(request=request_no_bearer, session_token=None, db=object())
+
+
+@pytest.mark.asyncio
+async def test_get_current_user_uses_dev_auth_bypass_when_enabled(monkeypatch):
+    bypass_user = SimpleNamespace(id="dev-bypass-user", role=SimpleNamespace(name="admin"), access_status="approved")
+
+    async def _resolve_bypass(*, db):  # noqa: ANN001
+        return bypass_user
+
+    monkeypatch.setattr(deps.settings, "dev_auth_bypass_enabled", True)
+    monkeypatch.setattr(deps.settings, "app_env", "development")
+    monkeypatch.setattr(deps.settings, "auth_mode", "legacy")
+    monkeypatch.setattr(deps, "_resolve_dev_auth_bypass_user", _resolve_bypass)
+
+    request = SimpleNamespace(headers={})
+    resolved = await deps.get_current_user(request=request, session_token=None, db=object())
+    assert resolved is bypass_user
 
 
 @pytest.mark.asyncio
