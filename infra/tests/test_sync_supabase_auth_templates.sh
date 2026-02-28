@@ -16,6 +16,16 @@ assert_fails() {
   fi
 }
 
+file_contains_pattern() {
+  local pattern="$1"
+  local file="$2"
+  if command -v rg >/dev/null 2>&1; then
+    rg -q -- "$pattern" "$file"
+    return $?
+  fi
+  grep -Eq -- "$pattern" "$file"
+}
+
 mkdir -p \
   "$TMP_DIR/bin" \
   "$TMP_DIR/repo/infra/supabase/auth-templates" \
@@ -158,13 +168,13 @@ env \
   CURL_PAYLOAD_FILE="$TMP_DIR/curl.payload.json" \
   "$SCRIPT" --apply >/dev/null
 
-if ! rg -q '^method=PATCH$' "$TMP_DIR/curl.args"; then
+if ! file_contains_pattern '^method=PATCH$' "$TMP_DIR/curl.args"; then
   echo "FAIL: expected PATCH method in curl args" >&2
   cat "$TMP_DIR/curl.args" >&2
   exit 1
 fi
 
-if ! rg -q '^url=https://api\.supabase\.com/v1/projects/test-project/config/auth$' "$TMP_DIR/curl.args"; then
+if ! file_contains_pattern '^url=https://api\.supabase\.com/v1/projects/test-project/config/auth$' "$TMP_DIR/curl.args"; then
   echo "FAIL: expected Supabase auth config endpoint URL" >&2
   cat "$TMP_DIR/curl.args" >&2
   exit 1
@@ -206,13 +216,13 @@ if "/reset-password" not in payload["uri_allow_list"]:
     raise SystemExit("uri_allow_list missing reset-password path")
 PY
 
-if ! rg -q 'Authorization: Bearer secret-token' "$TMP_DIR/curl.headers"; then
+if ! file_contains_pattern 'Authorization: Bearer secret-token' "$TMP_DIR/curl.headers"; then
   echo "FAIL: authorization header not passed to curl" >&2
   cat "$TMP_DIR/curl.headers" >&2
   exit 1
 fi
 
-if rg -q 'secret-token' "$TMP_DIR/curl.args"; then
+if file_contains_pattern 'secret-token' "$TMP_DIR/curl.args"; then
   echo "FAIL: raw token leaked into curl args" >&2
   cat "$TMP_DIR/curl.args" >&2
   exit 1
