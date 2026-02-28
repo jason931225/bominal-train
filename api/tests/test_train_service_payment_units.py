@@ -7,7 +7,7 @@ from uuid import uuid4
 import pytest
 from fastapi import HTTPException
 
-from app.db.models import Artifact, Task
+from app.db.models import Artifact, SystemPaymentSettings, Task
 from app.modules.train import service as train_service
 from app.modules.train.providers.base import ProviderOutcome
 from app.modules.train.schemas import TaskSummaryOut
@@ -30,6 +30,7 @@ class _DB:
         self.task = task
         self.added: list[object] = []
         self.commits = 0
+        self.payment_row: SystemPaymentSettings | None = None
 
     async def execute(self, _stmt):  # noqa: ANN001
         if self.artifact is None:
@@ -42,11 +43,18 @@ class _DB:
 
     def add(self, obj: object) -> None:
         self.added.append(obj)
+        if isinstance(obj, SystemPaymentSettings):
+            self.payment_row = obj
 
     async def commit(self) -> None:
         self.commits += 1
 
     async def refresh(self, _obj: object) -> None:
+        return None
+
+    async def get(self, model, _pk):  # noqa: ANN001
+        if model is SystemPaymentSettings:
+            return self.payment_row
         return None
 
 
@@ -297,6 +305,74 @@ async def test_pay_task_reconciles_failed_task_when_ticket_is_already_paid(monke
     assert task.failed_at is None
     assert task.completed_at is not None
     assert db.commits >= 1
+
+
+@pytest.mark.asyncio
+async def test_pay_task_rechecks_runtime_kill_switch_before_dispatch(monkeypatch):
+    user = SimpleNamespace(id=uuid4())
+    db = _DB()
+    monkeypatch.setattr(train_service.settings, "payment_enabled", True)
+
+    task = _task(state="COMPLETED")
+    artifact = Artifact(
+        task_id=task.id,
+        module="train",
+        kind="ticket",
+        data_json_safe={
+            "provider": "SRT",
+            "reservation_id": "PNR-KILL-1",
+            "status": "awaiting_payment",
+            "paid": False,
+            "payment_deadline_at": (datetime.now(timezone.utc) + timedelta(minutes=30)).isoformat(),
+        },
+    )
+    task.artifacts = [artifact]
+
+    async def _task_lookup(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        return task
+
+    async def _redis_obj():
+        return object()
+
+    async def _refresh_false(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        return False
+
+    async def _card_ok(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        return {"card_number": "4111111111111111"}
+
+    pay_called = False
+
+    class _Client:
+        async def pay(self, **_kwargs):  # noqa: ANN003
+            nonlocal pay_called
+            pay_called = True
+            return ProviderOutcome(ok=True, data={"payment_id": "PAY-NEVER"})
+
+    async def _client_ok(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        return _Client()
+
+    runtime_gate_calls = 0
+
+    async def _runtime_gate(_db):  # noqa: ANN001
+        nonlocal runtime_gate_calls
+        runtime_gate_calls += 1
+        # Initial entry check passes, second pre-dispatch check blocks.
+        return runtime_gate_calls == 1
+
+    monkeypatch.setattr(train_service, "get_task_for_user", _task_lookup)
+    monkeypatch.setattr(train_service, "get_redis_client", _redis_obj)
+    monkeypatch.setattr(train_service, "RedisTokenBucketLimiter", lambda _redis: _Limiter())
+    monkeypatch.setattr(train_service, "_refresh_ticket_artifact_status", _refresh_false)
+    monkeypatch.setattr(train_service, "get_payment_card_for_execution", _card_ok)
+    monkeypatch.setattr(train_service, "_get_logged_in_provider_client", _client_ok)
+    monkeypatch.setattr(train_service, "is_payment_runtime_enabled", _runtime_gate)
+
+    with pytest.raises(HTTPException) as blocked:
+        await train_service.pay_task(db, task_id=task.id, user=user)
+
+    assert blocked.value.status_code == 403
+    assert pay_called is False
+    assert runtime_gate_calls >= 2
 
 
 @pytest.mark.asyncio

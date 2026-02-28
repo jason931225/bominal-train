@@ -8,6 +8,7 @@ PREDEPLOY_FILE="$ROOT_DIR/infra/scripts/predeploy-check.sh"
 DEPLOY_FILE="$ROOT_DIR/infra/scripts/deploy.sh"
 COMPOSE_FILE="$ROOT_DIR/infra/docker-compose.prod.yml"
 WALLET_SCHEMA_FILE="$ROOT_DIR/api/app/schemas/wallet.py"
+ADMIN_ROUTES_FILE="$ROOT_DIR/api/app/http/routes/admin.py"
 
 assert_contains() {
   local pattern="$1"
@@ -38,8 +39,14 @@ assert_contains "export INTERNAL_API_KEY" "$DEPLOY_FILE" "deploy does not export
 
 assert_contains "INTERNAL_API_KEY:[[:space:]]+\\$\\{INTERNAL_API_KEY:-\\}" "$COMPOSE_FILE" "compose api/worker missing INTERNAL_API_KEY passthrough"
 assert_contains "RESEND_API_KEY:[[:space:]]+\\$\\{RESEND_API_KEY:-\\}" "$COMPOSE_FILE" "compose api/worker missing RESEND_API_KEY passthrough"
+if rg -n -- '\./env/prod/pay\.env' "$COMPOSE_FILE" >/dev/null; then
+  echo "FAIL: compose must not reference retired pay.env" >&2
+  exit 1
+fi
 
 assert_contains "field is no longer accepted" "$WALLET_SCHEMA_FILE" "wallet schema must reject cvv plaintext input"
 assert_contains "plaintext card fields are not accepted when PAYMENT_PROVIDER=evervault" "$WALLET_SCHEMA_FILE" "wallet schema must reject plaintext fallback in evervault mode"
+assert_contains "wallet_only: bool" "$ADMIN_ROUTES_FILE" "admin payment settings response must expose wallet_only"
+assert_contains "HTTP_410_GONE" "$ADMIN_ROUTES_FILE" "admin serverwide card routes must be retired with 410 responses"
 
 echo "OK: policy/runtime parity checks passed."

@@ -465,11 +465,6 @@ async def test_wallet_execution_and_status_branches(monkeypatch):
     monkeypatch.setattr(wallet, "_latest_payment_secret_for_user", _latest_none)
     status_none = await wallet.get_payment_card_status(db=object(), user=SimpleNamespace(id=user_id))
     assert status_none.configured is False
-
-    async def _server_none(_db):  # noqa: ANN001
-        return None
-
-    monkeypatch.setattr(wallet, "get_serverwide_payment_card_for_execution", _server_none)
     assert await wallet.get_payment_card_for_execution(db=object(), user_id=user_id) is None
 
     monkeypatch.setattr(wallet, "_latest_payment_secret_for_user", _latest_secret)
@@ -479,97 +474,41 @@ async def test_wallet_execution_and_status_branches(monkeypatch):
     status = await wallet.get_payment_card_status(db=object(), user=SimpleNamespace(id=user_id))
     assert status.configured is False
 
-    # Status invalid expiry payload.
-    monkeypatch.setattr(wallet, "decrypt_secret", lambda _secret: {"card_number": "4111", "expiry_month": "x", "expiry_year": "y"})
-    status = await wallet.get_payment_card_status(db=object(), user=SimpleNamespace(id=user_id))
-    assert status.configured is False
-    monkeypatch.setattr(wallet, "decrypt_secret", lambda _secret: {"card_number": "4111", "expiry_month": 12, "expiry_year": "bad"})
+    # Status invalid payload shape.
+    monkeypatch.setattr(wallet, "decrypt_secret", lambda _secret: {"source": "legacy", "card_number": "4111"})
     status = await wallet.get_payment_card_status(db=object(), user=SimpleNamespace(id=user_id))
     assert status.configured is False
 
-    # Fallback execution path can use server-wide card only when explicitly allowed.
-    monkeypatch.setattr(wallet.settings, "autopay_require_user_wallet", False)
-    monkeypatch.setattr(wallet.settings, "autopay_allow_server_fallback", True)
-
-    async def _server_card(_db):  # noqa: ANN001
-        return {
-            "card_number": "4111111111111111",
-            "card_password": "12",
-            "validation_number": "900101",
-            "card_expire": "9912",
-            "card_type": "J",
-            "installment": 0,
-        }
-
-    monkeypatch.setattr(wallet, "get_serverwide_payment_card_for_execution", _server_card)
-    execution = await wallet.get_payment_card_for_execution(db=object(), user_id=user_id)
-    assert execution is not None
-    assert execution["card_expire"] == "9912"
-    assert "cvv" not in execution
-    assert "cvv_cached_until" not in execution
-
-    # User wallet card is preferred over server fallback.
-    monkeypatch.setattr(wallet.settings, "autopay_require_user_wallet", True)
-    monkeypatch.setattr(wallet.settings, "autopay_allow_server_fallback", False)
     monkeypatch.setattr(
         wallet,
         "decrypt_secret",
         lambda _secret: {
-            "source": "legacy",
-            "card_number": "4111111111111111",
-            "pin2": "12",
-            "birth_date": "1990-01-01",
-            "expiry_month": 12,
-            "expiry_year": 2099,
+            "source": "evervault",
+            "encrypted_card_number": "ev:card",
+            "encrypted_pin2": "ev:pin2",
+            "encrypted_birth_date": "ev:birth",
+            "encrypted_expiry": "ev:expiry",
+            "last4": "1111",
+            "brand": "visa",
         },
     )
+    execution = await wallet.get_payment_card_for_execution(db=object(), user_id=user_id)
+    assert execution is not None
+    assert execution["source"] == "evervault"
+    assert "cvv" not in execution
+    assert "cvv_cached_until" not in execution
+
     status_ok = await wallet.get_payment_card_status(db=object(), user=SimpleNamespace(id=user_id))
     assert status_ok.configured is True
 
 
 @pytest.mark.asyncio
-async def test_wallet_execution_uses_backend_pay_env_fallback_in_production(monkeypatch):
-    monkeypatch.setattr(system_payment.settings, "app_env", "production")
-    monkeypatch.setattr(system_payment.settings, "payment_enabled", True)
-    monkeypatch.setattr(system_payment.settings, "backend_pay_cardnumber", "4111-1111-1111-1111")
-    monkeypatch.setattr(system_payment.settings, "backend_pay_expirymm", "12")
-    monkeypatch.setattr(system_payment.settings, "backend_pay_expiryyy", "99")
-    monkeypatch.setattr(system_payment.settings, "backend_pay_dob", "19900101")
-    monkeypatch.setattr(system_payment.settings, "backend_pay_nn", "12")
-
-    async def _row_none(_db):  # noqa: ANN001
-        return None
-
-    monkeypatch.setattr(system_payment, "_load_settings_row", _row_none)
-
+async def test_system_payment_execution_is_wallet_only():
     execution = await system_payment.get_serverwide_payment_card_for_execution(db=object())
-    assert execution is not None
-    assert execution["card_number"] == "4111111111111111"
-    assert execution["card_password"] == "12"
-    assert execution["validation_number"] == "900101"
-    assert execution["card_expire"] == "9912"
-    assert execution["card_type"] == "J"
-    assert execution["installment"] == 0
+    assert execution is None
 
     configured = await system_payment.is_serverwide_payment_configured(db=object())
-    assert configured is True
-
-@pytest.mark.asyncio
-async def test_wallet_set_card_rejects_expired_card(monkeypatch):
-    payload = SimpleNamespace(
-        source="legacy",
-        card_number="4111 1111 1111 1111",
-        expiry_month=1,
-        expiry_year=2000,
-        birth_date=datetime(1990, 1, 1).date(),
-        pin2="12",
-    )
-
-    monkeypatch.setattr(wallet, "utc_now", lambda: datetime(2026, 1, 1, tzinfo=timezone.utc))
-
-    with pytest.raises(HTTPException) as exc:
-        await wallet.set_payment_card(db=object(), user=SimpleNamespace(id=uuid4()), payload=payload)
-    assert exc.value.status_code == 400
+    assert configured is False
 
 
 @pytest.mark.asyncio
@@ -591,12 +530,13 @@ async def test_wallet_set_payment_card_creates_new_secret(monkeypatch):
     user = SimpleNamespace(id=uuid4())
 
     payload = SimpleNamespace(
-        source="legacy",
-        card_number="4111 1111 1111 1111",
-        expiry_month=12,
-        expiry_year=2099,
-        birth_date=datetime(1990, 1, 1).date(),
-        pin2="12",
+        source="evervault",
+        encrypted_card_number="ev:card",
+        encrypted_pin2="ev:pin2",
+        encrypted_birth_date="ev:birth",
+        encrypted_expiry="ev:expiry",
+        last4="1111",
+        brand="visa",
     )
 
     encrypted_secret = SimpleNamespace(
@@ -650,12 +590,13 @@ async def test_wallet_set_payment_card_updates_existing_secret(monkeypatch):
     )
 
     payload = SimpleNamespace(
-        source="legacy",
-        card_number="4111 1111 1111 1111",
-        expiry_month=12,
-        expiry_year=2099,
-        birth_date=datetime(1990, 1, 1).date(),
-        pin2="12",
+        source="evervault",
+        encrypted_card_number="ev:card",
+        encrypted_pin2="ev:pin2",
+        encrypted_birth_date="ev:birth",
+        encrypted_expiry="ev:expiry",
+        last4="1111",
+        brand="visa",
     )
 
     encrypted_secret = SimpleNamespace(

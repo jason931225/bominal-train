@@ -37,8 +37,8 @@ if ! matches_pattern 'python -m app\.worker_entrypoint app\.worker\.WorkerSettin
 fi
 
 pay_env_refs="$(grep -c '\./env/prod/pay\.env' "$PROD_COMPOSE" || true)"
-if [[ "$pay_env_refs" -lt 2 ]]; then
-  echo "FAIL: prod compose api/worker must include ./env/prod/pay.env for backend-only auto-pay." >&2
+if [[ "$pay_env_refs" -ne 0 ]]; then
+  echo "FAIL: prod compose must not include ./env/prod/pay.env (wallet-only payment contract)." >&2
   exit 1
 fi
 

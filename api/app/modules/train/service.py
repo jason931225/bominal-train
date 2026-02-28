@@ -1904,6 +1904,13 @@ async def pay_task(db: AsyncSession, *, task_id: UUID, user: User) -> TaskAction
         client = await _get_logged_in_provider_client(db, user=user, provider=provider)
         client_cache[provider] = client
 
+    # Re-check runtime kill switch right before payment dispatch so no
+    # provider/Evervault payment call is sent after a late admin toggle.
+    if not await is_payment_runtime_enabled(db):
+        if updated:
+            await db.commit()
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Payment features are currently disabled")
+
     started_at = utc_now()
     timer = time.perf_counter()
     limit = await limiter.acquire_provider_call(

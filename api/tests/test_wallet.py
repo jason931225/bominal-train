@@ -67,9 +67,8 @@ async def test_payment_card_save_rejects_legacy_cvv_field(client, db_session):
 
 
 @pytest.mark.asyncio
-async def test_payment_card_save_supports_evervault_payload_shape(client, db_session, monkeypatch):
+async def test_payment_card_save_supports_evervault_payload_shape(client, db_session):
     cookie = await _register_and_login(client, db_session, email="wallet-evervault@example.com")
-    monkeypatch.setattr("app.schemas.wallet.get_settings", lambda: type("S", (), {"payment_provider": "evervault"})())
 
     save_res = await client.post(
         "/api/wallet/payment-card",
@@ -111,11 +110,12 @@ async def test_remove_payment_settings_wipes_saved_data(client, db_session, monk
         "/api/wallet/payment-card",
         cookies={"bominal_session": cookie},
         json={
-            "card_number": "1234 5678 9012 3456",
-            "expiry_month": 12,
-            "expiry_year": 2099,
-            "birth_date": "1990-01-01",
-            "pin2": "12",
+            "encrypted_card_number": "ev:card",
+            "encrypted_pin2": "ev:pin2",
+            "encrypted_birth_date": "ev:birth",
+            "encrypted_expiry": "ev:expiry",
+            "last4": "3456",
+            "brand": "visa",
         },
     )
     assert save_res.status_code == 200
@@ -187,11 +187,12 @@ async def test_payment_card_configured_endpoint_returns_minimal_boolean(client, 
         "/api/wallet/payment-card",
         cookies={"bominal_session": cookie},
         json={
-            "card_number": "4111 1111 1111 1111",
-            "expiry_month": 12,
-            "expiry_year": 2099,
-            "birth_date": "1990-01-01",
-            "pin2": "12",
+            "encrypted_card_number": "ev:card",
+            "encrypted_pin2": "ev:pin2",
+            "encrypted_birth_date": "ev:birth",
+            "encrypted_expiry": "ev:expiry",
+            "last4": "1111",
+            "brand": "visa",
         },
     )
     assert save_res.status_code == 200
@@ -212,11 +213,12 @@ async def test_payment_card_save_does_not_cache_cvv_keys(client, db_session, mon
         "/api/wallet/payment-card",
         cookies={"bominal_session": cookie},
         json={
-            "card_number": "4111 1111 1111 1111",
-            "expiry_month": 12,
-            "expiry_year": 2099,
-            "birth_date": "1990-01-01",
-            "pin2": "12",
+            "encrypted_card_number": "ev:card",
+            "encrypted_pin2": "ev:pin2",
+            "encrypted_birth_date": "ev:birth",
+            "encrypted_expiry": "ev:expiry",
+            "last4": "1111",
+            "brand": "visa",
         },
     )
     assert res.status_code == 200
@@ -238,11 +240,12 @@ async def test_payment_card_status_returns_not_configured_on_kek_version_mismatc
         "/api/wallet/payment-card",
         cookies={"bominal_session": cookie},
         json={
-            "card_number": "4111 1111 1111 1111",
-            "expiry_month": 12,
-            "expiry_year": 2099,
-            "birth_date": "1990-01-01",
-            "pin2": "12",
+            "encrypted_card_number": "ev:card",
+            "encrypted_pin2": "ev:pin2",
+            "encrypted_birth_date": "ev:birth",
+            "encrypted_expiry": "ev:expiry",
+            "last4": "1111",
+            "brand": "visa",
         },
     )
     assert save_res.status_code == 200
@@ -275,11 +278,12 @@ async def test_purge_all_saved_payment_data_wipes_wallet_secrets_and_cvv_cache(c
     cookie_b = await _register_and_login(client, db_session, email="wallet-purge-b@example.com")
 
     payload = {
-        "card_number": "4111 1111 1111 1111",
-        "expiry_month": 12,
-        "expiry_year": 2099,
-        "birth_date": "1990-01-01",
-        "pin2": "12",
+        "encrypted_card_number": "ev:card",
+        "encrypted_pin2": "ev:pin2",
+        "encrypted_birth_date": "ev:birth",
+        "encrypted_expiry": "ev:expiry",
+        "last4": "1111",
+        "brand": "visa",
     }
     res_a = await client.post("/api/wallet/payment-card", cookies={"bominal_session": cookie_a}, json=payload)
     res_b = await client.post("/api/wallet/payment-card", cookies={"bominal_session": cookie_b}, json=payload)

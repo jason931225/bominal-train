@@ -10,7 +10,7 @@ import { localeFromAcceptLanguage, localeFromUser, t } from "@/lib/i18n";
 import { OpsStatusCard } from "@/components/admin/ops-status-card";
 import { StaleTasksTable } from "@/components/admin/stale-tasks-table";
 import { RecentFailuresTable } from "@/components/admin/recent-failures-table";
-import { PaymentSettingsCard } from "@/components/admin/payment-settings-card";
+import { PaymentKillSwitchCard } from "@/components/admin/payment-settings-card";
 
 export const dynamic = "force-dynamic";
 
@@ -91,7 +91,7 @@ export default async function MaintenancePage() {
           </div>
         }
       >
-        <PaymentSettingsCard />
+        <PaymentKillSwitchCard />
       </Suspense>
 
       {/* User Management */}

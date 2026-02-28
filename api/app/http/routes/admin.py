@@ -3,7 +3,7 @@ from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, EmailStr
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
@@ -22,9 +22,7 @@ from app.modules.train.queue import enqueue_train_task
 from app.modules.train.worker import enqueue_recoverable_tasks
 from app.schemas.auth import MessageResponse
 from app.services.system_payment import (
-    clear_system_payment_card,
     get_system_payment_settings_status,
-    set_system_payment_card,
     set_system_payment_enabled,
 )
 from app.worker import HEARTBEAT_KEY
@@ -165,7 +163,7 @@ class AdminPaymentSettingsResponse(BaseModel):
     payment_enabled_env: bool
     payment_enabled_override: bool
     configured: bool
-    source: Literal["server_override", "pay_env", "none"]
+    wallet_only: bool
     card_masked: str | None = None
     updated_at: datetime | None = None
     updated_by_user_id: UUID | None = None
@@ -175,47 +173,13 @@ class AdminPaymentEnabledRequest(BaseModel):
     enabled: bool
 
 
-class AdminPaymentCardUpdateRequest(BaseModel):
-    card_number: str = Field(min_length=12, max_length=24)
-    expiry_mm: str = Field(pattern=r"^\d{2}$")
-    expiry_yy: str = Field(pattern=r"^\d{2}$")
-    dob: str = Field(pattern=r"^\d{8}$")
-    pin2: str = Field(pattern=r"^\d{2}$")
-
-    @field_validator("card_number")
-    @classmethod
-    def normalize_card_number(cls, value: str) -> str:
-        digits_only = "".join(ch for ch in value if ch.isdigit())
-        if len(digits_only) < 13 or len(digits_only) > 19:
-            raise ValueError("card_number must contain 13 to 19 digits")
-        return digits_only
-
-    @field_validator("expiry_mm")
-    @classmethod
-    def validate_expiry_month(cls, value: str) -> str:
-        month = int(value)
-        if month < 1 or month > 12:
-            raise ValueError("expiry_mm must be between 01 and 12")
-        return value
-
-    @field_validator("dob")
-    @classmethod
-    def validate_dob(cls, value: str) -> str:
-        datetime.strptime(value, "%Y%m%d")
-        return value
-
-
 def _payment_settings_response(payload: dict) -> AdminPaymentSettingsResponse:
-    source_value = str(payload.get("source") or "none")
-    if source_value not in {"server_override", "pay_env", "none"}:
-        source_value = "none"
-
     return AdminPaymentSettingsResponse(
         payment_enabled=bool(payload.get("payment_enabled")),
         payment_enabled_env=bool(payload.get("payment_enabled_env")),
         payment_enabled_override=bool(payload.get("payment_enabled_override")),
         configured=bool(payload.get("configured")),
-        source=source_value,
+        wallet_only=bool(payload.get("wallet_only", True)),
         card_masked=payload.get("card_masked"),
         updated_at=payload.get("updated_at"),
         updated_by_user_id=payload.get("updated_by_user_id"),
@@ -252,22 +216,14 @@ async def set_payment_settings_enabled(
 
 @router.put("/payment-settings/card", response_model=AdminPaymentSettingsResponse)
 async def set_payment_settings_card(
-    body: AdminPaymentCardUpdateRequest,
     db: AsyncSession = Depends(get_db),
     admin_user: User = Depends(get_current_admin),
 ) -> AdminPaymentSettingsResponse:
-    payload = await set_system_payment_card(
-        db,
-        card_number=body.card_number,
-        expiry_mm=body.expiry_mm,
-        expiry_yy=body.expiry_yy,
-        dob=body.dob,
-        pin2=body.pin2,
-        updated_by_user_id=admin_user.id,
+    del db, admin_user
+    raise HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail="Server-wide payment card override is retired; wallet-based Evervault payment is required.",
     )
-    if payload is None:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid payment settings payload")
-    return _payment_settings_response(payload)
 
 
 @router.delete("/payment-settings/card", response_model=AdminPaymentSettingsResponse)
@@ -275,11 +231,11 @@ async def delete_payment_settings_card(
     db: AsyncSession = Depends(get_db),
     admin_user: User = Depends(get_current_admin),
 ) -> AdminPaymentSettingsResponse:
-    payload = await clear_system_payment_card(
-        db,
-        updated_by_user_id=admin_user.id,
+    del db, admin_user
+    raise HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail="Server-wide payment card override is retired; wallet-based Evervault payment is required.",
     )
-    return _payment_settings_response(payload)
 
 
 @router.get("/stats", response_model=SystemStats)

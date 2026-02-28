@@ -268,9 +268,9 @@ Data controls:
 - Redaction helper for logs/safe metadata in `redaction.py`
 - Payment CVV is never accepted or stored by wallet APIs
 - Wallet auto-pay source is user-scoped (`/api/wallet/payment-card/configured` reflects the current user wallet, not serverwide defaults)
-- Payment contract mode is controlled by `PAYMENT_PROVIDER` (`legacy` plaintext wallet fields vs `evervault` encrypted wallet fields)
-- In `PAYMENT_PROVIDER=evervault` mode, KTX/SRT payment submissions use Evervault Relay with API-managed per-provider relay routes and exact form-field decrypt selectors (no wildcard selectors).
-- Serverwide payment fallback for auto-pay is policy-gated (`AUTOPAY_REQUIRE_USER_WALLET`, `AUTOPAY_ALLOW_SERVER_FALLBACK`)
+- Payment contract mode is Evervault-only in production (`PAYMENT_PROVIDER=evervault` when `PAYMENT_ENABLED=true`).
+- KTX/SRT payment submissions use Evervault Relay with API-managed per-provider relay routes and exact form-field decrypt selectors (no wildcard selectors).
+- Serverwide payment fallback/override execution is retired (`AUTOPAY_ALLOW_SERVER_FALLBACK=false` fail-closed contract).
 
 Cardholder Data Environment (CDE) boundary:
 

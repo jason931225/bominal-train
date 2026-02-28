@@ -291,16 +291,20 @@ Optional:
 
 `infra/scripts/bootstrap-prod-env.sh` is the canonical bootstrap path. It:
 - prompts interactively for required sensitive values,
-- writes `infra/env/prod/api.env`, `infra/env/prod/pay.env`, `infra/env/prod/web.env`, and `infra/env/prod/caddy.env`,
+- writes `infra/env/prod/api.env`, `infra/env/prod/web.env`, and `infra/env/prod/caddy.env`,
 - optionally writes `infra/env/prod/deploy.env`,
 - validates critical contracts (Supabase URLs, `MASTER_KEY` format, unresolved placeholders).
 
 If you choose manual editing instead, required values are:
 - `infra/env/prod/api.env`: `DATABASE_URL`, `SYNC_DATABASE_URL`, `AUTH_MODE=supabase`, `SUPABASE_URL`, `SUPABASE_JWT_ISSUER`, `SUPABASE_AUTH_ENABLED=true`, `SUPABASE_AUTH_API_KEY` (or `SUPABASE_SERVICE_ROLE_KEY` fallback), `SUPABASE_STORAGE_ENABLED=true`, `SUPABASE_SERVICE_ROLE_KEY`, sender-domain placeholder in `EMAIL_FROM_ADDRESS`, passkey origin settings (`PASSKEY_RP_ID`, `PASSKEY_ORIGIN`), optional provider session-cache knobs (`TRAIN_PROVIDER_CLIENT_CACHE_SECONDS`, `TRAIN_PROVIDER_CLIENT_CACHE_MAX_ENTRIES`), optional edge-notify knobs (`EDGE_TASK_NOTIFY_ENABLED`, `SUPABASE_EDGE_FUNCTIONS_BASE_URL`, `SUPABASE_EDGE_TASK_NOTIFY_FUNCTION_NAME`, `SUPABASE_EDGE_TIMEOUT_SECONDS`), optional Evervault settings (`EVERVAULT_APP_ID`/`EVERVAULT_APP_ID_SECRET_ID`, `EVERVAULT_API_KEY`/`EVERVAULT_API_KEY_SECRET_ID`), and valid secret sources for `MASTER_KEY`, `INTERNAL_API_KEY`, and `RESEND_API_KEY` (prefer GSM references)
+- `infra/env/prod/api.env`: payment cutover contract when `PAYMENT_ENABLED=true`:
+  - `PAYMENT_PROVIDER=evervault`
+  - `PAYMENT_EVERVAULT_ENFORCE=true`
+  - `AUTOPAY_REQUIRE_USER_WALLET=true`
+  - `AUTOPAY_ALLOW_SERVER_FALLBACK=false`
 - `infra/env/prod/api.env`: optional Supabase Auth redirect overrides:
   - `SUPABASE_AUTH_SITE_URL` (defaults to `NEXT_PUBLIC_API_BASE_URL`, then `https://$CADDY_SITE_ADDRESS`)
   - `SUPABASE_AUTH_REDIRECT_URLS` (comma-separated allow-list; defaults to `<site_url>/auth/verify,<site_url>/auth/confirm,<site_url>/reset-password,<site_url>/login`)
-- `infra/env/prod/pay.env`: backend-only auto-pay card data (`CARDNUMBER`, `EXPIRYMM`, `EXPIRYYY`, `DOB`, `NN`)
 - `infra/env/prod/web.env`: `NEXT_PUBLIC_API_BASE_URL`, `API_SERVER_URL` (`http://api:8000` for monolithic API runtime), and Supabase browser auth/realtime/read-path keys (`NEXT_PUBLIC_SUPABASE_DIRECT_AUTH_ENABLED`, `NEXT_PUBLIC_SUPABASE_REALTIME_ENABLED`, `NEXT_PUBLIC_SUPABASE_REALTIME_DELTA_READ_ENABLED`, `NEXT_PUBLIC_TRAIN_READS_VIA_DATA_API`, `NEXT_PUBLIC_TRAIN_DETAIL_VIA_GRAPHQL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`)
 - `infra/env/prod/caddy.env`: `CADDY_SITE_ADDRESS`, `CADDY_ACME_EMAIL`
 - `infra/env/prod/deploy.env` (optional helper): set `GHCR_USERNAME` + `GHCR_TOKEN` when GHCR packages are private
@@ -335,6 +339,12 @@ Production Resend key source contract (`EMAIL_PROVIDER=resend`):
 - `RESEND_API_KEY_VAULT_NAME` is allowed only when `EDGE_TASK_NOTIFY_ENABLED=true` and `SUPABASE_VAULT_ENABLED=true`.
 - `RESEND_API_KEY_SECRET_ID` requires `GCP_PROJECT_ID`.
 - `deploy.sh` resolves GSM references and injects runtime `RESEND_API_KEY` into `api`/`worker`.
+
+Production payment safety contract (Evervault-only, fail-closed):
+- Server-side card fallback aliases (`CARDNUMBER`, `EXPIRYMM`, `EXPIRYYY`, `DOB`, `NN`) are forbidden in `infra/env/prod/api.env`.
+- `infra/env/prod/pay.env` is retired and must not be referenced by deployment compose/runtime.
+- Admin server-wide payment-card override routes are retired (`PUT/DELETE /api/admin/payment-settings/card` return `410 Gone`).
+- Admin kill switch (`PATCH /api/admin/payment-settings/enabled`) is authoritative for runtime dispatch: when disabled, API/worker payment calls fail closed before Evervault/provider payment submission.
 
 Optional helper to automate GSM setup from existing `MASTER_KEY` in `api.env`:
 

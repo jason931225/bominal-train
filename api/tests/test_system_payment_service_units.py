@@ -5,7 +5,7 @@ from uuid import uuid4
 import pytest
 from sqlalchemy import select
 
-from app.db.models import Role, User
+from app.db.models import Role, SystemPaymentSettings, User
 from app.services import system_payment
 
 
@@ -25,14 +25,9 @@ async def _make_admin_user(db_session) -> User:
 
 
 @pytest.mark.asyncio
-async def test_system_payment_uses_pay_env_fallback_in_production(monkeypatch):
+async def test_system_payment_status_is_wallet_only_without_server_card_fallback(monkeypatch):
     monkeypatch.setattr(system_payment.settings, "app_env", "production")
     monkeypatch.setattr(system_payment.settings, "payment_enabled", True)
-    monkeypatch.setattr(system_payment.settings, "backend_pay_cardnumber", "4111-1111-1111-1111")
-    monkeypatch.setattr(system_payment.settings, "backend_pay_expirymm", "12")
-    monkeypatch.setattr(system_payment.settings, "backend_pay_expiryyy", "99")
-    monkeypatch.setattr(system_payment.settings, "backend_pay_dob", "19900101")
-    monkeypatch.setattr(system_payment.settings, "backend_pay_nn", "12")
 
     async def _row_none(_db):  # noqa: ANN001
         return None
@@ -40,42 +35,20 @@ async def test_system_payment_uses_pay_env_fallback_in_production(monkeypatch):
     monkeypatch.setattr(system_payment, "_load_settings_row", _row_none)
 
     execution = await system_payment.get_serverwide_payment_card_for_execution(db=object())
-    assert execution is not None
-    assert execution["card_number"] == "4111111111111111"
+    assert execution is None
 
     status_payload = await system_payment.get_system_payment_settings_status(db=object())
-    assert status_payload["configured"] is True
-    assert status_payload["source"] == "pay_env"
+    assert status_payload["configured"] is False
+    assert status_payload["wallet_only"] is True
+    assert status_payload["source"] == "none"
 
 
 @pytest.mark.asyncio
-async def test_system_payment_override_and_runtime_toggle(db_session, monkeypatch):
+async def test_system_payment_toggle_and_legacy_material_cleanup(db_session, monkeypatch):
     monkeypatch.setattr(system_payment.settings, "app_env", "development")
     monkeypatch.setattr(system_payment.settings, "payment_enabled", True)
-    monkeypatch.setattr(system_payment.settings, "backend_pay_cardnumber", None)
-    monkeypatch.setattr(system_payment.settings, "backend_pay_expirymm", None)
-    monkeypatch.setattr(system_payment.settings, "backend_pay_expiryyy", None)
-    monkeypatch.setattr(system_payment.settings, "backend_pay_dob", None)
-    monkeypatch.setattr(system_payment.settings, "backend_pay_nn", None)
 
     admin_user = await _make_admin_user(db_session)
-
-    updated = await system_payment.set_system_payment_card(
-        db_session,
-        card_number="5555 5555 5555 4444",
-        expiry_mm="01",
-        expiry_yy="31",
-        dob="19900101",
-        pin2="34",
-        updated_by_user_id=admin_user.id,
-    )
-    assert updated is not None
-    assert updated["source"] == "server_override"
-    assert str(updated["card_masked"] or "").endswith("4444")
-
-    card = await system_payment.get_serverwide_payment_card_for_execution(db_session)
-    assert card is not None
-    assert card["card_number"] == "5555555555554444"
 
     disabled = await system_payment.set_system_payment_enabled(
         db_session,
@@ -83,8 +56,8 @@ async def test_system_payment_override_and_runtime_toggle(db_session, monkeypatc
         updated_by_user_id=admin_user.id,
     )
     assert disabled["payment_enabled"] is False
+    assert disabled["wallet_only"] is True
     assert await system_payment.is_payment_runtime_enabled(db_session) is False
-    assert await system_payment.get_serverwide_payment_card_for_execution(db_session) is None
 
     enabled = await system_payment.set_system_payment_enabled(
         db_session,
@@ -92,24 +65,32 @@ async def test_system_payment_override_and_runtime_toggle(db_session, monkeypatc
         updated_by_user_id=admin_user.id,
     )
     assert enabled["payment_enabled"] is True
+    assert enabled["configured"] is False
 
-    cleared = await system_payment.clear_system_payment_card(
+    row = await system_payment._ensure_settings_row(db_session)
+    row.ciphertext = "legacy-c"
+    row.nonce = "legacy-n"
+    row.wrapped_dek = "legacy-w"
+    row.dek_nonce = "legacy-d"
+    row.aad = "legacy-a"
+    row.kek_version = 7
+    await db_session.commit()
+
+    cleared = await system_payment.clear_legacy_serverwide_card_material(
         db_session,
         updated_by_user_id=admin_user.id,
     )
-    assert cleared["source"] == "none"
+    assert cleared["wallet_only"] is True
     assert cleared["configured"] is False
 
-
-@pytest.mark.asyncio
-async def test_system_payment_card_rejects_invalid_payload(db_session):
-    result = await system_payment.set_system_payment_card(
-        db_session,
-        card_number="1234",
-        expiry_mm="99",
-        expiry_yy="1",
-        dob="bad",
-        pin2="x",
-        updated_by_user_id=None,
-    )
-    assert result is None
+    persisted = (
+        await db_session.execute(
+            select(SystemPaymentSettings).where(SystemPaymentSettings.id == system_payment.SYSTEM_PAYMENT_SETTINGS_ID)
+        )
+    ).scalar_one()
+    assert persisted.ciphertext is None
+    assert persisted.nonce is None
+    assert persisted.wrapped_dek is None
+    assert persisted.dek_nonce is None
+    assert persisted.aad is None
+    assert persisted.kek_version is None

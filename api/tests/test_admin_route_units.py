@@ -53,7 +53,7 @@ async def test_admin_payment_settings_controls(db_session):
 
     initial = await admin_routes.get_payment_settings(db=db_session)
     assert isinstance(initial.payment_enabled, bool)
-    assert initial.source in {"server_override", "pay_env", "none"}
+    assert initial.wallet_only is True
 
     disabled = await admin_routes.set_payment_settings_enabled(
         body=admin_routes.AdminPaymentEnabledRequest(enabled=False),
@@ -70,27 +70,19 @@ async def test_admin_payment_settings_controls(db_session):
     )
     assert enabled.payment_enabled_override is True
 
-    updated = await admin_routes.set_payment_settings_card(
-        body=admin_routes.AdminPaymentCardUpdateRequest(
-            card_number="4111 1111 1111 3456",
-            expiry_mm="12",
-            expiry_yy="29",
-            dob="19900101",
-            pin2="12",
-        ),
-        db=db_session,
-        admin_user=admin_user,
-    )
-    assert updated.configured is True
-    assert updated.source == "server_override"
-    assert updated.card_masked is not None
-    assert updated.card_masked.endswith("3456")
+    with pytest.raises(HTTPException) as put_exc:
+        await admin_routes.set_payment_settings_card(
+            db=db_session,
+            admin_user=admin_user,
+        )
+    assert put_exc.value.status_code == 410
 
-    cleared = await admin_routes.delete_payment_settings_card(
-        db=db_session,
-        admin_user=admin_user,
-    )
-    assert cleared.source in {"pay_env", "none"}
+    with pytest.raises(HTTPException) as delete_exc:
+        await admin_routes.delete_payment_settings_card(
+            db=db_session,
+            admin_user=admin_user,
+        )
+    assert delete_exc.value.status_code == 410
 
 
 @pytest.mark.asyncio
