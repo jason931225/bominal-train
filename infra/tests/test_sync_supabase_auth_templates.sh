@@ -110,13 +110,14 @@ done
 
 if [[ -n "${CURL_ARGS_FILE:-}" ]]; then
   {
+    printf '%s\n' '---'
     printf 'method=%s\n' "$method"
     printf 'url=%s\n' "$url"
     printf 'data=%s\n' "$data_arg"
     for header in "${headers[@]}"; do
       printf 'header=%s\n' "$header"
     done
-  } >"$CURL_ARGS_FILE"
+  } >>"$CURL_ARGS_FILE"
 fi
 
 if [[ -n "${CURL_HEADER_DUMP_FILE:-}" ]]; then
@@ -136,7 +137,11 @@ if [[ "$data_arg" == @* && -n "${CURL_PAYLOAD_FILE:-}" ]]; then
 fi
 
 if [[ -n "$out_file" ]]; then
-  printf '{"ok":true}\n' >"$out_file"
+  response_json="${MOCK_CURL_JSON_RESPONSE:-}"
+  if [[ -z "$response_json" ]]; then
+    response_json='{"ok":true}'
+  fi
+  printf '%s\n' "$response_json" >"$out_file"
 fi
 
 if [[ "$write_format" == *"%{http_code}"* ]]; then
@@ -175,6 +180,39 @@ if [[ -f "$TMP_DIR/curl.called" ]]; then
   exit 1
 fi
 
+# Inspect mode should fetch auth config and emit snapshot without PATCH.
+env \
+  PATH="$TMP_DIR/bin:$PATH" \
+  TMP_TEST_ROOT="$TMP_DIR" \
+  BOMINAL_ROOT_DIR="$TMP_DIR/repo" \
+  SUPABASE_MANAGEMENT_API_TOKEN="secret-token" \
+  CURL_ARGS_FILE="$TMP_DIR/curl.inspect.args" \
+  MOCK_CURL_JSON_RESPONSE='{"site_url":"https://www.bominal.com","uri_allow_list":"https://www.bominal.com/auth/verify"}' \
+  "$SCRIPT" --inspect --snapshot-file "$TMP_DIR/inspect.snapshot.json" >/dev/null
+
+if ! [[ -s "$TMP_DIR/inspect.snapshot.json" ]]; then
+  echo "FAIL: inspect mode did not create snapshot file" >&2
+  exit 1
+fi
+
+if ! file_contains_pattern '^method=GET$' "$TMP_DIR/curl.inspect.args"; then
+  echo "FAIL: inspect mode must use GET method" >&2
+  cat "$TMP_DIR/curl.inspect.args" >&2
+  exit 1
+fi
+
+if file_contains_pattern '^method=PATCH$' "$TMP_DIR/curl.inspect.args"; then
+  echo "FAIL: inspect mode unexpectedly attempted PATCH" >&2
+  cat "$TMP_DIR/curl.inspect.args" >&2
+  exit 1
+fi
+
+if file_contains_pattern '^data=@' "$TMP_DIR/curl.inspect.args"; then
+  echo "FAIL: inspect mode unexpectedly sent payload data" >&2
+  cat "$TMP_DIR/curl.inspect.args" >&2
+  exit 1
+fi
+
 # Apply should patch endpoint with expected payload and header behavior.
 env \
   PATH="$TMP_DIR/bin:$PATH" \
@@ -185,6 +223,12 @@ env \
   CURL_HEADER_DUMP_FILE="$TMP_DIR/curl.headers" \
   CURL_PAYLOAD_FILE="$TMP_DIR/curl.payload.json" \
   "$SCRIPT" --apply >/dev/null
+
+if ! file_contains_pattern '^method=GET$' "$TMP_DIR/curl.args"; then
+  echo "FAIL: expected preflight GET method in curl args" >&2
+  cat "$TMP_DIR/curl.args" >&2
+  exit 1
+fi
 
 if ! file_contains_pattern '^method=PATCH$' "$TMP_DIR/curl.args"; then
   echo "FAIL: expected PATCH method in curl args" >&2

@@ -357,14 +357,21 @@ async def test_request_password_reset_falls_back_to_direct_delivery_when_enqueue
 
 @pytest.mark.asyncio
 async def test_supabase_confirm_returns_recovery_mode_payload(client, monkeypatch):
-    async def _fake_exchange(*, token_hash: str, token_type: str):  # noqa: ARG001
-        return type(
-            "CallbackSession",
-            (),
-            {"user_id": "supabase-user-001", "email": "user@example.com", "access_token": "access-token-123"},
-        )()
+    async def _fake_exchange_detailed(*, token_hash: str, token_type: str):  # noqa: ARG001
+        return SimpleNamespace(
+            session=SimpleNamespace(
+                user_id="supabase-user-001",
+                email="user@example.com",
+                access_token="access-token-123",
+            ),
+            failure=None,
+        )
 
-    monkeypatch.setattr("app.http.routes.auth.exchange_supabase_token_hash", _fake_exchange, raising=False)
+    monkeypatch.setattr(
+        "app.http.routes.auth.exchange_supabase_token_hash_detailed",
+        _fake_exchange_detailed,
+        raising=False,
+    )
 
     response = await client.post(
         "/api/auth/supabase/confirm",
@@ -379,14 +386,21 @@ async def test_supabase_confirm_returns_recovery_mode_payload(client, monkeypatc
 
 @pytest.mark.asyncio
 async def test_supabase_confirm_magiclink_sets_cookie(client, monkeypatch):
-    async def _fake_exchange(*, token_hash: str, token_type: str):  # noqa: ARG001
-        return type(
-            "CallbackSession",
-            (),
-            {"user_id": "supabase-user-001", "email": "magiclink@example.com", "access_token": "access-token-123"},
-        )()
+    async def _fake_exchange_detailed(*, token_hash: str, token_type: str):  # noqa: ARG001
+        return SimpleNamespace(
+            session=SimpleNamespace(
+                user_id="supabase-user-001",
+                email="magiclink@example.com",
+                access_token="access-token-123",
+            ),
+            failure=None,
+        )
 
-    monkeypatch.setattr("app.http.routes.auth.exchange_supabase_token_hash", _fake_exchange, raising=False)
+    monkeypatch.setattr(
+        "app.http.routes.auth.exchange_supabase_token_hash_detailed",
+        _fake_exchange_detailed,
+        raising=False,
+    )
 
     response = await client.post(
         "/api/auth/supabase/confirm",
@@ -408,16 +422,57 @@ async def test_supabase_confirm_rejects_access_token_contract(client):
 
 @pytest.mark.asyncio
 async def test_supabase_confirm_rejects_invalid_or_expired_token_hash(client, monkeypatch):
-    async def _fake_exchange(*, token_hash: str, token_type: str):  # noqa: ARG001
-        return None
+    async def _fake_exchange_detailed(*, token_hash: str, token_type: str):  # noqa: ARG001
+        return SimpleNamespace(session=None, failure=SimpleNamespace(category="invalid", status_code=400, error_code=None))
 
-    monkeypatch.setattr("app.http.routes.auth.exchange_supabase_token_hash", _fake_exchange, raising=False)
+    monkeypatch.setattr(
+        "app.http.routes.auth.exchange_supabase_token_hash_detailed",
+        _fake_exchange_detailed,
+        raising=False,
+    )
 
     response = await client.post(
         "/api/auth/supabase/confirm",
         json={"token_hash": "hash-expired-abc", "type": "magiclink"},
     )
     assert response.status_code == 400
+    assert "fresh link" in response.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_supabase_confirm_logs_failure_classification(client, monkeypatch):
+    warnings: list[dict[str, object]] = []
+
+    def _capture_warning(message: str, *args, **kwargs):  # noqa: ANN002, ANN003
+        warnings.append({"message": message, "args": args, "kwargs": kwargs})
+
+    async def _fake_exchange_detailed(*, token_hash: str, token_type: str):  # noqa: ARG001
+        return SimpleNamespace(
+            session=None,
+            failure=SimpleNamespace(category="expired", status_code=400, error_code="otp_expired"),
+        )
+
+    monkeypatch.setattr("app.http.routes.auth.logger.warning", _capture_warning)
+    monkeypatch.setattr(
+        "app.http.routes.auth.exchange_supabase_token_hash_detailed",
+        _fake_exchange_detailed,
+        raising=False,
+    )
+
+    response = await client.post(
+        "/api/auth/supabase/confirm",
+        json={"token_hash": "hash-expired-abc", "type": "magiclink"},
+    )
+
+    assert response.status_code == 400
+    assert warnings, "expected a structured warning log for supabase confirm failure"
+    extra = warnings[0]["kwargs"].get("extra")
+    assert isinstance(extra, dict)
+    assert extra.get("failure_category") == "expired"
+    assert extra.get("failure_status_code") == 400
+    assert extra.get("failure_error_code") == "otp_expired"
+    assert extra.get("confirm_type") == "magiclink"
+    assert isinstance(extra.get("confirm_correlation_id"), str)
 
 
 @pytest.mark.asyncio

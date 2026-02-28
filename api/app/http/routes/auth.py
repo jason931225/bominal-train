@@ -75,7 +75,7 @@ from app.services.auth import (
     utc_now,
 )
 from app.services.supabase_auth import (
-    exchange_supabase_token_hash,
+    exchange_supabase_token_hash_detailed,
     send_supabase_password_recovery,
     update_supabase_password,
     verify_supabase_password,
@@ -963,9 +963,25 @@ async def supabase_confirm(
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ) -> Response:
-    callback_session = await exchange_supabase_token_hash(token_hash=payload.token_hash, token_type=payload.type)
+    confirm_correlation_id = request.headers.get("x-request-id") or secrets.token_hex(8)
+    callback_result = await exchange_supabase_token_hash_detailed(token_hash=payload.token_hash, token_type=payload.type)
+    callback_session = callback_result.session
     if callback_session is None:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired authentication link")
+        failure = callback_result.failure
+        logger.warning(
+            "Supabase confirm failed",
+            extra={
+                "confirm_correlation_id": confirm_correlation_id,
+                "confirm_type": payload.type,
+                "failure_category": failure.category if failure else "invalid",
+                "failure_status_code": failure.status_code if failure else None,
+                "failure_error_code": failure.error_code if failure else None,
+            },
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired authentication link. Request a fresh link.",
+        )
 
     callback_user_id = callback_session.user_id
     callback_email = callback_session.email
