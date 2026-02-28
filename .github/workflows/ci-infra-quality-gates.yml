@@ -165,6 +165,12 @@ jobs:
           python3 -m pip install --upgrade pip
           python3 -m pip install -r api/requirements.txt
 
+      - name: Install uv for API mutation gate
+        if: steps.change_scope.outputs.critical_api_web_path_changed == 'true'
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
       - name: Run API mutation gate
         if: steps.change_scope.outputs.critical_api_web_path_changed == 'true'
         run: |
@@ -302,6 +308,10 @@ jobs:
       - name: Validate assertive-check scripts
         run: |
           bash infra/tests/test_assertive_checks.sh
+
+      - name: Validate API mutation gate fallback script
+        run: |
+          bash infra/tests/test_run_mutation_api.sh
 
       - name: Summarize quality-gate scope
         if: always()
