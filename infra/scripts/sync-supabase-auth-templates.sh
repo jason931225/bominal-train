@@ -176,7 +176,7 @@ resolve_uri_allow_list() {
   local site_url="$1"
   local raw="${SUPABASE_AUTH_REDIRECT_URLS:-}"
   if [[ -z "$raw" ]]; then
-    raw="${site_url}/auth/callback,${site_url}/reset-password,${site_url}/login"
+    raw="${site_url}/auth/verify,${site_url}/auth/confirm,${site_url}/reset-password,${site_url}/login"
   fi
 
   local urls=()

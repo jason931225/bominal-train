@@ -322,7 +322,7 @@ async def test_request_password_reset_uses_supabase_recovery_in_supabase_mode(cl
     assert response.status_code == 200
     assert captured["email"] == email
     assert captured["redirect_to"] is not None
-    assert captured["redirect_to"].endswith("/auth/callback")
+    assert captured["redirect_to"].endswith("/auth/verify?type=recovery")
     assert enqueued["count"] == 1
 
 
@@ -356,7 +356,7 @@ async def test_request_password_reset_falls_back_to_direct_delivery_when_enqueue
 
 
 @pytest.mark.asyncio
-async def test_supabase_callback_exchange_returns_recovery_mode_payload(client, monkeypatch):
+async def test_supabase_confirm_returns_recovery_mode_payload(client, monkeypatch):
     async def _fake_exchange(*, token_hash: str, token_type: str):  # noqa: ARG001
         return type(
             "CallbackSession",
@@ -367,7 +367,7 @@ async def test_supabase_callback_exchange_returns_recovery_mode_payload(client, 
     monkeypatch.setattr("app.http.routes.auth.exchange_supabase_token_hash", _fake_exchange, raising=False)
 
     response = await client.post(
-        "/api/auth/supabase/callback/exchange",
+        "/api/auth/supabase/confirm",
         json={"token_hash": "hash-abc", "type": "recovery"},
     )
     assert response.status_code == 200
@@ -378,7 +378,7 @@ async def test_supabase_callback_exchange_returns_recovery_mode_payload(client, 
 
 
 @pytest.mark.asyncio
-async def test_supabase_callback_exchange_magiclink_sets_cookie(client, monkeypatch):
+async def test_supabase_confirm_magiclink_sets_cookie(client, monkeypatch):
     async def _fake_exchange(*, token_hash: str, token_type: str):  # noqa: ARG001
         return type(
             "CallbackSession",
@@ -389,7 +389,7 @@ async def test_supabase_callback_exchange_magiclink_sets_cookie(client, monkeypa
     monkeypatch.setattr("app.http.routes.auth.exchange_supabase_token_hash", _fake_exchange, raising=False)
 
     response = await client.post(
-        "/api/auth/supabase/callback/exchange",
+        "/api/auth/supabase/confirm",
         json={"token_hash": "hash-abc", "type": "magiclink"},
     )
     assert response.status_code == 200
@@ -398,37 +398,26 @@ async def test_supabase_callback_exchange_magiclink_sets_cookie(client, monkeypa
 
 
 @pytest.mark.asyncio
-async def test_supabase_callback_exchange_recovery_accepts_access_token(client, monkeypatch):
-    def _fake_verify_supabase_jwt(token: str):  # noqa: ARG001
-        return {"sub": "supabase-user-001", "email": "recovery@example.com"}
-
-    monkeypatch.setattr("app.http.routes.auth.verify_supabase_jwt", _fake_verify_supabase_jwt, raising=False)
-
+async def test_supabase_confirm_rejects_access_token_contract(client):
     response = await client.post(
-        "/api/auth/supabase/callback/exchange",
-        json={"access_token": "jwt-token-abc-def-ghijkl", "type": "recovery"},
+        "/api/auth/supabase/confirm",
+        json={"access_token": "jwt-token-abc-def-ghijkl", "type": "magiclink"},
     )
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["mode"] == "recovery"
-    assert payload["access_token"] == "jwt-token-abc-def-ghijkl"
-    assert payload["redirect_to"].endswith("/reset-password?mode=supabase")
+    assert response.status_code == 422
 
 
 @pytest.mark.asyncio
-async def test_supabase_callback_exchange_magiclink_accepts_access_token_and_sets_cookie(client, monkeypatch):
-    def _fake_verify_supabase_jwt(token: str):  # noqa: ARG001
-        return {"sub": "supabase-user-001", "email": "magiclink@example.com"}
+async def test_supabase_confirm_rejects_invalid_or_expired_token_hash(client, monkeypatch):
+    async def _fake_exchange(*, token_hash: str, token_type: str):  # noqa: ARG001
+        return None
 
-    monkeypatch.setattr("app.http.routes.auth.verify_supabase_jwt", _fake_verify_supabase_jwt, raising=False)
+    monkeypatch.setattr("app.http.routes.auth.exchange_supabase_token_hash", _fake_exchange, raising=False)
 
     response = await client.post(
-        "/api/auth/supabase/callback/exchange",
-        json={"access_token": "jwt-token-abc-def-ghijkl", "type": "magiclink"},
+        "/api/auth/supabase/confirm",
+        json={"token_hash": "hash-expired-abc", "type": "magiclink"},
     )
-    assert response.status_code == 200
-    assert response.json()["mode"] == "magiclink"
-    assert response.cookies.get("bominal_session")
+    assert response.status_code == 400
 
 
 @pytest.mark.asyncio

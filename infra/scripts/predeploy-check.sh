@@ -239,7 +239,7 @@ require_non_local_https_csv_urls() {
   done
 }
 
-require_csv_contains_callback_path() {
+require_csv_contains_verify_path() {
   local value="$1"
   local name="$2"
   local found=0
@@ -255,13 +255,13 @@ require_csv_contains_callback_path() {
     if [[ "$without_scheme" == */* ]]; then
       path="/${without_scheme#*/}"
     fi
-    if [[ "$path" == "/auth/callback" ]] || [[ "$path" == "/auth/callback/"* ]]; then
+    if [[ "$path" == "/auth/verify" ]] || [[ "$path" == "/auth/verify/"* ]]; then
       found=1
       break
     fi
   done
   if [[ "$found" -ne 1 ]]; then
-    log_error "$name must include an /auth/callback URL."
+    log_error "$name must include an /auth/verify URL."
     exit 1
   fi
 }
@@ -767,10 +767,10 @@ require_non_local_https_url "$supabase_auth_site_url" "Supabase auth site URL"
 
 supabase_auth_redirect_urls="$(env_key_value "infra/env/prod/api.env" "SUPABASE_AUTH_REDIRECT_URLS")"
 if [[ -z "$supabase_auth_redirect_urls" ]]; then
-  supabase_auth_redirect_urls="${supabase_auth_site_url%/}/auth/callback,${supabase_auth_site_url%/}/reset-password,${supabase_auth_site_url%/}/login"
+  supabase_auth_redirect_urls="${supabase_auth_site_url%/}/auth/verify,${supabase_auth_site_url%/}/auth/confirm,${supabase_auth_site_url%/}/reset-password,${supabase_auth_site_url%/}/login"
 fi
 require_non_local_https_csv_urls "$supabase_auth_redirect_urls" "Supabase auth redirect URL"
-require_csv_contains_callback_path "$supabase_auth_redirect_urls" "Supabase auth redirect URL"
+require_csv_contains_verify_path "$supabase_auth_redirect_urls" "Supabase auth redirect URL"
 
 next_public_supabase_direct_auth_enabled="$(env_key_value "infra/env/prod/web.env" "NEXT_PUBLIC_SUPABASE_DIRECT_AUTH_ENABLED")"
 next_public_supabase_realtime_enabled="$(env_key_value "infra/env/prod/web.env" "NEXT_PUBLIC_SUPABASE_REALTIME_ENABLED")"

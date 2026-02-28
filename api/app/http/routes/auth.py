@@ -15,7 +15,6 @@ from sqlalchemy.orm import joinedload
 
 from app.http.deps import auth_rate_limit, get_current_approved_user, get_current_user
 from app.core.config import get_settings
-from app.core.supabase_jwt import SupabaseJWTError, verify_supabase_jwt
 from app.core.security import (
     async_hash_password,
     async_password_needs_rehash,
@@ -47,8 +46,8 @@ from app.schemas.auth import (
     PasswordResetConfirmRequest,
     PasswordResetRequest,
     RegisterRequest,
-    SupabaseCallbackExchangeRequest,
-    SupabaseCallbackExchangeResponse,
+    SupabaseConfirmRequest,
+    SupabaseConfirmResponse,
     SupabasePasswordResetConfirmRequest,
 )
 from app.schemas.notification import EmailTemplateBlock, EmailTemplateJobPayload
@@ -911,7 +910,7 @@ async def request_password_reset(
     supabase_recovery_ok = False
     if supabase_mode:
         supabase_recovery_requested = True
-        redirect_to = f"{_public_base_url()}/auth/callback"
+        redirect_to = f"{_public_base_url()}/auth/verify?type=recovery"
         supabase_recovery_ok = await send_supabase_password_recovery(email=user.email, redirect_to=redirect_to)
         if not supabase_recovery_ok:
             logger.warning("Supabase password recovery request failed for user %s", user.id)
@@ -954,45 +953,27 @@ async def request_password_reset(
 
 
 @public_router.post(
-    "/supabase/callback/exchange",
-    response_model=SupabaseCallbackExchangeResponse,
+    "/supabase/confirm",
+    response_model=SupabaseConfirmResponse,
     dependencies=[Depends(auth_rate_limit)],
 )
-async def supabase_callback_exchange(
-    payload: SupabaseCallbackExchangeRequest,
+async def supabase_confirm(
+    payload: SupabaseConfirmRequest,
     request: Request,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ) -> Response:
-    callback_user_id: str
-    callback_email: str
-    callback_access_token: str
+    callback_session = await exchange_supabase_token_hash(token_hash=payload.token_hash, token_type=payload.type)
+    if callback_session is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired authentication link")
 
-    if payload.token_hash:
-        callback_session = await exchange_supabase_token_hash(token_hash=payload.token_hash, token_type=payload.type)
-        if callback_session is None:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired authentication link")
-        callback_user_id = callback_session.user_id
-        callback_email = callback_session.email
-        callback_access_token = callback_session.access_token
-    else:
-        raw_access_token = str(payload.access_token or "").strip()
-        if not raw_access_token:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired authentication link")
-        try:
-            claims = verify_supabase_jwt(raw_access_token)
-        except SupabaseJWTError:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired authentication link")
-
-        callback_user_id = str(claims.get("sub") or "").strip()
-        if not callback_user_id:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired authentication link")
-        callback_email = str(claims.get("email") or "").strip().lower()
-        callback_access_token = raw_access_token
+    callback_user_id = callback_session.user_id
+    callback_email = callback_session.email
+    callback_access_token = callback_session.access_token
 
     if payload.type == "recovery":
-        logger.info("Supabase callback exchange completed", extra={"mode": "recovery"})
-        return SupabaseCallbackExchangeResponse(
+        logger.info("Supabase confirm completed", extra={"mode": "recovery"})
+        return SupabaseConfirmResponse(
             mode="recovery",
             redirect_to=f"{_public_base_url()}/reset-password?mode=supabase",
             access_token=callback_access_token,
@@ -1010,7 +991,7 @@ async def supabase_callback_exchange(
     await db.commit()
     background_tasks.add_task(_refresh_train_reservations_after_sign_in_background, user_id=user.id)
 
-    response_payload = SupabaseCallbackExchangeResponse(
+    response_payload = SupabaseConfirmResponse(
         mode="magiclink",
         redirect_to="/modules/train",
         access_token=callback_access_token,
@@ -1019,7 +1000,7 @@ async def supabase_callback_exchange(
     if background_tasks.tasks:
         response.background = background_tasks
     set_session_cookie(response, session_token, False)
-    logger.info("Supabase callback exchange completed", extra={"mode": "magiclink", "user_id": str(user.id)})
+    logger.info("Supabase confirm completed", extra={"mode": "magiclink", "user_id": str(user.id)})
     return response
 
 

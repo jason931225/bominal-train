@@ -1,42 +1,22 @@
-const SUPABASE_CALLBACK_TYPES = new Set(["recovery", "magiclink", "email", "signup"] as const);
+const SUPABASE_CONFIRM_TYPES = new Set(["recovery", "magiclink", "email", "signup"] as const);
 
-type SupabaseCallbackType = "recovery" | "magiclink" | "email" | "signup";
+type SupabaseConfirmType = "recovery" | "magiclink" | "email" | "signup";
 
-export type SupabaseCallbackExchangePayload =
-  | { token_hash: string; type: SupabaseCallbackType }
-  | { access_token: string; type: SupabaseCallbackType };
+export type SupabaseConfirmPayload = { token_hash: string; type: SupabaseConfirmType };
 
-function normalizeType(raw: string | null | undefined): SupabaseCallbackType | null {
+function normalizeType(raw: string | null | undefined): SupabaseConfirmType | null {
   const normalized = (raw ?? "").trim().toLowerCase();
-  if (!normalized || !SUPABASE_CALLBACK_TYPES.has(normalized as SupabaseCallbackType)) {
+  if (!normalized || !SUPABASE_CONFIRM_TYPES.has(normalized as SupabaseConfirmType)) {
     return null;
   }
-  return normalized as SupabaseCallbackType;
+  return normalized as SupabaseConfirmType;
 }
 
-export function resolveSupabaseCallbackExchangePayload(
-  searchParams: URLSearchParams,
-  locationHash: string,
-): SupabaseCallbackExchangePayload | null {
-  const queryTokenHash = searchParams.get("token_hash")?.trim() ?? "";
-  const queryType = normalizeType(searchParams.get("type"));
-
-  if (queryTokenHash && queryType) {
-    return { token_hash: queryTokenHash, type: queryType };
-  }
-
-  const hashParams = new URLSearchParams(locationHash.startsWith("#") ? locationHash.slice(1) : locationHash);
-  const hashAccessToken = hashParams.get("access_token")?.trim() ?? "";
-  const hashType = normalizeType(hashParams.get("type"));
-  const resolvedType = queryType ?? hashType;
-  if (!resolvedType) {
+export function resolveSupabaseConfirmPayload(searchParams: URLSearchParams): SupabaseConfirmPayload | null {
+  const tokenHash = searchParams.get("token_hash")?.trim() ?? "";
+  const resolvedType = normalizeType(searchParams.get("type"));
+  if (!resolvedType || tokenHash.length < 8) {
     return null;
   }
-  if (queryTokenHash) {
-    return { token_hash: queryTokenHash, type: resolvedType };
-  }
-  if (hashAccessToken) {
-    return { access_token: hashAccessToken, type: resolvedType };
-  }
-  return null;
+  return { token_hash: tokenHash, type: resolvedType };
 }
