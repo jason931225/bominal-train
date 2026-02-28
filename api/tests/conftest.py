@@ -24,6 +24,7 @@ get_settings.cache_clear()
 
 from app.db.models import Base, Role
 from app.db.session import get_db
+from app.http.routes import auth as auth_routes
 from app.main import app
 
 
@@ -99,10 +100,13 @@ async def client(db_session_factory):
             yield session
 
     app.dependency_overrides[get_db] = override_get_db
+    original_auth_session_local = auth_routes.SessionLocal
+    auth_routes.SessionLocal = db_session_factory
 
     async with CompatAsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as async_client:
         yield async_client
 
+    auth_routes.SessionLocal = original_auth_session_local
     app.dependency_overrides.clear()
 
 
