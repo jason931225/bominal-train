@@ -8,6 +8,7 @@ PREDEPLOY_FILE="$ROOT_DIR/infra/scripts/predeploy-check.sh"
 DEPLOY_FILE="$ROOT_DIR/infra/scripts/deploy.sh"
 SYNC_SUPABASE_AUTH_TEMPLATES_SCRIPT="$ROOT_DIR/infra/scripts/sync-supabase-auth-templates.sh"
 COMPOSE_FILE="$ROOT_DIR/infra/docker-compose.prod.yml"
+CADDY_FILE="$ROOT_DIR/infra/caddy/Caddyfile"
 WALLET_SCHEMA_FILE="$ROOT_DIR/api/app/schemas/wallet.py"
 ADMIN_ROUTES_FILE="$ROOT_DIR/api/app/http/routes/admin.py"
 
@@ -39,6 +40,9 @@ assert_contains "load_runtime_api_secrets_from_gsm" "$DEPLOY_FILE" "deploy missi
 assert_contains "INTERNAL_API_KEY_SECRET_ID" "$DEPLOY_FILE" "deploy missing internal gsm reference resolution"
 assert_contains "RESEND_API_KEY_SECRET_ID" "$DEPLOY_FILE" "deploy missing resend gsm reference resolution"
 assert_contains "export INTERNAL_API_KEY" "$DEPLOY_FILE" "deploy does not export INTERNAL_API_KEY runtime value"
+assert_contains "DEPLOY_WEB_CANARY_ENABLED" "$DEPLOY_FILE" "deploy missing web canary toggle"
+assert_contains "start_web_canary" "$DEPLOY_FILE" "deploy missing web canary bootstrap"
+assert_contains "check_auth_callback_route" "$DEPLOY_FILE" "deploy missing auth callback smoke guard"
 
 assert_contains "SUPABASE_MANAGEMENT_API_TOKEN_SECRET_ID" "$SYNC_SUPABASE_AUTH_TEMPLATES_SCRIPT" "sync script missing supabase management token secret reference"
 assert_contains "gcloud secrets versions access" "$SYNC_SUPABASE_AUTH_TEMPLATES_SCRIPT" "sync script missing gsm token resolution"
@@ -46,10 +50,18 @@ assert_contains "--apply in production requires SUPABASE_MANAGEMENT_API_TOKEN_SE
 
 assert_contains "INTERNAL_API_KEY:[[:space:]]+\\$\\{INTERNAL_API_KEY:-\\}" "$COMPOSE_FILE" "compose api/worker missing INTERNAL_API_KEY passthrough"
 assert_contains "RESEND_API_KEY:[[:space:]]+\\$\\{RESEND_API_KEY:-\\}" "$COMPOSE_FILE" "compose api/worker missing RESEND_API_KEY passthrough"
+assert_contains "web-canary:" "$COMPOSE_FILE" "compose missing web-canary service"
+assert_contains "127\\.0\\.0\\.1:3001:3000" "$COMPOSE_FILE" "compose web-canary port mapping missing"
+assert_contains "host\\.docker\\.internal:host-gateway" "$COMPOSE_FILE" "compose caddy host-gateway mapping missing"
 if rg -n -- '\./env/prod/pay\.env' "$COMPOSE_FILE" >/dev/null; then
   echo "FAIL: compose must not reference retired pay.env" >&2
   exit 1
 fi
+
+assert_contains "/health/live /health/ready" "$CADDY_FILE" "caddy api matcher missing live/ready routes"
+assert_contains "handle_errors" "$CADDY_FILE" "caddy missing callback unavailability error handler"
+assert_contains "path /auth/verify\\* /auth/confirm\\*" "$CADDY_FILE" "caddy missing callback error scope matcher"
+assert_contains "host\\.docker\\.internal:3000 host\\.docker\\.internal:3001" "$CADDY_FILE" "caddy missing dual web upstream failover"
 
 assert_contains "field is no longer accepted" "$WALLET_SCHEMA_FILE" "wallet schema must reject cvv plaintext input"
 assert_contains "plaintext card fields are not accepted when PAYMENT_PROVIDER=evervault" "$WALLET_SCHEMA_FILE" "wallet schema must reject plaintext fallback in evervault mode"

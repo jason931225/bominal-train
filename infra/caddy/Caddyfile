@@ -30,12 +30,34 @@ bominal.com {
 		respond "{\"detail\":\"Sign up is currently disabled\"}" 403
 	}
 
-	@api path /api /api/* /docs /docs/* /openapi.json /redoc /health /healthz
+	@api path /api /api/* /docs /docs/* /openapi.json /redoc /health /healthz /health/live /health/ready
 	handle @api {
 		reverse_proxy api:8000
 	}
 
+	handle_errors {
+		@auth_callback_unavailable {
+			path /auth/verify* /auth/confirm*
+			expression {http.error.status_code} >= 502 && {http.error.status_code} <= 504
+		}
+		handle @auth_callback_unavailable {
+			header Cache-Control "no-store, no-cache, must-revalidate, max-age=0"
+			header Pragma "no-cache"
+			header Content-Type "text/html; charset=utf-8"
+			respond "<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>bominal</title><style>body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:#f4f7ff;color:#17203a;display:flex;min-height:100vh;align-items:center;justify-content:center;padding:24px}.card{max-width:520px;background:#fff;border-radius:18px;box-shadow:0 18px 40px rgba(20,30,60,.12);padding:28px 24px;text-align:center}h1{margin:0 0 10px;font-size:28px;line-height:1.2}p{margin:0 0 18px;color:#4d5d7a;line-height:1.5}.actions{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}a{display:inline-block;text-decoration:none;font-weight:600;padding:10px 16px;border-radius:9999px}.primary{background:#5d79c7;color:#fff}.secondary{background:#e7ecfb;color:#27396d}</style></head><body><section class='card'><h1>Please retry your link</h1><p>bominal is finishing an update. Your recovery link is still valid. Try again in a few seconds.</p><div class='actions'><a class='primary' href=''>Retry now</a><a class='secondary' href='/forgot-password'>Request a new reset link</a></div></section></body></html>" 503
+		}
+	}
+
 	handle {
-		reverse_proxy web:3000
+		reverse_proxy {
+			to host.docker.internal:3000 host.docker.internal:3001
+			lb_policy first
+			lb_try_duration 3s
+			lb_try_interval 200ms
+			health_uri /
+			health_interval 5s
+			health_timeout 2s
+			fail_duration 20s
+		}
 	}
 }

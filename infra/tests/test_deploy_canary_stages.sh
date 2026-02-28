@@ -60,9 +60,10 @@ if [[ "${1:-}" == "compose" ]]; then
     compose_up_count="$((compose_up_count + 1))"
     echo "$compose_up_count" > "${COMPOSE_UP_COUNT_FILE:?}"
 
-    # Initial deploy on a running stack executes 5 compose "up" calls.
-    # Fail rollback deploy services by failing the first "up" after that point.
-    if [[ "${SIMULATE_ROLLBACK_DEPLOY_FAILURE:-0}" == "1" ]] && [[ "$compose_up_count" -ge 6 ]]; then
+    # Initial deploy on a running stack executes 6 compose "up" calls
+    # (redis, api, worker, web-canary, web, caddy). Fail rollback deploy
+    # services by failing the first "up" after that point.
+    if [[ "${SIMULATE_ROLLBACK_DEPLOY_FAILURE:-0}" == "1" ]] && [[ "$compose_up_count" -ge 7 ]]; then
       exit 1
     fi
   fi

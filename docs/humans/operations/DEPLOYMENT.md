@@ -20,7 +20,7 @@ Compatibility notice:
 
 ### How It Works
 
-The deployment uses Docker Compose health checks and the `--wait` flag:
+The deployment uses Docker Compose health checks plus callback-route smoke checks:
 
 1. **Preflight Phase** - Deploy lock + strict preflight checks run before image pull/deploy mutation.
 2. **Deploy Phase** - Script branches by runtime state:
@@ -28,11 +28,13 @@ The deployment uses Docker Compose health checks and the `--wait` flag:
    - running stack: image-aware rolling updates with `--no-deps` per service
      - roll only changed services across: `api`, `worker`, `web`
      - unchanged services are skipped to reduce restart churn and blast radius
-3. **Verify Phase** - External health checks confirm the deployment:
-   - Docker starts the new container
-   - Health check runs repeatedly until container is healthy
-   - Only after new container is healthy does Docker stop the old one
-4. **Failure Phase** - On smoke-check failure, script can auto-trigger rollback to previous deployment.
+3. **Web Failover Phase** - when `web` changes and canary is enabled:
+   - start `web-canary` (`127.0.0.1:3001`) on the target image and wait healthy
+   - verify `/auth/verify?...type=recovery` through Caddy returns non-5xx
+   - restart primary `web` (`127.0.0.1:3000`) while Caddy can fail over to canary
+   - verify callback route again, then stop/remove `web-canary`
+4. **Verify Phase** - health checks confirm API/web + callback-route reachability.
+5. **Failure Phase** - on smoke-check failure, script can auto-trigger rollback to previous deployment (and intentionally leaves canary running when needed for continuity).
 
 ### Health Check Configuration
 
@@ -44,13 +46,15 @@ Each service has a health check in `docker-compose.prod.yml`:
 | egress-train | `wget --spider` (port 8080/health) | 10s |
 | api | Python urllib (port 8000/health/live) | 300s |
 | worker | Python proc check for `app.worker.WorkerSettings` | 15s |
-| web      | `wget --spider` (port 3000) | 60s |
+| web      | Node `fetch` (port 3000) | 60s |
+| web-canary | Node `fetch` (port 3000) | 60s |
 | caddy    | `wget` (admin API port 2019) | 30s |
 
 API health endpoints:
 - `GET /health/live` -> liveness-only (process up, no dependency probes).
 - `GET /health/ready` -> readiness with DB + Redis dependency probes.
 - `GET /health` remains backward-compatible and mirrors readiness.
+- Caddy ingress now forwards `/health`, `/health/live`, and `/health/ready` to API.
 
 Production profile currently disables the restaurant module (`RESTAURANT_MODULE_ENABLED=false`) and does not run `egress-restaurant`.
 `infra/scripts/deploy.sh` now enforces this at runtime by trimming stale `bominal-egress-restaurant` containers before deploy/rollback mutation.
@@ -76,7 +80,8 @@ sudo -u bominal /opt/bominal/repo/infra/scripts/deploy.sh --status
 ```
 
 Optional image override envs (for controlled/manual rollouts):
-- `API_IMAGE`, `WORKER_IMAGE`, `WEB_IMAGE`
+- `API_IMAGE`, `WORKER_IMAGE`, `WEB_IMAGE`, `WEB_CANARY_IMAGE`
+- `DEPLOY_WEB_CANARY_ENABLED=true|false` controls web-canary failover (default `true`)
 - Backward-compatible split overrides are still accepted but should be removed from operator automation.
 
 Evervault secret sourcing (production):
@@ -97,6 +102,9 @@ Evervault secret sourcing (production):
   - compose config validation
   - resource profile threshold gate (memory/swap)
 - Smoke checks are retry-based and tunable (`SMOKE_MAX_ATTEMPTS`, `SMOKE_RETRY_DELAY_SECONDS`).
+- Auth callback smoke gate is enforced during deploy and verify:
+  - probe path: `/auth/verify?token_hash=aaaaaaaa&type=recovery`
+  - deploy fails on callback `5xx` responses
 - Auto rollback on smoke failure is enabled by default (`AUTO_ROLLBACK_ON_SMOKE_FAILURE=true`).
 - Evervault relay verification is disabled by default and reserved for troubleshooting:
   - `DEPLOY_EVERVAULT_RELAY_VERIFY_ENABLED=false` (default)
@@ -122,8 +130,8 @@ Evervault secret sourcing (production):
   - `DEPLOY_MIN_TOTAL_MEMORY_MB` (default `900`)
   - `DEPLOY_MIN_TOTAL_SWAP_MB` (default `900`)
 - e2-micro tuned service limits in production compose:
-  - `api=352M`, `web=224M`, `worker=128M`, `egress-train=64M`, `redis=48M`, `caddy=64M`
-  - explicit service-limit total: `880M` (keeps host-level headroom)
+  - steady-state: `api=320M`, `web=200M`, `worker=224M`, `egress-train=96M`, `redis=64M`
+  - rollout-only: `web-canary=200M` (temporary during web cutover windows)
 - Deprecation deploy gate is enforced during predeploy:
   - registry: `docs/deprecations/registry.json`
   - policy: `docs/governance/DEPRECATION_POLICY.md`

@@ -186,10 +186,13 @@ API_ONLY_CALLS="$TMP_DIR/api-only.calls"
 API_ONLY_OUT="$TMP_DIR/api-only.out"
 MISSING_WORKER_CALLS="$TMP_DIR/missing-worker.calls"
 MISSING_WORKER_OUT="$TMP_DIR/missing-worker.out"
+WEB_ONLY_CALLS="$TMP_DIR/web-only.calls"
+WEB_ONLY_OUT="$TMP_DIR/web-only.out"
 
 run_case 0 0 0 1 "$UNCHANGED_CALLS" "$UNCHANGED_OUT"
 run_case 1 0 0 1 "$API_ONLY_CALLS" "$API_ONLY_OUT"
 run_case 0 0 0 0 "$MISSING_WORKER_CALLS" "$MISSING_WORKER_OUT"
+run_case 0 0 1 1 "$WEB_ONLY_CALLS" "$WEB_ONLY_OUT"
 
 if ! matches_pattern "up -d --wait( --remove-orphans)? redis$" "$UNCHANGED_CALLS"; then
   echo "FAIL: unchanged-image case did not run base redis stage" >&2
@@ -230,6 +233,30 @@ fi
 if matches_pattern "up -d --wait( --remove-orphans)? --no-deps api|up -d --wait( --remove-orphans)? --no-deps web" "$MISSING_WORKER_CALLS"; then
   echo "FAIL: missing-worker case rolled unrelated services" >&2
   cat "$MISSING_WORKER_CALLS" >&2
+  exit 1
+fi
+
+if ! matches_pattern "up -d --wait( --remove-orphans)? --no-deps web-canary" "$WEB_ONLY_CALLS"; then
+  echo "FAIL: web-only case did not start web-canary before web rollout" >&2
+  cat "$WEB_ONLY_CALLS" >&2
+  exit 1
+fi
+
+if ! matches_pattern "up -d --wait( --remove-orphans)? --no-deps web" "$WEB_ONLY_CALLS"; then
+  echo "FAIL: web-only case did not roll web service" >&2
+  cat "$WEB_ONLY_CALLS" >&2
+  exit 1
+fi
+
+if ! matches_pattern "stop web-canary|rm -f web-canary" "$WEB_ONLY_CALLS"; then
+  echo "FAIL: web-only case did not clean up web-canary service" >&2
+  cat "$WEB_ONLY_CALLS" >&2
+  exit 1
+fi
+
+if matches_pattern "up -d --wait( --remove-orphans)? --no-deps api|up -d --wait( --remove-orphans)? --no-deps worker" "$WEB_ONLY_CALLS"; then
+  echo "FAIL: web-only case rolled unrelated services" >&2
+  cat "$WEB_ONLY_CALLS" >&2
   exit 1
 fi
 

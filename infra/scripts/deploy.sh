@@ -16,6 +16,7 @@
 #   API_IMAGE        - Override monolithic API image URL
 #   WORKER_IMAGE     - Override worker image URL
 #   WEB_IMAGE        - Override web image URL
+#   WEB_CANARY_IMAGE - Override web-canary image URL (defaults to WEB_IMAGE)
 #   INTERNAL_API_KEY - Optional runtime override (can be GSM-resolved via *_SECRET_ID/_VERSION)
 #   RESEND_API_KEY   - Optional runtime override (can be GSM-resolved via *_SECRET_ID/_VERSION)
 #   DEPLOY_DOCKER_PRUNE_UNUSED_IMAGES - prune unused images post-verify (default: true)
@@ -55,9 +56,11 @@ DB_SLO_LOG_WINDOW_MINUTES="${DB_SLO_LOG_WINDOW_MINUTES:-30}"
 DB_SLO_AUTH_TIMEOUT_PATTERN="${DB_SLO_AUTH_TIMEOUT_PATTERN:-TimeoutError|QueryCanceledError}"
 DEPLOY_LOCK_FALLBACK_DIR=""
 DEPLOY_FAIL_ON_DIRTY_REPO="${DEPLOY_FAIL_ON_DIRTY_REPO:-false}"
+DEPLOY_WEB_CANARY_ENABLED="${DEPLOY_WEB_CANARY_ENABLED:-true}"
 DEPLOY_API_CHANGED="true"
 DEPLOY_WORKER_CHANGED="true"
 DEPLOY_WEB_CHANGED="true"
+WEB_CANARY_IMAGE="${WEB_CANARY_IMAGE:-}"
 PROD_API_ENV_FILE="infra/env/prod/api.env"
 EVERVAULT_RELAY_PROBE_SCRIPT="${EVERVAULT_RELAY_PROBE_SCRIPT:-$SCRIPT_DIR/evervault-relay-probe.sh}"
 
@@ -903,9 +906,11 @@ do_rollback() {
   fi
 
   current_commit="$(get_current_version)"
+  export WEB_CANARY_IMAGE="${WEB_CANARY_IMAGE:-$WEB_IMAGE}"
 
   pull_images || return 1
   deploy_services || return 1
+  stop_web_canary
 
   echo "$prev_commit" > "$DEPLOY_HISTORY_DIR/current"
   echo "$current_commit" > "$DEPLOY_HISTORY_DIR/previous"
@@ -928,13 +933,15 @@ configure_docker_auth() {
 
 pull_images() {
   local image
-  local -a images_to_pull=("$API_IMAGE" "$WORKER_IMAGE" "$WEB_IMAGE")
+  local canary_image="${WEB_CANARY_IMAGE:-$WEB_IMAGE}"
+  local -a images_to_pull=("$API_IMAGE" "$WORKER_IMAGE" "$WEB_IMAGE" "$canary_image")
   local seen_images=$'\n'
 
   log_info "Pulling images from GHCR..."
   log_info "  API: $API_IMAGE"
   log_info "  Worker: $WORKER_IMAGE"
   log_info "  Web: $WEB_IMAGE"
+  log_info "  Web canary: $canary_image"
 
   for image in "${images_to_pull[@]}"; do
     [[ -z "$image" ]] && continue
@@ -949,6 +956,50 @@ pull_images() {
     fi
   done
   log_ok "Images pulled successfully"
+}
+
+web_canary_enabled() {
+  is_truthy_bool "$DEPLOY_WEB_CANARY_ENABLED"
+}
+
+stop_web_canary() {
+  if ! web_canary_enabled; then
+    return 0
+  fi
+
+  log_info "Stopping web-canary service..."
+  if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" stop web-canary >/dev/null 2>&1; then
+    log_warn "Could not stop web-canary cleanly (continuing)."
+  fi
+  if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" rm -f web-canary >/dev/null 2>&1; then
+    log_warn "Could not remove web-canary cleanly (continuing)."
+  fi
+  return 0
+}
+
+start_web_canary() {
+  if ! web_canary_enabled; then
+    log_info "Web canary is disabled (DEPLOY_WEB_CANARY_ENABLED=$DEPLOY_WEB_CANARY_ENABLED)."
+    return 0
+  fi
+
+  export WEB_CANARY_IMAGE="${WEB_CANARY_IMAGE:-$WEB_IMAGE}"
+  log_info "Starting web-canary service with image: $WEB_CANARY_IMAGE"
+  if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait --remove-orphans --no-deps web-canary; then
+    log_error "Failed to start web-canary service"
+    return 1
+  fi
+  log_ok "web-canary is healthy"
+}
+
+check_auth_callback_route() {
+  local context="${1:-deploy}"
+  if ! curl -fsS --max-time 8 -I 'http://127.0.0.1/auth/verify?token_hash=aaaaaaaa&type=recovery' >/dev/null 2>&1; then
+    log_error "Auth callback smoke check ($context) failed."
+    return 1
+  fi
+
+  log_ok "Auth callback smoke check ($context) passed."
 }
 
 deploy_services() {
@@ -989,13 +1040,38 @@ deploy_services() {
     fi
 
     if [[ "$DEPLOY_WEB_CHANGED" == "true" ]]; then
+      local web_canary_started="false"
+      if web_canary_enabled; then
+        if ! start_web_canary; then
+          return 1
+        fi
+        web_canary_started="true"
+        if ! check_auth_callback_route "pre-web-rollout canary"; then
+          log_warn "Callback smoke check failed before web restart; continuing because verify phase will enforce rollback on failure."
+        fi
+      else
+        log_warn "Web canary disabled; web restart may briefly interrupt callback traffic."
+      fi
+
       log_info "Deploying web service..."
       if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait --remove-orphans --no-deps web; then
         log_error "Failed to deploy web service"
+        if [[ "$web_canary_started" == "true" ]]; then
+          log_warn "Keeping web-canary running after web rollout failure."
+        fi
         return 1
+      fi
+
+      if ! check_auth_callback_route "post-web-rollout"; then
+        log_warn "Callback smoke check failed immediately after web rollout; verify phase will enforce rollback if still failing."
+      fi
+
+      if [[ "$web_canary_started" == "true" ]]; then
+        stop_web_canary
       fi
     else
       log_info "Skipping web rollout (image unchanged)."
+      stop_web_canary
     fi
 
     # Keep Caddy reconciliation isolated so unchanged dependencies are not
@@ -1049,6 +1125,10 @@ verify_deployment() {
 
   if [[ $attempt -gt $max_attempts ]]; then
     log_error "Web health check failed after $max_attempts attempts"
+    return 1
+  fi
+
+  if ! check_auth_callback_route "post-deploy verify"; then
     return 1
   fi
 
@@ -1345,11 +1425,13 @@ main() {
       echo "  API_IMAGE        Override API image URL"
       echo "  WORKER_IMAGE     Override worker image URL"
       echo "  WEB_IMAGE        Override web image URL"
+      echo "  WEB_CANARY_IMAGE Override web-canary image URL (defaults to WEB_IMAGE)"
       echo "  MASTER_KEY_OVERRIDE Deploy-time runtime override for MASTER_KEY (set automatically when GSM is enabled)"
       echo "  INTERNAL_API_KEY Deploy-time runtime override for INTERNAL_API_KEY (can be GSM-resolved)"
       echo "  RESEND_API_KEY   Deploy-time runtime override for RESEND_API_KEY (can be GSM-resolved)"
       echo "  DEPLOY_HISTORY_DIR Override deployment history dir (default: /opt/bominal/deployments)"
       echo "  DEPLOY_FAIL_ON_DIRTY_REPO=true  Block deploy when tracked repo changes are present"
+      echo "  DEPLOY_WEB_CANARY_ENABLED=true  Use web-canary failover during web rollouts (default: true)"
       echo "  DEPLOY_EVERVAULT_RELAY_VERIFY_ENABLED=true  Run optional Evervault relay verification (troubleshooting only)"
       echo "  DEPLOY_EVERVAULT_RELAY_PROVIDER_PROBES_ENABLED=true  Include provider relay POST probes (can consume relay credits)"
       echo "  DB_SLO_GATE_ENABLED=true  Enable optional DB-path regression gate after health checks"
@@ -1388,6 +1470,7 @@ main() {
     export WORKER_IMAGE="${WORKER_IMAGE:-$API_IMAGE}"
     export WEB_IMAGE="${WEB_IMAGE:-${GHCR_NAMESPACE}/web:latest}"
   fi
+  export WEB_CANARY_IMAGE="${WEB_CANARY_IMAGE:-$WEB_IMAGE}"
 
   pull_images
 
@@ -1434,6 +1517,7 @@ main() {
   log_info "  API: $API_IMAGE"
   log_info "  Worker: $WORKER_IMAGE"
   log_info "  Web: $WEB_IMAGE"
+  log_info "  Web canary: $WEB_CANARY_IMAGE"
 
   if [[ "$deploy_commit" == "$prev_version" ]]; then
     log_warn "Commit $deploy_commit is already deployed. Deploying anyway..."

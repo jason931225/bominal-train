@@ -112,37 +112,37 @@ UPDATE_OUT="$TMP_DIR/update.out"
 run_case 0 "$FIRST_OUT" "$FIRST_CALLS"
 run_case 1 "$UPDATE_OUT" "$UPDATE_CALLS"
 
-if ! rg -q "up -d --wait redis api worker web caddy" "$FIRST_CALLS"; then
+if ! rg -q "up -d --wait( --remove-orphans)? redis api worker web caddy" "$FIRST_CALLS"; then
   echo "FAIL: first deploy did not use bootstrap-safe path" >&2
   cat "$FIRST_CALLS" >&2
   exit 1
 fi
 
-if ! rg -q "up -d --wait redis$" "$UPDATE_CALLS"; then
+if ! rg -q "up -d --wait( --remove-orphans)? redis$" "$UPDATE_CALLS"; then
   echo "FAIL: rolling deploy did not run base redis step" >&2
   cat "$UPDATE_CALLS" >&2
   exit 1
 fi
 
-if ! rg -q "up -d --wait --no-deps api" "$UPDATE_CALLS"; then
+if ! rg -q "up -d --wait( --remove-orphans)? --no-deps api" "$UPDATE_CALLS"; then
   echo "FAIL: rolling deploy did not use no-deps api update step" >&2
   cat "$UPDATE_CALLS" >&2
   exit 1
 fi
 
-if ! rg -q "up -d --wait --no-deps worker" "$UPDATE_CALLS"; then
+if ! rg -q "up -d --wait( --remove-orphans)? --no-deps worker" "$UPDATE_CALLS"; then
   echo "FAIL: rolling deploy did not use no-deps worker update step" >&2
   cat "$UPDATE_CALLS" >&2
   exit 1
 fi
 
-if ! rg -q "up -d --wait --no-deps web" "$UPDATE_CALLS"; then
+if ! rg -q "up -d --wait( --remove-orphans)? --no-deps web" "$UPDATE_CALLS"; then
   echo "FAIL: rolling deploy did not roll web service when changed" >&2
   cat "$UPDATE_CALLS" >&2
   exit 1
 fi
 
-if ! rg -q "up -d --wait --no-deps caddy" "$UPDATE_CALLS"; then
+if ! rg -q "up -d --wait( --remove-orphans)? --no-deps caddy" "$UPDATE_CALLS"; then
   echo "FAIL: rolling deploy did not isolate caddy reconciliation with --no-deps" >&2
   cat "$UPDATE_CALLS" >&2
   exit 1
