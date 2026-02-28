@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { useLocale } from "@/components/locale-provider";
@@ -22,58 +22,54 @@ export default function AuthConfirmPage() {
   const searchParams = useSearchParams();
   const { t } = useLocale();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
+  const confirmPayload = useMemo(
+    () => resolveSupabaseConfirmPayload(new URLSearchParams(searchParams.toString())),
+    [searchParams],
+  );
+  const normalizedNext = useMemo(() => {
+    const nextPath = searchParams.get("next")?.trim();
+    return nextPath && nextPath.startsWith("/") ? nextPath : null;
+  }, [searchParams]);
 
-    async function runConfirm() {
-      const confirmPayload = resolveSupabaseConfirmPayload(
-        new URLSearchParams(searchParams.toString()),
-      );
-      const nextPath = searchParams.get("next")?.trim();
-      const normalizedNext = nextPath && nextPath.startsWith("/") ? nextPath : null;
-      if (!confirmPayload) {
-        setErrorMessage(t("auth.callbackInvalidLink"));
+  async function onContinue() {
+    if (!confirmPayload) {
+      setErrorMessage(t("auth.callbackInvalidLink"));
+      return;
+    }
+
+    setSubmitting(true);
+    setErrorMessage(null);
+    try {
+      const response = await fetch(`${clientApiBaseUrl}/api/auth/supabase/confirm`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(confirmPayload),
+      });
+      if (!response.ok) {
+        setErrorMessage(t("auth.callbackFailed"));
         return;
       }
 
-      try {
-        const response = await fetch(`${clientApiBaseUrl}/api/auth/supabase/confirm`, {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(confirmPayload),
-        });
-        if (!response.ok) {
-          if (!cancelled) {
-            setErrorMessage(t("auth.callbackFailed"));
-          }
-          return;
-        }
-
-        const payload = (await response.json()) as SupabaseConfirmResponse;
-        if (payload.access_token) {
-          cacheSupabaseAccessToken(payload.access_token);
-        }
-        if (payload.mode === "recovery") {
-          router.replace(`${ROUTES.resetPassword}?mode=supabase`);
-          return;
-        }
-
-        const destination = payload.redirect_to?.trim() || normalizedNext || ROUTES.modules.train;
-        router.replace(destination);
-      } catch {
-        if (!cancelled) {
-          setErrorMessage(t("auth.callbackFailed"));
-        }
+      const payload = (await response.json()) as SupabaseConfirmResponse;
+      if (payload.access_token) {
+        cacheSupabaseAccessToken(payload.access_token);
       }
-    }
+      if (payload.mode === "recovery") {
+        router.replace(`${ROUTES.resetPassword}?mode=supabase`);
+        return;
+      }
 
-    void runConfirm();
-    return () => {
-      cancelled = true;
-    };
-  }, [router, searchParams, t]);
+      const destination = payload.redirect_to?.trim() || normalizedNext || ROUTES.modules.train;
+      router.replace(destination);
+    } catch {
+      setErrorMessage(t("auth.callbackFailed"));
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   return (
     <section className={`mx-auto w-full max-w-md ${UI_CARD_LG}`}>
@@ -91,7 +87,19 @@ export default function AuthConfirmPage() {
           </div>
         </>
       ) : (
-        <p className={`mt-2 ${UI_BODY_MUTED}`}>{t("auth.callbackProcessing")}</p>
+        <>
+          <p className={`mt-2 ${UI_BODY_MUTED}`}>{t("auth.callbackProcessing")}</p>
+          <button
+            type="button"
+            className="mt-6 inline-flex w-full items-center justify-center rounded-xl bg-blossom-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blossom-700 disabled:cursor-not-allowed disabled:opacity-60"
+            onClick={() => {
+              void onContinue();
+            }}
+            disabled={submitting}
+          >
+            {submitting ? t("auth.callbackProcessing") : t("auth.continue")}
+          </button>
+        </>
       )}
     </section>
   );

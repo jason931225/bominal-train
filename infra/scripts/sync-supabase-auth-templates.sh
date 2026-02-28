@@ -12,9 +12,11 @@ RECOVERY_TEMPLATE="$TEMPLATE_DIR/reset-password.html"
 PROD_API_ENV="$ROOT_DIR/infra/env/prod/api.env"
 PROD_WEB_ENV="$ROOT_DIR/infra/env/prod/web.env"
 PROD_CADDY_ENV="$ROOT_DIR/infra/env/prod/caddy.env"
+SNAPSHOT_DIR="$ROOT_DIR/infra/supabase/auth-templates/snapshots"
 
-apply_mode=false
+mode="dry-run"
 project_ref_override=""
+snapshot_file_override=""
 
 usage() {
   cat <<'USAGE'
@@ -24,8 +26,10 @@ Sync bominal auth email templates to Supabase project auth config.
 
 Modes:
   --dry-run              Build payload and validate files (default)
+  --inspect              Fetch and summarize current remote auth template config
   --apply                Execute Supabase Management API PATCH request
   --project-ref <ref>    Explicit Supabase project ref (otherwise auto-detected)
+  --snapshot-file <path> Save fetched auth config JSON snapshot to this path
 
 Project ref auto-detection order:
   1) --project-ref
@@ -39,6 +43,13 @@ Auth token for --apply:
     SUPABASE_MANAGEMENT_API_TOKEN_PROJECT_ID, else GCP_PROJECT_ID)
   Non-production fallback: SUPABASE_MANAGEMENT_API_TOKEN or SUPABASE_ACCESS_TOKEN
 USAGE
+}
+
+default_snapshot_file() {
+  local project_ref="$1"
+  local timestamp
+  timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+  printf '%s' "$SNAPSHOT_DIR/auth-config-${project_ref}-${timestamp}.json"
 }
 
 extract_project_ref_from_url() {
@@ -312,14 +323,115 @@ resolve_management_token() {
   printf '%s' "$token"
 }
 
+fetch_auth_config_json() {
+  local project_ref="$1"
+  local auth_header_file="$2"
+  local snapshot_file="$3"
+
+  local tmp_response_file
+  tmp_response_file="$(mktemp)"
+
+  local api_url
+  api_url="https://api.supabase.com/v1/projects/${project_ref}/config/auth"
+  local http_code
+  http_code="$(
+    curl -sS -o "$tmp_response_file" -w "%{http_code}" \
+      -H "@$auth_header_file" \
+      "$api_url"
+  )"
+
+  if [[ ! "$http_code" =~ ^2[0-9][0-9]$ ]]; then
+    local response_preview
+    response_preview="$(head -c 400 "$tmp_response_file" | tr '\n' ' ' | tr '\r' ' ')"
+    log_error "Supabase auth config inspect failed (HTTP ${http_code})."
+    if [[ -n "$response_preview" ]]; then
+      log_error "Response preview: $response_preview"
+    fi
+    rm -f "$tmp_response_file"
+    return 1
+  fi
+
+  python3 - "$tmp_response_file" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+payload_path = Path(sys.argv[1])
+try:
+    parsed = json.loads(payload_path.read_text(encoding="utf-8"))
+except Exception as exc:
+    print(f"Supabase auth inspect response is not valid JSON: {exc}", file=sys.stderr)
+    raise SystemExit(1)
+
+if not isinstance(parsed, dict):
+    print("Supabase auth inspect response must be a JSON object.", file=sys.stderr)
+    raise SystemExit(1)
+PY
+
+  mkdir -p "$(dirname "$snapshot_file")"
+  cp "$tmp_response_file" "$snapshot_file"
+  rm -f "$tmp_response_file"
+}
+
+summarize_auth_config_snapshot() {
+  local snapshot_file="$1"
+
+  python3 - "$snapshot_file" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+snapshot_path = Path(sys.argv[1])
+payload = json.loads(snapshot_path.read_text(encoding="utf-8"))
+
+template_keys = sorted(k for k in payload if k.startswith("mailer_templates_") and k.endswith("_content"))
+subject_keys = sorted(k for k in payload if k.startswith("mailer_subjects_"))
+
+expected_templates = [
+    "mailer_templates_confirmation_content",
+    "mailer_templates_invite_content",
+    "mailer_templates_magic_link_content",
+    "mailer_templates_email_change_content",
+    "mailer_templates_recovery_content",
+    "mailer_templates_reauthentication_content",
+]
+missing_templates = [key for key in expected_templates if key not in payload]
+
+print(f"Remote auth config summary ({snapshot_path}):")
+print(f"  template_keys={len(template_keys)} subject_keys={len(subject_keys)}")
+for key in template_keys:
+    value = payload.get(key)
+    size = len(value) if isinstance(value, str) else 0
+    print(f"  {key}: {size} chars")
+for key in subject_keys:
+    value = payload.get(key)
+    if isinstance(value, str):
+      print(f"  {key}: {value}")
+    else:
+      print(f"  {key}: <non-string>")
+site_url = payload.get("site_url")
+uri_allow_list = payload.get("uri_allow_list")
+print(f"  site_url: {site_url if isinstance(site_url, str) and site_url else '<missing>'}")
+print(f"  uri_allow_list: {uri_allow_list if isinstance(uri_allow_list, str) and uri_allow_list else '<missing>'}")
+if missing_templates:
+    print("  missing_expected_template_keys: " + ", ".join(missing_templates))
+else:
+    print("  missing_expected_template_keys: none")
+PY
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --apply)
-      apply_mode=true
+      mode="apply"
+      shift
+      ;;
+    --inspect)
+      mode="inspect"
       shift
       ;;
     --dry-run)
-      apply_mode=false
+      mode="dry-run"
       shift
       ;;
     --project-ref)
@@ -328,6 +440,14 @@ while [[ $# -gt 0 ]]; do
         exit 1
       fi
       project_ref_override="$2"
+      shift 2
+      ;;
+    --snapshot-file)
+      if [[ $# -lt 2 ]]; then
+        log_error "--snapshot-file requires a path"
+        exit 1
+      fi
+      snapshot_file_override="$2"
       shift 2
       ;;
     --help|-h)
@@ -347,15 +467,23 @@ command -v python3 >/dev/null 2>&1 || {
   exit 1
 }
 
-require_nonempty_file "$SUBJECTS_FILE"
-require_nonempty_file "$CONFIRM_TEMPLATE"
-require_nonempty_file "$RECOVERY_TEMPLATE"
-
-confirmation_subject="$(json_read_subject "$SUBJECTS_FILE" "confirmation")"
-recovery_subject="$(json_read_subject "$SUBJECTS_FILE" "recovery")"
 project_ref="$(resolve_project_ref)"
-site_url="$(resolve_site_url)"
-uri_allow_list="$(resolve_uri_allow_list "$site_url")"
+if [[ -n "$snapshot_file_override" ]]; then
+  snapshot_file="$snapshot_file_override"
+else
+  snapshot_file="$(default_snapshot_file "$project_ref")"
+fi
+
+if [[ "$mode" != "inspect" ]]; then
+  require_nonempty_file "$SUBJECTS_FILE"
+  require_nonempty_file "$CONFIRM_TEMPLATE"
+  require_nonempty_file "$RECOVERY_TEMPLATE"
+
+  confirmation_subject="$(json_read_subject "$SUBJECTS_FILE" "confirmation")"
+  recovery_subject="$(json_read_subject "$SUBJECTS_FILE" "recovery")"
+  site_url="$(resolve_site_url)"
+  uri_allow_list="$(resolve_uri_allow_list "$site_url")"
+fi
 
 payload_file="$(mktemp)"
 response_file="$(mktemp)"
@@ -365,36 +493,48 @@ cleanup() {
 }
 trap cleanup EXIT
 
-build_payload_json \
-  "$CONFIRM_TEMPLATE" \
-  "$RECOVERY_TEMPLATE" \
-  "$confirmation_subject" \
-  "$recovery_subject" \
-  "$site_url" \
-  "$uri_allow_list" \
-  >"$payload_file"
+if [[ "$mode" != "inspect" ]]; then
+  build_payload_json \
+    "$CONFIRM_TEMPLATE" \
+    "$RECOVERY_TEMPLATE" \
+    "$confirmation_subject" \
+    "$recovery_subject" \
+    "$site_url" \
+    "$uri_allow_list" \
+    >"$payload_file"
 
-confirm_bytes="$(wc -c <"$CONFIRM_TEMPLATE" | tr -d ' ')"
-recovery_bytes="$(wc -c <"$RECOVERY_TEMPLATE" | tr -d ' ')"
+  confirm_bytes="$(wc -c <"$CONFIRM_TEMPLATE" | tr -d ' ')"
+  recovery_bytes="$(wc -c <"$RECOVERY_TEMPLATE" | tr -d ' ')"
 
-log_info "Prepared Supabase auth template payload for project '${project_ref}'"
-log_info "Template sizes: confirmation=${confirm_bytes}B recovery=${recovery_bytes}B"
-log_info "Resolved Supabase site URL: ${site_url}"
-log_info "Resolved Supabase redirect allow-list: ${uri_allow_list}"
-
-if [[ "$apply_mode" != "true" ]]; then
-  log_info "Dry run complete. Re-run with --apply to sync templates."
-  exit 0
+  log_info "Prepared Supabase auth template payload for project '${project_ref}'"
+  log_info "Template sizes: confirmation=${confirm_bytes}B recovery=${recovery_bytes}B"
+  log_info "Resolved Supabase site URL: ${site_url}"
+  log_info "Resolved Supabase redirect allow-list: ${uri_allow_list}"
 fi
 
 command -v curl >/dev/null 2>&1 || {
-  log_error "curl is required for --apply"
+  log_error "curl is required for --inspect and --apply"
   exit 1
 }
+
+if [[ "$mode" == "dry-run" ]]; then
+  log_info "Dry run complete. Re-run with --inspect to read remote config or --apply to sync templates."
+  exit 0
+fi
 
 token="$(resolve_management_token)"
 printf 'Authorization: Bearer %s\n' "$token" >"$auth_header_file"
 chmod 600 "$auth_header_file"
+
+log_info "Fetching remote Supabase auth config snapshot..."
+fetch_auth_config_json "$project_ref" "$auth_header_file" "$snapshot_file"
+log_info "Saved Supabase auth config snapshot: $snapshot_file"
+summarize_auth_config_snapshot "$snapshot_file"
+
+if [[ "$mode" == "inspect" ]]; then
+  log_info "Inspect complete. No changes were applied."
+  exit 0
+fi
 
 api_url="https://api.supabase.com/v1/projects/${project_ref}/config/auth"
 http_code="$(

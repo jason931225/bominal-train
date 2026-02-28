@@ -179,6 +179,73 @@ async def test_exchange_supabase_token_hash_returns_recovery_session(monkeypatch
 
 
 @pytest.mark.asyncio
+async def test_exchange_supabase_token_hash_detailed_classifies_expired_otp(monkeypatch):
+    monkeypatch.setattr(supabase_auth.settings, "supabase_auth_enabled", True, raising=False)
+    monkeypatch.setattr(supabase_auth.settings, "supabase_url", "https://project-ref.supabase.co", raising=False)
+    monkeypatch.setattr(supabase_auth.settings, "supabase_auth_api_key", "anon-key", raising=False)
+    monkeypatch.setattr(supabase_auth.settings, "supabase_service_role_key", None, raising=False)
+
+    class _FakeResponse:
+        status_code = 400
+
+        def json(self):  # noqa: ANN201
+            return {"code": "otp_expired", "message": "Token has expired"}
+
+    class _FakeClient:
+        def __init__(self, *, timeout: float):  # noqa: ARG002
+            pass
+
+        async def __aenter__(self):  # noqa: ANN204
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):  # noqa: ANN001, ANN204
+            return False
+
+        async def post(self, url: str, *, headers: dict[str, str], json: dict):  # noqa: ANN003, ARG002
+            return _FakeResponse()
+
+    monkeypatch.setattr(supabase_auth.httpx, "AsyncClient", lambda timeout: _FakeClient(timeout=timeout))
+
+    result = await supabase_auth.exchange_supabase_token_hash_detailed(token_hash="hash-abc", token_type="magiclink")
+
+    assert result.session is None
+    assert result.failure is not None
+    assert result.failure.category == "expired"
+    assert result.failure.status_code == 400
+    assert result.failure.error_code == "otp_expired"
+
+
+@pytest.mark.asyncio
+async def test_exchange_supabase_token_hash_detailed_classifies_transport_error(monkeypatch):
+    monkeypatch.setattr(supabase_auth.settings, "supabase_auth_enabled", True, raising=False)
+    monkeypatch.setattr(supabase_auth.settings, "supabase_url", "https://project-ref.supabase.co", raising=False)
+    monkeypatch.setattr(supabase_auth.settings, "supabase_auth_api_key", "anon-key", raising=False)
+    monkeypatch.setattr(supabase_auth.settings, "supabase_service_role_key", None, raising=False)
+
+    class _FakeClient:
+        def __init__(self, *, timeout: float):  # noqa: ARG002
+            pass
+
+        async def __aenter__(self):  # noqa: ANN204
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):  # noqa: ANN001, ANN204
+            return False
+
+        async def post(self, url: str, *, headers: dict[str, str], json: dict):  # noqa: ANN003, ARG002
+            raise RuntimeError("network-down")
+
+    monkeypatch.setattr(supabase_auth.httpx, "AsyncClient", lambda timeout: _FakeClient(timeout=timeout))
+
+    result = await supabase_auth.exchange_supabase_token_hash_detailed(token_hash="hash-abc", token_type="magiclink")
+
+    assert result.session is None
+    assert result.failure is not None
+    assert result.failure.category == "transport"
+    assert result.failure.status_code is None
+
+
+@pytest.mark.asyncio
 async def test_update_supabase_password_uses_bearer_access_token(monkeypatch):
     monkeypatch.setattr(supabase_auth.settings, "supabase_auth_enabled", True, raising=False)
     monkeypatch.setattr(supabase_auth.settings, "supabase_url", "https://project-ref.supabase.co", raising=False)
