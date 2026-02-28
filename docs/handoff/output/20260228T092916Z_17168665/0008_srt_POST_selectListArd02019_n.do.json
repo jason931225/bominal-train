@@ -1,0 +1,93 @@
+{
+  "metadata": {
+    "sequence": 8,
+    "captured_at": "2026-02-28T09:30:19.151572+00:00",
+    "run_id": "20260228T092916Z_17168665",
+    "backend": "curl_cffi",
+    "component": "srt",
+    "operation": "ticket_info",
+    "endpoint": "selectListArd02019_n.do"
+  },
+  "request": {
+    "method": "POST",
+    "url": "https://app.srail.or.kr:443/ard/selectListArd02019_n.do",
+    "params": null,
+    "data": {
+      "pnrNo": "<redacted>",
+      "jrnySqno": "1"
+    },
+    "json": null,
+    "headers": {},
+    "cookies": "<redacted>",
+    "session_headers": {
+      "user-agent": "Mozilla/5.0 (Linux; Android 15; SM-S912N Build/AP3A.240905.015.A2; wv) AppleWebKit/537.36(KHTML, like Gecko) Version/4.0 Chrome/136.0.7103.125 Mobile Safari/537.36SRT-APP-Android V.2.0.38",
+      "accept": "application/json"
+    },
+    "session_cookies": "<redacted>",
+    "extra": {}
+  },
+  "effective_request": {
+    "method": "POST",
+    "url": "https://app.srail.or.kr:443/ard/selectListArd02019_n.do",
+    "headers": {
+      "user-agent": "Mozilla/5.0 (Linux; Android 15; SM-S912N Build/AP3A.240905.015.A2; wv) AppleWebKit/537.36(KHTML, like Gecko) Version/4.0 Chrome/136.0.7103.125 Mobile Safari/537.36SRT-APP-Android V.2.0.38",
+      "accept": "application/json"
+    },
+    "body": null
+  },
+  "response": {
+    "status_code": 200,
+    "ok": true,
+    "url": "https://app.srail.or.kr:443/ard/selectListArd02019_n.do",
+    "headers": {
+      "content-language": "ko",
+      "date": "Sat, 28 Feb 2026 09:30:19 GMT",
+      "expires": "Thu, 01 Jan 1970 00:00:00 GMT",
+      "content-type": "application/json;charset=UTF-8",
+      "cache-control": "no-cache, no-store, max-age=0",
+      "pragma": "no-cache",
+      "transfer-encoding": "chunked"
+    },
+    "cookies": "<redacted>",
+    "text": "{\"resultMap\": [{\"msgCd\": \"IRZ000010\", \"wctNo\": \"81301\", \"strResult\": \"SUCC\", \"msgTxt\": \"정상적으로 조회가 완료되었습니다.\", \"uuid\": \"<redacted>\", \"cgPsId\": \"korail\"}], \"commandMap\": {\"pnrNo\": \"<redacted>\", \"jrnySqno\": \"1\"}, \"trainListMap\": [{\"rcvdAmt\": \"00000036500\", \"runDt\": \"20260306\", \"scarNo\": 7, \"locSeatAttCd\": \"013\", \"psrmClCd\": \"1\", \"smkSeatAttCd\": \"\", \"rqSeatAttCd\": \"015\", \"stdrPrc\": \"00000037100\", \"etcSeatAttCd\": \"\", \"trnNo\": \"09333\", \"psgTpCd\": \"1\", \"sgrNm\": \"<redacted>\", \"seatNo\": \"9B\", \"dcntKndCd\": \"000\", \"dcntPrc\": \"00000000600\", \"seatNum\": 1, \"dirSeatAttCd\": \"009\", \"stdrFare\": \"00000000000\"}], \"tranferListMap\": null}",
+    "json": {
+      "resultMap": [
+        {
+          "msgCd": "IRZ000010",
+          "wctNo": "81301",
+          "strResult": "SUCC",
+          "msgTxt": "정상적으로 조회가 완료되었습니다.",
+          "uuid": "<redacted>",
+          "cgPsId": "korail"
+        }
+      ],
+      "commandMap": {
+        "pnrNo": "<redacted>",
+        "jrnySqno": "1"
+      },
+      "trainListMap": [
+        {
+          "rcvdAmt": "00000036500",
+          "runDt": "20260306",
+          "scarNo": 7,
+          "locSeatAttCd": "013",
+          "psrmClCd": "1",
+          "smkSeatAttCd": "",
+          "rqSeatAttCd": "015",
+          "stdrPrc": "00000037100",
+          "etcSeatAttCd": "",
+          "trnNo": "09333",
+          "psgTpCd": "1",
+          "sgrNm": "<redacted>",
+          "seatNo": "9B",
+          "dcntKndCd": "000",
+          "dcntPrc": "00000000600",
+          "seatNum": 1,
+          "dirSeatAttCd": "009",
+          "stdrFare": "00000000000"
+        }
+      ],
+      "tranferListMap": null
+    }
+  }
+}

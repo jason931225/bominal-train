@@ -1,0 +1,75 @@
+{
+  "run_id": "20260228T093914Z_1ef8280a",
+  "started_at": "2026-02-28T09:39:14.208392+00:00",
+  "finished_at": "2026-02-28T09:39:15.937601+00:00",
+  "event_count": 3,
+  "summary": {
+    "component_counts": {
+      "srt": 3
+    },
+    "operation_counts": {
+      "logout": 1,
+      "login": 1,
+      "reserve": 1
+    },
+    "status_code_counts": {
+      "200": 3
+    },
+    "error_count": 0
+  },
+  "step_boundaries": [
+    {
+      "operation": "logout",
+      "component": "srt",
+      "start_sequence": 1,
+      "end_sequence": 1,
+      "event_count": 1
+    },
+    {
+      "operation": "login",
+      "component": "srt",
+      "start_sequence": 2,
+      "end_sequence": 2,
+      "event_count": 1
+    },
+    {
+      "operation": "reserve",
+      "component": "srt",
+      "start_sequence": 3,
+      "end_sequence": 3,
+      "event_count": 1
+    }
+  ],
+  "events": [
+    {
+      "sequence": 1,
+      "file": "0001_srt_POST_loginOut.do.json",
+      "component": "srt",
+      "operation": "logout",
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/login/loginOut.do",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "sequence": 2,
+      "file": "0002_srt_POST_selectListApb01080_n.do.json",
+      "component": "srt",
+      "operation": "login",
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/apb/selectListApb01080_n.do",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "sequence": 3,
+      "file": "0003_srt_POST_selectListArc05013_n.do.json",
+      "component": "srt",
+      "operation": "reserve",
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/arc/selectListArc05013_n.do",
+      "status_code": 200,
+      "error": null
+    }
+  ]
+}

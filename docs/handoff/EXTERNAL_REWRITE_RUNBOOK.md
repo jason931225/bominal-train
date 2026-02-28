@@ -6,7 +6,7 @@ Rebuild provider adapters for functional parity with current third-party behavio
 
 ## Execution Sequence
 
-1. Read `tools/srtgo-capture/HANDOFF_EXTERNAL_REWRITE.md`.
+1. Read `docs/handoff/srtgo-capture/HANDOFF_EXTERNAL_REWRITE.md`.
 2. Implement `critical` endpoints first from `PROVIDER_FIELD_MAP.json`.
 3. Respect auth-scope labels before adding endpoint probes.
 4. Add `high_signal` endpoints that provide stateless/context-gated value.

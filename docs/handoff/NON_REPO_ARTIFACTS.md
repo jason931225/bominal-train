@@ -12,4 +12,4 @@ These artifacts are intentionally not copied into repository docs.
 ## Policy
 
 - `docs/handoff` keeps pointers and redacted summaries only.
-- Raw payloads and potentially sensitive captures remain in controlled locations under `tools/srtgo-capture/output` or external local storage.
+- Raw payloads and potentially sensitive captures remain in controlled locations under `docs/handoff/output` or external local storage.

@@ -1,0 +1,180 @@
+{
+  "metadata": {
+    "sequence": 8,
+    "captured_at": "2026-02-28T09:27:40.617723+00:00",
+    "run_id": "20260228T092614Z_9155f005",
+    "backend": "curl_cffi",
+    "component": "srt",
+    "operation": "reserve",
+    "endpoint": "selectListArc05013_n.do"
+  },
+  "request": {
+    "method": "POST",
+    "url": "https://app.srail.or.kr:443/arc/selectListArc05013_n.do",
+    "params": null,
+    "data": {
+      "jobId": "1102",
+      "jrnyCnt": "1",
+      "jrnyTpCd": "11",
+      "jrnySqno1": "001",
+      "stndFlg": "N",
+      "trnGpCd1": "300",
+      "trnGpCd": "109",
+      "grpDv": "0",
+      "rtnDv": "0",
+      "stlbTrnClsfCd1": "17",
+      "dptRsStnCd1": "0551",
+      "dptRsStnCdNm1": "수서",
+      "arvRsStnCd1": "0015",
+      "arvRsStnCdNm1": "동대구",
+      "dptDt1": "20260306",
+      "dptTm1": "122800",
+      "arvTm1": "140900",
+      "trnNo1": "00331",
+      "runDt1": "20260306",
+      "dptStnConsOrdr1": "000001",
+      "arvStnConsOrdr1": "000018",
+      "dptStnRunOrdr1": "000001",
+      "arvStnRunOrdr1": "000005",
+      "mblPhone": "<redacted>",
+      "netfunnelKey": "<redacted>",
+      "totPrnb": "1",
+      "psgGridcnt": "1",
+      "locSeatAttCd1": "000",
+      "rqSeatAttCd1": "015",
+      "dirSeatAttCd1": "009",
+      "smkSeatAttCd1": "000",
+      "etcSeatAttCd1": "000",
+      "psrmClCd1": "1",
+      "psgTpCd1": "1",
+      "psgInfoPerPrnb1": "1"
+    },
+    "json": null,
+    "headers": {},
+    "cookies": "<redacted>",
+    "session_headers": {
+      "user-agent": "Mozilla/5.0 (Linux; Android 15; SM-S912N Build/AP3A.240905.015.A2; wv) AppleWebKit/537.36(KHTML, like Gecko) Version/4.0 Chrome/136.0.7103.125 Mobile Safari/537.36SRT-APP-Android V.2.0.38",
+      "accept": "application/json"
+    },
+    "session_cookies": "<redacted>",
+    "extra": {}
+  },
+  "effective_request": {
+    "method": "POST",
+    "url": "https://app.srail.or.kr:443/arc/selectListArc05013_n.do",
+    "headers": {
+      "user-agent": "Mozilla/5.0 (Linux; Android 15; SM-S912N Build/AP3A.240905.015.A2; wv) AppleWebKit/537.36(KHTML, like Gecko) Version/4.0 Chrome/136.0.7103.125 Mobile Safari/537.36SRT-APP-Android V.2.0.38",
+      "accept": "application/json"
+    },
+    "body": null
+  },
+  "response": {
+    "status_code": 200,
+    "ok": true,
+    "url": "https://app.srail.or.kr:443/arc/selectListArc05013_n.do",
+    "headers": {
+      "content-language": "ko",
+      "date": "Sat, 28 Feb 2026 09:27:40 GMT",
+      "expires": "Thu, 01 Jan 1970 00:00:00 GMT",
+      "content-type": "application/json;charset=UTF-8",
+      "cache-control": "no-cache, no-store, max-age=0",
+      "pragma": "no-cache",
+      "transfer-encoding": "chunked"
+    },
+    "cookies": "<redacted>",
+    "text": "{\"payListMap\": [], \"reservListMap\": [{\"proyStlTgtFlg\": \"\", \"totSeatNum\": 1, \"stlbTrnClsfCd\": \"17\", \"jrnyTpCd\": \"11\", \"lumpStlTgtNo\": \"<redacted>\", \"dptTm\": \"122800\", \"arvRsStnCd\": \"0015\", \"JRNYLIST_KEY\": 0, \"pnrNo\": \"<redacted>\", \"dptDt\": \"20260306\", \"trnNo\": \"331\", \"arvDt\": \"20260306\", \"dlayAcptFlg\": \"N\", \"trnGpCd\": \"300\", \"arvTm\": \"140900\", \"dptRsStnCd\": \"0551\"}], \"resultMap\": [{\"tmpJobSqno1\": 88522, \"tmpJobSqno2\": 0, \"msgCd\": \"IRR000014\", \"sprmFare\": 0, \"totRcvdAmt\": 36900, \"jrnyCnt\": 1, \"wctNo\": \"81301\", \"alertMsg\": \"\", \"strResult\": \"SUCC\", \"msgTxt\": \"예약대기 가능합니다.\", \"uuid\": \"<redacted>\", \"cgPsId\": \"korail\"}], \"commandMap\": {\"jobId\": \"1102\", \"jrnyCnt\": \"1\", \"jrnyTpCd\": \"11\", \"jrnySqno1\": \"001\", \"stndFlg\": \"N\", \"trnGpCd1\": \"300\", \"trnGpCd\": \"109\", \"grpDv\": \"0\", \"rtnDv\": \"0\", \"stlbTrnClsfCd1\": \"17\", \"dptRsStnCd1\": \"0551\", \"dptRsStnCdNm1\": \"수서\", \"arvRsStnCd1\": \"0015\", \"arvRsStnCdNm1\": \"동대구\", \"dptDt1\": \"20260306\", \"dptTm1\": \"122800\", \"arvTm1\": \"140900\", \"trnNo1\": \"00331\", \"runDt1\": \"20260306\", \"dptStnConsOrdr1\": \"000001\", \"arvStnConsOrdr1\": \"000018\", \"dptStnRunOrdr1\": \"000001\", \"arvStnRunOrdr1\": \"000005\", \"mblPhone\": \"<redacted>\", \"netfunnelKey\": \"<redacted>\", \"totPrnb\": \"1\", \"psgGridcnt\": \"1\", \"locSeatAttCd1\": \"000\", \"rqSeatAttCd1\": \"015\", \"dirSeatAttCd1\": \"009\", \"smkSeatAttCd1\": \"000\", \"etcSeatAttCd1\": \"000\", \"psrmClCd1\": \"1\", \"psgTpCd1\": \"1\", \"psgInfoPerPrnb1\": \"1\"}, \"trainListMap\": [{\"rcvdAmt\": 0, \"scarNo\": 0, \"seatPrc\": 0, \"psrmClCd\": \"1\", \"rqSeatAttCd\": \"\", \"JRNYLIST_KEY\": 0, \"psgTpCd\": \"1\", \"SEATLIST_KEY\": 0, \"seatNo\": \"\", \"psgTpDvCd\": \"\", \"dcntKndCd\": \"\", \"dcntAmt\": 0, \"seatFare\": 0}]}",
+    "json": {
+      "payListMap": [],
+      "reservListMap": [
+        {
+          "proyStlTgtFlg": "",
+          "totSeatNum": 1,
+          "stlbTrnClsfCd": "17",
+          "jrnyTpCd": "11",
+          "lumpStlTgtNo": "<redacted>",
+          "dptTm": "122800",
+          "arvRsStnCd": "0015",
+          "JRNYLIST_KEY": 0,
+          "pnrNo": "<redacted>",
+          "dptDt": "20260306",
+          "trnNo": "331",
+          "arvDt": "20260306",
+          "dlayAcptFlg": "N",
+          "trnGpCd": "300",
+          "arvTm": "140900",
+          "dptRsStnCd": "0551"
+        }
+      ],
+      "resultMap": [
+        {
+          "tmpJobSqno1": 88522,
+          "tmpJobSqno2": 0,
+          "msgCd": "IRR000014",
+          "sprmFare": 0,
+          "totRcvdAmt": 36900,
+          "jrnyCnt": 1,
+          "wctNo": "81301",
+          "alertMsg": "",
+          "strResult": "SUCC",
+          "msgTxt": "예약대기 가능합니다.",
+          "uuid": "<redacted>",
+          "cgPsId": "korail"
+        }
+      ],
+      "commandMap": {
+        "jobId": "1102",
+        "jrnyCnt": "1",
+        "jrnyTpCd": "11",
+        "jrnySqno1": "001",
+        "stndFlg": "N",
+        "trnGpCd1": "300",
+        "trnGpCd": "109",
+        "grpDv": "0",
+        "rtnDv": "0",
+        "stlbTrnClsfCd1": "17",
+        "dptRsStnCd1": "0551",
+        "dptRsStnCdNm1": "수서",
+        "arvRsStnCd1": "0015",
+        "arvRsStnCdNm1": "동대구",
+        "dptDt1": "20260306",
+        "dptTm1": "122800",
+        "arvTm1": "140900",
+        "trnNo1": "00331",
+        "runDt1": "20260306",
+        "dptStnConsOrdr1": "000001",
+        "arvStnConsOrdr1": "000018",
+        "dptStnRunOrdr1": "000001",
+        "arvStnRunOrdr1": "000005",
+        "mblPhone": "<redacted>",
+        "netfunnelKey": "<redacted>",
+        "totPrnb": "1",
+        "psgGridcnt": "1",
+        "locSeatAttCd1": "000",
+        "rqSeatAttCd1": "015",
+        "dirSeatAttCd1": "009",
+        "smkSeatAttCd1": "000",
+        "etcSeatAttCd1": "000",
+        "psrmClCd1": "1",
+        "psgTpCd1": "1",
+        "psgInfoPerPrnb1": "1"
+      },
+      "trainListMap": [
+        {
+          "rcvdAmt": 0,
+          "scarNo": 0,
+          "seatPrc": 0,
+          "psrmClCd": "1",
+          "rqSeatAttCd": "",
+          "JRNYLIST_KEY": 0,
+          "psgTpCd": "1",
+          "SEATLIST_KEY": 0,
+          "seatNo": "",
+          "psgTpDvCd": "",
+          "dcntKndCd": "",
+          "dcntAmt": 0,
+          "seatFare": 0
+        }
+      ]
+    }
+  }
+}

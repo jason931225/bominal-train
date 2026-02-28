@@ -1,0 +1,14 @@
+{
+  "run_id": "20260228T092529Z_7e8b27ab",
+  "started_at": "2026-02-28T09:25:29.214713+00:00",
+  "finished_at": "2026-02-28T09:25:29.396628+00:00",
+  "event_count": 0,
+  "summary": {
+    "component_counts": {},
+    "operation_counts": {},
+    "status_code_counts": {},
+    "error_count": 0
+  },
+  "step_boundaries": [],
+  "events": []
+}

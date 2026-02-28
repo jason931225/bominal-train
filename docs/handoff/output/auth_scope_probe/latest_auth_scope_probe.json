@@ -1,0 +1,825 @@
+{
+  "generated_at": "2026-02-28T21:30:09.490796+00:00",
+  "methodology": {
+    "status_code_not_sufficient": true,
+    "classification_basis": [
+      "response_body_markers",
+      "response_envelope_shape",
+      "payload_meaningfulness"
+    ],
+    "cookie_auth_used": "<redacted>"
+  },
+  "netfunnel_key_used": true,
+  "records": [
+    {
+      "probe_id": "srt_search_without_netfunnel",
+      "captured_at": "2026-02-28T21:29:39.473795+00:00",
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/ara/selectListAra10007_n.do",
+      "host": "app.srail.or.kr",
+      "path": "/ara/selectListAra10007_n.do",
+      "request_has_cookie": "<redacted>",
+      "status_code": 200,
+      "content_type": "application/json;charset=UTF-8",
+      "error": "",
+      "body_signals": [
+        "business_envelope_json",
+        "context_token_missing_or_invalid",
+        "error_code_envelope"
+      ],
+      "has_login_marker": false,
+      "meaningful_payload": false,
+      "auth_classification_hint": "public_context_required",
+      "snippet": "{\"ERROR_MSG\":\"\",\"ERROR_CODE\":\"0\",\"resultMap\":[{\"msgCd\":\"NET000001\",\"strResult\":\"FAIL\",\"msgTxt\":\"서비스가 접속이 원활하지 않습니다. 잠시후 다시 시도하여 주시기 바랍니다.\"}],\"outDataSets\":{\"dsOutput0\":[{\"msgCd\":\"NET000001\",\"strResult\":\"FAIL\",\"msgTxt\":\"서비스가 접속이 원활하지 않습니다. 잠시후 다시 시도하여 주시기 바랍니다.",
+      "note": "Search probe without valid netfunnel key."
+    },
+    {
+      "probe_id": "srt_search_with_netfunnel",
+      "captured_at": "2026-02-28T21:29:41.052489+00:00",
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/ara/selectListAra10007_n.do",
+      "host": "app.srail.or.kr",
+      "path": "/ara/selectListAra10007_n.do",
+      "request_has_cookie": "<redacted>",
+      "status_code": 200,
+      "content_type": "application/json;charset=UTF-8",
+      "error": "",
+      "body_signals": [
+        "business_envelope_json",
+        "business_payload_without_cookie",
+        "error_code_envelope",
+        "search_result_json"
+      ],
+      "has_login_marker": false,
+      "meaningful_payload": true,
+      "auth_classification_hint": "public_context_required",
+      "snippet": "{\"ErrorMsg\":\"\",\"ErrorCode\":\"0\",\"resultMap\":[{\"msgCd\":\"IRG000000\",\"seandYo\":\"N\",\"wctNo\":\"81201\",\"qryCnqeCnt\":10,\"strResult\":\"SUCC\",\"msgTxt\":\"정상처리되었습니다\",\"fllwPgExt2\":null,\"fllwPgExt\":\"Y\",\"uuid\":\"<redacted>\",\"cgPsId\":\"korail\"}],\"outDataSet",
+      "note": "Search probe with runtime netfunnel key."
+    },
+    {
+      "probe_id": "srt_reserve",
+      "captured_at": "2026-02-28T21:29:41.901618+00:00",
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/arc/selectListArc05013_n.do",
+      "host": "app.srail.or.kr",
+      "path": "/arc/selectListArc05013_n.do",
+      "request_has_cookie": "<redacted>",
+      "status_code": 200,
+      "content_type": "text/html; charset=utf-8",
+      "error": "",
+      "body_signals": [
+        "html_response"
+      ],
+      "has_login_marker": false,
+      "meaningful_payload": false,
+      "auth_classification_hint": "unknown",
+      "snippet": "0#서비스가 접속이 원활하지 않습니다. 잠시후 다시 시도하여 주시기 바랍니다.",
+      "note": ""
+    },
+    {
+      "probe_id": "srt_tickets",
+      "captured_at": "2026-02-28T21:29:43.596238+00:00",
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/atc/selectListAtc14016_n.do",
+      "host": "app.srail.or.kr",
+      "path": "/atc/selectListAtc14016_n.do",
+      "request_has_cookie": "<redacted>",
+      "status_code": 200,
+      "content_type": "text/html; charset=UTF-8",
+      "error": "",
+      "body_signals": [
+        "html_response",
+        "login_marker_in_body"
+      ],
+      "has_login_marker": true,
+      "meaningful_payload": false,
+      "auth_classification_hint": "auth_required",
+      "snippet": "<!DOCTYPE html> <html lang=\"ko\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover\"> <title>SRT</title> <link rel=\"shortcut icon\" href=\"/favicon.ico\"> <link rel=\"stylesheet\" href=\"/css/themes/d",
+      "note": ""
+    },
+    {
+      "probe_id": "srt_ticket_detail",
+      "captured_at": "2026-02-28T21:29:44.467501+00:00",
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/ard/selectListArd02019_n.do",
+      "host": "app.srail.or.kr",
+      "path": "/ard/selectListArd02019_n.do",
+      "request_has_cookie": "<redacted>",
+      "status_code": 200,
+      "content_type": "text/html; charset=UTF-8",
+      "error": "",
+      "body_signals": [
+        "html_response",
+        "login_marker_in_body"
+      ],
+      "has_login_marker": true,
+      "meaningful_payload": false,
+      "auth_classification_hint": "auth_required",
+      "snippet": "0#로그인 후 사용하십시요.",
+      "note": ""
+    },
+    {
+      "probe_id": "srt_cancel",
+      "captured_at": "2026-02-28T21:29:45.309686+00:00",
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/ard/selectListArd02045_n.do",
+      "host": "app.srail.or.kr",
+      "path": "/ard/selectListArd02045_n.do",
+      "request_has_cookie": "<redacted>",
+      "status_code": 200,
+      "content_type": "text/html; charset=utf-8",
+      "error": "",
+      "body_signals": [
+        "html_response",
+        "login_marker_in_body"
+      ],
+      "has_login_marker": true,
+      "meaningful_payload": false,
+      "auth_classification_hint": "auth_required",
+      "snippet": "0#로그인 후 사용하십시요.",
+      "note": ""
+    },
+    {
+      "probe_id": "srt_standby_option",
+      "captured_at": "2026-02-28T21:29:47.094797+00:00",
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/ata/selectListAta01135_n.do",
+      "host": "app.srail.or.kr",
+      "path": "/ata/selectListAta01135_n.do",
+      "request_has_cookie": "<redacted>",
+      "status_code": 200,
+      "content_type": "text/html; charset=UTF-8",
+      "error": "",
+      "body_signals": [
+        "html_response",
+        "login_marker_in_body"
+      ],
+      "has_login_marker": true,
+      "meaningful_payload": false,
+      "auth_classification_hint": "auth_required",
+      "snippet": "<!DOCTYPE html> <html lang=\"ko\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover\"> <title>SRT</title> <link rel=\"shortcut icon\" href=\"/favicon.ico\"> <link rel=\"stylesheet\" href=\"/css/themes/d",
+      "note": ""
+    },
+    {
+      "probe_id": "srt_payment",
+      "captured_at": "2026-02-28T21:29:47.959713+00:00",
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/ata/selectListAta09036_n.do",
+      "host": "app.srail.or.kr",
+      "path": "/ata/selectListAta09036_n.do",
+      "request_has_cookie": "<redacted>",
+      "status_code": null,
+      "content_type": "",
+      "error": "HTTP Error 500: Internal Server Error",
+      "body_signals": [],
+      "has_login_marker": false,
+      "meaningful_payload": false,
+      "auth_classification_hint": "unknown",
+      "snippet": "",
+      "note": ""
+    },
+    {
+      "probe_id": "srt_reserve_info",
+      "captured_at": "2026-02-28T21:29:48.818106+00:00",
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/atc/getListAtc14087.do",
+      "host": "app.srail.or.kr",
+      "path": "/atc/getListAtc14087.do",
+      "request_has_cookie": "<redacted>",
+      "status_code": null,
+      "content_type": "",
+      "error": "HTTP Error 404: Not Found",
+      "body_signals": [],
+      "has_login_marker": false,
+      "meaningful_payload": false,
+      "auth_classification_hint": "unknown",
+      "snippet": "",
+      "note": ""
+    },
+    {
+      "probe_id": "srt_refund",
+      "captured_at": "2026-02-28T21:29:49.692656+00:00",
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/atc/selectListAtc02063_n.do",
+      "host": "app.srail.or.kr",
+      "path": "/atc/selectListAtc02063_n.do",
+      "request_has_cookie": "<redacted>",
+      "status_code": 200,
+      "content_type": "text/html; charset=utf-8",
+      "error": "",
+      "body_signals": [
+        "html_response",
+        "login_marker_in_body"
+      ],
+      "has_login_marker": true,
+      "meaningful_payload": false,
+      "auth_classification_hint": "auth_required",
+      "snippet": "0#로그인 후 사용하십시요.",
+      "note": ""
+    },
+    {
+      "probe_id": "srt_refund_precheck",
+      "captured_at": "2026-02-28T21:29:50.624345+00:00",
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/atc/selectListAtc02085_n.do",
+      "host": "app.srail.or.kr",
+      "path": "/atc/selectListAtc02085_n.do",
+      "request_has_cookie": "<redacted>",
+      "status_code": 200,
+      "content_type": "text/html; charset=utf-8",
+      "error": "",
+      "body_signals": [
+        "html_response",
+        "login_marker_in_body"
+      ],
+      "has_login_marker": true,
+      "meaningful_payload": false,
+      "auth_classification_hint": "auth_required",
+      "snippet": "0#로그인 후 사용하십시요.",
+      "note": ""
+    },
+    {
+      "probe_id": "srt_history",
+      "captured_at": "2026-02-28T21:29:51.467858+00:00",
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/atd/selectListAtd02039_n.do",
+      "host": "app.srail.or.kr",
+      "path": "/atd/selectListAtd02039_n.do",
+      "request_has_cookie": "<redacted>",
+      "status_code": 200,
+      "content_type": "text/html; charset=utf-8",
+      "error": "",
+      "body_signals": [
+        "history_template_without_rows",
+        "html_response"
+      ],
+      "has_login_marker": false,
+      "meaningful_payload": false,
+      "auth_classification_hint": "unknown",
+      "snippet": "<!-- /*********************************************************************************** * 01. 업무구분 : 승차권구매 이력상세 * 02. 메뉴명 : 승차권구매 이력상세 * 03. 메뉴설명 : 사용자가 예약 및 발권 했던 이력 상세를 보여준다. * 04. 작성일 : * 05. 작성자 : * 06. 수정이력 : ********************************************",
+      "note": ""
+    },
+    {
+      "probe_id": "srt_schedule_detail",
+      "captured_at": "2026-02-28T21:29:52.598013+00:00",
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/ara/selectListAra12009_n.do",
+      "host": "app.srail.or.kr",
+      "path": "/ara/selectListAra12009_n.do",
+      "request_has_cookie": "<redacted>",
+      "status_code": 200,
+      "content_type": "text/html; charset=utf-8",
+      "error": "",
+      "body_signals": [
+        "business_payload_without_cookie",
+        "html_response",
+        "schedule_popup_html"
+      ],
+      "has_login_marker": false,
+      "meaningful_payload": true,
+      "auth_classification_hint": "public_stateless",
+      "snippet": "<!DOCTYPE html> <html lang=\"ko\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover\"> <title>SRT</title> <link rel=\"shortcut icon\" href=\"/favicon.ico\"> <link rel=\"stylesheet\" href=\"/css/custom.c",
+      "note": ""
+    },
+    {
+      "probe_id": "srt_fare_detail",
+      "captured_at": "2026-02-28T21:29:53.808388+00:00",
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/ara/selectListAra13010_n.do",
+      "host": "app.srail.or.kr",
+      "path": "/ara/selectListAra13010_n.do",
+      "request_has_cookie": "<redacted>",
+      "status_code": 200,
+      "content_type": "text/html; charset=utf-8",
+      "error": "",
+      "body_signals": [
+        "business_payload_without_cookie",
+        "fare_popup_html",
+        "html_response"
+      ],
+      "has_login_marker": false,
+      "meaningful_payload": true,
+      "auth_classification_hint": "public_stateless",
+      "snippet": "<!DOCTYPE html> <html lang=\"ko\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover\"> <title>SRT</title> <link rel=\"shortcut icon\" href=\"/favicon.ico\"> <link rel=\"stylesheet\" href=\"/css/custom.c",
+      "note": ""
+    },
+    {
+      "probe_id": "srt_ticket_page",
+      "captured_at": "2026-02-28T21:29:55.744057+00:00",
+      "method": "GET",
+      "url": "https://app.srail.or.kr:443/atc/selectListAtc14017_n.do?pageNo=0",
+      "host": "app.srail.or.kr",
+      "path": "/atc/selectListAtc14017_n.do",
+      "request_has_cookie": "<redacted>",
+      "status_code": 200,
+      "content_type": "text/html; charset=UTF-8",
+      "error": "",
+      "body_signals": [
+        "html_response",
+        "login_marker_in_body"
+      ],
+      "has_login_marker": true,
+      "meaningful_payload": false,
+      "auth_classification_hint": "auth_required",
+      "snippet": "<!DOCTYPE html> <html lang=\"ko\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover\"> <title>SRT</title> <link rel=\"shortcut icon\" href=\"/favicon.ico\"> <link rel=\"stylesheet\" href=\"/css/themes/d",
+      "note": ""
+    },
+    {
+      "probe_id": "srt_station_info_js",
+      "captured_at": "2026-02-28T21:29:57.203393+00:00",
+      "method": "GET",
+      "url": "https://app.srail.or.kr:443/js/stationInfo.js",
+      "host": "app.srail.or.kr",
+      "path": "/js/stationInfo.js",
+      "request_has_cookie": "<redacted>",
+      "status_code": 200,
+      "content_type": "application/x-javascript",
+      "error": "",
+      "body_signals": [
+        "business_payload_without_cookie",
+        "static_js_asset"
+      ],
+      "has_login_marker": false,
+      "meaningful_payload": true,
+      "auth_classification_hint": "public_stateless",
+      "snippet": "/* * 1. 배열변수 stationList 을 통해 기차역 정보를 편집한다. * gubun : 노선구분 (SRT, korail) * ln_cd : 선코드, korail은 모두 0 * stn_cd : 역코드 * stn_nm : 역명 * sel_yn : 선택여부 (현재 모두 선택) -> 상단고정여부(20230804 변경) * rmk : 비고 (ㄱ,ㄴ,ㄷ 초성검색에 사용) * ordr : 순서 (역지도에 사용) * * 2. getStationListSort 함수를 ",
+      "note": ""
+    },
+    {
+      "probe_id": "srt_bridge_js",
+      "captured_at": "2026-02-28T21:29:58.460855+00:00",
+      "method": "GET",
+      "url": "https://app.srail.or.kr:443/js/common/bridge_new.js",
+      "host": "app.srail.or.kr",
+      "path": "/js/common/bridge_new.js",
+      "request_has_cookie": "<redacted>",
+      "status_code": 200,
+      "content_type": "application/x-javascript",
+      "error": "",
+      "body_signals": [
+        "business_payload_without_cookie",
+        "static_js_asset"
+      ],
+      "has_login_marker": false,
+      "meaningful_payload": true,
+      "auth_classification_hint": "public_stateless",
+      "snippet": "var mkQRCode = \"mkQRCode\"; var mkQRCode2 = \"mkQRCode2\"; var showTransKey = \"showTransKey\"; var takePicture = \"takePicture\"; var getTakePicture = \"getTakePicture\"; var selectPicture = \"selectPicture\"; var pkgVersion = \"pkgVersion\"; var getNetworkAddress = \"getN",
+      "note": ""
+    },
+    {
+      "probe_id": "srt_storage_js",
+      "captured_at": "2026-02-28T21:29:59.294969+00:00",
+      "method": "GET",
+      "url": "https://app.srail.or.kr:443/js/common/storage_new.js",
+      "host": "app.srail.or.kr",
+      "path": "/js/common/storage_new.js",
+      "request_has_cookie": "<redacted>",
+      "status_code": 200,
+      "content_type": "application/x-javascript",
+      "error": "",
+      "body_signals": [
+        "business_payload_without_cookie",
+        "static_js_asset"
+      ],
+      "has_login_marker": false,
+      "meaningful_payload": true,
+      "auth_classification_hint": "public_stateless",
+      "snippet": "// 20190619 강영오 - Storage 공통 var storage = new function () { this.callbackData = {}; this.setItem = function (key, value, pageId) { console.log('setItem key : ' + key + ' value : ' + value); // App Storage 저장 var param = {\"key\": key, \"value\": value}; if (pageI",
+      "note": ""
+    },
+    {
+      "probe_id": "srt_messages_js",
+      "captured_at": "2026-02-28T21:30:01.007235+00:00",
+      "method": "GET",
+      "url": "https://app.srail.or.kr:443/js/common/messages.js",
+      "host": "app.srail.or.kr",
+      "path": "/js/common/messages.js",
+      "request_has_cookie": "<redacted>",
+      "status_code": 200,
+      "content_type": "application/x-javascript",
+      "error": "",
+      "body_signals": [
+        "business_payload_without_cookie",
+        "login_marker_in_body",
+        "static_js_asset"
+      ],
+      "has_login_marker": true,
+      "meaningful_payload": true,
+      "auth_classification_hint": "auth_required",
+      "snippet": "var Sr = Sr || {}; var msgs = function() { }; msgs.prototype = { // error error001 : \"서비스가 접속이 원활하지 않습니다. 잠시후 다시 시도하여 주시기 바랍니다.\", // 결제 /* pay001 : \"<p class=\\\"f26 mid\\\"><strong>1. 일반 승차권 위약금</strong><br /> \\ ○ 열차 출발 전 <br />\\ 가. 주중(월~목) <br />- 1개월~출발 3시간 전까지",
+      "note": ""
+    },
+    {
+      "probe_id": "srt_util_js",
+      "captured_at": "2026-02-28T21:30:02.350430+00:00",
+      "method": "GET",
+      "url": "https://app.srail.or.kr:443/js/common/util.js",
+      "host": "app.srail.or.kr",
+      "path": "/js/common/util.js",
+      "request_has_cookie": "<redacted>",
+      "status_code": 200,
+      "content_type": "application/x-javascript",
+      "error": "",
+      "body_signals": [
+        "business_payload_without_cookie",
+        "static_js_asset"
+      ],
+      "has_login_marker": false,
+      "meaningful_payload": true,
+      "auth_classification_hint": "public_stateless",
+      "snippet": "var Iject = Iject || {}; var Util = function(){}; Util.prototype = { /** * 공통 Gobal utility * @private * @memberOf Iject.util */ /** * 트랜잭션 json String 변환함수 * @param {Object} jsonObject * @return {string} * @example * * @memberOf Inject.Util */ convertJsonInpu",
+      "note": ""
+    },
+    {
+      "probe_id": "srt_push_js",
+      "captured_at": "2026-02-28T21:30:03.410086+00:00",
+      "method": "GET",
+      "url": "https://app.srail.or.kr:443/js/common/push.js",
+      "host": "app.srail.or.kr",
+      "path": "/js/common/push.js",
+      "request_has_cookie": "<redacted>",
+      "status_code": 200,
+      "content_type": "application/x-javascript",
+      "error": "",
+      "body_signals": [
+        "business_payload_without_cookie",
+        "static_js_asset"
+      ],
+      "has_login_marker": false,
+      "meaningful_payload": true,
+      "auth_classification_hint": "public_stateless",
+      "snippet": "function getDptTm(data) { var time = localStorage.getItem(\"dptValue\"); var iTime; var sDptTm = data.dptTm; var sDptDt = data.dptDt; var sTodayTime = todayTime(); if (time != null && !isNaN(time) && time != undefined) { iTime = parseInt(time); } else { iTime = ",
+      "note": ""
+    },
+    {
+      "probe_id": "srt_holidays_js",
+      "captured_at": "2026-02-28T21:30:04.240583+00:00",
+      "method": "GET",
+      "url": "https://app.srail.or.kr:443/js/holidays.js",
+      "host": "app.srail.or.kr",
+      "path": "/js/holidays.js",
+      "request_has_cookie": "<redacted>",
+      "status_code": 200,
+      "content_type": "application/x-javascript",
+      "error": "",
+      "body_signals": [
+        "business_payload_without_cookie",
+        "static_js_asset"
+      ],
+      "has_login_marker": false,
+      "meaningful_payload": true,
+      "auth_classification_hint": "public_stateless",
+      "snippet": "var holidays = { \"0101\" :{type: 1, title:\"신정\", year:\"\", limitTime:\"\"}, \"0301\" :{type: 1, title:\"삼일절\", year:\"\", limitTime:\"\"}, \"0505\" :{type: 1, title:\"어린이날\", year:\"\", limitTime:\"\"}, \"0606\" :{type: 1, title:\"현충일\", year:\"\", limitTime:\"\"}, \"0815\" :{type: 1, title",
+      "note": ""
+    },
+    {
+      "probe_id": "etk_schedule_popup_get",
+      "captured_at": "2026-02-28T21:30:05.095008+00:00",
+      "method": "GET",
+      "url": "https://etk.srail.kr/hpg/hra/01/selectTrainScheduleList.do?pageId=TK0101011000&chtnDvCd=1&dptRsStnCd1=0551&arvRsStnCd1=0015&runDt1=20260228&trnNo1=00369&stlbTrnClsfCd1=17&psgInfoPerPrnb1=1",
+      "host": "etk.srail.kr",
+      "path": "/hpg/hra/01/selectTrainScheduleList.do",
+      "request_has_cookie": "<redacted>",
+      "status_code": null,
+      "content_type": "",
+      "error": "HTTP Error 405: Method Not Allowed",
+      "body_signals": [
+        "etk_popup_html"
+      ],
+      "has_login_marker": false,
+      "meaningful_payload": false,
+      "auth_classification_hint": "unknown",
+      "snippet": "",
+      "note": ""
+    },
+    {
+      "probe_id": "etk_schedule_popup_post",
+      "captured_at": "2026-02-28T21:30:05.975333+00:00",
+      "method": "POST",
+      "url": "https://etk.srail.kr/hpg/hra/01/selectTrainScheduleList.do",
+      "host": "etk.srail.kr",
+      "path": "/hpg/hra/01/selectTrainScheduleList.do",
+      "request_has_cookie": "<redacted>",
+      "status_code": 200,
+      "content_type": "text/html; charset=utf-8",
+      "error": "",
+      "body_signals": [
+        "etk_popup_html",
+        "html_response"
+      ],
+      "has_login_marker": false,
+      "meaningful_payload": false,
+      "auth_classification_hint": "unknown",
+      "snippet": "<!DOCTYPE html> <html lang=\"ko\"> <head> <meta charset=\"utf-8\" /> <meta http-equiv=\"X-UA-Compatible\" content=\"IE=edge\" /> <meta name=\"format-detection\" content=\"telephone=no, address=no, email=no\" /> <meta name=\"viewport\" content=\"width=device-width, user-scala",
+      "note": ""
+    },
+    {
+      "probe_id": "etk_fare_popup_get",
+      "captured_at": "2026-02-28T21:30:07.223101+00:00",
+      "method": "GET",
+      "url": "https://etk.srail.kr/hpg/hra/01/selectTrainChargeList.do?pageId=TK0101011000&chtnDvCd=1&dptRsStnCd1=0551&arvRsStnCd1=0015&runDt1=20260228&trnNo1=00369&stlbTrnClsfCd1=17&psgInfoPerPrnb1=1",
+      "host": "etk.srail.kr",
+      "path": "/hpg/hra/01/selectTrainChargeList.do",
+      "request_has_cookie": "<redacted>",
+      "status_code": 200,
+      "content_type": "text/html; charset=utf-8",
+      "error": "",
+      "body_signals": [
+        "etk_popup_html",
+        "html_response"
+      ],
+      "has_login_marker": false,
+      "meaningful_payload": false,
+      "auth_classification_hint": "unknown",
+      "snippet": "<!DOCTYPE html> <html lang=\"ko\"> <head> <meta charset=\"utf-8\" /> <meta http-equiv=\"X-UA-Compatible\" content=\"IE=edge\" /> <meta name=\"format-detection\" content=\"telephone=no, address=no, email=no\" /> <meta name=\"viewport\" content=\"width=device-width, user-scala",
+      "note": ""
+    },
+    {
+      "probe_id": "etk_fare_popup_post",
+      "captured_at": "2026-02-28T21:30:08.436741+00:00",
+      "method": "POST",
+      "url": "https://etk.srail.kr/hpg/hra/01/selectTrainChargeList.do",
+      "host": "etk.srail.kr",
+      "path": "/hpg/hra/01/selectTrainChargeList.do",
+      "request_has_cookie": "<redacted>",
+      "status_code": 200,
+      "content_type": "text/html; charset=utf-8",
+      "error": "",
+      "body_signals": [
+        "etk_popup_html",
+        "html_response"
+      ],
+      "has_login_marker": false,
+      "meaningful_payload": false,
+      "auth_classification_hint": "unknown",
+      "snippet": "<!DOCTYPE html> <html lang=\"ko\"> <head> <meta charset=\"utf-8\" /> <meta http-equiv=\"X-UA-Compatible\" content=\"IE=edge\" /> <meta name=\"format-detection\" content=\"telephone=no, address=no, email=no\" /> <meta name=\"viewport\" content=\"width=device-width, user-scala",
+      "note": ""
+    },
+    {
+      "probe_id": "netfunnel_direct",
+      "captured_at": "2026-02-28T21:30:09.490405+00:00",
+      "method": "GET",
+      "url": "https://nf.letskorail.com/ts.wseq?opcode=5101&nfid=0&prefix=NetFunnel.gRtype=5101;&js=true",
+      "host": "nf.letskorail.com",
+      "path": "/ts.wseq",
+      "request_has_cookie": "<redacted>",
+      "status_code": 200,
+      "content_type": "application/javascript",
+      "error": "",
+      "body_signals": [],
+      "has_login_marker": false,
+      "meaningful_payload": false,
+      "auth_classification_hint": "unknown",
+      "snippet": "NetFunnel.gRtype=4999;NetFunnel.gControl.result='5101:999:msg=\"System Error\"'; NetFunnel.gControl._showResult();",
+      "note": ""
+    }
+  ],
+  "endpoint_summary": [
+    {
+      "host": "app.srail.or.kr",
+      "path": "/ara/selectListAra10007_n.do",
+      "auth_scope_label": "public_context_required",
+      "auth_scope_evidence": [
+        {
+          "source": "probe_response",
+          "signal": "netfunnel_key_required",
+          "reference": "probe_id:srt_search_with_netfunnel"
+        }
+      ]
+    },
+    {
+      "host": "app.srail.or.kr",
+      "path": "/ara/selectListAra12009_n.do",
+      "auth_scope_label": "public_stateless",
+      "auth_scope_evidence": [
+        {
+          "source": "probe_response",
+          "signal": "business_payload_without_cookie",
+          "reference": "probe_id:srt_schedule_detail"
+        }
+      ]
+    },
+    {
+      "host": "app.srail.or.kr",
+      "path": "/ara/selectListAra13010_n.do",
+      "auth_scope_label": "public_stateless",
+      "auth_scope_evidence": [
+        {
+          "source": "probe_response",
+          "signal": "business_payload_without_cookie",
+          "reference": "probe_id:srt_fare_detail"
+        }
+      ]
+    },
+    {
+      "host": "app.srail.or.kr",
+      "path": "/arc/selectListArc05013_n.do",
+      "auth_scope_label": "unknown",
+      "auth_scope_evidence": []
+    },
+    {
+      "host": "app.srail.or.kr",
+      "path": "/ard/selectListArd02019_n.do",
+      "auth_scope_label": "auth_required",
+      "auth_scope_evidence": [
+        {
+          "source": "probe_response",
+          "signal": "login_marker_in_body",
+          "reference": "probe_id:srt_ticket_detail"
+        }
+      ]
+    },
+    {
+      "host": "app.srail.or.kr",
+      "path": "/ard/selectListArd02045_n.do",
+      "auth_scope_label": "auth_required",
+      "auth_scope_evidence": [
+        {
+          "source": "probe_response",
+          "signal": "login_marker_in_body",
+          "reference": "probe_id:srt_cancel"
+        }
+      ]
+    },
+    {
+      "host": "app.srail.or.kr",
+      "path": "/ata/selectListAta01135_n.do",
+      "auth_scope_label": "auth_required",
+      "auth_scope_evidence": [
+        {
+          "source": "probe_response",
+          "signal": "login_marker_in_body",
+          "reference": "probe_id:srt_standby_option"
+        }
+      ]
+    },
+    {
+      "host": "app.srail.or.kr",
+      "path": "/ata/selectListAta09036_n.do",
+      "auth_scope_label": "unknown",
+      "auth_scope_evidence": []
+    },
+    {
+      "host": "app.srail.or.kr",
+      "path": "/atc/getListAtc14087.do",
+      "auth_scope_label": "unknown",
+      "auth_scope_evidence": []
+    },
+    {
+      "host": "app.srail.or.kr",
+      "path": "/atc/selectListAtc02063_n.do",
+      "auth_scope_label": "auth_required",
+      "auth_scope_evidence": [
+        {
+          "source": "probe_response",
+          "signal": "login_marker_in_body",
+          "reference": "probe_id:srt_refund"
+        }
+      ]
+    },
+    {
+      "host": "app.srail.or.kr",
+      "path": "/atc/selectListAtc02085_n.do",
+      "auth_scope_label": "auth_required",
+      "auth_scope_evidence": [
+        {
+          "source": "probe_response",
+          "signal": "login_marker_in_body",
+          "reference": "probe_id:srt_refund_precheck"
+        }
+      ]
+    },
+    {
+      "host": "app.srail.or.kr",
+      "path": "/atc/selectListAtc14016_n.do",
+      "auth_scope_label": "auth_required",
+      "auth_scope_evidence": [
+        {
+          "source": "probe_response",
+          "signal": "login_marker_in_body",
+          "reference": "probe_id:srt_tickets"
+        }
+      ]
+    },
+    {
+      "host": "app.srail.or.kr",
+      "path": "/atc/selectListAtc14017_n.do",
+      "auth_scope_label": "auth_required",
+      "auth_scope_evidence": [
+        {
+          "source": "probe_response",
+          "signal": "login_marker_in_body",
+          "reference": "probe_id:srt_ticket_page"
+        }
+      ]
+    },
+    {
+      "host": "app.srail.or.kr",
+      "path": "/atd/selectListAtd02039_n.do",
+      "auth_scope_label": "unknown",
+      "auth_scope_evidence": []
+    },
+    {
+      "host": "app.srail.or.kr",
+      "path": "/js/common/bridge_new.js",
+      "auth_scope_label": "public_stateless",
+      "auth_scope_evidence": [
+        {
+          "source": "probe_response",
+          "signal": "business_payload_without_cookie",
+          "reference": "probe_id:srt_bridge_js"
+        }
+      ]
+    },
+    {
+      "host": "app.srail.or.kr",
+      "path": "/js/common/messages.js",
+      "auth_scope_label": "auth_required",
+      "auth_scope_evidence": [
+        {
+          "source": "probe_response",
+          "signal": "login_marker_in_body",
+          "reference": "probe_id:srt_messages_js"
+        }
+      ]
+    },
+    {
+      "host": "app.srail.or.kr",
+      "path": "/js/common/push.js",
+      "auth_scope_label": "public_stateless",
+      "auth_scope_evidence": [
+        {
+          "source": "probe_response",
+          "signal": "business_payload_without_cookie",
+          "reference": "probe_id:srt_push_js"
+        }
+      ]
+    },
+    {
+      "host": "app.srail.or.kr",
+      "path": "/js/common/storage_new.js",
+      "auth_scope_label": "public_stateless",
+      "auth_scope_evidence": [
+        {
+          "source": "probe_response",
+          "signal": "business_payload_without_cookie",
+          "reference": "probe_id:srt_storage_js"
+        }
+      ]
+    },
+    {
+      "host": "app.srail.or.kr",
+      "path": "/js/common/util.js",
+      "auth_scope_label": "public_stateless",
+      "auth_scope_evidence": [
+        {
+          "source": "probe_response",
+          "signal": "business_payload_without_cookie",
+          "reference": "probe_id:srt_util_js"
+        }
+      ]
+    },
+    {
+      "host": "app.srail.or.kr",
+      "path": "/js/holidays.js",
+      "auth_scope_label": "public_stateless",
+      "auth_scope_evidence": [
+        {
+          "source": "probe_response",
+          "signal": "business_payload_without_cookie",
+          "reference": "probe_id:srt_holidays_js"
+        }
+      ]
+    },
+    {
+      "host": "app.srail.or.kr",
+      "path": "/js/stationInfo.js",
+      "auth_scope_label": "public_stateless",
+      "auth_scope_evidence": [
+        {
+          "source": "probe_response",
+          "signal": "business_payload_without_cookie",
+          "reference": "probe_id:srt_station_info_js"
+        }
+      ]
+    },
+    {
+      "host": "etk.srail.kr",
+      "path": "/hpg/hra/01/selectTrainChargeList.do",
+      "auth_scope_label": "unknown",
+      "auth_scope_evidence": []
+    },
+    {
+      "host": "etk.srail.kr",
+      "path": "/hpg/hra/01/selectTrainScheduleList.do",
+      "auth_scope_label": "unknown",
+      "auth_scope_evidence": []
+    },
+    {
+      "host": "nf.letskorail.com",
+      "path": "/ts.wseq",
+      "auth_scope_label": "unknown",
+      "auth_scope_evidence": []
+    }
+  ]
+}

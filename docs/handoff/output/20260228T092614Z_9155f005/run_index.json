@@ -1,0 +1,552 @@
+{
+  "run_id": "20260228T092614Z_9155f005",
+  "started_at": "2026-02-28T09:26:14.418420+00:00",
+  "finished_at": "2026-02-28T09:29:13.849327+00:00",
+  "event_count": 39,
+  "summary": {
+    "component_counts": {
+      "srt": 31,
+      "netfunnel": 8
+    },
+    "operation_counts": {
+      "login": 6,
+      "netfunnel": 8,
+      "search_schedule": 17,
+      "reserve": 2,
+      "tickets": 2,
+      "ticket_info": 3,
+      "standby_option": 1
+    },
+    "status_code_counts": {
+      "200": 39
+    },
+    "error_count": 0
+  },
+  "step_boundaries": [
+    {
+      "operation": "login",
+      "component": "srt",
+      "start_sequence": 1,
+      "end_sequence": 3,
+      "event_count": 3
+    },
+    {
+      "operation": "netfunnel",
+      "component": "netfunnel",
+      "start_sequence": 4,
+      "end_sequence": 5,
+      "event_count": 2
+    },
+    {
+      "operation": "search_schedule",
+      "component": "srt",
+      "start_sequence": 6,
+      "end_sequence": 7,
+      "event_count": 2
+    },
+    {
+      "operation": "reserve",
+      "component": "srt",
+      "start_sequence": 8,
+      "end_sequence": 8,
+      "event_count": 1
+    },
+    {
+      "operation": "tickets",
+      "component": "srt",
+      "start_sequence": 9,
+      "end_sequence": 9,
+      "event_count": 1
+    },
+    {
+      "operation": "ticket_info",
+      "component": "srt",
+      "start_sequence": 10,
+      "end_sequence": 10,
+      "event_count": 1
+    },
+    {
+      "operation": "standby_option",
+      "component": "srt",
+      "start_sequence": 11,
+      "end_sequence": 11,
+      "event_count": 1
+    },
+    {
+      "operation": "login",
+      "component": "srt",
+      "start_sequence": 12,
+      "end_sequence": 12,
+      "event_count": 1
+    },
+    {
+      "operation": "netfunnel",
+      "component": "netfunnel",
+      "start_sequence": 13,
+      "end_sequence": 14,
+      "event_count": 2
+    },
+    {
+      "operation": "search_schedule",
+      "component": "srt",
+      "start_sequence": 15,
+      "end_sequence": 16,
+      "event_count": 2
+    },
+    {
+      "operation": "reserve",
+      "component": "srt",
+      "start_sequence": 17,
+      "end_sequence": 17,
+      "event_count": 1
+    },
+    {
+      "operation": "tickets",
+      "component": "srt",
+      "start_sequence": 18,
+      "end_sequence": 18,
+      "event_count": 1
+    },
+    {
+      "operation": "ticket_info",
+      "component": "srt",
+      "start_sequence": 19,
+      "end_sequence": 20,
+      "event_count": 2
+    },
+    {
+      "operation": "login",
+      "component": "srt",
+      "start_sequence": 21,
+      "end_sequence": 21,
+      "event_count": 1
+    },
+    {
+      "operation": "netfunnel",
+      "component": "netfunnel",
+      "start_sequence": 22,
+      "end_sequence": 23,
+      "event_count": 2
+    },
+    {
+      "operation": "search_schedule",
+      "component": "srt",
+      "start_sequence": 24,
+      "end_sequence": 24,
+      "event_count": 1
+    },
+    {
+      "operation": "login",
+      "component": "srt",
+      "start_sequence": 25,
+      "end_sequence": 25,
+      "event_count": 1
+    },
+    {
+      "operation": "netfunnel",
+      "component": "netfunnel",
+      "start_sequence": 26,
+      "end_sequence": 27,
+      "event_count": 2
+    },
+    {
+      "operation": "search_schedule",
+      "component": "srt",
+      "start_sequence": 28,
+      "end_sequence": 39,
+      "event_count": 12
+    }
+  ],
+  "events": [
+    {
+      "sequence": 1,
+      "file": "0001_srt_POST_selectListApb01080_n.do.json",
+      "component": "srt",
+      "operation": "login",
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/apb/selectListApb01080_n.do",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "sequence": 2,
+      "file": "0002_srt_POST_selectListApb01080_n.do.json",
+      "component": "srt",
+      "operation": "login",
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/apb/selectListApb01080_n.do",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "sequence": 3,
+      "file": "0003_srt_POST_selectListApb01080_n.do.json",
+      "component": "srt",
+      "operation": "login",
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/apb/selectListApb01080_n.do",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "sequence": 4,
+      "file": "0004_netfunnel_GET_ts.wseq.json",
+      "component": "netfunnel",
+      "operation": "netfunnel",
+      "method": "GET",
+      "url": "https://nf.letskorail.com/ts.wseq",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "sequence": 5,
+      "file": "0005_netfunnel_GET_ts.wseq.json",
+      "component": "netfunnel",
+      "operation": "netfunnel",
+      "method": "GET",
+      "url": "https://nf5.letskorail.com/ts.wseq",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "sequence": 6,
+      "file": "0006_srt_POST_selectListAra10007_n.do.json",
+      "component": "srt",
+      "operation": "search_schedule",
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/ara/selectListAra10007_n.do",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "sequence": 7,
+      "file": "0007_srt_POST_selectListAra10007_n.do.json",
+      "component": "srt",
+      "operation": "search_schedule",
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/ara/selectListAra10007_n.do",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "sequence": 8,
+      "file": "0008_srt_POST_selectListArc05013_n.do.json",
+      "component": "srt",
+      "operation": "reserve",
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/arc/selectListArc05013_n.do",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "sequence": 9,
+      "file": "0009_srt_POST_selectListAtc14016_n.do.json",
+      "component": "srt",
+      "operation": "tickets",
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/atc/selectListAtc14016_n.do",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "sequence": 10,
+      "file": "0010_srt_POST_selectListArd02019_n.do.json",
+      "component": "srt",
+      "operation": "ticket_info",
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/ard/selectListArd02019_n.do",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "sequence": 11,
+      "file": "0011_srt_POST_selectListAta01135_n.do.json",
+      "component": "srt",
+      "operation": "standby_option",
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/ata/selectListAta01135_n.do",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "sequence": 12,
+      "file": "0012_srt_POST_selectListApb01080_n.do.json",
+      "component": "srt",
+      "operation": "login",
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/apb/selectListApb01080_n.do",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "sequence": 13,
+      "file": "0013_netfunnel_GET_ts.wseq.json",
+      "component": "netfunnel",
+      "operation": "netfunnel",
+      "method": "GET",
+      "url": "https://nf.letskorail.com/ts.wseq",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "sequence": 14,
+      "file": "0014_netfunnel_GET_ts.wseq.json",
+      "component": "netfunnel",
+      "operation": "netfunnel",
+      "method": "GET",
+      "url": "https://nf7.letskorail.com/ts.wseq",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "sequence": 15,
+      "file": "0015_srt_POST_selectListAra10007_n.do.json",
+      "component": "srt",
+      "operation": "search_schedule",
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/ara/selectListAra10007_n.do",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "sequence": 16,
+      "file": "0016_srt_POST_selectListAra10007_n.do.json",
+      "component": "srt",
+      "operation": "search_schedule",
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/ara/selectListAra10007_n.do",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "sequence": 17,
+      "file": "0017_srt_POST_selectListArc05013_n.do.json",
+      "component": "srt",
+      "operation": "reserve",
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/arc/selectListArc05013_n.do",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "sequence": 18,
+      "file": "0018_srt_POST_selectListAtc14016_n.do.json",
+      "component": "srt",
+      "operation": "tickets",
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/atc/selectListAtc14016_n.do",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "sequence": 19,
+      "file": "0019_srt_POST_selectListArd02019_n.do.json",
+      "component": "srt",
+      "operation": "ticket_info",
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/ard/selectListArd02019_n.do",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "sequence": 20,
+      "file": "0020_srt_POST_selectListArd02019_n.do.json",
+      "component": "srt",
+      "operation": "ticket_info",
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/ard/selectListArd02019_n.do",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "sequence": 21,
+      "file": "0021_srt_POST_selectListApb01080_n.do.json",
+      "component": "srt",
+      "operation": "login",
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/apb/selectListApb01080_n.do",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "sequence": 22,
+      "file": "0022_netfunnel_GET_ts.wseq.json",
+      "component": "netfunnel",
+      "operation": "netfunnel",
+      "method": "GET",
+      "url": "https://nf.letskorail.com/ts.wseq",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "sequence": 23,
+      "file": "0023_netfunnel_GET_ts.wseq.json",
+      "component": "netfunnel",
+      "operation": "netfunnel",
+      "method": "GET",
+      "url": "https://nf9.letskorail.com/ts.wseq",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "sequence": 24,
+      "file": "0024_srt_POST_selectListAra10007_n.do.json",
+      "component": "srt",
+      "operation": "search_schedule",
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/ara/selectListAra10007_n.do",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "sequence": 25,
+      "file": "0025_srt_POST_selectListApb01080_n.do.json",
+      "component": "srt",
+      "operation": "login",
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/apb/selectListApb01080_n.do",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "sequence": 26,
+      "file": "0026_netfunnel_GET_ts.wseq.json",
+      "component": "netfunnel",
+      "operation": "netfunnel",
+      "method": "GET",
+      "url": "https://nf.letskorail.com/ts.wseq",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "sequence": 27,
+      "file": "0027_netfunnel_GET_ts.wseq.json",
+      "component": "netfunnel",
+      "operation": "netfunnel",
+      "method": "GET",
+      "url": "https://nf6.letskorail.com/ts.wseq",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "sequence": 28,
+      "file": "0028_srt_POST_selectListAra10007_n.do.json",
+      "component": "srt",
+      "operation": "search_schedule",
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/ara/selectListAra10007_n.do",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "sequence": 29,
+      "file": "0029_srt_POST_selectListAra10007_n.do.json",
+      "component": "srt",
+      "operation": "search_schedule",
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/ara/selectListAra10007_n.do",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "sequence": 30,
+      "file": "0030_srt_POST_selectListAra10007_n.do.json",
+      "component": "srt",
+      "operation": "search_schedule",
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/ara/selectListAra10007_n.do",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "sequence": 31,
+      "file": "0031_srt_POST_selectListAra10007_n.do.json",
+      "component": "srt",
+      "operation": "search_schedule",
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/ara/selectListAra10007_n.do",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "sequence": 32,
+      "file": "0032_srt_POST_selectListAra10007_n.do.json",
+      "component": "srt",
+      "operation": "search_schedule",
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/ara/selectListAra10007_n.do",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "sequence": 33,
+      "file": "0033_srt_POST_selectListAra10007_n.do.json",
+      "component": "srt",
+      "operation": "search_schedule",
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/ara/selectListAra10007_n.do",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "sequence": 34,
+      "file": "0034_srt_POST_selectListAra10007_n.do.json",
+      "component": "srt",
+      "operation": "search_schedule",
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/ara/selectListAra10007_n.do",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "sequence": 35,
+      "file": "0035_srt_POST_selectListAra10007_n.do.json",
+      "component": "srt",
+      "operation": "search_schedule",
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/ara/selectListAra10007_n.do",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "sequence": 36,
+      "file": "0036_srt_POST_selectListAra10007_n.do.json",
+      "component": "srt",
+      "operation": "search_schedule",
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/ara/selectListAra10007_n.do",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "sequence": 37,
+      "file": "0037_srt_POST_selectListAra10007_n.do.json",
+      "component": "srt",
+      "operation": "search_schedule",
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/ara/selectListAra10007_n.do",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "sequence": 38,
+      "file": "0038_srt_POST_selectListAra10007_n.do.json",
+      "component": "srt",
+      "operation": "search_schedule",
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/ara/selectListAra10007_n.do",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "sequence": 39,
+      "file": "0039_srt_POST_selectListAra10007_n.do.json",
+      "component": "srt",
+      "operation": "search_schedule",
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/ara/selectListAra10007_n.do",
+      "status_code": 200,
+      "error": null
+    }
+  ]
+}
