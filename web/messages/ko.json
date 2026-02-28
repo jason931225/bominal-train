@@ -52,6 +52,8 @@
     "signInWithPassword": "비밀번호로 로그인",
     "signingInWithPasskey": "패스키 로그인 중...",
     "passkeySignInFailed": "패스키 로그인에 실패했습니다.",
+    "passkeyUnavailable": "현재 패스키 로그인을 사용할 수 없습니다.",
+    "passkeyUnsupported": "이 기기 또는 브라우저는 패스키를 지원하지 않습니다.",
     "waitingForPasskey": "패스키를 기다리는 중...",
     "showAlternativeMethods": "다른 로그인 방법 보기",
     "alternativeMethods": "다른 로그인 방법",

@@ -187,6 +187,23 @@ describe("LoginForm", () => {
     });
   });
 
+  it("surfaces passkey security failures instead of silently skipping", async () => {
+    vi.mocked(signInWithPasskey).mockResolvedValueOnce({
+      ok: false,
+      error: "Passkey security check failed: Invalid domain",
+    });
+
+    renderLoginForm();
+
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "security@example.com" } });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Passkey security check failed: Invalid domain")).toBeInTheDocument();
+    });
+    expect(screen.getByRole("button", { name: "Sign in with password" })).toBeInTheDocument();
+  });
+
   it("requests OTP and verifies it when capability is enabled", async () => {
     fetchMock
       .mockResolvedValueOnce(

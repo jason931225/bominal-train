@@ -75,13 +75,12 @@ export function LoginForm() {
   };
 
   const expectedPasskeyFallback = (message: string | undefined): boolean => {
-    if (!message) return true;
+    if (!message) return false;
     const normalized = message.toLowerCase();
     return (
       normalized.includes("no passkey registered") ||
       normalized.includes("cancel") ||
-      normalized.includes("not supported") ||
-      normalized.includes("security check failed")
+      normalized.includes("not supported")
     );
   };
 
@@ -130,8 +129,16 @@ export function LoginForm() {
     setFormError(null);
     setNotice(null);
 
-    if (!nextMethods.passkey || !isPasskeySupported()) {
+    if (!nextMethods.passkey) {
       cancelPasskeyAttempt();
+      setFormError(t("auth.passkeyUnavailable"));
+      setStep("alternatives");
+      return;
+    }
+
+    if (!isPasskeySupported()) {
+      cancelPasskeyAttempt();
+      setFormError(t("auth.passkeyUnsupported"));
       setStep("alternatives");
       return;
     }

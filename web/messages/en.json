@@ -52,6 +52,8 @@
     "signInWithPassword": "Sign in with password",
     "signingInWithPasskey": "Signing in with passkey...",
     "passkeySignInFailed": "Could not sign in with passkey.",
+    "passkeyUnavailable": "Passkey sign-in is currently unavailable.",
+    "passkeyUnsupported": "Passkeys are not supported on this device or browser.",
     "waitingForPasskey": "Waiting for passkey...",
     "showAlternativeMethods": "Show alternative methods",
     "alternativeMethods": "Alternative methods",
