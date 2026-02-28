@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 
 import { useLocale } from "@/components/locale-provider";
@@ -11,7 +10,6 @@ import { TopNavBrand } from "@/components/top-nav-brand";
 import { clientApiBaseUrl } from "@/lib/api-base";
 import type { Locale } from "@/lib/i18n";
 import { isPathPrefix, ROUTES } from "@/lib/routes";
-import { UI_BUTTON_OUTLINE, UI_BUTTON_PRIMARY } from "@/lib/ui";
 import type { BominalUser } from "@/lib/types";
 
 type SectionRule = {
@@ -113,7 +111,7 @@ export function TopNav({ user }: { user: BominalUser | null }) {
   };
 
   return (
-    <header className="sticky top-0 z-[140] border-b border-blossom-100 bg-white">
+    <header data-top-nav="true" className="sticky top-0 z-[140] border-b border-blossom-100 bg-white">
       <div className="mx-auto flex w-full max-w-5xl items-center justify-between px-4 py-3.5 sm:px-6">
         <TopNavBrand href={user ? ROUTES.modules.train : ROUTES.login} sectionLabel={brandSectionLabel} />
 
@@ -124,14 +122,8 @@ export function TopNav({ user }: { user: BominalUser | null }) {
             <NavBurgerMenu isAdmin={user.role === "admin"} />
           </div>
         ) : (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center">
             <TopNavLocaleSwitch locale={locale} disabled={false} onChange={onLocaleChange} />
-            <Link href={ROUTES.login} className={UI_BUTTON_OUTLINE}>
-              {t("nav.login")}
-            </Link>
-            <Link href={ROUTES.register} className={UI_BUTTON_PRIMARY}>
-              {t("nav.register")}
-            </Link>
           </div>
         )}
       </div>

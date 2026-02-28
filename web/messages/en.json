@@ -66,6 +66,7 @@
     "verifyOtp": "Verify OTP",
     "verifyingOtp": "Verifying OTP...",
     "returnToPasskey": "Return to passkey",
+    "returnToSignIn": "Return to sign in",
     "passkeyOfferHeading": "Set up passkey",
     "passkeyOfferSubheading": "Use passkey for faster and safer sign-in.",
     "passkeyOfferTitle": "Add a passkey now",

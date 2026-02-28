@@ -66,6 +66,7 @@
     "verifyOtp": "OTP 확인",
     "verifyingOtp": "OTP 확인 중...",
     "returnToPasskey": "패스키로 돌아가기",
+    "returnToSignIn": "로그인으로 돌아가기",
     "passkeyOfferHeading": "패스키 설정",
     "passkeyOfferSubheading": "더 빠르고 안전한 로그인을 위해 패스키를 사용하세요.",
     "passkeyOfferTitle": "지금 패스키 추가",

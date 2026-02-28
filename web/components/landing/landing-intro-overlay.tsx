@@ -16,6 +16,7 @@ const LOGO_HOLD_MS = 700;
 const BUTTON_ENTER_DURATION_MS = 600;
 const SKIP_ENTER_DURATION_MS = 180;
 const CTA_GAP_PX = 28;
+const LANDING_INTRO_PLAYED_AT_KEY = "bominal_landing_intro_played_at_v1";
 
 type IntroMode = "boot" | "play" | "skip";
 
@@ -23,6 +24,32 @@ const LANDING_WORDMARK_CLASS =
   "select-none font-brand whitespace-nowrap text-[clamp(3.5rem,12vw,7rem)] font-semibold lowercase leading-none tracking-tight drop-shadow-[0_18px_50px_rgba(0,0,0,0.45)]";
 const LANDING_WORDMARK_LETTER_TEXT_CLASS =
   "text-white/80 sm:text-transparent sm:bg-clip-text sm:bg-gradient-to-b sm:from-white/95 sm:via-white/75 sm:to-white/45";
+
+function currentLocalDayKey(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function hasPlayedIntroToday(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(LANDING_INTRO_PLAYED_AT_KEY) === currentLocalDayKey();
+  } catch {
+    return false;
+  }
+}
+
+function markPlayedIntroToday(): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(LANDING_INTRO_PLAYED_AT_KEY, currentLocalDayKey());
+  } catch {
+    // Ignore storage write failures and fall back to replay behavior.
+  }
+}
 
 export function LandingIntroOverlay() {
   const router = useRouter();
@@ -44,8 +71,15 @@ export function LandingIntroOverlay() {
       return;
     }
 
-    // Replay the intro every time landing is visited (desktop + mobile),
-    // unless the user explicitly prefers reduced motion.
+    // Replay intro at most once per local calendar day.
+    if (hasPlayedIntroToday()) {
+      setMode("skip");
+      setLogoStarted(true);
+      setCtaVisible(true);
+      return;
+    }
+
+    markPlayedIntroToday();
     setMode("play");
     setLogoStarted(false);
     setCtaVisible(false);

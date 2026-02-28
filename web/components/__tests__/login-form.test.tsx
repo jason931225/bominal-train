@@ -74,6 +74,10 @@ describe("LoginForm", () => {
     await waitFor(() => {
       expect(screen.getByText("Waiting for passkey...")).toBeInTheDocument();
     });
+    expect(screen.getByRole("button", { name: "Show alternative methods" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Return to sign in" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Email")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Continue" })).not.toBeInTheDocument();
     expect(signInWithPasskey).toHaveBeenCalledWith(
       "",
       { email: "passkey@example.com", rememberMe: false },
@@ -101,8 +105,43 @@ describe("LoginForm", () => {
 
     expect(screen.getByRole("button", { name: "Sign in with password" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Send one time link to my email" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Return to sign in" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Return to passkey" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Sign in with OTP" })).not.toBeInTheDocument();
+  });
+
+  it("returns to sign-in form from passkey and alternatives screens", async () => {
+    vi.mocked(signInWithPasskey).mockImplementation(
+      () =>
+        new Promise(() => {
+          // keep pending to preserve waiting state
+        }),
+    );
+
+    renderLoginForm();
+
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "user@example.com" } });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Return to sign in" })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Return to sign in" }));
+
+    expect(screen.getByLabelText("Email")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Continue" })).toBeInTheDocument();
+    expect(screen.queryByText("Waiting for passkey...")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Show alternative methods" })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Show alternative methods" }));
+    fireEvent.click(screen.getByRole("button", { name: "Return to sign in" }));
+
+    expect(screen.getByLabelText("Email")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Continue" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Sign in with password" })).not.toBeInTheDocument();
   });
 
   it("supports password fallback sign-in", async () => {

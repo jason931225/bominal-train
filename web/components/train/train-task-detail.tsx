@@ -19,9 +19,9 @@ type AttemptSortOrder = (typeof ATTEMPT_SORT_OPTIONS)[number];
 const SMALL_BUTTON_CLASS = UI_BUTTON_OUTLINE_SM;
 const SMALL_DANGER_BUTTON_CLASS = UI_BUTTON_DANGER_SM;
 const SMALL_SUCCESS_BUTTON_CLASS =
-  "inline-flex h-8 items-center justify-center rounded-full border border-emerald-200 bg-emerald-50 px-2.5 text-xs font-medium text-emerald-700 shadow-sm transition hover:bg-emerald-100 focus:outline-none focus:ring-2 focus:ring-emerald-100 disabled:cursor-not-allowed disabled:opacity-60";
+  "inline-flex h-11 items-center justify-center rounded-full border border-emerald-200 bg-emerald-50 px-3 text-sm font-medium text-emerald-700 shadow-sm transition hover:bg-emerald-100 focus:outline-none focus:ring-2 focus:ring-emerald-100 disabled:cursor-not-allowed disabled:opacity-60 sm:h-8 sm:px-2.5 sm:text-xs";
 const SMALL_DISABLED_BUTTON_CLASS =
-  "inline-flex h-8 items-center justify-center rounded-full border border-slate-200 bg-slate-100 px-2.5 text-xs font-medium text-slate-500 shadow-sm transition focus:outline-none focus:ring-2 focus:ring-slate-100";
+  "inline-flex h-11 items-center justify-center rounded-full border border-slate-200 bg-slate-100 px-3 text-sm font-medium text-slate-500 shadow-sm transition focus:outline-none focus:ring-2 focus:ring-slate-100 sm:h-8 sm:px-2.5 sm:text-xs";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);

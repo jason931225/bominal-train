@@ -195,6 +195,15 @@ export function LoginForm() {
     await startPasskeyAttempt(normalizedEmail);
   };
 
+  const returnToSignIn = () => {
+    cancelPasskeyAttempt();
+    setStep("email_entry");
+    setFieldErrors({});
+    setFormError(null);
+    setNotice(null);
+    setForm((prev) => ({ ...prev, password: "", otp_code: "" }));
+  };
+
   const onPasswordSignIn = async () => {
     if (authResolvedRef.current) {
       return;
@@ -391,30 +400,33 @@ export function LoginForm() {
 
   const showPassword = step === "password";
   const showOtp = step === "otp_verify";
+  const showSignInForm = step === "email_entry" || showPassword || showOtp;
 
   return (
     <form onSubmit={onSubmit} className="space-y-4">
-      <div>
-        <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor="email">
-          {t("auth.email")}
-        </label>
-        <input
-          id="email"
-          type="email"
-          value={form.email}
-          onChange={(event) => {
-            cancelPasskeyAttempt();
-            setForm((prev) => ({ ...prev, email: event.target.value, password: "", otp_code: "" }));
-            if (step !== "email_entry") {
-              setStep("email_entry");
-            }
-          }}
-          className={UI_FIELD}
-          autoComplete="email"
-          required
-        />
-        {fieldErrors.email ? <p className="mt-1 text-xs text-rose-600">{fieldErrors.email}</p> : null}
-      </div>
+      {showSignInForm ? (
+        <div>
+          <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor="email">
+            {t("auth.email")}
+          </label>
+          <input
+            id="email"
+            type="email"
+            value={form.email}
+            onChange={(event) => {
+              cancelPasskeyAttempt();
+              setForm((prev) => ({ ...prev, email: event.target.value, password: "", otp_code: "" }));
+              if (step !== "email_entry") {
+                setStep("email_entry");
+              }
+            }}
+            className={UI_FIELD}
+            autoComplete="email"
+            required
+          />
+          {fieldErrors.email ? <p className="mt-1 text-xs text-rose-600">{fieldErrors.email}</p> : null}
+        </div>
+      ) : null}
 
       {showPassword ? (
         <div>
@@ -452,15 +464,17 @@ export function LoginForm() {
         </div>
       ) : null}
 
-      <label className="flex items-center gap-2 text-sm text-slate-600">
-        <input
-          type="checkbox"
-          checked={form.remember_me}
-          onChange={(event) => setForm((prev) => ({ ...prev, remember_me: event.target.checked }))}
-          className="h-4 w-4 rounded border-blossom-300 text-blossom-500 focus:ring-blossom-300"
-        />
-        {t("auth.rememberMe")}
-      </label>
+      {showSignInForm ? (
+        <label className="flex items-center gap-2 text-sm text-slate-600">
+          <input
+            type="checkbox"
+            checked={form.remember_me}
+            onChange={(event) => setForm((prev) => ({ ...prev, remember_me: event.target.checked }))}
+            className="h-4 w-4 rounded border-blossom-300 text-blossom-500 focus:ring-blossom-300"
+          />
+          {t("auth.rememberMe")}
+        </label>
+      ) : null}
 
       {step === "passkey_waiting" ? (
         <div className="rounded-2xl border border-blossom-100 bg-white p-5 text-center shadow-sm">
@@ -480,6 +494,13 @@ export function LoginForm() {
             }}
           >
             {t("auth.showAlternativeMethods")}
+          </button>
+          <button
+            type="button"
+            className="mt-2 block w-full text-center text-sm font-medium text-slate-700 underline underline-offset-4 hover:text-slate-900"
+            onClick={returnToSignIn}
+          >
+            {t("auth.returnToSignIn")}
           </button>
         </div>
       ) : null}
@@ -526,6 +547,13 @@ export function LoginForm() {
             }}
           >
             {t("auth.returnToPasskey")}
+          </button>
+          <button
+            type="button"
+            className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+            onClick={returnToSignIn}
+          >
+            {t("auth.returnToSignIn")}
           </button>
         </div>
       ) : null}

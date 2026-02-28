@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { createPortal } from "react-dom";
-import { FormEvent, KeyboardEvent, UIEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, KeyboardEvent, UIEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 
 import { useLocale } from "@/components/locale-provider";
@@ -279,10 +279,10 @@ const SECONDARY_BUTTON_CLASS = UI_BUTTON_OUTLINE;
 const SMALL_BUTTON_CLASS = UI_BUTTON_OUTLINE_SM;
 const SMALL_DANGER_BUTTON_CLASS = UI_BUTTON_DANGER_SM;
 const SMALL_SUCCESS_BUTTON_CLASS =
-  "inline-flex h-8 items-center justify-center rounded-full border border-emerald-200 bg-emerald-50 px-2.5 text-xs font-medium text-emerald-700 shadow-sm transition hover:bg-emerald-100 focus:outline-none focus:ring-2 focus:ring-emerald-100 disabled:cursor-not-allowed disabled:opacity-60";
+  "inline-flex h-11 items-center justify-center rounded-full border border-emerald-200 bg-emerald-50 px-3 text-sm font-medium text-emerald-700 shadow-sm transition hover:bg-emerald-100 focus:outline-none focus:ring-2 focus:ring-emerald-100 disabled:cursor-not-allowed disabled:opacity-60 sm:h-8 sm:px-2.5 sm:text-xs";
 const SMALL_DISABLED_BUTTON_CLASS =
-  "inline-flex h-8 items-center justify-center rounded-full border border-slate-200 bg-slate-100 px-2.5 text-xs font-medium text-slate-500 shadow-sm transition focus:outline-none focus:ring-2 focus:ring-slate-100";
-const TASK_ACTION_BUTTON_SIZE_CLASS = "h-9 min-w-[88px] px-3";
+  "inline-flex h-11 items-center justify-center rounded-full border border-slate-200 bg-slate-100 px-3 text-sm font-medium text-slate-500 shadow-sm transition focus:outline-none focus:ring-2 focus:ring-slate-100 sm:h-8 sm:px-2.5 sm:text-xs";
+const TASK_ACTION_BUTTON_SIZE_CLASS = "h-11 min-w-[88px] px-3 sm:h-9";
 const TASK_CARD_ENTER_EXIT_TRANSITION = { duration: 0.22, ease: [0.22, 1, 0.36, 1] as const };
 const TASK_CARD_INITIAL_ANIMATION = { opacity: 0, y: 10, scale: 0.985 };
 const TASK_CARD_ANIMATE_ANIMATION = { opacity: 1, y: 0, scale: 1 };
@@ -1435,6 +1435,8 @@ export function TrainDashboard() {
   const [notice, setNotice] = useState<string | null>(null);
   const [dummyTaskCardsMode, setDummyTaskCardsMode] = useState(false);
   const [reviewScheduleScrollIndex, setReviewScheduleScrollIndex] = useState(0);
+  const [stickyBaseTopPx, setStickyBaseTopPx] = useState(64);
+  const [statusBannerHeightPx, setStatusBannerHeightPx] = useState(0);
   const tasksLoadInFlight = useRef(false);
   const activeTasksRef = useRef<TrainTaskSummary[]>([]);
   const completedTasksRef = useRef<TrainTaskSummary[]>([]);
@@ -1447,6 +1449,7 @@ export function TrainDashboard() {
   const searchPanelRef = useRef<HTMLDivElement | null>(null);
   const schedulePanelRef = useRef<HTMLDivElement | null>(null);
   const searchSummaryCardRef = useRef<HTMLDivElement | null>(null);
+  const statusBannerRef = useRef<HTMLDivElement | null>(null);
   const reviewSchedulesCarouselRef = useRef<HTMLDivElement | null>(null);
 
   const scheduleById = useMemo(() => {
@@ -1522,9 +1525,7 @@ export function TrainDashboard() {
   const createDisabled = !showRanking || selectedSchedules.length === 0 || creatingTask || totalPassengers < 1;
   const statusBannerCount = Number(Boolean(errorMessage)) + Number(Boolean(notice));
   const hasStatusBanner = statusBannerCount > 0;
-  const searchSummaryStickyTopClass =
-    statusBannerCount > 1 ? "top-40" : statusBannerCount === 1 ? "top-28" : "top-16";
-  const searchSummaryStickyTopPx = statusBannerCount > 1 ? 160 : statusBannerCount === 1 ? 112 : 64;
+  const searchSummaryStickyTopPx = stickyBaseTopPx + statusBannerHeightPx;
   const sortedActiveTasks = useMemo(() => sortActiveTasksByImminence(activeTasks), [activeTasks]);
   const sortedCompletedTasks = useMemo(() => sortTasksByScheduleProximity(completedTasks, "asc"), [completedTasks]);
   const autoPayAvailable = TRAIN_AUTO_PAY_FEATURE_ENABLED && paymentCardConfigured;
@@ -1801,6 +1802,49 @@ export function TrainDashboard() {
     }
     void loadPaymentCardConfigured();
   }, [loadPaymentCardConfigured]);
+
+  useLayoutEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const computeOffsets = () => {
+      const topNav = document.querySelector<HTMLElement>('[data-top-nav="true"]');
+      const navBottom = topNav ? topNav.getBoundingClientRect().bottom : 56;
+      const nextBaseTop = Math.max(0, Math.round(navBottom + 8));
+      setStickyBaseTopPx((current) => (current === nextBaseTop ? current : nextBaseTop));
+
+      if (!hasStatusBanner || !statusBannerRef.current) {
+        setStatusBannerHeightPx((current) => (current === 0 ? current : 0));
+        return;
+      }
+
+      const nextStatusHeight = Math.max(0, Math.round(statusBannerRef.current.getBoundingClientRect().height + 8));
+      setStatusBannerHeightPx((current) => (current === nextStatusHeight ? current : nextStatusHeight));
+    };
+
+    computeOffsets();
+
+    const animationFrame = window.requestAnimationFrame(computeOffsets);
+    const onResize = () => {
+      computeOffsets();
+    };
+    window.addEventListener("resize", onResize);
+
+    const observer =
+      typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(() => {
+            computeOffsets();
+          })
+        : null;
+    const topNav = document.querySelector<HTMLElement>('[data-top-nav="true"]');
+    if (topNav) observer?.observe(topNav);
+    if (statusBannerRef.current) observer?.observe(statusBannerRef.current);
+
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+      window.removeEventListener("resize", onResize);
+      observer?.disconnect();
+    };
+  }, [hasStatusBanner, errorMessage, notice]);
 
   useEffect(() => {
     if (!shouldScrollToSearchResultsSection || !hasSearched) return;
@@ -2685,7 +2729,8 @@ export function TrainDashboard() {
       <div
         ref={searchSummaryCardRef}
         data-testid="search-summary-inline"
-        className={showRanking ? `sticky z-30 ${searchSummaryStickyTopClass}` : ""}
+        className={showRanking ? "sticky z-30" : ""}
+        style={showRanking ? { top: searchSummaryStickyTopPx } : undefined}
       >
         <div
           className={`min-w-0 rounded-xl border border-blossom-100 bg-white px-3 py-3 shadow-petal ${
@@ -2742,7 +2787,7 @@ export function TrainDashboard() {
   return (
     <section className="space-y-8">
       {hasStatusBanner ? (
-        <div className="sticky top-16 z-40 space-y-2">
+        <div ref={statusBannerRef} className="sticky z-40 space-y-2" style={{ top: stickyBaseTopPx }}>
           {errorMessage ? (
             <p className="rounded-xl border border-rose-100 bg-rose-50 px-3 py-2 text-sm text-rose-700 shadow-sm">
               {renderError(errorMessage)}

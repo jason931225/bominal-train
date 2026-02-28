@@ -66,11 +66,13 @@ describe("TopNav locale switch", () => {
       </LocaleProvider>,
     );
 
-    expect(screen.getByRole("link", { name: "Login" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Login" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Register" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "ENG" })).toHaveAttribute("aria-pressed", "true");
     fireEvent.click(screen.getByRole("button", { name: "KOR" }));
 
     await waitFor(() => {
-      expect(screen.getByRole("link", { name: "로그인" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "KOR" })).toHaveAttribute("aria-pressed", "true");
     });
   });
 
