@@ -283,6 +283,7 @@ const SMALL_SUCCESS_BUTTON_CLASS =
 const SMALL_DISABLED_BUTTON_CLASS =
   "inline-flex h-11 items-center justify-center rounded-full border border-slate-200 bg-slate-100 px-3 text-sm font-medium text-slate-500 shadow-sm transition focus:outline-none focus:ring-2 focus:ring-slate-100 sm:h-8 sm:px-2.5 sm:text-xs";
 const TASK_ACTION_BUTTON_SIZE_CLASS = "h-11 min-w-[88px] px-3 sm:h-9";
+type TranslateFn = (key: string, vars?: Record<string, string | number>) => string;
 const TASK_CARD_ENTER_EXIT_TRANSITION = { duration: 0.22, ease: [0.22, 1, 0.36, 1] as const };
 const TASK_CARD_INITIAL_ANIMATION = { opacity: 0, y: 10, scale: 0.985 };
 const TASK_CARD_ANIMATE_ANIMATION = { opacity: 1, y: 0, scale: 1 };
@@ -705,6 +706,33 @@ export function retryNowDisabledTitle(task: TrainTaskSummary): string {
   if (reason === "terminal_state") return "Task is already finished.";
   if (reason === "not_eligible_state") return "Task is not eligible for retry.";
   return "Retry is not available.";
+}
+
+export function retryNowDisabledTitleLocalized(
+  task: TrainTaskSummary,
+  options?: { locale?: string; t?: TranslateFn },
+): string {
+  const reason = task.retry_now_reason ?? null;
+  const locale = options?.locale ?? "en";
+  const t = options?.t;
+  const translate = (key: string, fallback: string, vars?: Record<string, string | number>) =>
+    t ? t(key, vars) : fallback;
+
+  if (!reason) return translate("train.retryDisabled.default", "Retry is not available.");
+  if (reason === "cooldown_active" && task.retry_now_available_at) {
+    const time = formatDateTimeKst(task.retry_now_available_at, locale);
+    return translate("train.retryDisabled.cooldownActive", `Retry available at ${time}.`, { time });
+  }
+  if (reason === "deadline_passed") return translate("train.retryDisabled.deadlinePassed", "Task deadline has passed.");
+  if (reason === "paused_use_resume") {
+    return translate("train.retryDisabled.pausedUseResume", "Task is paused. Use Resume instead.");
+  }
+  if (reason === "task_running") return translate("train.retryDisabled.taskRunning", "Task is currently running.");
+  if (reason === "terminal_state") return translate("train.retryDisabled.terminalState", "Task is already finished.");
+  if (reason === "not_eligible_state") {
+    return translate("train.retryDisabled.notEligibleState", "Task is not eligible for retry.");
+  }
+  return translate("train.retryDisabled.default", "Retry is not available.");
 }
 
 function parseScheduleDateParts(value: string): { year: number; month: number; day: number; asUtcDate: Date } | null {
@@ -1736,14 +1764,14 @@ export function TrainDashboard() {
     setActiveTasks(dummy.active);
     setCompletedTasks(dummy.completed);
     setErrorMessage(null);
-    setNotice("Loaded dummy task cards for local UI testing.");
+    setNotice(t("train.notice.dummyTaskCardsLoaded"));
   };
 
   const clearDummyTaskCards = async () => {
     clearStoredDummyTaskCards();
     dummyTaskCardsModeRef.current = false;
     setDummyTaskCardsMode(false);
-    setNotice("Restored live task cards.");
+    setNotice(t("train.notice.liveTaskCardsRestored"));
     await reloadTasks({ force: true, refreshCompleted: true });
   };
 
@@ -3466,12 +3494,11 @@ export function TrainDashboard() {
         <div className="rounded-2xl border border-dashed border-blossom-200 bg-white p-4 shadow-petal">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm text-slate-600">
-              <span className="font-medium text-slate-700">Dev test tools:</span> create dummy task cards across task
-              states, including a multi-schedule sample (수서 {"->"} 마산, +2 options).
+              <span className="font-medium text-slate-700">{t("train.devTools.heading")}</span> {t("train.devTools.body")}
             </p>
             <div className="flex flex-wrap items-center gap-2">
               <button type="button" onClick={seedDummyTaskCards} className={SMALL_BUTTON_CLASS}>
-                Load dummy task cards
+                {t("train.devTools.loadDummy")}
               </button>
               <button
                 type="button"
@@ -3481,7 +3508,7 @@ export function TrainDashboard() {
                 disabled={!dummyTaskCardsMode}
                 className={!dummyTaskCardsMode ? SMALL_DISABLED_BUTTON_CLASS : SMALL_BUTTON_CLASS}
               >
-                Restore live tasks
+                {t("train.devTools.restoreLive")}
               </button>
             </div>
           </div>
@@ -3627,7 +3654,11 @@ export function TrainDashboard() {
                         type="button"
                         onClick={() => sendTaskAction(task.id, "retry")}
                         disabled={!task.retry_now_allowed}
-                        title={task.retry_now_allowed ? t("train.action.retry") : retryNowDisabledTitle(task)}
+                        title={
+                          task.retry_now_allowed
+                            ? t("train.action.retry")
+                            : retryNowDisabledTitleLocalized(task, { locale, t })
+                        }
                         className={`${task.retry_now_allowed ? SMALL_BUTTON_CLASS : SMALL_DISABLED_BUTTON_CLASS} ${TASK_ACTION_BUTTON_SIZE_CLASS}`}
                       >
                         {t("train.action.retry")}
@@ -3838,7 +3869,11 @@ export function TrainDashboard() {
                         type="button"
                         onClick={() => sendTaskAction(task.id, "retry")}
                         disabled={!task.retry_now_allowed}
-                        title={task.retry_now_allowed ? t("train.action.retry") : retryNowDisabledTitle(task)}
+                        title={
+                          task.retry_now_allowed
+                            ? t("train.action.retry")
+                            : retryNowDisabledTitleLocalized(task, { locale, t })
+                        }
                         className={`${task.retry_now_allowed ? SMALL_BUTTON_CLASS : SMALL_DISABLED_BUTTON_CLASS} ${TASK_ACTION_BUTTON_SIZE_CLASS}`}
                       >
                         {t("train.action.retry")}

@@ -21,6 +21,7 @@ import {
   parsePassengerInputValue,
   readInteger,
   retryNowDisabledTitle,
+  retryNowDisabledTitleLocalized,
   resolveSearchStations,
   scheduleTrainLabel,
   scrollElementToViewportCenter,
@@ -478,6 +479,34 @@ describe("train dashboard helpers", () => {
       });
       expect(retryNowDisabledTitle(task)).toContain(expected);
     }
+  });
+
+  it("supports localized retry-disabled titles when translator is provided", () => {
+    const koreanT = (key: string, vars?: Record<string, string | number>) => {
+      if (key === "train.retryDisabled.default") return "재시도를 사용할 수 없습니다.";
+      if (key === "train.retryDisabled.cooldownActive") return `${vars?.time}에 재시도할 수 있습니다.`;
+      if (key === "train.retryDisabled.taskRunning") return "작업이 현재 실행 중입니다.";
+      return key;
+    };
+
+    const runningTask = makeTask("run", "RUNNING", { retry_now_reason: "task_running" });
+    expect(
+      retryNowDisabledTitleLocalized(runningTask, {
+        locale: "ko",
+        t: koreanT,
+      }),
+    ).toBe("작업이 현재 실행 중입니다.");
+
+    const cooldownTask = makeTask("cooldown", "RUNNING", {
+      retry_now_reason: "cooldown_active",
+      retry_now_available_at: "2026-02-22T11:00:00+09:00",
+    });
+    expect(
+      retryNowDisabledTitleLocalized(cooldownTask, {
+        locale: "ko",
+        t: koreanT,
+      }),
+    ).toContain("재시도할 수 있습니다.");
   });
 
   it("handles schedule-title formatting and primitive helpers", () => {

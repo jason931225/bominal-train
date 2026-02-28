@@ -498,7 +498,8 @@
       "taskDetailLoad": "작업 상세를 불러올 수 없습니다.",
       "taskRefresh": "작업 상세 동기화에 실패했습니다.",
       "ticketCancel": "티켓을 취소할 수 없습니다.",
-      "paymentProcess": "결제를 처리할 수 없습니다."
+      "paymentProcess": "결제를 처리할 수 없습니다.",
+      "retryTask": "작업을 재시도할 수 없습니다."
     },
     "notice": {
       "taskDeduplicated": "이미 동일한 작업이 진행 중입니다.",
@@ -506,6 +507,9 @@
       "taskRefreshed": "작업 상세를 동기화했습니다.",
       "ticketCancelDone": "티켓 취소 요청이 완료되었습니다.",
       "paymentProcessed": "결제가 처리되었습니다.",
+      "retryRequested": "재시도를 요청했습니다.",
+      "dummyTaskCardsLoaded": "로컬 UI 테스트용 더미 작업 카드를 불러왔습니다.",
+      "liveTaskCardsRestored": "실제 작업 카드로 복원했습니다.",
       "noSchedulesInWindow": "이 시간대에는 조회된 시간표가 없습니다.",
       "credentialsVerified": "{provider} 계정 연결이 확인되었습니다.",
       "continuingWithoutProvider": "{provider} 없이 계속합니다. {provider} 검색은 비활성화됩니다.",
@@ -562,6 +566,8 @@
       "syncing": "동기화 중...",
       "payNow": "지금 결제",
       "retry": "재시도",
+      "retryNow": "지금 재시도",
+      "retryingNow": "재시도 중...",
       "pause": "일시정지",
       "resume": "재개",
       "pay": "결제",
@@ -570,8 +576,23 @@
       "showScheduleOptions": "일정 옵션 보기",
       "hideScheduleOptions": "일정 옵션 숨기기"
     },
+    "retryDisabled": {
+      "default": "재시도를 사용할 수 없습니다.",
+      "cooldownActive": "{time}에 재시도할 수 있습니다.",
+      "deadlinePassed": "작업 마감 시간이 지났습니다.",
+      "pausedUseResume": "작업이 일시중지되었습니다. 대신 재개를 사용하세요.",
+      "taskRunning": "작업이 현재 실행 중입니다.",
+      "terminalState": "작업이 이미 완료되었습니다.",
+      "notEligibleState": "작업 상태상 재시도할 수 없습니다."
+    },
     "hint": {
       "paymentSettingsRequired": "결제 설정이 필요합니다"
+    },
+    "devTools": {
+      "heading": "개발 테스트 도구:",
+      "body": "여러 상태의 더미 작업 카드를 생성합니다. 다중 시간표 샘플(수서 -> 마산, +2 옵션)도 포함됩니다.",
+      "loadDummy": "더미 작업 카드 불러오기",
+      "restoreLive": "실제 작업 복원"
     },
     "sort": {
       "label": "정렬:",

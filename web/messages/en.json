@@ -500,7 +500,8 @@
       "taskDetailLoad": "Could not load task detail.",
       "taskRefresh": "Could not refresh task detail.",
       "ticketCancel": "Could not cancel ticket.",
-      "paymentProcess": "Could not process payment."
+      "paymentProcess": "Could not process payment.",
+      "retryTask": "Could not retry task."
     },
     "notice": {
       "taskDeduplicated": "Task already active (deduplicated).",
@@ -508,6 +509,9 @@
       "taskRefreshed": "Task detail synced.",
       "ticketCancelDone": "Ticket cancellation request completed.",
       "paymentProcessed": "Payment processed.",
+      "retryRequested": "Retry requested.",
+      "dummyTaskCardsLoaded": "Loaded dummy task cards for local UI testing.",
+      "liveTaskCardsRestored": "Restored live task cards.",
       "noSchedulesInWindow": "No schedules in this window.",
       "credentialsVerified": "{provider} credentials verified.",
       "continuingWithoutProvider": "Continuing without {provider}. {provider} search is disabled.",
@@ -563,6 +567,8 @@
       "syncing": "Syncing...",
       "payNow": "Pay now",
       "retry": "Retry",
+      "retryNow": "Retry now",
+      "retryingNow": "Retrying...",
       "pause": "Pause",
       "resume": "Resume",
       "pay": "Pay",
@@ -571,8 +577,23 @@
       "showScheduleOptions": "Show schedule options",
       "hideScheduleOptions": "Hide schedule options"
     },
+    "retryDisabled": {
+      "default": "Retry is not available.",
+      "cooldownActive": "Retry available at {time}.",
+      "deadlinePassed": "Task deadline has passed.",
+      "pausedUseResume": "Task is paused. Use Resume instead.",
+      "taskRunning": "Task is currently running.",
+      "terminalState": "Task is already finished.",
+      "notEligibleState": "Task is not eligible for retry."
+    },
     "hint": {
       "paymentSettingsRequired": "Payment settings required"
+    },
+    "devTools": {
+      "heading": "Dev test tools:",
+      "body": "Create dummy task cards across task states, including a multi-schedule sample (수서 -> 마산, +2 options).",
+      "loadDummy": "Load dummy task cards",
+      "restoreLive": "Restore live tasks"
     },
     "sort": {
       "label": "Sort:",

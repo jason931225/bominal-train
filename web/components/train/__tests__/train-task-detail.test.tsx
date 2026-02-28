@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { LocaleProvider } from "@/components/locale-provider";
 import { TrainTaskDetail } from "@/components/train/train-task-detail";
+import type { TrainArtifact, TrainTaskAttempt, TrainTaskSummary } from "@/lib/types";
 
 const pushMock = vi.fn();
 
@@ -27,7 +28,11 @@ function jsonResponse(payload: unknown, status = 200): Response {
   });
 }
 
-function buildTaskDetailPayload() {
+function buildTaskDetailPayload(): {
+  task: TrainTaskSummary;
+  attempts: TrainTaskAttempt[];
+  artifacts: TrainArtifact[];
+} {
   return {
     task: {
       id: "task-1",
@@ -190,5 +195,37 @@ describe("TrainTaskDetail actions", () => {
     expect(screen.queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Retry now" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Delete" })).toBeInTheDocument();
+  });
+
+  it("localizes retry controls and polling labels in Korean", async () => {
+    const pollingPayload = buildTaskDetailPayload();
+    pollingPayload.task.state = "POLLING";
+    pollingPayload.task.next_run_at = "2026-02-26T10:05:00+09:00";
+    pollingPayload.task.retry_now_allowed = false;
+    pollingPayload.task.retry_now_reason = "task_running";
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? "GET";
+      if (url.endsWith("/api/train/tasks/task-1") && method === "GET") {
+        return jsonResponse(pollingPayload);
+      }
+      return jsonResponse({ detail: "not found" }, 404);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <LocaleProvider initialLocale="ko">
+        <TrainTaskDetail taskId="task-1" />
+      </LocaleProvider>,
+    );
+    await flushAsyncEffects();
+
+    expect(screen.getByText("다음 확인:")).toBeInTheDocument();
+    expect(screen.queryByText("Next check:")).not.toBeInTheDocument();
+
+    const retryButton = screen.getByRole("button", { name: "지금 재시도" });
+    expect(retryButton).toBeDisabled();
+    expect(retryButton).toHaveAttribute("title", "작업이 현재 실행 중입니다.");
+    expect(screen.queryByRole("button", { name: "Retry now" })).not.toBeInTheDocument();
   });
 });
