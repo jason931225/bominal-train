@@ -93,6 +93,10 @@ Evervault secret sourcing (production):
   - resource profile threshold gate (memory/swap)
 - Smoke checks are retry-based and tunable (`SMOKE_MAX_ATTEMPTS`, `SMOKE_RETRY_DELAY_SECONDS`).
 - Auto rollback on smoke failure is enabled by default (`AUTO_ROLLBACK_ON_SMOKE_FAILURE=true`).
+- Evervault relay verification is disabled by default and reserved for troubleshooting:
+  - `DEPLOY_EVERVAULT_RELAY_VERIFY_ENABLED=false` (default)
+  - `DEPLOY_EVERVAULT_RELAY_PROVIDER_PROBES_ENABLED=false` (default; provider probes can consume relay credits)
+  - helper script: `infra/scripts/evervault-relay-probe.sh`
 - Post-verify Docker cleanup runs on the VM after successful deploy verification:
   - unused image prune: `docker image prune -a -f` (`DEPLOY_DOCKER_PRUNE_UNUSED_IMAGES`, default `true`)
   - build cache prune: `docker builder prune -a -f` (`DEPLOY_DOCKER_PRUNE_BUILD_CACHE`, default `true`)
