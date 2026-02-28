@@ -15,7 +15,6 @@ Define authoritative secret residency for bominal so deploy/runtime behavior is 
 ### GSM authoritative secrets
 
 - `MASTER_KEY` via `GSM_MASTER_KEY_*`
-- `EVERVAULT_APP_ID` via `EVERVAULT_APP_ID_SECRET_ID/_VERSION`
 - `EVERVAULT_API_KEY` via `EVERVAULT_API_KEY_SECRET_ID/_VERSION`
 - `INTERNAL_API_KEY` via `INTERNAL_API_KEY_SECRET_ID/_VERSION`
 - `RESEND_API_KEY` via `RESEND_API_KEY_SECRET_ID/_VERSION`
@@ -35,6 +34,12 @@ These remain in `infra/env/prod/api.env` because they bootstrap runtime access a
 - `SUPABASE_AUTH_API_KEY` (or approved fallback behavior)
 - `DATABASE_URL`
 - `SYNC_DATABASE_URL`
+
+### Env-managed non-secret identifiers
+
+- `EVERVAULT_APP_ID` in `infra/env/prod/api.env`
+- `NEXT_PUBLIC_EVERVAULT_APP_ID` in `infra/env/prod/web.env`
+- `NEXT_PUBLIC_EVERVAULT_TEAM_ID` in `infra/env/prod/web.env`
 
 ## Production Contracts
 
@@ -58,7 +63,7 @@ These remain in `infra/env/prod/api.env` because they bootstrap runtime access a
 - Rotate one secret family at a time to prevent temporary version spikes.
 - Default cadence:
   - `MASTER_KEY`: quarterly
-  - `EVERVAULT_*`, `INTERNAL_API_KEY`, `RESEND_API_KEY`, `SUPABASE_MANAGEMENT_API_TOKEN`: semiannual
+  - `EVERVAULT_API_KEY`, `INTERNAL_API_KEY`, `RESEND_API_KEY`, `SUPABASE_MANAGEMENT_API_TOKEN`: semiannual
 - Incident response rotations may override cadence but must still prune old versions after verification.
 
 ## Operational Sequence

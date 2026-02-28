@@ -12,7 +12,6 @@ mkdir -p "$TMP_DIR/bin" "$TMP_DIR/repo/infra/env/prod"
 cat >"$TMP_DIR/repo/infra/env/prod/api.env" <<'ENV'
 GCP_PROJECT_ID=test-project
 GSM_MASTER_KEY_SECRET_ID=bominal-master-key
-EVERVAULT_APP_ID_SECRET_ID=bominal-evervault-app-id
 EVERVAULT_API_KEY_SECRET_ID=bominal-evervault-api-key
 INTERNAL_API_KEY_SECRET_ID=bominal-internal-api-key
 RESEND_API_KEY_SECRET_ID=bominal-resend-api-key

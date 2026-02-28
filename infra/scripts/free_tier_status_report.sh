@@ -170,7 +170,6 @@ secret_ids=()
 if [[ -f "$API_ENV_FILE" ]]; then
   for key in \
     GSM_MASTER_KEY_SECRET_ID \
-    EVERVAULT_APP_ID_SECRET_ID \
     EVERVAULT_API_KEY_SECRET_ID \
     INTERNAL_API_KEY_SECRET_ID \
     RESEND_API_KEY_SECRET_ID \
