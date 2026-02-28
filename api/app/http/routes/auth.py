@@ -1,4 +1,5 @@
 import logging
+import hmac
 import secrets
 import time
 from datetime import datetime, timedelta, timezone
@@ -29,6 +30,7 @@ from app.schemas.auth import (
     AccountUpdateRequest,
     AuthMethodsResponse,
     AuthResponse,
+    DevDemoPasskeySignInRequest,
     EmailChangeConfirmRequest,
     EmailVerificationConfirmRequest,
     EmailVerificationRequest,
@@ -142,6 +144,94 @@ def _extract_bearer_token(authorization_header: str | None) -> str | None:
         return None
     token = parts[1].strip()
     return token or None
+
+
+def _is_dev_demo_mode_enabled() -> bool:
+    return settings.dev_demo_auth_enabled and not settings.is_production
+
+
+def _normalized_dev_demo_email() -> str:
+    return settings.dev_demo_email.strip().lower()
+
+
+def _is_dev_demo_email(email: str) -> bool:
+    normalized_candidate = email.strip().lower()
+    normalized_target = _normalized_dev_demo_email()
+    if not normalized_candidate or not normalized_target:
+        return False
+    return hmac.compare_digest(normalized_candidate, normalized_target)
+
+
+async def _resolve_or_create_env_user(
+    db: AsyncSession,
+    *,
+    email: str,
+    role_name: str,
+    display_name: str,
+    password_seed: str,
+) -> User:
+    normalized_email = email.strip().lower()
+    if not normalized_email:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Configured auth email is invalid")
+
+    role_result = await db.execute(select(Role).where(Role.name == role_name))
+    role = role_result.scalar_one_or_none()
+    if role is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Missing role seed: {role_name}",
+        )
+
+    user = (
+        await db.execute(
+            select(User).options(joinedload(User.role)).where(User.email == normalized_email)
+        )
+    ).scalar_one_or_none()
+    if user is None:
+        now = utc_now()
+        user = User(
+            email=normalized_email,
+            password_hash=await async_hash_password(password_seed),
+            display_name=display_name,
+            role_id=role.id,
+            access_status="approved",
+            email_verified_at=now,
+        )
+        db.add(user)
+        await db.commit()
+        return (
+            await db.execute(select(User).options(joinedload(User.role)).where(User.email == normalized_email))
+        ).scalar_one()
+
+    should_commit = False
+    if user.role_id != role.id:
+        user.role_id = role.id
+        should_commit = True
+    if user.access_status != "approved":
+        user.access_status = "approved"
+        should_commit = True
+    if user.email_verified_at is None:
+        user.email_verified_at = utc_now()
+        should_commit = True
+    if not await async_verify_password(password_seed, user.password_hash):
+        user.password_hash = await async_hash_password(password_seed)
+        should_commit = True
+    if should_commit:
+        await db.commit()
+
+    return (
+        await db.execute(select(User).options(joinedload(User.role)).where(User.id == user.id))
+    ).scalar_one()
+
+
+async def _resolve_dev_demo_user(db: AsyncSession) -> User:
+    return await _resolve_or_create_env_user(
+        db,
+        email=settings.dev_demo_email,
+        role_name=settings.dev_demo_role,
+        display_name="Dev Demo",
+        password_seed=settings.dev_demo_password,
+    )
 
 
 async def _issue_verification_token(
@@ -591,6 +681,23 @@ async def login(
     supabase_mode = settings.auth_mode == "supabase" and settings.supabase_auth_enabled
 
     try:
+        if (
+            _is_dev_demo_mode_enabled()
+            and _is_dev_demo_email(email)
+            and hmac.compare_digest(str(payload.password), str(settings.dev_demo_password))
+        ):
+            user = await _resolve_dev_demo_user(db=db)
+            session_token, session = _new_user_session(user, request, remember_me=payload.remember_me)
+            db.add(session)
+            await db.commit()
+            background_tasks.add_task(_refresh_train_reservations_after_sign_in_background, user_id=user.id)
+            response = JSONResponse(content=AuthResponse(user=user_to_out(user)).model_dump(mode="json"))
+            if background_tasks.tasks:
+                response.background = background_tasks
+            set_session_cookie(response, session_token, payload.remember_me)
+            outcome = "success_dev_demo"
+            return response
+
         result = await db.execute(select(User).options(joinedload(User.role)).where(User.email == email))
         user = result.scalar_one_or_none()
         local_password_ok = False
@@ -646,7 +753,7 @@ async def login(
 async def auth_methods() -> AuthMethodsResponse:
     return AuthMethodsResponse(
         password=True,
-        passkey=settings.passkey_enabled,
+        passkey=settings.passkey_enabled or _is_dev_demo_mode_enabled(),
         magic_link=True,
         otp=_supabase_signin_otp_enabled(),
     )
@@ -1479,6 +1586,31 @@ async def passkey_auth_verify(
             request.headers.get("cf-connecting-ip"),
         ),
     )
+    db.add(session)
+    await db.commit()
+    background_tasks.add_task(_refresh_train_reservations_after_sign_in_background, user_id=user.id)
+
+    response = JSONResponse(content=AuthResponse(user=user_to_out(user)).model_dump(mode="json"))
+    if background_tasks.tasks:
+        response.background = background_tasks
+    set_session_cookie(response, session_token, payload.remember_me)
+    return response
+
+
+@public_router.post("/passkeys/auth/dev-demo", response_model=AuthResponse, dependencies=[Depends(auth_rate_limit)])
+async def passkey_auth_dev_demo(
+    payload: DevDemoPasskeySignInRequest,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    if not _is_dev_demo_mode_enabled():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Passkey authentication is not available")
+    if not _is_dev_demo_email(payload.email.lower()):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Passkey authentication failed")
+
+    user = await _resolve_dev_demo_user(db=db)
+    session_token, session = _new_user_session(user, request, remember_me=payload.remember_me)
     db.add(session)
     await db.commit()
     background_tasks.add_task(_refresh_train_reservations_after_sign_in_background, user_id=user.id)

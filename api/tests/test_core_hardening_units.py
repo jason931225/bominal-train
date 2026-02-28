@@ -490,6 +490,38 @@ def test_settings_rejects_dev_auth_bypass_in_production(monkeypatch) -> None:
         Settings(_env_file=None)
 
 
+def test_settings_rejects_dev_demo_auth_in_production(monkeypatch) -> None:
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("MASTER_KEY", _valid_master_key_b64())
+    monkeypatch.setenv("INTERNAL_API_KEY", "internal")
+    monkeypatch.setenv("EMAIL_PROVIDER", "disabled")
+    monkeypatch.setenv("PAYMENT_ENABLED", "false")
+    monkeypatch.setenv("DEV_DEMO_AUTH_ENABLED", "true")
+    monkeypatch.setenv("DEV_DEMO_ROLE", "admin")
+
+    with pytest.raises(ValueError, match="DEV_DEMO_AUTH_ENABLED must be false in production"):
+        Settings(_env_file=None)
+
+    monkeypatch.setenv("DEV_DEMO_AUTH_ENABLED", "false")
+    monkeypatch.setenv("DEV_DEMO_ROLE", "invalid")
+    with pytest.raises(ValueError, match="DEV_DEMO_ROLE must be one of: admin, user"):
+        Settings(_env_file=None)
+
+
+def test_settings_requires_dev_demo_credentials_when_enabled(monkeypatch) -> None:
+    monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.setenv("DEV_DEMO_AUTH_ENABLED", "true")
+    monkeypatch.setenv("DEV_DEMO_EMAIL", " ")
+    monkeypatch.setenv("DEV_DEMO_PASSWORD", "demo-passkey-123")
+    with pytest.raises(ValueError, match="DEV_DEMO_EMAIL is required when DEV_DEMO_AUTH_ENABLED=true"):
+        Settings(_env_file=None)
+
+    monkeypatch.setenv("DEV_DEMO_EMAIL", "demo@bominal.dev")
+    monkeypatch.setenv("DEV_DEMO_PASSWORD", "short")
+    with pytest.raises(ValueError, match="DEV_DEMO_PASSWORD must be at least 8 characters when DEV_DEMO_AUTH_ENABLED=true"):
+        Settings(_env_file=None)
+
+
 def test_redaction_sensitive_key_and_nested_json_string_paths() -> None:
     masked = redact_sensitive({"password": "secret", "nested": '{"card_number":"4111111111111111"}'})
     assert masked["password"] == "[REDACTED]"

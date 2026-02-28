@@ -501,6 +501,65 @@ async def test_auth_methods_exposes_capabilities(client, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_auth_methods_exposes_passkey_for_dev_demo_mode(client, monkeypatch):
+    monkeypatch.setattr("app.http.routes.auth.settings.passkey_enabled", False)
+    monkeypatch.setattr("app.http.routes.auth.settings.dev_demo_auth_enabled", True)
+
+    response = await client.get("/api/auth/methods")
+    assert response.status_code == 200
+    assert response.json()["passkey"] is True
+
+
+@pytest.mark.asyncio
+async def test_dev_demo_login_authenticates_and_provisions_user(client, db_session, monkeypatch):
+    monkeypatch.setattr("app.http.routes.auth.settings.dev_demo_auth_enabled", True)
+    monkeypatch.setattr("app.http.routes.auth.settings.dev_demo_email", "demo@bominal.dev")
+    monkeypatch.setattr("app.http.routes.auth.settings.dev_demo_password", "demo-passkey-123")
+    monkeypatch.setattr("app.http.routes.auth.settings.dev_demo_role", "admin")
+    monkeypatch.setattr("app.http.routes.auth.settings.auth_mode", "legacy")
+
+    response = await client.post(
+        "/api/auth/login",
+        json={"email": "demo@bominal.dev", "password": "demo-passkey-123", "remember_me": False},
+    )
+    assert response.status_code == 200
+    assert response.json()["user"]["email"] == "demo@bominal.dev"
+    assert response.json()["user"]["role"] == "admin"
+    session_cookie = response.cookies.get("bominal_session")
+    assert session_cookie
+
+    second = await client.post(
+        "/api/auth/login",
+        json={"email": "demo@bominal.dev", "password": "demo-passkey-123", "remember_me": False},
+    )
+    assert second.status_code == 200
+    users = (await db_session.execute(select(User).where(User.email == "demo@bominal.dev"))).scalars().all()
+    assert len(users) == 1
+    assert users[0].access_status == "approved"
+    assert users[0].role_id == 1
+
+
+@pytest.mark.asyncio
+async def test_dev_demo_passkey_endpoint_authenticates_without_webauthn(client, monkeypatch):
+    monkeypatch.setattr("app.http.routes.auth.settings.dev_demo_auth_enabled", True)
+    monkeypatch.setattr("app.http.routes.auth.settings.dev_demo_email", "demo@bominal.dev")
+    monkeypatch.setattr("app.http.routes.auth.settings.dev_demo_password", "demo-passkey-123")
+    monkeypatch.setattr("app.http.routes.auth.settings.dev_demo_role", "admin")
+
+    response = await client.post(
+        "/api/auth/passkeys/auth/dev-demo",
+        json={"email": "demo@bominal.dev", "remember_me": True},
+    )
+    assert response.status_code == 200
+    assert response.json()["user"]["email"] == "demo@bominal.dev"
+    assert response.cookies.get("bominal_session")
+
+    me_res = await client.get("/api/auth/me", cookies={"bominal_session": response.cookies["bominal_session"]})
+    assert me_res.status_code == 200
+    assert me_res.json()["user"]["email"] == "demo@bominal.dev"
+
+
+@pytest.mark.asyncio
 async def test_request_magic_link_legacy_enqueues_for_local_user(client, monkeypatch, db_session):
     email = f"magic-link-{uuid4().hex[:8]}@example.com"
     await client.post(

@@ -23,6 +23,15 @@ export type PasskeyStepUpResult = {
   error?: string;
 };
 
+function isDevDemoPasskeyEmail(email: string): boolean {
+  const devDemoPasskeyEnabled = process.env.NEXT_PUBLIC_DEV_DEMO_AUTH_ENABLED === "true";
+  const devDemoEmail = (process.env.NEXT_PUBLIC_DEV_DEMO_EMAIL ?? "").trim().toLowerCase();
+  if (!devDemoPasskeyEnabled || !devDemoEmail) {
+    return false;
+  }
+  return email.trim().toLowerCase() === devDemoEmail;
+}
+
 function parseClientWebAuthnError(error: unknown, fallback: string): string {
   const domExceptionMessages: Record<string, string> = {
     NotAllowedError: "Passkey operation was cancelled or timed out.",
@@ -202,6 +211,21 @@ export async function signInWithPasskey(
   hooks: PasskeySignInHooks = {},
 ): Promise<PasskeyOperationResult> {
   const { email, rememberMe } = params;
+  const normalizedEmail = email.trim().toLowerCase();
+
+  if (isDevDemoPasskeyEmail(normalizedEmail)) {
+    const demoResponse = await fetch(`${apiBaseUrl}/api/auth/passkeys/auth/dev-demo`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ email: normalizedEmail, remember_me: rememberMe }),
+    });
+    if (!demoResponse.ok) {
+      return { ok: false, error: await parseApiError(demoResponse, "Passkey sign in failed.") };
+    }
+    return { ok: true };
+  }
+
   if (!isPasskeySupported()) {
     return { ok: false, error: "Passkeys are not supported on this device." };
   }
@@ -210,7 +234,7 @@ export async function signInWithPasskey(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
-    body: JSON.stringify({ email }),
+    body: JSON.stringify({ email: normalizedEmail }),
   });
   if (!optionsResponse.ok) {
     return { ok: false, error: await parseApiError(optionsResponse, "Could not start passkey sign in.") };
@@ -238,7 +262,7 @@ export async function signInWithPasskey(
     headers: { "Content-Type": "application/json" },
     credentials: "include",
     body: JSON.stringify({
-      email,
+      email: normalizedEmail,
       remember_me: rememberMe,
       challenge_id: optionsBody.challenge_id,
       credential: serializeAuthenticationCredential(assertion as PublicKeyCredential),

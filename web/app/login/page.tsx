@@ -40,8 +40,7 @@ export default async function LoginPage({
         <LoginForm />
       </div>
 
-      <div className="mt-6 space-y-2">
-        <p className="text-sm text-slate-600">{t("auth.newHere")}</p>
+      <div className="mt-6">
         <Link href={ROUTES.register} className={`w-full ${UI_BUTTON_OUTLINE_TOUCH}`}>
           {t("auth.createAnAccount")}
         </Link>

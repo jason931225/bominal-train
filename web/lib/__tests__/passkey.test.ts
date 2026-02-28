@@ -10,6 +10,8 @@ import {
 } from "@/lib/passkey";
 
 const originalPublicKeyCredential = globalThis.PublicKeyCredential;
+const originalDevDemoAuthEnabled = process.env.NEXT_PUBLIC_DEV_DEMO_AUTH_ENABLED;
+const originalDevDemoEmail = process.env.NEXT_PUBLIC_DEV_DEMO_EMAIL;
 
 function setNavigatorCredentials(mock: { create?: unknown; get?: unknown }): void {
   Object.defineProperty(globalThis.navigator, "credentials", {
@@ -95,6 +97,8 @@ function installFetchMock(sequence: Array<Response | Promise<Response>>) {
 describe("passkey helpers", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    delete process.env.NEXT_PUBLIC_DEV_DEMO_AUTH_ENABLED;
+    delete process.env.NEXT_PUBLIC_DEV_DEMO_EMAIL;
   });
 
   afterEach(() => {
@@ -102,6 +106,16 @@ describe("passkey helpers", () => {
       configurable: true,
       value: originalPublicKeyCredential,
     });
+    if (originalDevDemoAuthEnabled === undefined) {
+      delete process.env.NEXT_PUBLIC_DEV_DEMO_AUTH_ENABLED;
+    } else {
+      process.env.NEXT_PUBLIC_DEV_DEMO_AUTH_ENABLED = originalDevDemoAuthEnabled;
+    }
+    if (originalDevDemoEmail === undefined) {
+      delete process.env.NEXT_PUBLIC_DEV_DEMO_EMAIL;
+    } else {
+      process.env.NEXT_PUBLIC_DEV_DEMO_EMAIL = originalDevDemoEmail;
+    }
   });
 
   it("reports unsupported when credentials API is unavailable", () => {
@@ -131,6 +145,35 @@ describe("passkey helpers", () => {
     await expect(verifyPasskeyStepUpFromSession("http://api")).resolves.toEqual({
       ok: false,
       error: "Passkeys are not supported on this device.",
+    });
+  });
+
+  it("uses dev demo passkey endpoint without requiring WebAuthn support", async () => {
+    process.env.NEXT_PUBLIC_DEV_DEMO_AUTH_ENABLED = "true";
+    process.env.NEXT_PUBLIC_DEV_DEMO_EMAIL = "demo@bominal.dev";
+
+    Object.defineProperty(globalThis, "PublicKeyCredential", {
+      configurable: true,
+      value: undefined,
+    });
+    setNavigatorCredentials({});
+
+    const fetchMock = installFetchMock([
+      new Response(JSON.stringify({ user: { id: "demo-user" } }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    ]);
+
+    const result = await signInWithPasskey("http://api", { email: " Demo@Bominal.Dev ", rememberMe: true });
+    expect(result).toEqual({ ok: true });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    const [requestUrl, requestInit] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(requestUrl).toBe("http://api/api/auth/passkeys/auth/dev-demo");
+    expect(JSON.parse(String(requestInit.body))).toEqual({
+      email: "demo@bominal.dev",
+      remember_me: true,
     });
   });
 

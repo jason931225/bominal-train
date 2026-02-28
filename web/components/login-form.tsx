@@ -34,18 +34,24 @@ const DEFAULT_AUTH_METHODS: AuthMethods = {
   otp: false,
 };
 
+const DEV_DEMO_AUTH_ENABLED = process.env.NEXT_PUBLIC_DEV_DEMO_AUTH_ENABLED === "true";
+const DEV_DEMO_EMAIL = (process.env.NEXT_PUBLIC_DEV_DEMO_EMAIL ?? "").trim().toLowerCase();
+const DEV_DEMO_PASSWORD = process.env.NEXT_PUBLIC_DEV_DEMO_PASSWORD ?? "";
+
+const DEFAULT_LOGIN_FORM: LoginFormData = {
+  email: DEV_DEMO_AUTH_ENABLED ? DEV_DEMO_EMAIL : "",
+  password: DEV_DEMO_AUTH_ENABLED ? DEV_DEMO_PASSWORD : "",
+  otp_code: "",
+  remember_me: false,
+};
+
 export function LoginForm() {
   const router = useRouter();
   const { t } = useLocale();
   const [step, setStep] = useState<LoginStep>("email_entry");
   const [methods, setMethods] = useState<AuthMethods>(DEFAULT_AUTH_METHODS);
   const [methodsLoaded, setMethodsLoaded] = useState(false);
-  const [form, setForm] = useState<LoginFormData>({
-    email: "",
-    password: "",
-    otp_code: "",
-    remember_me: false,
-  });
+  const [form, setForm] = useState<LoginFormData>(DEFAULT_LOGIN_FORM);
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<keyof LoginFormData, string>>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);

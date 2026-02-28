@@ -178,6 +178,11 @@ class PasskeyAuthenticationVerifyRequest(BaseModel):
     remember_me: bool = False
 
 
+class DevDemoPasskeySignInRequest(BaseModel):
+    email: EmailStr
+    remember_me: bool = False
+
+
 class PasskeyStepUpVerifyRequest(BaseModel):
     challenge_id: UUID
     credential: dict[str, Any]
