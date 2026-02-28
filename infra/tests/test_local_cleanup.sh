@@ -34,6 +34,16 @@ run_case() {
   echo "$status"
 }
 
+match_file() {
+  local pattern="$1"
+  local target="$2"
+  if command -v rg >/dev/null 2>&1; then
+    rg -q -- "$pattern" "$target"
+  else
+    grep -Eq -- "$pattern" "$target"
+  fi
+}
+
 DEFAULT_CALLS="$TMP_DIR/default.calls"
 DEFAULT_OUT="$TMP_DIR/default.out"
 default_status="$(run_case "$DEFAULT_CALLS" "$DEFAULT_OUT")"
@@ -43,27 +53,27 @@ if [[ "$default_status" -ne 0 ]]; then
   exit 1
 fi
 
-if ! rg -q "compose -f infra/docker-compose.yml down --remove-orphans" "$DEFAULT_CALLS"; then
+if ! match_file "compose -f infra/docker-compose.yml down --remove-orphans" "$DEFAULT_CALLS"; then
   echo "FAIL: default cleanup did not down dev compose stack" >&2
   cat "$DEFAULT_CALLS" >&2
   exit 1
 fi
 
-if ! rg -q "compose -f infra/docker-compose.prod.yml down --remove-orphans" "$DEFAULT_CALLS"; then
+if ! match_file "compose -f infra/docker-compose.prod.yml down --remove-orphans" "$DEFAULT_CALLS"; then
   echo "FAIL: default cleanup did not down prod compose stack" >&2
   cat "$DEFAULT_CALLS" >&2
   exit 1
 fi
 
 for cmd in "container prune -f" "network prune -f" "image prune -f" "builder prune -f" "system df"; do
-  if ! rg -q "^${cmd}$" "$DEFAULT_CALLS"; then
+  if ! match_file "^${cmd}$" "$DEFAULT_CALLS"; then
     echo "FAIL: default cleanup missing command: ${cmd}" >&2
     cat "$DEFAULT_CALLS" >&2
     exit 1
   fi
 done
 
-if rg -q "^image prune -a -f$" "$DEFAULT_CALLS"; then
+if match_file "^image prune -a -f$" "$DEFAULT_CALLS"; then
   echo "FAIL: default cleanup unexpectedly ran aggressive image prune" >&2
   cat "$DEFAULT_CALLS" >&2
   exit 1
@@ -78,20 +88,20 @@ if [[ "$aggr_status" -ne 0 ]]; then
   exit 1
 fi
 
-if ! rg -q "compose -f infra/docker-compose.yml down --remove-orphans -v" "$AGGR_CALLS"; then
+if ! match_file "compose -f infra/docker-compose.yml down --remove-orphans -v" "$AGGR_CALLS"; then
   echo "FAIL: aggressive cleanup with --volumes did not down dev stack with -v" >&2
   cat "$AGGR_CALLS" >&2
   exit 1
 fi
 
-if rg -q "compose -f infra/docker-compose.prod.yml down --remove-orphans" "$AGGR_CALLS"; then
+if match_file "compose -f infra/docker-compose.prod.yml down --remove-orphans" "$AGGR_CALLS"; then
   echo "FAIL: --dev-only cleanup should not down prod stack" >&2
   cat "$AGGR_CALLS" >&2
   exit 1
 fi
 
 for cmd in "image prune -a -f" "builder prune -a -f" "volume prune -f"; do
-  if ! rg -q "^${cmd}$" "$AGGR_CALLS"; then
+  if ! match_file "^${cmd}$" "$AGGR_CALLS"; then
     echo "FAIL: aggressive cleanup missing command: ${cmd}" >&2
     cat "$AGGR_CALLS" >&2
     exit 1
