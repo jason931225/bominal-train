@@ -45,6 +45,14 @@ DEPLOY_MIN_TOTAL_MEMORY_MB="${DEPLOY_MIN_TOTAL_MEMORY_MB:-900}"
 DEPLOY_MIN_TOTAL_SWAP_MB="${DEPLOY_MIN_TOTAL_SWAP_MB:-900}"
 DEPLOY_EVERVAULT_RELAY_VERIFY_ENABLED="${DEPLOY_EVERVAULT_RELAY_VERIFY_ENABLED:-false}"
 DEPLOY_EVERVAULT_RELAY_PROVIDER_PROBES_ENABLED="${DEPLOY_EVERVAULT_RELAY_PROVIDER_PROBES_ENABLED:-false}"
+DB_SLO_GATE_ENABLED="${DB_SLO_GATE_ENABLED:-false}"
+DB_SLO_CHECK_SCRIPT="${DB_SLO_CHECK_SCRIPT:-$SCRIPT_DIR/db-slo-check.sh}"
+DB_SLO_CONNECT_P95_MAX_MS="${DB_SLO_CONNECT_P95_MAX_MS:-}"
+DB_SLO_AUTH_TIMEOUT_MAX="${DB_SLO_AUTH_TIMEOUT_MAX:-}"
+DB_SLO_CONNECT_ITERATIONS="${DB_SLO_CONNECT_ITERATIONS:-20}"
+DB_SLO_CONNECT_TIMEOUT_SECONDS="${DB_SLO_CONNECT_TIMEOUT_SECONDS:-3}"
+DB_SLO_LOG_WINDOW_MINUTES="${DB_SLO_LOG_WINDOW_MINUTES:-30}"
+DB_SLO_AUTH_TIMEOUT_PATTERN="${DB_SLO_AUTH_TIMEOUT_PATTERN:-TimeoutError|QueryCanceledError}"
 DEPLOY_LOCK_FALLBACK_DIR=""
 DEPLOY_FAIL_ON_DIRTY_REPO="${DEPLOY_FAIL_ON_DIRTY_REPO:-false}"
 DEPLOY_API_CHANGED="true"
@@ -1044,7 +1052,69 @@ verify_deployment() {
     return 1
   fi
 
+  if ! run_optional_db_slo_check; then
+    return 1
+  fi
+
   log_ok "All health checks passed!"
+}
+
+run_optional_db_slo_check() {
+  if ! is_truthy_bool "$DB_SLO_GATE_ENABLED"; then
+    log_info "Skipping DB SLO checks (DB_SLO_GATE_ENABLED=$DB_SLO_GATE_ENABLED)"
+    return 0
+  fi
+
+  if [[ ! -f "$DB_SLO_CHECK_SCRIPT" ]]; then
+    log_error "DB SLO check script not found: $DB_SLO_CHECK_SCRIPT"
+    return 1
+  fi
+
+  local database_url_target database_url database_url_direct active_database_url
+  database_url_target="$(read_env_file_value "$PROD_API_ENV_FILE" "DATABASE_URL_TARGET" | tr '[:upper:]' '[:lower:]')"
+  database_url="$(read_env_file_value "$PROD_API_ENV_FILE" "DATABASE_URL")"
+  database_url_direct="$(read_env_file_value "$PROD_API_ENV_FILE" "DATABASE_URL_DIRECT")"
+  active_database_url="$database_url"
+  if [[ "$database_url_target" == "direct" && -n "$database_url_direct" ]]; then
+    active_database_url="$database_url_direct"
+  fi
+
+  if [[ -z "$active_database_url" ]]; then
+    log_error "Unable to resolve active DATABASE_URL for DB SLO checks."
+    return 1
+  fi
+
+  local api_logs_tmp
+  api_logs_tmp="$(mktemp)"
+  if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" logs --since "${DB_SLO_LOG_WINDOW_MINUTES}m" api >"$api_logs_tmp" 2>&1; then
+    log_warn "Could not collect API logs for DB SLO checks; continuing with empty log sample."
+    : >"$api_logs_tmp"
+  fi
+
+  local -a check_cmd
+  check_cmd=(
+    bash "$DB_SLO_CHECK_SCRIPT"
+    --database-url "$active_database_url"
+    --connect-iterations "$DB_SLO_CONNECT_ITERATIONS"
+    --connect-timeout-seconds "$DB_SLO_CONNECT_TIMEOUT_SECONDS"
+    --api-log-file "$api_logs_tmp"
+    --auth-timeout-pattern "$DB_SLO_AUTH_TIMEOUT_PATTERN"
+  )
+  if [[ -n "$DB_SLO_CONNECT_P95_MAX_MS" ]]; then
+    check_cmd+=(--connect-p95-max-ms "$DB_SLO_CONNECT_P95_MAX_MS")
+  fi
+  if [[ -n "$DB_SLO_AUTH_TIMEOUT_MAX" ]]; then
+    check_cmd+=(--auth-timeout-max "$DB_SLO_AUTH_TIMEOUT_MAX")
+  fi
+
+  if ! "${check_cmd[@]}"; then
+    rm -f "$api_logs_tmp"
+    log_error "DB SLO checks failed."
+    return 1
+  fi
+
+  rm -f "$api_logs_tmp"
+  log_ok "DB SLO checks passed."
 }
 
 run_optional_evervault_relay_verify() {
@@ -1282,6 +1352,11 @@ main() {
       echo "  DEPLOY_FAIL_ON_DIRTY_REPO=true  Block deploy when tracked repo changes are present"
       echo "  DEPLOY_EVERVAULT_RELAY_VERIFY_ENABLED=true  Run optional Evervault relay verification (troubleshooting only)"
       echo "  DEPLOY_EVERVAULT_RELAY_PROVIDER_PROBES_ENABLED=true  Include provider relay POST probes (can consume relay credits)"
+      echo "  DB_SLO_GATE_ENABLED=true  Enable optional DB-path regression gate after health checks"
+      echo "  DB_SLO_CONNECT_P95_MAX_MS=<ms>  Fail if DB connect p95 exceeds threshold"
+      echo "  DB_SLO_AUTH_TIMEOUT_MAX=<count>  Fail if TimeoutError/QueryCanceledError count exceeds threshold"
+      echo "  DB_SLO_CONNECT_ITERATIONS=<n>  Probe count for DB connect SLO checks (default: 20)"
+      echo "  DB_SLO_LOG_WINDOW_MINUTES=<n>  API log window used by DB SLO checks (default: 30)"
       echo ""
       echo "Examples:"
       echo "  $0"

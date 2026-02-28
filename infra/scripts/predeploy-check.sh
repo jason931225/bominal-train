@@ -274,8 +274,8 @@ require_supabase_database_url() {
     exit 1
   fi
 
-  if [[ "$value" != *".supabase.co"* ]]; then
-    log_error "$name must point to a Supabase Postgres endpoint (*.supabase.co)."
+  if [[ "$value" != *".supabase.co"* ]] && [[ "$value" != *".supabase.com"* ]]; then
+    log_error "$name must point to a Supabase Postgres endpoint (*.supabase.co or *.supabase.com)."
     exit 1
   fi
 
@@ -548,6 +548,30 @@ require_supabase_database_url "$sync_database_url" "SYNC_DATABASE_URL"
 if [[ "$database_url" == postgresql+asyncpg://* ]] && [[ "$database_url" == *"sslmode="* ]]; then
   log_error "DATABASE_URL uses asyncpg but contains sslmode=. Use ssl=require for asyncpg URLs."
   exit 1
+fi
+database_url_target="$(env_key_value "infra/env/prod/api.env" "DATABASE_URL_TARGET" | tr '[:upper:]' '[:lower:]')"
+if [[ -z "$database_url_target" ]]; then
+  database_url_target="pooler"
+fi
+case "$database_url_target" in
+  pooler|direct)
+    ;;
+  *)
+    log_error "DATABASE_URL_TARGET must be pooler or direct (got: ${database_url_target:-<empty>})"
+    exit 1
+    ;;
+esac
+if [[ "$database_url_target" == "direct" ]]; then
+  database_url_direct="$(env_key_value "infra/env/prod/api.env" "DATABASE_URL_DIRECT")"
+  if [[ -z "$database_url_direct" ]]; then
+    log_error "DATABASE_URL_DIRECT is required when DATABASE_URL_TARGET=direct."
+    exit 1
+  fi
+  require_supabase_database_url "$database_url_direct" "DATABASE_URL_DIRECT"
+  if [[ "$database_url_direct" == postgresql+asyncpg://* ]] && [[ "$database_url_direct" == *"sslmode="* ]]; then
+    log_error "DATABASE_URL_DIRECT uses asyncpg but contains sslmode=. Use ssl=require for asyncpg URLs."
+    exit 1
+  fi
 fi
 
 api_auth_mode="$(env_key_value "infra/env/prod/api.env" "AUTH_MODE" | tr '[:upper:]' '[:lower:]')"

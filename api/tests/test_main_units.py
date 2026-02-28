@@ -145,7 +145,7 @@ async def test_healthcheck_success_and_degraded_paths(monkeypatch) -> None:
 
     monkeypatch.setattr("app.core.redis.get_redis_client", _redis_ok)
     monkeypatch.setattr("app.core.redis.get_cde_redis_client", _redis_ok)
-    healthy = await main_mod.healthcheck()
+    healthy = await main_mod.health_ready()
     assert healthy["status"] == "ok"
     assert healthy["redis_non_cde"] is True
     assert healthy["redis_cde"] is True
@@ -158,7 +158,7 @@ async def test_healthcheck_success_and_degraded_paths(monkeypatch) -> None:
             return None
 
     monkeypatch.setattr(main_mod, "SessionLocal", lambda: _BrokenSessionCtx())
-    degraded_db = await main_mod.healthcheck()
+    degraded_db = await main_mod.health_ready()
     assert degraded_db["status"] == "degraded"
     assert degraded_db["db"] is False
 
@@ -169,9 +169,35 @@ async def test_healthcheck_success_and_degraded_paths(monkeypatch) -> None:
 
     monkeypatch.setattr("app.core.redis.get_redis_client", _redis_fail)
     monkeypatch.setattr("app.core.redis.get_cde_redis_client", _redis_fail)
-    degraded_redis = await main_mod.healthcheck()
+    degraded_redis = await main_mod.health_ready()
     assert degraded_redis["status"] == "degraded"
     assert degraded_redis["redis"] is False
+
+    # Backward-compatible /health should mirror readiness payload.
+    ready_compat = await main_mod.healthcheck()
+    assert ready_compat["status"] == "degraded"
+    assert ready_compat["redis"] is False
+
+
+@pytest.mark.asyncio
+async def test_health_live_skips_dependency_probes(monkeypatch) -> None:
+    class _ShouldNotRunSession:
+        async def __aenter__(self):
+            raise AssertionError("liveness check must not open DB session")
+
+        async def __aexit__(self, *_args):
+            return None
+
+    async def _should_not_run_redis():
+        raise AssertionError("liveness check must not call Redis")
+
+    monkeypatch.setattr(main_mod, "SessionLocal", lambda: _ShouldNotRunSession())
+    monkeypatch.setattr("app.core.redis.get_redis_client", _should_not_run_redis)
+    monkeypatch.setattr("app.core.redis.get_cde_redis_client", _should_not_run_redis)
+
+    live = await main_mod.health_live()
+
+    assert live == {"status": "ok", "app": main_mod.settings.app_name}
 
 
 @pytest.mark.asyncio
@@ -198,6 +224,9 @@ def test_main_app_exposes_version_routes() -> None:
     paths = {route.path for route in main_mod.app.routes}
     assert "/version" in paths
     assert "/api/version" in paths
+    assert "/health" in paths
+    assert "/health/live" in paths
+    assert "/health/ready" in paths
 
 
 @pytest.mark.asyncio

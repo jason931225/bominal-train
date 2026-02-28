@@ -130,13 +130,15 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
     )
 
 
-@app.get("/health")
-async def healthcheck() -> dict[str, str | bool]:
-    """Health check with dependency verification.
-    
-    Returns status of API and its dependencies (database, Redis).
-    Used by container orchestration for liveness/readiness probes.
-    """
+@app.get("/health/live")
+async def health_live() -> dict[str, str]:
+    """Liveness probe: process is up."""
+    return {"status": "ok", "app": settings.app_name}
+
+
+@app.get("/health/ready")
+async def health_ready() -> dict[str, str | bool]:
+    """Readiness probe with dependency verification."""
     health: dict[str, str | bool] = {"status": "ok", "app": settings.app_name}
     
     # Check database connectivity
@@ -166,6 +168,12 @@ async def healthcheck() -> dict[str, str | bool]:
         health["status"] = "degraded"
     
     return health
+
+
+@app.get("/health")
+async def healthcheck() -> dict[str, str | bool]:
+    """Backward-compatible readiness endpoint."""
+    return await health_ready()
 
 
 @app.get("/api/version")

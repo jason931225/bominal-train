@@ -22,3 +22,4 @@ Use `docs/playbooks/TEMPLATE.md` and keep all sections complete.
 - `docs/playbooks/restaurant-provider-adapter-workflow.md` - canonical implementation workflow for restaurant provider adapters.
 - `docs/playbooks/provider-adapter-contract-template.md` - reusable contract template for onboarding new providers.
 - `docs/playbooks/release-1.0.0-deploy-readiness.md` - release readiness and production deployment checklist for `1.0.0` promotion.
+- `docs/playbooks/db-deep-dive-production.md` - production DB-path latency baseline/A-B/gate workflow for auth-path slowness incidents.
