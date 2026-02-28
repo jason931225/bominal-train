@@ -1,0 +1,138 @@
+{
+  "contract_label": {
+    "group_id": "G0007",
+    "signature": "v1:497da08eb4e4e4c6",
+    "classification": "redundant_occurrence",
+    "duplicate_index": 7
+  },
+  "source": {
+    "file": "docs/handoff/output/20260228T093249Z_98e24e48/0002_srt_POST_selectListAtc14016_n.do.json",
+    "exemplar_file": "docs/handoff/output/20260228T092614Z_9155f005/0009_srt_POST_selectListAtc14016_n.do.json"
+  },
+  "event": {
+    "metadata": {
+      "sequence": 2,
+      "captured_at": "2026-02-28T09:33:54.582301+00:00",
+      "run_id": "20260228T093249Z_98e24e48",
+      "backend": "curl_cffi",
+      "component": "srt",
+      "operation": "tickets",
+      "endpoint": "selectListAtc14016_n.do"
+    },
+    "request": {
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/atc/selectListAtc14016_n.do",
+      "params": null,
+      "data": {
+        "pageNo": "0"
+      },
+      "json": null,
+      "headers": {},
+      "cookies": "<redacted>",
+      "session_headers": {
+        "user-agent": "Mozilla/5.0 (Linux; Android 15; SM-S912N Build/AP3A.240905.015.A2; wv) AppleWebKit/537.36(KHTML, like Gecko) Version/4.0 Chrome/136.0.7103.125 Mobile Safari/537.36SRT-APP-Android V.2.0.38",
+        "accept": "application/json"
+      },
+      "session_cookies": "<redacted>",
+      "extra": {}
+    },
+    "effective_request": {
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/atc/selectListAtc14016_n.do",
+      "headers": {
+        "user-agent": "Mozilla/5.0 (Linux; Android 15; SM-S912N Build/AP3A.240905.015.A2; wv) AppleWebKit/537.36(KHTML, like Gecko) Version/4.0 Chrome/136.0.7103.125 Mobile Safari/537.36SRT-APP-Android V.2.0.38",
+        "accept": "application/json"
+      },
+      "body": null
+    },
+    "response": {
+      "status_code": 200,
+      "ok": true,
+      "url": "https://app.srail.or.kr:443/atc/selectListAtc14016_n.do",
+      "headers": {
+        "content-language": "ko",
+        "date": "Sat, 28 Feb 2026 09:33:54 GMT",
+        "expires": "Thu, 01 Jan 1970 00:00:00 GMT",
+        "content-type": "application/json;charset=UTF-8",
+        "cache-control": "no-cache, no-store, max-age=0",
+        "pragma": "no-cache",
+        "transfer-encoding": "chunked"
+      },
+      "cookies": "<redacted>",
+      "text": "{\"payListMap\": [{\"stlbTrnClsfCd\": \"17\", \"plchNum\": 0, \"stlFlg\": \"N\", \"jrnyTpCd\": \"11\", \"stndNum\": 0, \"mviePsrmFlg\": \"\", \"dptTm\": \"133000\", \"JRNYLIST_KEY\": 0, \"tkStlFlg\": \"18시41분까지결제하기(결제창 이동)\", \"jrnyPrgSttCd\": \"12\", \"iseLmtTm\": \"184131\", \"trnGpCd\": \"300\", \"seatNum\": 1, \"PNRLIST_KEY\": \"<redacted>\", \"arvTm\": \"143300\", \"tkIseFlg\": \"-\", \"dptRsStnCd\": \"0551\", \"proyStlTgtFlg\": \"Y\", \"runDt\": \"20260304\", \"arvRsStnCd\": \"0010\", \"rsvTpCd\": \"03\", \"dptDt\": \"20260304\", \"trnNo\": \"00337\", \"jrnySqno\": 1, \"isePsbDt\": \"20260228\", \"tkCnlRetFlg\": \"예약취소(예약취소창 이동)\", \"iseLmtDt\": \"20260228\"}], \"rsListMap\": null, \"rsMap\": [{\"msgCd\": \"WRT300005\", \"strResult\": \"FAIL\", \"msgTxt\": \"조회자료가 없습니다.\"}], \"resultMap\": [{\"msgCd\": \"IRZ000001\", \"wctNo\": \"81301\", \"strResult\": \"SUCC\", \"msgTxt\": \"정상적으로 조회 되었습니다.\", \"uuid\": \"<redacted>\", \"cgPsId\": \"korail\", \"totPageCnt\": 1, \"rowCnt\": 1}], \"commandMap\": {\"pageNo\": \"0\"}, \"trainListMap\": [{\"pnrNo\": \"<redacted>\", \"retFlg\": \"2\", \"rcvdAmt\": 19800, \"tkKndCd\": \"\", \"jrnyCnt\": 1, \"stlFlg\": \"N\", \"tkSpecNum\": 1, \"dptDttm\": \"20260304133000\", \"reSaleFlg\": \"N\", \"cpnyTkFlg\": \"N\", \"pbpAcepTgtFlg\": \"N\", \"PNRLIST_KEY\": \"<redacted>\", \"rsvChgTno\": 0}]}",
+      "json": {
+        "payListMap": [
+          {
+            "stlbTrnClsfCd": "17",
+            "plchNum": 0,
+            "stlFlg": "N",
+            "jrnyTpCd": "11",
+            "stndNum": 0,
+            "mviePsrmFlg": "",
+            "dptTm": "133000",
+            "JRNYLIST_KEY": 0,
+            "tkStlFlg": "18시41분까지결제하기(결제창 이동)",
+            "jrnyPrgSttCd": "12",
+            "iseLmtTm": "184131",
+            "trnGpCd": "300",
+            "seatNum": 1,
+            "PNRLIST_KEY": "<redacted>",
+            "arvTm": "143300",
+            "tkIseFlg": "-",
+            "dptRsStnCd": "0551",
+            "proyStlTgtFlg": "Y",
+            "runDt": "20260304",
+            "arvRsStnCd": "0010",
+            "rsvTpCd": "03",
+            "dptDt": "20260304",
+            "trnNo": "00337",
+            "jrnySqno": 1,
+            "isePsbDt": "20260228",
+            "tkCnlRetFlg": "예약취소(예약취소창 이동)",
+            "iseLmtDt": "20260228"
+          }
+        ],
+        "rsListMap": null,
+        "rsMap": [
+          {
+            "msgCd": "WRT300005",
+            "strResult": "FAIL",
+            "msgTxt": "조회자료가 없습니다."
+          }
+        ],
+        "resultMap": [
+          {
+            "msgCd": "IRZ000001",
+            "wctNo": "81301",
+            "strResult": "SUCC",
+            "msgTxt": "정상적으로 조회 되었습니다.",
+            "uuid": "<redacted>",
+            "cgPsId": "korail",
+            "totPageCnt": 1,
+            "rowCnt": 1
+          }
+        ],
+        "commandMap": {
+          "pageNo": "0"
+        },
+        "trainListMap": [
+          {
+            "pnrNo": "<redacted>",
+            "retFlg": "2",
+            "rcvdAmt": 19800,
+            "tkKndCd": "",
+            "jrnyCnt": 1,
+            "stlFlg": "N",
+            "tkSpecNum": 1,
+            "dptDttm": "20260304133000",
+            "reSaleFlg": "N",
+            "cpnyTkFlg": "N",
+            "pbpAcepTgtFlg": "N",
+            "PNRLIST_KEY": "<redacted>",
+            "rsvChgTno": 0
+          }
+        ]
+      }
+    }
+  }
+}

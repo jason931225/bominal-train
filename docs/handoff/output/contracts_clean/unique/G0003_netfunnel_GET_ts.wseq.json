@@ -1,0 +1,141 @@
+{
+  "contract_label": {
+    "group_id": "G0003",
+    "signature": "v1:f9b74a97610a33f9",
+    "component": "netfunnel",
+    "method": "GET",
+    "host": "nf.letskorail.com",
+    "path": "/ts.wseq",
+    "occurrence_count": 1,
+    "classification": "unique_exemplar"
+  },
+  "source": {
+    "exemplar_file": "docs/handoff/output/20260228T092614Z_9155f005/0004_netfunnel_GET_ts.wseq.json",
+    "all_files": [
+      "docs/handoff/output/20260228T092614Z_9155f005/0004_netfunnel_GET_ts.wseq.json"
+    ]
+  },
+  "signature_basis": {
+    "v": "v1",
+    "component": "netfunnel",
+    "method": "GET",
+    "host": "nf.letskorail.com",
+    "path": "/ts.wseq",
+    "request": {
+      "params_keys": [
+        "1772270827497",
+        "aid",
+        "js",
+        "nfid",
+        "opcode",
+        "prefix",
+        "sid"
+      ],
+      "data_keys": [],
+      "json_keys": [],
+      "mode_values": {
+        "nfid": "0",
+        "opcode": "5101",
+        "prefix": "NetFunnel.gRtype=5101%3B"
+      }
+    },
+    "response": {
+      "status_code": 200,
+      "json_schema": "NoneType",
+      "markers": {}
+    }
+  },
+  "event": {
+    "metadata": {
+      "sequence": 4,
+      "captured_at": "2026-02-28T09:27:07.497900+00:00",
+      "run_id": "20260228T092614Z_9155f005",
+      "backend": "curl_cffi",
+      "component": "netfunnel",
+      "operation": "netfunnel",
+      "endpoint": "ts.wseq"
+    },
+    "request": {
+      "method": "GET",
+      "url": "https://nf.letskorail.com/ts.wseq",
+      "params": {
+        "opcode": "5101",
+        "nfid": "0",
+        "prefix": "NetFunnel.gRtype=5101%3B",
+        "js": "true",
+        "1772270827497": "",
+        "sid": "service_1",
+        "aid": "act_10"
+      },
+      "data": null,
+      "json": null,
+      "headers": {},
+      "cookies": "<redacted>",
+      "session_headers": {
+        "host": "nf.letskorail.com",
+        "connection": "keep-alive",
+        "pragma": "no-cache",
+        "cache-control": "no-cache",
+        "sec-ch-ua-platform": "Android",
+        "user-agent": "Mozilla/5.0 (Linux; Android 15; SM-S912N Build/AP3A.240905.015.A2; wv) AppleWebKit/537.36(KHTML, like Gecko) Version/4.0 Chrome/136.0.7103.125 Mobile Safari/537.36SRT-APP-Android V.2.0.38",
+        "sec-ch-ua": "\"Chromium\";v=\"136\", \"Android WebView\";v=\"136\", \"Not=A/Brand\";v=\"99\"",
+        "sec-ch-ua-mobile": "?1",
+        "accept": "*/*",
+        "x-requested-with": "kr.co.srail.newapp",
+        "sec-fetch-site": "cross-site",
+        "sec-fetch-mode": "no-cors",
+        "sec-fetch-dest": "script",
+        "sec-fetch-storage-access": "active",
+        "referer": "https://app.srail.or.kr/",
+        "accept-encoding": "gzip, deflate, br, zstd",
+        "accept-language": "en-US,en;q=0.9,ko-KR;q=0.8,ko;q=0.7"
+      },
+      "session_cookies": "<redacted>",
+      "extra": {
+        "verify": false
+      }
+    },
+    "effective_request": {
+      "method": "GET",
+      "url": "https://nf.letskorail.com/ts.wseq?opcode=5101&nfid=0&prefix=NetFunnel.gRtype%3D5101%3B&js=true&1772270827497=&sid=service_1&aid=act_10",
+      "headers": {
+        "connection": "keep-alive",
+        "pragma": "no-cache",
+        "cache-control": "no-cache",
+        "sec-ch-ua-platform": "Android",
+        "user-agent": "Mozilla/5.0 (Linux; Android 15; SM-S912N Build/AP3A.240905.015.A2; wv) AppleWebKit/537.36(KHTML, like Gecko) Version/4.0 Chrome/136.0.7103.125 Mobile Safari/537.36SRT-APP-Android V.2.0.38",
+        "sec-ch-ua": "\"Chromium\";v=\"136\", \"Android WebView\";v=\"136\", \"Not=A/Brand\";v=\"99\"",
+        "sec-ch-ua-mobile": "?1",
+        "accept": "*/*",
+        "x-requested-with": "kr.co.srail.newapp",
+        "sec-fetch-site": "cross-site",
+        "sec-fetch-mode": "no-cors",
+        "sec-fetch-dest": "script",
+        "sec-fetch-storage-access": "active",
+        "referer": "https://app.srail.or.kr/",
+        "accept-encoding": "gzip, deflate, br, zstd",
+        "accept-language": "en-US,en;q=0.9,ko-KR;q=0.8,ko;q=0.7"
+      },
+      "body": null
+    },
+    "response": {
+      "status_code": 200,
+      "ok": true,
+      "url": "https://nf.letskorail.com/ts.wseq?opcode=5101&nfid=0&prefix=NetFunnel.gRtype%3D5101%3B&js=true&1772270827497=&sid=service_1&aid=act_10",
+      "headers": {
+        "content-length": "575",
+        "keep-alive": "timeout=30",
+        "connection": "keep-alive",
+        "date": "2026-02-28T09:27:08.798",
+        "access-control-allow-origin": "*",
+        "content-type": "application/javascript",
+        "x-xss-protection": "1",
+        "x-content-type-options": "nosniff",
+        "content-security-policy": "default-src 'self' 'unsafe-eval' 'unsafe-inline' blob:; img-src 'self' data:; font-src 'self' data:"
+      },
+      "cookies": "<redacted>",
+      "text": "NetFunnel.gRtype=4999%3BNetFunnel.gControl.result%3D%275002%3A200%3Akey%3D<redacted>&nwait=0&nnext=0&tps=0.000000&ttl=0&ip=nf5.letskorail.com&port=443&vwr_html=https%3A%2F%2Fwww.korail.com%2Fnetfunnel-statics%2Fassets%2Fvwr-page%2Fpage%2F1%2F1%2F1%2Findex.html&live_message=&chk_enter_cnt=1&vwr_type=&sticky=nf4%27%3B+NetFunnel.gControl._showResult%28%29%3B",
+      "json": null
+    }
+  }
+}

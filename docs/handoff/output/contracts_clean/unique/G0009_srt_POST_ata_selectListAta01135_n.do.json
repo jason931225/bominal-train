@@ -1,0 +1,133 @@
+{
+  "contract_label": {
+    "group_id": "G0009",
+    "signature": "v1:3cf8675faaba65f6",
+    "component": "srt",
+    "method": "POST",
+    "host": "app.srail.or.kr:443",
+    "path": "/ata/selectListAta01135_n.do",
+    "occurrence_count": 1,
+    "classification": "unique_exemplar"
+  },
+  "source": {
+    "exemplar_file": "docs/handoff/output/20260228T092614Z_9155f005/0011_srt_POST_selectListAta01135_n.do.json",
+    "all_files": [
+      "docs/handoff/output/20260228T092614Z_9155f005/0011_srt_POST_selectListAta01135_n.do.json"
+    ]
+  },
+  "signature_basis": {
+    "v": "v1",
+    "component": "srt",
+    "method": "POST",
+    "host": "app.srail.or.kr:443",
+    "path": "/ata/selectListAta01135_n.do",
+    "request": {
+      "params_keys": [],
+      "data_keys": [
+        "pnrNo",
+        "psrmClChgFlg",
+        "smsSndFlg",
+        "telNo"
+      ],
+      "json_keys": [],
+      "mode_values": {}
+    },
+    "response": {
+      "status_code": 200,
+      "json_schema": {
+        "ERROR_CODE": "str",
+        "ERROR_MSG": "str",
+        "dsResultMap": {
+          "dsOutput": {
+            "intgMsgCd": "str",
+            "msgCd": "str",
+            "msgTxt": "str",
+            "strResult": "str"
+          }
+        }
+      },
+      "markers": {
+        "ERROR_CODE": [
+          "0"
+        ],
+        "msgCd": [
+          "IRZ000003"
+        ],
+        "msgTxt": [
+          "정상적으로 수정 되었습니다."
+        ],
+        "strResult": [
+          "SUCC"
+        ]
+      }
+    }
+  },
+  "event": {
+    "metadata": {
+      "sequence": 11,
+      "captured_at": "2026-02-28T09:27:41.592339+00:00",
+      "run_id": "20260228T092614Z_9155f005",
+      "backend": "curl_cffi",
+      "component": "srt",
+      "operation": "standby_option",
+      "endpoint": "selectListAta01135_n.do"
+    },
+    "request": {
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/ata/selectListAta01135_n.do",
+      "params": null,
+      "data": {
+        "pnrNo": "<redacted>",
+        "psrmClChgFlg": "Y",
+        "smsSndFlg": "Y",
+        "telNo": "<redacted>"
+      },
+      "json": null,
+      "headers": {},
+      "cookies": "<redacted>",
+      "session_headers": {
+        "user-agent": "Mozilla/5.0 (Linux; Android 15; SM-S912N Build/AP3A.240905.015.A2; wv) AppleWebKit/537.36(KHTML, like Gecko) Version/4.0 Chrome/136.0.7103.125 Mobile Safari/537.36SRT-APP-Android V.2.0.38",
+        "accept": "application/json"
+      },
+      "session_cookies": "<redacted>",
+      "extra": {}
+    },
+    "effective_request": {
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/ata/selectListAta01135_n.do",
+      "headers": {
+        "user-agent": "Mozilla/5.0 (Linux; Android 15; SM-S912N Build/AP3A.240905.015.A2; wv) AppleWebKit/537.36(KHTML, like Gecko) Version/4.0 Chrome/136.0.7103.125 Mobile Safari/537.36SRT-APP-Android V.2.0.38",
+        "accept": "application/json"
+      },
+      "body": null
+    },
+    "response": {
+      "status_code": 200,
+      "ok": true,
+      "url": "https://app.srail.or.kr:443/ata/selectListAta01135_n.do",
+      "headers": {
+        "content-language": "ko",
+        "date": "Sat, 28 Feb 2026 09:27:41 GMT",
+        "expires": "Thu, 01 Jan 1970 00:00:00 GMT",
+        "content-type": "application/json;charset=UTF-8",
+        "cache-control": "no-cache, no-store, max-age=0",
+        "pragma": "no-cache",
+        "transfer-encoding": "chunked"
+      },
+      "cookies": "<redacted>",
+      "text": "{\"ERROR_MSG\": \"\", \"ERROR_CODE\": \"0\", \"dsResultMap\": {\"dsOutput\": {\"msgCd\": \"IRZ000003\", \"intgMsgCd\": \"IRZ000003\", \"strResult\": \"SUCC\", \"msgTxt\": \"정상적으로 수정 되었습니다.\"}}}",
+      "json": {
+        "ERROR_MSG": "",
+        "ERROR_CODE": "0",
+        "dsResultMap": {
+          "dsOutput": {
+            "msgCd": "IRZ000003",
+            "intgMsgCd": "IRZ000003",
+            "strResult": "SUCC",
+            "msgTxt": "정상적으로 수정 되었습니다."
+          }
+        }
+      }
+    }
+  }
+}

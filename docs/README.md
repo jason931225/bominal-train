@@ -86,11 +86,11 @@ Pointer format convention (mandatory):
 - [PTR-DOCS-010] `docs/handoff/RESOURCE_INDEX.md` - pointer index of source, capture, and probe resources for external rewrite.
 - [PTR-DOCS-011] `docs/handoff/EXTERNAL_REWRITE_RUNBOOK.md` - execution sequence and acceptance checks for rewrite teams.
 - [PTR-DOCS-012] `docs/handoff/NON_REPO_ARTIFACTS.md` - explicit list of non-portable external artifacts and handling rules.
-- [PTR-DOCS-013] `docs/handoff/srtgo-capture/HANDOFF_EXTERNAL_REWRITE.md` - canonical external rewrite handoff package for provider parity work.
-- [PTR-DOCS-014] `docs/handoff/srtgo-capture/PROVIDER_CONTRACT.md` - provider contract reference migrated from tools.
-- [PTR-DOCS-015] `docs/handoff/srtgo-capture/PROVIDER_FIELD_MAP.json` - machine-readable provider endpoint/field/auth map.
-- [PTR-DOCS-016] `docs/handoff/srtgo-capture/PROVIDER_FIELD_MAP.md` - human-readable provider endpoint/field/auth map.
-- [PTR-DOCS-017] `docs/handoff/srtgo-capture/handoff/RESOURCE_MANIFEST.json` - machine-readable handoff resource manifest.
+- [PTR-DOCS-013] `docs/handoff/HANDOFF_EXTERNAL_REWRITE.md` - canonical external rewrite handoff package for provider parity work.
+- [PTR-DOCS-014] `docs/handoff/PROVIDER_CONTRACT.md` - provider contract reference migrated from tools.
+- [PTR-DOCS-015] `docs/handoff/PROVIDER_FIELD_MAP.json` - machine-readable provider endpoint/field/auth map.
+- [PTR-DOCS-016] `docs/handoff/PROVIDER_FIELD_MAP.md` - human-readable provider endpoint/field/auth map.
+- [PTR-DOCS-017] `docs/handoff/RESOURCE_MANIFEST.json` - machine-readable handoff resource manifest.
 - [PTR-DOCS-018] `docs/handoff/output/auth_scope_probe/latest_auth_scope_probe.json` - auth-scope probe evidence snapshot.
 
 ### Validation

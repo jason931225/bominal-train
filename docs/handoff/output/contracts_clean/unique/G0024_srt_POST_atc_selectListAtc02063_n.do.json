@@ -1,0 +1,138 @@
+{
+  "contract_label": {
+    "group_id": "G0024",
+    "signature": "v1:44d2dc1e78d7cfea",
+    "component": "srt",
+    "method": "POST",
+    "host": "app.srail.or.kr:443",
+    "path": "/atc/selectListAtc02063_n.do",
+    "occurrence_count": 1,
+    "classification": "unique_exemplar"
+  },
+  "source": {
+    "exemplar_file": "docs/handoff/output/20260228T093249Z_98e24e48/0009_srt_POST_selectListAtc02063_n.do.json",
+    "all_files": [
+      "docs/handoff/output/20260228T093249Z_98e24e48/0009_srt_POST_selectListAtc02063_n.do.json"
+    ]
+  },
+  "signature_basis": {
+    "v": "v1",
+    "component": "srt",
+    "method": "POST",
+    "host": "app.srail.or.kr:443",
+    "path": "/atc/selectListAtc02063_n.do",
+    "request": {
+      "params_keys": [],
+      "data_keys": [
+        "cnc_dmn_cont",
+        "pnr_no",
+        "psgNm",
+        "saleDt",
+        "saleSqno",
+        "saleWctNo",
+        "tkRetPwd"
+      ],
+      "json_keys": [],
+      "mode_values": {}
+    },
+    "response": {
+      "status_code": 200,
+      "json_schema": {
+        "resultMap": [
+          {
+            "cgPsId": "str",
+            "msgCd": "str",
+            "msgTxt": "str",
+            "strResult": "str",
+            "uuid": "str",
+            "wctNo": "str"
+          }
+        ]
+      },
+      "markers": {
+        "msgCd": [
+          "IRT200277"
+        ],
+        "msgTxt": [
+          "반환이 정상 처리되었습니다"
+        ],
+        "strResult": [
+          "SUCC"
+        ]
+      }
+    }
+  },
+  "event": {
+    "metadata": {
+      "sequence": 9,
+      "captured_at": "2026-02-28T09:34:30.250303+00:00",
+      "run_id": "20260228T093249Z_98e24e48",
+      "backend": "curl_cffi",
+      "component": "srt",
+      "operation": "refund",
+      "endpoint": "selectListAtc02063_n.do"
+    },
+    "request": {
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/atc/selectListAtc02063_n.do",
+      "params": null,
+      "data": {
+        "pnr_no": "<redacted>",
+        "cnc_dmn_cont": "승차권 환불로 취소",
+        "saleDt": "20260228",
+        "saleWctNo": "81314",
+        "saleSqno": "11681",
+        "tkRetPwd": "<redacted>",
+        "psgNm": "<redacted>"
+      },
+      "json": null,
+      "headers": {},
+      "cookies": "<redacted>",
+      "session_headers": {
+        "user-agent": "Mozilla/5.0 (Linux; Android 15; SM-S912N Build/AP3A.240905.015.A2; wv) AppleWebKit/537.36(KHTML, like Gecko) Version/4.0 Chrome/136.0.7103.125 Mobile Safari/537.36SRT-APP-Android V.2.0.38",
+        "accept": "application/json",
+        "referer": "https://app.srail.or.kr:443/common/ATC/ATC0201L/view.do?pnrNo=320260282429264"
+      },
+      "session_cookies": "<redacted>",
+      "extra": {}
+    },
+    "effective_request": {
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/atc/selectListAtc02063_n.do",
+      "headers": {
+        "user-agent": "Mozilla/5.0 (Linux; Android 15; SM-S912N Build/AP3A.240905.015.A2; wv) AppleWebKit/537.36(KHTML, like Gecko) Version/4.0 Chrome/136.0.7103.125 Mobile Safari/537.36SRT-APP-Android V.2.0.38",
+        "accept": "application/json",
+        "referer": "https://app.srail.or.kr:443/common/ATC/ATC0201L/view.do?pnrNo=320260282429264"
+      },
+      "body": null
+    },
+    "response": {
+      "status_code": 200,
+      "ok": true,
+      "url": "https://app.srail.or.kr:443/atc/selectListAtc02063_n.do",
+      "headers": {
+        "content-language": "ko",
+        "date": "Sat, 28 Feb 2026 09:34:30 GMT",
+        "expires": "Thu, 01 Jan 1970 00:00:00 GMT",
+        "content-type": "application/json;charset=UTF-8",
+        "cache-control": "no-cache, no-store, max-age=0",
+        "pragma": "no-cache",
+        "transfer-encoding": "chunked"
+      },
+      "cookies": "<redacted>",
+      "text": "{\"resultMap\": [{\"msgCd\": \"IRT200277\", \"wctNo\": \"81301\", \"strResult\": \"SUCC\", \"msgTxt\": \"반환이 정상 처리되었습니다\", \"uuid\": \"<redacted>\", \"cgPsId\": \"korail\"}]}",
+      "json": {
+        "resultMap": [
+          {
+            "msgCd": "IRT200277",
+            "wctNo": "81301",
+            "strResult": "SUCC",
+            "msgTxt": "반환이 정상 처리되었습니다",
+            "uuid": "<redacted>",
+            "cgPsId": "korail"
+          }
+        ]
+      }
+    }
+  }
+}
