@@ -234,6 +234,10 @@ jobs:
         run: |
           bash infra/tests/test_predeploy_check.sh
 
+      - name: Validate IAP tunnel enforcement for SSH
+        run: |
+          bash infra/tests/test_iap_tunnel_enforcement.sh
+
       - name: Validate GSM master-key setup scripts
         run: |
           bash infra/tests/test_setup_gsm_master_key.sh
