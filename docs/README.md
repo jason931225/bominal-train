@@ -81,6 +81,11 @@ Pointer format convention (mandatory):
 - [PTR-DOCS-005] `docs/releases/version-map.json` - version map.
 - [PTR-DOCS-006] `docs/artifacts/2026-02-24-gcp-free-tier-offering.md` - user-captured snapshot of GCP free tier products and limits.
 - [PTR-DOCS-007] `docs/artifacts/2026-02-27-full-audit.md` - full release/deploy readiness audit snapshot with gate outcomes and blockers.
+- [PTR-DOCS-008] `docs/handoff/README.md` - handoff discoverability index entrypoint.
+- [PTR-DOCS-009] `docs/handoff` - handoff docs folder container for external rewrite references.
+- [PTR-DOCS-010] `docs/handoff/RESOURCE_INDEX.md` - pointer index of source, capture, and probe resources for external rewrite.
+- [PTR-DOCS-011] `docs/handoff/EXTERNAL_REWRITE_RUNBOOK.md` - execution sequence and acceptance checks for rewrite teams.
+- [PTR-DOCS-012] `docs/handoff/NON_REPO_ARTIFACTS.md` - explicit list of non-portable external artifacts and handling rules.
 
 ### Validation
 
