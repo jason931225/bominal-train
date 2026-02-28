@@ -7,7 +7,6 @@ import { AppShell } from "@/components/app-shell";
 import { LocaleProvider } from "@/components/locale-provider";
 import { ThemeInitScript } from "@/components/theme-init-script";
 import { ThemeProvider } from "@/components/theme-provider";
-import { THEME_FAVICON_LINK_ID, themeFaviconHref } from "@/lib/theme-favicon";
 import { localeFromAcceptLanguage, localeFromUser, type Locale } from "@/lib/i18n";
 import { getOptionalUser } from "@/lib/server-auth";
 import { seasonFromMonth } from "@/lib/theme";
@@ -102,12 +101,6 @@ export default async function RootLayout({
       suppressHydrationWarning
     >
       <head>
-        <link
-          id={THEME_FAVICON_LINK_ID}
-          rel="icon"
-          type="image/png"
-          href={themeFaviconHref(initialTheme)}
-        />
         <link rel="stylesheet" href={GOOGLE_FONT_STYLESHEET_URL} />
         <style id="remote-font-faces">{remoteFontFaceCss(fontBaseUrl)}</style>
       </head>
