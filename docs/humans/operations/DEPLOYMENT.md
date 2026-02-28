@@ -75,12 +75,11 @@ Optional image override envs (for controlled/manual rollouts):
 - Backward-compatible split overrides are still accepted but should be removed from operator automation.
 
 Evervault secret sourcing (production):
-- Keep `EVERVAULT_APP_ID` / `EVERVAULT_API_KEY` empty in `infra/env/prod/api.env`.
-- Set Secret Manager references in `infra/env/prod/api.env`:
-  - `EVERVAULT_APP_ID_SECRET_ID`, `EVERVAULT_APP_ID_SECRET_VERSION`
-  - `EVERVAULT_API_KEY_SECRET_ID`, `EVERVAULT_API_KEY_SECRET_VERSION`
-- `infra/scripts/deploy.sh` resolves these from GSM at deploy time and injects redacted runtime env vars for `api` and `worker`.
-- `GCP_PROJECT_ID` must be set in `infra/env/prod/api.env` when GSM secret IDs are used.
+- Set `EVERVAULT_APP_ID` directly in `infra/env/prod/api.env` (env-managed, non-secret).
+- Keep `EVERVAULT_API_KEY` empty and set GSM references in `infra/env/prod/api.env`:
+  - `EVERVAULT_API_KEY_SECRET_ID`, `EVERVAULT_API_KEY_SECRET_VERSION` (pinned; no `latest`)
+- `infra/scripts/deploy.sh` resolves `EVERVAULT_API_KEY` from GSM at deploy time and injects redacted runtime env vars for `api` and `worker`.
+- `GCP_PROJECT_ID` must be set in `infra/env/prod/api.env` when `EVERVAULT_API_KEY_SECRET_ID` is used.
 - If `PAYMENT_PROVIDER=evervault`, set browser encryption vars in `infra/env/prod/web.env`:
   - `NEXT_PUBLIC_EVERVAULT_TEAM_ID`
   - `NEXT_PUBLIC_EVERVAULT_APP_ID`
@@ -297,7 +296,7 @@ Optional:
 - validates critical contracts (Supabase URLs, `MASTER_KEY` format, unresolved placeholders).
 
 If you choose manual editing instead, required values are:
-- `infra/env/prod/api.env`: `DATABASE_URL`, `SYNC_DATABASE_URL`, `AUTH_MODE=supabase`, `SUPABASE_URL`, `SUPABASE_JWT_ISSUER`, `SUPABASE_AUTH_ENABLED=true`, `SUPABASE_AUTH_API_KEY` (or `SUPABASE_SERVICE_ROLE_KEY` fallback), `SUPABASE_STORAGE_ENABLED=true`, `SUPABASE_SERVICE_ROLE_KEY`, sender-domain placeholder in `EMAIL_FROM_ADDRESS`, passkey origin settings (`PASSKEY_RP_ID`, `PASSKEY_ORIGIN`), optional provider session-cache knobs (`TRAIN_PROVIDER_CLIENT_CACHE_SECONDS`, `TRAIN_PROVIDER_CLIENT_CACHE_MAX_ENTRIES`), optional edge-notify knobs (`EDGE_TASK_NOTIFY_ENABLED`, `SUPABASE_EDGE_FUNCTIONS_BASE_URL`, `SUPABASE_EDGE_TASK_NOTIFY_FUNCTION_NAME`, `SUPABASE_EDGE_TIMEOUT_SECONDS`), optional Evervault settings (`EVERVAULT_APP_ID`/`EVERVAULT_APP_ID_SECRET_ID`, `EVERVAULT_API_KEY`/`EVERVAULT_API_KEY_SECRET_ID`), and valid secret sources for `MASTER_KEY`, `INTERNAL_API_KEY`, and `RESEND_API_KEY` (prefer GSM references)
+- `infra/env/prod/api.env`: `DATABASE_URL`, `SYNC_DATABASE_URL`, `AUTH_MODE=supabase`, `SUPABASE_URL`, `SUPABASE_JWT_ISSUER`, `SUPABASE_AUTH_ENABLED=true`, `SUPABASE_AUTH_API_KEY` (or `SUPABASE_SERVICE_ROLE_KEY` fallback), `SUPABASE_STORAGE_ENABLED=true`, `SUPABASE_SERVICE_ROLE_KEY`, sender-domain placeholder in `EMAIL_FROM_ADDRESS`, passkey origin settings (`PASSKEY_RP_ID`, `PASSKEY_ORIGIN`), optional provider session-cache knobs (`TRAIN_PROVIDER_CLIENT_CACHE_SECONDS`, `TRAIN_PROVIDER_CLIENT_CACHE_MAX_ENTRIES`), optional edge-notify knobs (`EDGE_TASK_NOTIFY_ENABLED`, `SUPABASE_EDGE_FUNCTIONS_BASE_URL`, `SUPABASE_EDGE_TASK_NOTIFY_FUNCTION_NAME`, `SUPABASE_EDGE_TIMEOUT_SECONDS`), Evervault app identifier (`EVERVAULT_APP_ID`), Evervault API key source (`EVERVAULT_API_KEY` or `EVERVAULT_API_KEY_SECRET_ID` + pinned version), and valid secret sources for `MASTER_KEY`, `INTERNAL_API_KEY`, and `RESEND_API_KEY` (prefer GSM references)
 - `infra/env/prod/api.env`: payment cutover contract when `PAYMENT_ENABLED=true`:
   - `PAYMENT_PROVIDER=evervault`
   - `PAYMENT_EVERVAULT_ENFORCE=true`
