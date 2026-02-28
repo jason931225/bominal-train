@@ -140,6 +140,7 @@ Deploy gating in CI:
 - `CI - Build and Publish Images` manual dispatch supports `build_api` / `build_web` boolean inputs so operators can avoid unneeded image publishes.
 - Deprecation policy checks run in `CI - Infra Quality Gates` and deploy preflight; CD publish no longer duplicates that check set.
 - Image publish job is fail-closed on Trivy scan findings (`HIGH` / `CRITICAL`) and emits SBOM/provenance attestations.
+- API mutation smoke gate in infra quality checks installs `uv` explicitly and uses deterministic fallback paths (`uv` -> host `python3` -> `docker compose run`) without requiring a pre-running `api` container.
 - After publish, CI runs a post-deploy verification gate:
   - production API health must report `db=true` and `redis=true`;
   - production web endpoint must return `200` or `3xx`.

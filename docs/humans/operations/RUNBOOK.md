@@ -20,6 +20,11 @@ cd api
 uv run --python .venv/bin/python -m pytest -q
 ```
 
+- API mutation smoke execution contract (`infra/scripts/run_mutation_api.sh`):
+  - preferred: `uv` + `api/.venv` via `infra/scripts/ensure-uv-api-venv.sh`
+  - fallback: host `python3` when `pytest` is importable
+  - final fallback: `docker compose run --rm --no-deps api ...` (does not require a pre-running `api` container)
+
 ### VM production (Debian 12 + Docker deploy)
 
 **Shell Aliases** (available after SSH login):
