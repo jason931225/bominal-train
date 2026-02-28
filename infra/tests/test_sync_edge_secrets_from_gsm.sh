@@ -7,6 +7,16 @@ SCRIPT="$ROOT_DIR/infra/scripts/sync-edge-secrets-from-gsm.sh"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
+file_contains_pattern() {
+  local pattern="$1"
+  local file="$2"
+  if command -v rg >/dev/null 2>&1; then
+    rg -q -- "$pattern" "$file"
+    return $?
+  fi
+  grep -Eq -- "$pattern" "$file"
+}
+
 mkdir -p "$TMP_DIR/bin" "$TMP_DIR/repo/infra/env/prod"
 
 cat >"$TMP_DIR/repo/infra/env/prod/api.env" <<'ENV'
@@ -79,29 +89,29 @@ PATH="$TMP_DIR/bin:$PATH" \
 BOMINAL_ROOT_DIR="$TMP_DIR/repo" \
 bash "$SCRIPT" --apply >/dev/null
 
-if ! rg -q 'secrets versions access' "$TMP_DIR/gcloud.calls"; then
+if ! file_contains_pattern 'secrets versions access' "$TMP_DIR/gcloud.calls"; then
   echo "FAIL: apply did not fetch secret from gcloud" >&2
   cat "$TMP_DIR/gcloud.calls" >&2
   exit 1
 fi
 
-if ! rg -q 'secrets set --project-ref test-ref --env-file' "$TMP_DIR/supabase.calls"; then
+if ! file_contains_pattern 'secrets set --project-ref test-ref --env-file' "$TMP_DIR/supabase.calls"; then
   echo "FAIL: apply did not call supabase secrets set with project ref/env file" >&2
   cat "$TMP_DIR/supabase.calls" >&2
   exit 1
 fi
 
-if ! rg -q '^RESEND_API_KEY=re_test_secret_value$' "$TMP_DIR/synced.env"; then
+if ! file_contains_pattern '^RESEND_API_KEY=re_test_secret_value$' "$TMP_DIR/synced.env"; then
   echo "FAIL: synced env missing RESEND_API_KEY" >&2
   cat "$TMP_DIR/synced.env" >&2
   exit 1
 fi
-if ! rg -q '^EMAIL_FROM_ADDRESS=no-reply@example.com$' "$TMP_DIR/synced.env"; then
+if ! file_contains_pattern '^EMAIL_FROM_ADDRESS=no-reply@example.com$' "$TMP_DIR/synced.env"; then
   echo "FAIL: synced env missing EMAIL_FROM_ADDRESS" >&2
   cat "$TMP_DIR/synced.env" >&2
   exit 1
 fi
-if ! rg -q '^EMAIL_FROM_NAME=bominal$' "$TMP_DIR/synced.env"; then
+if ! file_contains_pattern '^EMAIL_FROM_NAME=bominal$' "$TMP_DIR/synced.env"; then
   echo "FAIL: synced env missing EMAIL_FROM_NAME" >&2
   cat "$TMP_DIR/synced.env" >&2
   exit 1
