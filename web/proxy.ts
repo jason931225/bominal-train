@@ -15,6 +15,6 @@ export function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     // Match all paths except static files and API.
-    "/((?!_next/static|_next/image|favicons|api).*)",
+    "/((?!_next/static|_next/image|api).*)",
   ],
 };

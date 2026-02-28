@@ -18,16 +18,6 @@ const initThemeScript = `
     var root = document.documentElement;
     root.dataset.themeMode = mode;
     root.dataset.theme = season;
-    var href = "/favicons/catdog.png";
-    var icon = document.getElementById("bominal-theme-icon");
-    if (!(icon instanceof HTMLLinkElement)) {
-      icon = document.createElement("link");
-      icon.id = "bominal-theme-icon";
-      icon.rel = "icon";
-      icon.type = "image/png";
-      document.head.appendChild(icon);
-    }
-    icon.setAttribute("href", href);
 
     window.requestAnimationFrame(function() {
       root.classList.add("theme-ready");
