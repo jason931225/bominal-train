@@ -230,7 +230,7 @@ class Settings(BaseSettings):
         default=0.2,
         alias="TRAIN_PROVIDER_RETRY_BACKOFF_SECONDS",
     )
-    train_ktx_enabled: bool = Field(default=True, alias="TRAIN_KTX_ENABLED")
+    train_ktx_enabled: bool = Field(default=False, alias="TRAIN_KTX_ENABLED")
     train_poll_min_seconds: float = Field(default=2.0, alias="TRAIN_POLL_MIN_SECONDS")
     train_poll_max_seconds: float = Field(default=6.0, alias="TRAIN_POLL_MAX_SECONDS")
     train_poll_force_max_rate: bool = Field(default=False, alias="TRAIN_POLL_FORCE_MAX_RATE")

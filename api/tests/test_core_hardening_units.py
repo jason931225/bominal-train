@@ -62,6 +62,7 @@ def test_settings_uses_explicit_jwks_url_over_derived() -> None:
 
 def test_settings_model_validation_branches(monkeypatch) -> None:
     monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("DEV_DEMO_AUTH_ENABLED", "false")
     monkeypatch.setenv("MASTER_KEY", _valid_master_key_b64())
     monkeypatch.setenv("INTERNAL_API_KEY", "internal")
     monkeypatch.setenv("PAYMENT_ENABLED", "true")
