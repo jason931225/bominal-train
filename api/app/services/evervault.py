@@ -76,6 +76,30 @@ def _relay_id_override(provider: str) -> str | None:
     return None
 
 
+def _relay_domain_override(provider: str) -> str | None:
+    if provider == "KTX":
+        value = str(settings.evervault_ktx_payment_relay_domain or "").strip().lower()
+    elif provider == "SRT":
+        value = str(settings.evervault_srt_payment_relay_domain or "").strip().lower()
+    else:
+        return None
+    if not value:
+        return None
+    if value.startswith("http://") or value.startswith("https://"):
+        parsed = urlparse(value)
+        value = str(parsed.netloc or "").strip().lower()
+    if "/" in value:
+        value = value.split("/", 1)[0]
+    value = value.rstrip(".")
+    if not value or not value.endswith(_RELAY_DOMAIN_SUFFIX):
+        raise EvervaultRelayError(
+            retryable=False,
+            error_code="evervault_relay_invalid_domain",
+            error_message_safe="Evervault relay domain is invalid",
+        )
+    return value
+
+
 def _extract_payment_path(payment_url: str) -> str:
     parsed = urlparse(payment_url)
     path = str(parsed.path or "").strip()
@@ -259,6 +283,15 @@ async def _management_request(
 
 async def _resolve_relay_runtime(*, provider: str, payment_url: str) -> RelayRuntimeConfig:
     normalized_provider = _normalize_provider(provider)
+    relay_id_override = _relay_id_override(normalized_provider)
+    relay_domain_override = _relay_domain_override(normalized_provider)
+
+    if relay_id_override and relay_domain_override:
+        return RelayRuntimeConfig(
+            relay_id=relay_id_override,
+            relay_domain=relay_domain_override,
+        )
+
     expected_definition = build_payment_relay_definition(provider=normalized_provider, payment_url=payment_url)
 
     list_payload = await _management_request(method="GET", path="/relays")
@@ -267,8 +300,6 @@ async def _resolve_relay_runtime(*, provider: str, payment_url: str) -> RelayRun
     relays = [row for row in relays if isinstance(row, dict)]
 
     selected_relay: dict[str, Any] | None = None
-    relay_id_override = _relay_id_override(normalized_provider)
-
     if relay_id_override:
         for relay in relays:
             if str(relay.get("id") or "").strip() == relay_id_override:

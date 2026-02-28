@@ -325,6 +325,14 @@ class Settings(BaseSettings):
     evervault_relay_cache_seconds: int = Field(default=300, alias="EVERVAULT_RELAY_CACHE_SECONDS")
     evervault_ktx_payment_relay_id: str | None = Field(default=None, alias="EVERVAULT_KTX_PAYMENT_RELAY_ID")
     evervault_srt_payment_relay_id: str | None = Field(default=None, alias="EVERVAULT_SRT_PAYMENT_RELAY_ID")
+    evervault_ktx_payment_relay_domain: str | None = Field(
+        default=None,
+        alias="EVERVAULT_KTX_PAYMENT_RELAY_DOMAIN",
+    )
+    evervault_srt_payment_relay_domain: str | None = Field(
+        default=None,
+        alias="EVERVAULT_SRT_PAYMENT_RELAY_DOMAIN",
+    )
     restaurant_provider_egress_proxy_url: str | None = Field(
         default=None,
         alias="RESTAURANT_PROVIDER_EGRESS_PROXY_URL",

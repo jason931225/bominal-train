@@ -307,11 +307,18 @@ def test_supabase_auth_key_property_prefers_explicit_api_key(monkeypatch) -> Non
 
 def test_rejects_upstash_when_cde_redis_uses_fallback(monkeypatch) -> None:
     monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.setenv("PAYMENT_ENABLED", "true")
+    monkeypatch.setenv("PAYMENT_PROVIDER", "evervault")
+    monkeypatch.setenv("PAYMENT_EVERVAULT_ENFORCE", "true")
+    monkeypatch.setenv("AUTOPAY_REQUIRE_USER_WALLET", "true")
+    monkeypatch.setenv("AUTOPAY_ALLOW_SERVER_FALLBACK", "false")
+    monkeypatch.setenv("EVERVAULT_APP_ID", "app_test")
+    monkeypatch.setenv("EVERVAULT_API_KEY", "key_test")
     monkeypatch.setenv("REDIS_URL", "rediss://example.upstash.io:6379/0")
     monkeypatch.delenv("REDIS_URL_CDE", raising=False)
     monkeypatch.delenv("REDIS_URL_NON_CDE", raising=False)
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="cannot point to Upstash"):
         Settings(_env_file=None)
 
 
