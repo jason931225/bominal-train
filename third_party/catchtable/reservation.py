@@ -84,6 +84,7 @@ class Reservation:
                 "resp2": resp2
             },
             "paymentForm": {
+                # Dummy placeholders for public repository examples (not real credentials).
                 "userBillkeyRef": "<dummy_public_billkey_ref>",
                 "encryptedCatchPayPassword": "<dummy_public_encrypted_password_placeholder>"
             },
