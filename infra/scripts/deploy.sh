@@ -935,9 +935,15 @@ pull_images() {
   local image
   local canary_image="${WEB_CANARY_IMAGE:-$WEB_IMAGE}"
   local -a images_to_pull=("$API_IMAGE" "$WORKER_IMAGE" "$WEB_IMAGE" "$canary_image")
+  local -a unique_images=()
   local seen_images=$'\n'
+  local -a pull_pids=()
+  local -a pull_refs=()
+  local pid
+  local index
+  local failed_pulls=0
 
-  log_info "Pulling images from GHCR..."
+  log_info "Pulling images from GHCR (parallel, deduplicated)..."
   log_info "  API: $API_IMAGE"
   log_info "  Worker: $WORKER_IMAGE"
   log_info "  Web: $WEB_IMAGE"
@@ -949,12 +955,32 @@ pull_images() {
       continue
     fi
     seen_images+="$image"$'\n'
-    if ! docker pull "$image"; then
+    unique_images+=("$image")
+  done
+
+  for image in "${unique_images[@]}"; do
+    docker pull "$image" &
+    pid=$!
+    pull_pids+=("$pid")
+    pull_refs+=("$image")
+    log_info "Started pull: $image (pid=$pid)"
+  done
+
+  for index in "${!pull_pids[@]}"; do
+    pid="${pull_pids[$index]}"
+    image="${pull_refs[$index]}"
+    if ! wait "$pid"; then
       log_error "Failed to pull image: $image"
-      log_error "Make sure the image exists and you have access"
-      return 1
+      failed_pulls=1
     fi
   done
+
+  if [[ "$failed_pulls" -ne 0 ]]; then
+    log_error "One or more image pulls failed."
+    log_error "Make sure images exist and GHCR access is configured."
+    return 1
+  fi
+
   log_ok "Images pulled successfully"
 }
 
@@ -1002,6 +1028,25 @@ check_auth_callback_route() {
   log_ok "Auth callback smoke check ($context) passed."
 }
 
+wait_for_api_ready() {
+  local max_attempts="${SMOKE_MAX_ATTEMPTS}"
+  local retry_delay="${SMOKE_RETRY_DELAY_SECONDS}"
+  local attempt=1
+
+  while [[ $attempt -le $max_attempts ]]; do
+    if curl -fsS --max-time 5 http://127.0.0.1:8000/health/ready >/dev/null 2>&1; then
+      log_ok "API ready check passed (/health/ready)"
+      return 0
+    fi
+    log_warn "Waiting for API readiness... (attempt $attempt/$max_attempts)"
+    sleep "$retry_delay"
+    ((attempt++))
+  done
+
+  log_error "API ready check failed after $max_attempts attempts"
+  return 1
+}
+
 deploy_services() {
   log_info "Deploying with zero-downtime strategy..."
 
@@ -1029,18 +1074,14 @@ deploy_services() {
       log_info "Skipping API rollout (image unchanged)."
     fi
 
-    if [[ "$DEPLOY_WORKER_CHANGED" == "true" ]]; then
-      log_info "Deploying worker service..."
-      if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait --remove-orphans --no-deps worker; then
-        log_error "Failed to deploy worker service"
-        return 1
-      fi
-    else
-      log_info "Skipping worker rollout (image unchanged)."
+    if ! wait_for_api_ready; then
+      return 1
     fi
 
+    local web_canary_started="false"
+    local -a post_api_services=()
+
     if [[ "$DEPLOY_WEB_CHANGED" == "true" ]]; then
-      local web_canary_started="false"
       if web_canary_enabled; then
         if ! start_web_canary; then
           return 1
@@ -1052,16 +1093,30 @@ deploy_services() {
       else
         log_warn "Web canary disabled; web restart may briefly interrupt callback traffic."
       fi
+      post_api_services+=("web")
+    else
+      log_info "Skipping web rollout (image unchanged)."
+      stop_web_canary
+    fi
 
-      log_info "Deploying web service..."
-      if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait --remove-orphans --no-deps web; then
-        log_error "Failed to deploy web service"
+    if [[ "$DEPLOY_WORKER_CHANGED" == "true" ]]; then
+      post_api_services+=("worker")
+    else
+      log_info "Skipping worker rollout (image unchanged)."
+    fi
+
+    if [[ "${#post_api_services[@]}" -gt 0 ]]; then
+      log_info "Deploying post-API services in parallel: ${post_api_services[*]}"
+      if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait --remove-orphans --no-deps "${post_api_services[@]}"; then
+        log_error "Failed to deploy one or more post-API services (${post_api_services[*]})"
         if [[ "$web_canary_started" == "true" ]]; then
-          log_warn "Keeping web-canary running after web rollout failure."
+          log_warn "Keeping web-canary running after rollout failure."
         fi
         return 1
       fi
+    fi
 
+    if [[ "$DEPLOY_WEB_CHANGED" == "true" ]]; then
       if ! check_auth_callback_route "post-web-rollout"; then
         log_warn "Callback smoke check failed immediately after web rollout; verify phase will enforce rollback if still failing."
       fi
@@ -1069,9 +1124,6 @@ deploy_services() {
       if [[ "$web_canary_started" == "true" ]]; then
         stop_web_canary
       fi
-    else
-      log_info "Skipping web rollout (image unchanged)."
-      stop_web_canary
     fi
 
     # Keep Caddy reconciliation isolated so unchanged dependencies are not
