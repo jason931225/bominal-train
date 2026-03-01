@@ -39,7 +39,7 @@ Cut over train UI live updates to Supabase Realtime as the primary transport, ke
 ### Non-dependency inputs
 
 - Rollout flags in `infra/env/*/web.env`.
-- Rollout phase target (`10`, `50`, `100` percent).
+- Rollout enablement target (`enabled` or `disabled`).
 - Deprecation dates:
   - `deprecated_on=2026-03-01`
   - `remove_after=2026-03-31`
@@ -48,7 +48,6 @@ Cut over train UI live updates to Supabase Realtime as the primary transport, ke
 
 1. Set transport flags in web env:
    - `NEXT_PUBLIC_TRAIN_EVENTS_REALTIME_ENABLED`
-   - `NEXT_PUBLIC_TRAIN_EVENTS_REALTIME_CANARY_PERCENT`
    - `NEXT_PUBLIC_TRAIN_EVENTS_REALTIME_RETRY_SECONDS`
 2. Implement/verify transport manager behavior:
    - realtime primary on eligible sessions.
@@ -86,9 +85,9 @@ Cut over train UI live updates to Supabase Realtime as the primary transport, ke
 
 ## Failure Modes and Recovery
 
-- Failure mode: realtime channel errors for canary users.
+- Failure mode: realtime channel errors for users.
   - Detection: missing updates without active SSE request in browser.
-  - Recovery: set `NEXT_PUBLIC_TRAIN_EVENTS_REALTIME_ENABLED=false` or `NEXT_PUBLIC_TRAIN_EVENTS_REALTIME_CANARY_PERCENT=0`, redeploy web.
+  - Recovery: set `NEXT_PUBLIC_TRAIN_EVENTS_REALTIME_ENABLED=false`, redeploy web.
 - Failure mode: SSE fallback not activating.
   - Detection: no `/api/train/tasks/events` request and no updates after realtime failure.
   - Recovery: rollback to previous web release and re-run transport tests.

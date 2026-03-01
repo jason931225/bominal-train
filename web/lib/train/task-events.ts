@@ -1,7 +1,6 @@
 import { createClient, type RealtimeChannel, type SupabaseClient } from "@supabase/supabase-js";
 
 import {
-  NEXT_PUBLIC_TRAIN_EVENTS_REALTIME_CANARY_PERCENT,
   NEXT_PUBLIC_TRAIN_EVENTS_REALTIME_ENABLED,
   NEXT_PUBLIC_TRAIN_EVENTS_REALTIME_RETRY_SECONDS,
 } from "@/lib/feature-flags";
@@ -208,90 +207,23 @@ function hasRealtimeBrowserConfig(): boolean {
   return SUPABASE_URL.length > 0 && SUPABASE_ANON_KEY.length > 0;
 }
 
-function decodeBase64UrlToUtf8(value: string): string | null {
-  if (!value) {
-    return null;
-  }
-  const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
-  const padding = normalized.length % 4 === 0 ? "" : "=".repeat(4 - (normalized.length % 4));
-  const input = normalized + padding;
-  try {
-    if (typeof atob === "function") {
-      return atob(input);
-    }
-    if (typeof Buffer !== "undefined") {
-      return Buffer.from(input, "base64").toString("utf-8");
-    }
-  } catch {
-    return null;
-  }
-  return null;
-}
-
-function extractIdentityFromAccessToken(accessToken: string): string | null {
-  const token = accessToken.trim();
-  if (!token) {
-    return null;
-  }
-  const tokenParts = token.split(".");
-  if (tokenParts.length < 2) {
-    return null;
-  }
-  const payloadRaw = decodeBase64UrlToUtf8(tokenParts[1] ?? "");
-  if (!payloadRaw) {
-    return null;
-  }
-  try {
-    const payload = JSON.parse(payloadRaw) as Record<string, unknown>;
-    const sub = normalizeNullableString(payload.sub);
-    return sub;
-  } catch {
-    return null;
-  }
-}
-
-function stableBucketPercent(value: string): number {
-  let hash = 0x811c9dc5;
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return Math.abs(hash >>> 0) % 100;
-}
-
 type RealtimeEligibilityResult = {
   enabled: boolean;
   accessToken: string | null;
-  shouldRetry: boolean;
 };
 
 async function evaluateRealtimeEligibility(): Promise<RealtimeEligibilityResult> {
   if (!NEXT_PUBLIC_TRAIN_EVENTS_REALTIME_ENABLED) {
-    return { enabled: false, accessToken: null, shouldRetry: false };
-  }
-  if (NEXT_PUBLIC_TRAIN_EVENTS_REALTIME_CANARY_PERCENT <= 0) {
-    return { enabled: false, accessToken: null, shouldRetry: false };
+    return { enabled: false, accessToken: null };
   }
   if (!hasRealtimeBrowserConfig()) {
-    return { enabled: false, accessToken: null, shouldRetry: true };
+    return { enabled: false, accessToken: null };
   }
   const accessToken = await getSupabaseAccessToken();
   if (!accessToken) {
-    return { enabled: false, accessToken: null, shouldRetry: true };
+    return { enabled: false, accessToken: null };
   }
-  if (NEXT_PUBLIC_TRAIN_EVENTS_REALTIME_CANARY_PERCENT >= 100) {
-    return { enabled: true, accessToken, shouldRetry: true };
-  }
-  const identity = extractIdentityFromAccessToken(accessToken);
-  if (!identity) {
-    return { enabled: false, accessToken, shouldRetry: true };
-  }
-  const bucket = stableBucketPercent(identity);
-  return {
-    enabled: bucket < NEXT_PUBLIC_TRAIN_EVENTS_REALTIME_CANARY_PERCENT,
-    accessToken,
-    shouldRetry: false,
-  };
+  return { enabled: true, accessToken };
 }
 
 function dispatchRealtimeTaskState(store: TrainTaskEventsStore, row: TaskRealtimeRow): void {
@@ -502,11 +434,6 @@ async function establishPrimaryTransport(store: TrainTaskEventsStore): Promise<v
     clearRealtimeRetry(store);
     return;
   }
-  if (NEXT_PUBLIC_TRAIN_EVENTS_REALTIME_CANARY_PERCENT <= 0) {
-    ensureSseSource(store);
-    clearRealtimeRetry(store);
-    return;
-  }
 
   const eligibility = await evaluateRealtimeEligibility();
   if (eligibility.enabled && eligibility.accessToken) {
@@ -520,11 +447,7 @@ async function establishPrimaryTransport(store: TrainTaskEventsStore): Promise<v
   }
 
   ensureSseSource(store);
-  if (eligibility.shouldRetry) {
-    scheduleRealtimeRetry(store);
-  } else {
-    clearRealtimeRetry(store);
-  }
+  scheduleRealtimeRetry(store);
 }
 
 function ensureTransport(store: TrainTaskEventsStore): void {

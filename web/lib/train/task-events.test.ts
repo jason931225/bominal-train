@@ -81,7 +81,6 @@ class MockRealtimeChannel {
 type LoadModuleOptions = {
   token: string | null;
   realtimeEnabled: boolean;
-  canaryPercent: number;
   retrySeconds: number;
   supabaseUrl?: string | undefined;
   supabaseAnonKey?: string | undefined;
@@ -138,7 +137,6 @@ async function loadTaskEventsModule(options: LoadModuleOptions): Promise<LoadMod
 
   vi.doMock("@/lib/feature-flags", () => ({
     NEXT_PUBLIC_TRAIN_EVENTS_REALTIME_ENABLED: options.realtimeEnabled,
-    NEXT_PUBLIC_TRAIN_EVENTS_REALTIME_CANARY_PERCENT: options.canaryPercent,
     NEXT_PUBLIC_TRAIN_EVENTS_REALTIME_RETRY_SECONDS: options.retrySeconds,
   }));
   vi.doMock("@/lib/supabase-auth", () => ({
@@ -197,7 +195,6 @@ describe("train task event transport manager", () => {
       await loadTaskEventsModule({
         token,
         realtimeEnabled: true,
-        canaryPercent: 100,
         retrySeconds: 60,
         subscribeStatusByAttempt: [["SUBSCRIBED"]],
       });
@@ -235,7 +232,6 @@ describe("train task event transport manager", () => {
     const { createClientMock, subscribeTrainTaskEvents } = await loadTaskEventsModule({
       token,
       realtimeEnabled: true,
-      canaryPercent: 100,
       retrySeconds: 60,
       subscribeStatusByAttempt: [["CHANNEL_ERROR"]],
     });
@@ -257,7 +253,6 @@ describe("train task event transport manager", () => {
     const { createClientMock, subscribeTrainTaskEvents } = await loadTaskEventsModule({
       token,
       realtimeEnabled: true,
-      canaryPercent: 100,
       retrySeconds: 5,
       subscribeStatusByAttempt: [["CHANNEL_ERROR"], ["SUBSCRIBED"]],
     });
@@ -283,7 +278,6 @@ describe("train task event transport manager", () => {
     const { channels, subscribeTrainTaskEvents } = await loadTaskEventsModule({
       token,
       realtimeEnabled: true,
-      canaryPercent: 100,
       retrySeconds: 60,
       subscribeStatusByAttempt: [["SUBSCRIBED"]],
     });
@@ -303,7 +297,6 @@ describe("train task event transport manager", () => {
     const { createClientMock, subscribeTrainTaskEvents } = await loadTaskEventsModule({
       token: null,
       realtimeEnabled: true,
-      canaryPercent: 100,
       retrySeconds: 60,
       subscribeStatusByAttempt: [],
     });
@@ -334,7 +327,6 @@ describe("train task event transport manager", () => {
     const { createClientMock, subscribeTrainTaskEvents } = await loadTaskEventsModule({
       token: null,
       realtimeEnabled: false,
-      canaryPercent: 0,
       retrySeconds: 60,
       subscribeStatusByAttempt: [],
     });

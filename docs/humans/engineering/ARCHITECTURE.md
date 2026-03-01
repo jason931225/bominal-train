@@ -165,7 +165,6 @@ Task list performance controls:
     - `NEXT_PUBLIC_TRAIN_EVENTS_REALTIME_ENABLED=true`
     - browser Supabase config present (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`)
     - user has a valid Supabase browser access token
-    - deterministic canary pass by JWT `sub` and `NEXT_PUBLIC_TRAIN_EVENTS_REALTIME_CANARY_PERCENT`
   - On realtime subscribe failure/timeout/channel error/close, or when token/config is unavailable, transport falls back automatically to SSE endpoint `/api/train/tasks/events`.
   - While on SSE fallback, the manager retries realtime cutover every `NEXT_PUBLIC_TRAIN_EVENTS_REALTIME_RETRY_SECONDS` and switches back to realtime once subscribe succeeds.
   - SSE transport is deprecated (registry `DEP-2026-03-01-001`) as of `2026-03-01` with scheduled removal after `2026-03-31`; it remains functional during the compatibility window.
