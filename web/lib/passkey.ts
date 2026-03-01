@@ -212,21 +212,21 @@ export async function signInWithPasskey(
 ): Promise<PasskeyOperationResult> {
   const { email, rememberMe } = params;
   const normalizedEmail = email.trim().toLowerCase();
-
-  if (isDevDemoPasskeyEmail(normalizedEmail)) {
-    const demoResponse = await fetch(`${apiBaseUrl}/api/auth/passkeys/auth/dev-demo`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ email: normalizedEmail, remember_me: rememberMe }),
-    });
-    if (!demoResponse.ok) {
-      return { ok: false, error: await parseApiError(demoResponse, "Passkey sign in failed.") };
-    }
-    return { ok: true };
-  }
+  const devDemoPasskeyEmail = isDevDemoPasskeyEmail(normalizedEmail);
 
   if (!isPasskeySupported()) {
+    if (devDemoPasskeyEmail) {
+      const demoResponse = await fetch(`${apiBaseUrl}/api/auth/passkeys/auth/dev-demo`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ email: normalizedEmail, remember_me: rememberMe }),
+      });
+      if (!demoResponse.ok) {
+        return { ok: false, error: await parseApiError(demoResponse, "Passkey sign in failed.") };
+      }
+      return { ok: true };
+    }
     return { ok: false, error: "Passkeys are not supported on this device." };
   }
 

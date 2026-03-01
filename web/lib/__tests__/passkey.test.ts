@@ -177,6 +177,39 @@ describe("passkey helpers", () => {
     });
   });
 
+  it("uses real WebAuthn sign-in flow for dev demo email when passkey is supported", async () => {
+    process.env.NEXT_PUBLIC_DEV_DEMO_AUTH_ENABLED = "true";
+    process.env.NEXT_PUBLIC_DEV_DEMO_EMAIL = "demo@bominal.dev";
+
+    installPasskeySupport();
+    const getMock = vi.fn().mockResolvedValue(fakeAuthenticationCredential());
+    setNavigatorCredentials({ get: getMock });
+
+    const fetchMock = installFetchMock([
+      new Response(
+        JSON.stringify({
+          challenge_id: "auth-demo",
+          public_key: {
+            challenge: "AQID",
+            allowCredentials: [{ id: "AQID", type: "public-key" }],
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+      new Response(JSON.stringify({ user: { id: "demo-user" } }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    ]);
+
+    const result = await signInWithPasskey("http://api", { email: "demo@bominal.dev", rememberMe: false });
+
+    expect(result).toEqual({ ok: true });
+    expect(getMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("http://api/api/auth/passkeys/auth/options");
+  });
+
   it("registers a passkey with session credentials", async () => {
     installPasskeySupport();
     setNavigatorCredentials({

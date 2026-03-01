@@ -187,6 +187,23 @@ describe("LoginForm", () => {
     });
   });
 
+  it("surfaces no-passkey-registered errors instead of silently suppressing them", async () => {
+    vi.mocked(signInWithPasskey).mockResolvedValueOnce({
+      ok: false,
+      error: "No passkey registered for this account",
+    });
+
+    renderLoginForm();
+
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "no-passkey@example.com" } });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("No passkey registered for this account")).toBeInTheDocument();
+    });
+    expect(screen.getByRole("button", { name: "Sign in with password" })).toBeInTheDocument();
+  });
+
   it("surfaces passkey security failures instead of silently skipping", async () => {
     vi.mocked(signInWithPasskey).mockResolvedValueOnce({
       ok: false,

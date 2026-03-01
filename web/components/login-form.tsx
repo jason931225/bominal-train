@@ -80,14 +80,10 @@ export function LoginForm() {
     router.push(ROUTES.modules.train);
   };
 
-  const expectedPasskeyFallback = (message: string | undefined): boolean => {
+  const shouldSuppressPasskeyError = (message: string | undefined): boolean => {
     if (!message) return false;
     const normalized = message.toLowerCase();
-    return (
-      normalized.includes("no passkey registered") ||
-      normalized.includes("cancel") ||
-      normalized.includes("not supported")
-    );
+    return normalized.includes("cancel");
   };
 
   const cancelPasskeyAttempt = () => {
@@ -176,7 +172,7 @@ export function LoginForm() {
           return;
         }
 
-        if (!expectedPasskeyFallback(result.error)) {
+        if (!shouldSuppressPasskeyError(result.error)) {
           setFormError(result.error ?? t("auth.passkeySignInFailed"));
         }
         setStep("alternatives");
