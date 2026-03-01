@@ -8,7 +8,7 @@ import { type CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocale } from "@/components/locale-provider";
 import { LogoutButton } from "@/components/logout-button";
 import { useTheme } from "@/components/theme-provider";
-import { NEXT_PUBLIC_RESTAURANT_MODULE_ENABLED, NEXT_PUBLIC_TRAIN_AUTO_PAY_ENABLED } from "@/lib/feature-flags";
+import { NEXT_PUBLIC_RESTAURANT_MODULE_ENABLED } from "@/lib/feature-flags";
 import { ROUTES } from "@/lib/routes";
 import { THEME_MODE_OPTIONS, type ThemeMode } from "@/lib/theme";
 import { UI_MENU_ITEM } from "@/lib/ui";
@@ -20,7 +20,6 @@ const THEME_DOT_COLORS = {
   winter: "#aec7ed",
 } as const;
 
-const PAYMENT_SETTINGS_ENABLED = NEXT_PUBLIC_TRAIN_AUTO_PAY_ENABLED;
 const RESTAURANT_MODULE_ENABLED = NEXT_PUBLIC_RESTAURANT_MODULE_ENABLED;
 // Keep links defined but hidden so they can be re-enabled without rebuilding nav structure.
 const SHOW_DISABLED_MODULE_LINKS = false;
@@ -215,19 +214,9 @@ export function NavBurgerMenu({ isAdmin = false }: { isAdmin?: boolean }) {
       <Link href={ROUTES.settings.account} className={UI_MENU_ITEM}>
         {t("nav.accountSettings")}
       </Link>
-      {PAYMENT_SETTINGS_ENABLED ? (
-        <Link href={ROUTES.settings.payment} className={UI_MENU_ITEM}>
-          {t("nav.paymentSettings")}
-        </Link>
-      ) : (
-        <span
-          aria-disabled
-          title={t("nav.paymentSettingsDisabled")}
-          className="block cursor-not-allowed rounded-xl px-3 py-2 text-sm text-slate-400"
-        >
-          {t("nav.paymentSettings")}
-        </span>
-      )}
+      <Link href={ROUTES.settings.payment} className={UI_MENU_ITEM}>
+        {t("nav.paymentSettings")}
+      </Link>
       <div className="mt-3 border-t border-blossom-100 pt-3">
         <LogoutButton variant="menu" />
       </div>
