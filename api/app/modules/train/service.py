@@ -55,6 +55,7 @@ from app.modules.train.schemas import (
     TaskActionResponse,
     TaskAttemptOut,
     TaskDetailOut,
+    TaskLastAttemptRuntimeOut,
     TaskListResponse,
     TaskSummaryOut,
     TicketCancelResponse,
@@ -78,6 +79,9 @@ settings = get_settings()
 logger = logging.getLogger(__name__)
 TASK_VISIBILITY_RETENTION_DAYS = 365
 MANUAL_RETRY_COOLDOWN_SECONDS = 15
+TRAIN_TASK_LAST_ATTEMPT_RUNTIME_KEY_PREFIX = "train:task:last-attempt"
+TRAIN_TASK_LAST_ATTEMPT_RUNTIME_TTL_SECONDS = 30 * 24 * 60 * 60
+TRAIN_TASK_LAST_ATTEMPT_RUNTIME_SOURCE = "runtime_redis"
 MANUAL_RETRY_LAST_AT_KEY = SPEC_KEY_MANUAL_RETRY_LAST_AT
 NEXT_RUN_AT_KEY = SPEC_KEY_NEXT_RUN_AT
 RETRY_ON_EXPIRY_KEY = SPEC_KEY_RETRY_ON_EXPIRY
@@ -111,6 +115,62 @@ def _as_aware_utc_datetime(value: datetime) -> datetime:
     if value.tzinfo is None:
         return value.replace(tzinfo=timezone.utc)
     return value.astimezone(timezone.utc)
+
+
+def train_task_last_attempt_runtime_key(*, user_id: UUID | str, task_id: UUID | str) -> str:
+    return f"{TRAIN_TASK_LAST_ATTEMPT_RUNTIME_KEY_PREFIX}:user:{user_id}:task:{task_id}"
+
+
+def _decode_runtime_last_attempt_value(value: bytes | str | None) -> datetime | None:
+    if value is None:
+        return None
+    if isinstance(value, bytes):
+        decoded = value.decode("utf-8", errors="replace")
+    else:
+        decoded = str(value)
+    return _parse_iso_datetime(decoded)
+
+
+async def write_task_last_attempt_runtime_timestamp(
+    *,
+    user_id: UUID | str,
+    task_id: UUID | str,
+    started_at: datetime,
+    redis: Any | None = None,
+) -> None:
+    if redis is None or not hasattr(redis, "set"):
+        return
+
+    try:
+        await redis.set(
+            train_task_last_attempt_runtime_key(user_id=user_id, task_id=task_id),
+            _as_aware_utc_datetime(started_at).isoformat().encode("utf-8"),
+            ex=TRAIN_TASK_LAST_ATTEMPT_RUNTIME_TTL_SECONDS,
+        )
+    except Exception:
+        logger.warning(
+            "Failed to write runtime train last-attempt timestamp",
+            extra={"task_id": str(task_id), "user_id": str(user_id)},
+        )
+
+
+async def get_task_last_attempt_runtime(*, task_id: UUID, user: User) -> TaskLastAttemptRuntimeOut:
+    last_attempt_at: datetime | None = None
+    key = train_task_last_attempt_runtime_key(user_id=user.id, task_id=task_id)
+    try:
+        redis = await get_redis_client()
+        last_attempt_at = _decode_runtime_last_attempt_value(await redis.get(key))
+    except Exception:
+        logger.warning(
+            "Failed to read runtime train last-attempt timestamp",
+            extra={"task_id": str(task_id), "user_id": str(user.id)},
+        )
+
+    return TaskLastAttemptRuntimeOut(
+        task_id=task_id,
+        last_attempt_at=last_attempt_at,
+        source=TRAIN_TASK_LAST_ATTEMPT_RUNTIME_SOURCE,
+    )
 
 
 def _compute_retry_now_status(

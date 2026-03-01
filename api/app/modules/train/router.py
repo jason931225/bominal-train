@@ -25,6 +25,7 @@ from app.modules.train.schemas import (
     SRTCredentialStatusResponse,
     TaskActionResponse,
     TaskDetailOut,
+    TaskLastAttemptRuntimeOut,
     TaskListResponse,
     TicketCancelResponse,
     TrainStationsResponse,
@@ -45,6 +46,7 @@ from app.modules.train.service import (
     delete_task,
     get_provider_ticket_info,
     get_ktx_credential_status,
+    get_task_last_attempt_runtime,
     get_train_credentials_status,
     get_task_detail,
     get_srt_credential_status,
@@ -289,6 +291,14 @@ async def get_train_task(
     db: AsyncSession = Depends(get_db),
 ) -> TaskDetailOut:
     return await get_task_detail(db, task_id=task_id, user=user)
+
+
+@router.get("/tasks/{task_id}/last-attempt", response_model=TaskLastAttemptRuntimeOut)
+async def get_train_task_last_attempt(
+    task_id: UUID,
+    user: User = Depends(get_current_user),
+) -> TaskLastAttemptRuntimeOut:
+    return await get_task_last_attempt_runtime(task_id=task_id, user=user)
 
 
 @router.post("/tasks/{task_id}/refresh", response_model=TaskDetailOut)

@@ -10,12 +10,13 @@ import { ROUTES } from "@/lib/routes";
 import { fetchTrainTaskDetailViaGraphql } from "@/lib/train/graphql";
 import { subscribeTrainTaskEvents } from "@/lib/train/task-events";
 import { UI_BUTTON_DANGER_SM, UI_BUTTON_OUTLINE_SM } from "@/lib/ui";
-import type { TrainArtifact, TrainTaskAttempt, TrainTaskSummary } from "@/lib/types";
+import type { TrainArtifact, TrainTaskAttempt, TrainTaskLastAttemptRuntime, TrainTaskSummary } from "@/lib/types";
 
 const ATTEMPTS_PAGE_SIZE_OPTIONS = [10, 20, 50, 100, "all"] as const;
 type AttemptsPageSize = (typeof ATTEMPTS_PAGE_SIZE_OPTIONS)[number];
 const ATTEMPT_SORT_OPTIONS = ["newest", "oldest"] as const;
 type AttemptSortOrder = (typeof ATTEMPT_SORT_OPTIONS)[number];
+const LAST_ATTEMPT_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 const SMALL_BUTTON_CLASS = UI_BUTTON_OUTLINE_SM;
 const SMALL_DANGER_BUTTON_CLASS = UI_BUTTON_DANGER_SM;
 const SMALL_SUCCESS_BUTTON_CLASS =
@@ -96,6 +97,7 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
   const [attemptsPageSize, setAttemptsPageSize] = useState<AttemptsPageSize>(10);
   const [attemptSortOrder, setAttemptSortOrder] = useState<AttemptSortOrder>("newest");
   const [attemptsPage, setAttemptsPage] = useState(1);
+  const [runtimeLastAttemptAt, setRuntimeLastAttemptAt] = useState<string | null>(null);
   const [artifacts, setArtifacts] = useState<TrainArtifact[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -123,7 +125,7 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
     if (status === "cancelled" || status === "reservation_not_found") return false;
     if (status === "awaiting_payment" && paid !== true) return true;
     return isCompleted;
-  }, [ticketArtifact, isCompleted]);
+  }, [ticketArtifact, isCompleted, task?.state]);
   const canPayReservation = useMemo(() => {
     if (!ticketArtifact) return false;
     if (task?.state === "EXPIRED" || task?.state === "CANCELLED" || task?.state === "FAILED") return false;
@@ -211,6 +213,25 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
     }
   }, [taskId, t]);
 
+  const loadRuntimeLastAttempt = useCallback(async () => {
+    try {
+      const response = await fetch(`${clientApiBaseUrl}/api/train/tasks/${taskId}/last-attempt`, {
+        credentials: "include",
+        cache: "no-store",
+      });
+      if (!response.ok) {
+        return;
+      }
+      const payload = (await response.json()) as TrainTaskLastAttemptRuntime;
+      if (payload.task_id !== taskId) {
+        return;
+      }
+      setRuntimeLastAttemptAt(typeof payload.last_attempt_at === "string" ? payload.last_attempt_at : null);
+    } catch {
+      // Keep existing runtime timestamp on transient failures.
+    }
+  }, [taskId]);
+
   const refreshTask = async () => {
     setRefreshingTask(true);
     setError(null);
@@ -233,6 +254,7 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
       setTask(payload.task);
       setAttempts(payload.attempts);
       setArtifacts(payload.artifacts);
+      await loadRuntimeLastAttempt();
       setNotice(t("train.notice.taskRefreshed"));
     } catch {
       setError(t("train.error.taskRefresh"));
@@ -242,15 +264,25 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
   };
 
   useEffect(() => {
+    setRuntimeLastAttemptAt(null);
     void loadDetail();
+    void loadRuntimeLastAttempt();
     const unsubscribeTaskEvents = subscribeTrainTaskEvents((payload, event) => {
       if (event.type !== "task_state") return;
       if (payload.task_id === taskId) {
         void loadDetail();
+        void loadRuntimeLastAttempt();
       }
     });
     return unsubscribeTaskEvents;
-  }, [loadDetail, taskId]);
+  }, [loadDetail, loadRuntimeLastAttempt, taskId]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      void loadRuntimeLastAttempt();
+    }, LAST_ATTEMPT_REFRESH_INTERVAL_MS);
+    return () => window.clearInterval(timer);
+  }, [loadRuntimeLastAttempt]);
 
   useEffect(() => {
     setAttemptsPage((current) => Math.min(Math.max(1, current), totalAttemptPages));
@@ -272,6 +304,7 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
         return;
       }
       await loadDetail();
+      await loadRuntimeLastAttempt();
     } catch {
       setError(t("train.task.actionFailed"));
     } finally {
@@ -300,6 +333,7 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
 
       setNotice(payload?.detail ?? t("train.notice.ticketCancelDone"));
       await loadDetail();
+      await loadRuntimeLastAttempt();
     } catch {
       setError(t("train.task.actionFailed"));
     } finally {
@@ -353,6 +387,7 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
 
       setNotice(t("train.notice.paymentProcessed"));
       await loadDetail();
+      await loadRuntimeLastAttempt();
     } catch {
       setError(t("train.error.paymentProcess"));
     } finally {
@@ -379,6 +414,7 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
 
       setNotice(t("train.notice.retryRequested"));
       await loadDetail();
+      await loadRuntimeLastAttempt();
     } catch {
       setError(t("train.error.retryTask"));
     } finally {
@@ -448,7 +484,7 @@ export function TrainTaskDetail({ taskId }: { taskId: string }) {
             </p>
             <p>
               <span className="font-medium">{t("train.lastAttempt")}</span>{" "}
-              {formatDateTimeKstSeconds(task.last_attempt_at, locale)}
+              {formatDateTimeKstSeconds(runtimeLastAttemptAt, locale)}
             </p>
             {task.state === "POLLING" ? (
               <p>

@@ -19,7 +19,13 @@ from app.modules.train.providers.ktx_client import parse_ktx_search_response
 from app.modules.train.providers.srt_client import parse_srt_search_response
 from app.modules.train.rate_limiter import RedisTokenBucketLimiter
 from app.modules.train.schemas import TrainPassengers
-from app.modules.train.service import get_task_detail, list_provider_reservations, list_tasks, retry_task_now
+from app.modules.train.service import (
+    get_task_detail,
+    list_provider_reservations,
+    list_tasks,
+    retry_task_now,
+    train_task_last_attempt_runtime_key,
+)
 from app.modules.train.schemas import ProviderCredentialStatus
 from app.modules.train.worker import run_train_task
 from tests.conftest import make_fake_get_redis_client
@@ -2318,6 +2324,75 @@ async def test_manual_cancel_records_cancel_attempt(client, db_session, monkeypa
     ).scalar_one()
     assert cancel_attempt.meta_json_safe is not None
     assert cancel_attempt.meta_json_safe.get("manual_trigger") is True
+
+
+@pytest.mark.asyncio
+async def test_task_last_attempt_runtime_endpoint_returns_redis_timestamp(client, db_session, monkeypatch):
+    fake_redis = fakeredis.aioredis.FakeRedis()
+    monkeypatch.setattr("app.modules.train.service.get_redis_client", make_fake_get_redis_client(fake_redis))
+
+    cookie = await _register_and_login(client, db_session, email="last-attempt-runtime@example.com")
+    user = (await db_session.execute(select(User).where(User.email == "last-attempt-runtime@example.com"))).scalar_one()
+
+    task = Task(
+        user_id=user.id,
+        module="train",
+        state="POLLING",
+        deadline_at=_utc_now() + timedelta(hours=2),
+        spec_json={"module": "train"},
+        idempotency_key="last-attempt-runtime",
+    )
+    db_session.add(task)
+    await db_session.commit()
+
+    expected_iso = "2026-03-01T00:20:23+00:00"
+    await fake_redis.set(
+        train_task_last_attempt_runtime_key(user_id=user.id, task_id=task.id),
+        expected_iso.encode("utf-8"),
+        ex=120,
+    )
+
+    response = await client.get(
+        f"/api/train/tasks/{task.id}/last-attempt",
+        cookies={"bominal_session": cookie},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["task_id"] == str(task.id)
+    assert datetime.fromisoformat(str(body["last_attempt_at"]).replace("Z", "+00:00")) == datetime.fromisoformat(
+        expected_iso
+    )
+    assert body["source"] == "runtime_redis"
+
+
+@pytest.mark.asyncio
+async def test_task_last_attempt_runtime_endpoint_returns_null_when_key_missing(client, db_session, monkeypatch):
+    fake_redis = fakeredis.aioredis.FakeRedis()
+    monkeypatch.setattr("app.modules.train.service.get_redis_client", make_fake_get_redis_client(fake_redis))
+
+    cookie = await _register_and_login(client, db_session, email="last-attempt-runtime-missing@example.com")
+    user = (await db_session.execute(select(User).where(User.email == "last-attempt-runtime-missing@example.com"))).scalar_one()
+
+    task = Task(
+        user_id=user.id,
+        module="train",
+        state="POLLING",
+        deadline_at=_utc_now() + timedelta(hours=2),
+        spec_json={"module": "train"},
+        idempotency_key="last-attempt-runtime-missing",
+    )
+    db_session.add(task)
+    await db_session.commit()
+
+    response = await client.get(
+        f"/api/train/tasks/{task.id}/last-attempt",
+        cookies={"bominal_session": cookie},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["task_id"] == str(task.id)
+    assert body["last_attempt_at"] is None
+    assert body["source"] == "runtime_redis"
 
 
 @pytest.mark.asyncio

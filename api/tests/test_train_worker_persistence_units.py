@@ -8,6 +8,7 @@ import pytest
 from app.db.models import Task, TaskAttempt
 from app.modules.train.constants import ATTEMPT_ACTION_CANCEL, ATTEMPT_ACTION_PAY, ATTEMPT_ACTION_SEARCH, ATTEMPT_ACTION_SYNC
 from app.modules.train import worker as train_worker
+from app.modules.train.service import train_task_last_attempt_runtime_key
 from app.modules.train.worker import PendingAttempt, _persist_attempts
 
 
@@ -31,6 +32,14 @@ class _DB:
 
     async def execute(self, _stmt):  # noqa: ANN001
         return _Result(self._previous_attempt)
+
+
+class _FakeRedis:
+    def __init__(self) -> None:
+        self.set_calls: list[tuple[str, bytes, int]] = []
+
+    async def set(self, key: str, value: bytes, ex: int) -> None:
+        self.set_calls.append((key, value, ex))
 
 
 def _task() -> Task:
@@ -358,3 +367,111 @@ async def test_persist_attempts_sync_updates_existing_row_without_new_inserts(mo
     )
     assert persisted == []
     assert previous_sync.meta_json_safe == {"ticket_status": "awaiting_payment", "waiting": False, "paid": False}
+
+
+@pytest.mark.asyncio
+async def test_persist_attempts_updates_runtime_last_attempt_timestamp_when_attempts_exist(monkeypatch):
+    db = _DB(previous_attempt=None)
+    task = _task()
+    redis = _FakeRedis()
+    started_at = datetime(2026, 3, 1, 9, 20, tzinfo=timezone.utc)
+
+    async def _fake_save_attempt(_db, *, task, action, provider, ok, retryable, error_code, error_message_safe, duration_ms, meta_json_safe, started_at):  # noqa: ANN001, ANN003
+        return _persisted_attempt(
+            action=action,
+            ok=ok,
+            retryable=retryable,
+            error_code=error_code,
+            error_message_safe=error_message_safe,
+        )
+
+    monkeypatch.setattr("app.modules.train.worker._save_attempt", _fake_save_attempt)
+
+    await _persist_attempts(
+        db,
+        task=task,
+        attempts=[
+            PendingAttempt(
+                action=ATTEMPT_ACTION_SEARCH,
+                provider="SRT",
+                ok=True,
+                retryable=False,
+                error_code=None,
+                error_message_safe=None,
+                duration_ms=10,
+                meta_json_safe=None,
+                started_at=started_at,
+            )
+        ],
+        redis=redis,
+    )
+
+    assert len(redis.set_calls) == 1
+    key, value, ttl = redis.set_calls[0]
+    assert key == train_task_last_attempt_runtime_key(user_id=task.user_id, task_id=task.id)
+    assert value.decode("utf-8") == started_at.isoformat()
+    assert ttl == 30 * 24 * 60 * 60
+
+
+@pytest.mark.asyncio
+async def test_persist_attempts_updates_runtime_timestamp_even_when_db_insert_is_skipped(monkeypatch):
+    previous = _persisted_attempt(
+        action=ATTEMPT_ACTION_SEARCH,
+        ok=False,
+        retryable=True,
+        error_code="seat_unavailable",
+        error_message_safe="No reservable seats are available for this schedule.",
+    )
+    db = _DB(previous_attempt=previous)
+    task = _task()
+    redis = _FakeRedis()
+    started_at = datetime(2026, 3, 1, 9, 25, tzinfo=timezone.utc)
+
+    save_call_count = 0
+
+    async def _should_not_save(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        nonlocal save_call_count
+        save_call_count += 1
+        raise AssertionError("_save_attempt should not be called for duplicate retry signature")
+
+    monkeypatch.setattr("app.modules.train.worker._save_attempt", _should_not_save)
+
+    await _persist_attempts(
+        db,
+        task=task,
+        attempts=[
+            PendingAttempt(
+                action=ATTEMPT_ACTION_SEARCH,
+                provider="SRT",
+                ok=False,
+                retryable=True,
+                error_code="seat_unavailable",
+                error_message_safe="No reservable seats are available for this schedule.",
+                duration_ms=10,
+                meta_json_safe=None,
+                started_at=started_at,
+            )
+        ],
+        redis=redis,
+    )
+
+    assert save_call_count == 0
+    assert len(redis.set_calls) == 1
+    assert redis.set_calls[0][0] == train_task_last_attempt_runtime_key(user_id=task.user_id, task_id=task.id)
+    assert redis.set_calls[0][1].decode("utf-8") == started_at.isoformat()
+
+
+@pytest.mark.asyncio
+async def test_persist_attempts_does_not_update_runtime_timestamp_when_attempts_are_empty():
+    db = _DB(previous_attempt=None)
+    task = _task()
+    redis = _FakeRedis()
+
+    await _persist_attempts(
+        db,
+        task=task,
+        attempts=[],
+        redis=redis,
+    )
+
+    assert redis.set_calls == []

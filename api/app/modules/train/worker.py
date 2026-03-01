@@ -42,6 +42,7 @@ from app.modules.train.providers.base import ProviderOutcome, ProviderSchedule
 from app.modules.train.events import publish_task_state_event, publish_task_ticket_status_event
 from app.modules.train.queue import enqueue_train_task
 from app.modules.train.rate_limiter import RedisTokenBucketLimiter
+from app.modules.train.service import write_task_last_attempt_runtime_timestamp
 from app.modules.train.ticket_sync import fetch_ticket_sync_snapshot
 from app.schemas.notification import EmailJobPayload, EmailTemplateBlock, EmailTemplateJobPayload
 from app.services.email_queue import enqueue_template_email
@@ -685,9 +686,24 @@ async def _save_attempt(
     return attempt
 
 
-async def _persist_attempts(db: AsyncSession, *, task: Task, attempts: list[PendingAttempt]) -> None:
+async def _persist_attempts(
+    db: AsyncSession,
+    *,
+    task: Task,
+    attempts: list[PendingAttempt],
+    redis: Any | None = None,
+) -> None:
     if not attempts:
         return
+
+    latest_started_at = max((attempt.started_at for attempt in attempts), default=None)
+    if latest_started_at is not None:
+        await write_task_last_attempt_runtime_timestamp(
+            user_id=task.user_id,
+            task_id=task.id,
+            started_at=latest_started_at,
+            redis=redis,
+        )
 
     def _attempt_signature(*, ok: bool, retryable: bool, error_code: str | None, error_message_safe: str | None) -> tuple[bool, bool, str, str]:
         return (
@@ -2011,7 +2027,7 @@ async def _run_train_task_inner(
                 provider=provider,
             )
             if login_attempt is not None:
-                await _persist_attempts(db, task=task, attempts=[login_attempt])
+                await _persist_attempts(db, task=task, attempts=[login_attempt], redis=redis)
                 if login_retryable and _utc_now_aware() < _as_aware_utc(task.deadline_at):
                     await _schedule_retry(
                         db,
@@ -2062,6 +2078,7 @@ async def _run_train_task_inner(
                         started_at=open_sync_started_at,
                     )
                 ],
+                redis=redis,
             )
 
             if open_sync_snapshot:
@@ -2116,7 +2133,7 @@ async def _run_train_task_inner(
                 payment_card=await get_payment_card_for_execution(db, user_id=task.user_id),
                 credentials=provider_credentials,
             )
-            await _persist_attempts(db, task=task, attempts=[pay_attempt])
+            await _persist_attempts(db, task=task, attempts=[pay_attempt], redis=redis)
 
             if not pay_outcome.ok:
                 try:
@@ -2264,7 +2281,7 @@ async def _run_train_task_inner(
             seconds_until_departure = _seconds_until_next_departure(ranked)
 
         for result in provider_results:
-            await _persist_attempts(db, task=task, attempts=result.attempts)
+            await _persist_attempts(db, task=task, attempts=result.attempts, redis=redis)
 
         if _utc_now_aware() >= _as_aware_utc(task.deadline_at):
             await _mark_expired(db, task)
@@ -2321,7 +2338,7 @@ async def _run_train_task_inner(
                 task_user_id=task.user_id,
                 limiter=limiter,
             )
-            await _persist_attempts(db, task=task, attempts=[cancel_attempt])
+            await _persist_attempts(db, task=task, attempts=[cancel_attempt], redis=redis)
 
             if cancel_outcome.ok:
                 continue
@@ -2360,7 +2377,7 @@ async def _run_train_task_inner(
             payment_card=await get_payment_card_for_execution(db, user_id=task.user_id),
             credentials=provider_credentials_map.get(winner.provider),
         )
-        await _persist_attempts(db, task=task, attempts=[pay_attempt])
+        await _persist_attempts(db, task=task, attempts=[pay_attempt], redis=redis)
 
         if not pay_outcome.ok:
             try:

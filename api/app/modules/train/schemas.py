@@ -220,6 +220,12 @@ class TaskDetailOut(BaseModel):
     artifacts: list[ArtifactOut]
 
 
+class TaskLastAttemptRuntimeOut(BaseModel):
+    task_id: UUID
+    last_attempt_at: datetime | None
+    source: Literal["runtime_redis"]
+
+
 class TaskListResponse(BaseModel):
     tasks: list[TaskSummaryOut]
 

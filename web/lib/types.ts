@@ -149,3 +149,9 @@ export type TrainArtifact = {
   data_json_safe: Record<string, unknown>;
   created_at: string;
 };
+
+export type TrainTaskLastAttemptRuntime = {
+  task_id: string;
+  last_attempt_at: string | null;
+  source: "runtime_redis" | string;
+};

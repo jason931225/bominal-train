@@ -88,6 +88,14 @@ function buildTaskDetailPayload(): {
   };
 }
 
+function buildRuntimeLastAttemptPayload(taskId: string, lastAttemptAt: string | null) {
+  return {
+    task_id: taskId,
+    last_attempt_at: lastAttemptAt,
+    source: "runtime_redis",
+  };
+}
+
 async function flushAsyncEffects() {
   await act(async () => {
     await Promise.resolve();
@@ -111,6 +119,9 @@ describe("TrainTaskDetail actions", () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       const method = init?.method ?? "GET";
+      if (url.endsWith("/api/train/tasks/task-1/last-attempt") && method === "GET") {
+        return jsonResponse(buildRuntimeLastAttemptPayload("task-1", "2026-02-26T10:01:00+09:00"));
+      }
       if (url.endsWith("/api/train/tasks/task-1") && method === "GET") {
         return jsonResponse(buildTaskDetailPayload());
       }
@@ -177,6 +188,9 @@ describe("TrainTaskDetail actions", () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       const method = init?.method ?? "GET";
+      if (url.endsWith("/api/train/tasks/task-1/last-attempt") && method === "GET") {
+        return jsonResponse(buildRuntimeLastAttemptPayload("task-1", "2026-02-26T10:01:00+09:00"));
+      }
       if (url.endsWith("/api/train/tasks/task-1") && method === "GET") {
         return jsonResponse(expiredPayload);
       }
@@ -197,6 +211,51 @@ describe("TrainTaskDetail actions", () => {
     expect(screen.getByRole("button", { name: "Delete" })).toBeInTheDocument();
   });
 
+  it("uses runtime last-attempt timestamp even when attempts include a newer row", async () => {
+    const payload = buildTaskDetailPayload();
+    payload.task.last_attempt_at = "2026-02-26T10:01:00+09:00";
+    payload.attempts = [
+      {
+        id: "attempt-latest",
+        action: "SEARCH",
+        provider: "SRT",
+        ok: true,
+        retryable: false,
+        error_code: null,
+        error_message_safe: null,
+        duration_ms: 320,
+        meta_json_safe: null,
+        started_at: "2026-02-26T10:03:20+09:00",
+        finished_at: "2026-02-26T10:04:00+09:00",
+      },
+    ];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? "GET";
+      if (url.endsWith("/api/train/tasks/task-1/last-attempt") && method === "GET") {
+        return jsonResponse(buildRuntimeLastAttemptPayload("task-1", "2026-02-26T10:01:00+09:00"));
+      }
+      if (url.endsWith("/api/train/tasks/task-1") && method === "GET") {
+        return jsonResponse(payload);
+      }
+      return jsonResponse({ detail: "not found" }, 404);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <LocaleProvider initialLocale="en">
+        <TrainTaskDetail taskId="task-1" />
+      </LocaleProvider>,
+    );
+    await flushAsyncEffects();
+
+    const lastAttemptLabel = screen.getByText("Last attempt:");
+    const lastAttemptRow = lastAttemptLabel.closest("p");
+    expect(lastAttemptRow).not.toBeNull();
+    expect(lastAttemptRow).toHaveTextContent("10:01:00 KST");
+    expect(lastAttemptRow).not.toHaveTextContent("10:04:00 KST");
+  });
+
   it("localizes retry controls and polling labels in Korean", async () => {
     const pollingPayload = buildTaskDetailPayload();
     pollingPayload.task.state = "POLLING";
@@ -206,6 +265,9 @@ describe("TrainTaskDetail actions", () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       const method = init?.method ?? "GET";
+      if (url.endsWith("/api/train/tasks/task-1/last-attempt") && method === "GET") {
+        return jsonResponse(buildRuntimeLastAttemptPayload("task-1", "2026-02-26T10:01:00+09:00"));
+      }
       if (url.endsWith("/api/train/tasks/task-1") && method === "GET") {
         return jsonResponse(pollingPayload);
       }
@@ -227,5 +289,75 @@ describe("TrainTaskDetail actions", () => {
     expect(retryButton).toBeDisabled();
     expect(retryButton).toHaveAttribute("title", "작업이 현재 실행 중입니다.");
     expect(screen.queryByRole("button", { name: "Retry now" })).not.toBeInTheDocument();
+  });
+
+  it("renders dash when runtime last-attempt timestamp is missing", async () => {
+    const payload = buildTaskDetailPayload();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? "GET";
+      if (url.endsWith("/api/train/tasks/task-1/last-attempt") && method === "GET") {
+        return jsonResponse(buildRuntimeLastAttemptPayload("task-1", null));
+      }
+      if (url.endsWith("/api/train/tasks/task-1") && method === "GET") {
+        return jsonResponse(payload);
+      }
+      return jsonResponse({ detail: "not found" }, 404);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <LocaleProvider initialLocale="en">
+        <TrainTaskDetail taskId="task-1" />
+      </LocaleProvider>,
+    );
+    await flushAsyncEffects();
+
+    const lastAttemptLabel = screen.getByText("Last attempt:");
+    const lastAttemptRow = lastAttemptLabel.closest("p");
+    expect(lastAttemptRow).not.toBeNull();
+    expect(lastAttemptRow).toHaveTextContent("Last attempt: -");
+  });
+
+  it("refreshes runtime last-attempt timestamp every five minutes", async () => {
+    vi.useFakeTimers();
+    try {
+      const payload = buildTaskDetailPayload();
+      const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const method = init?.method ?? "GET";
+        if (url.endsWith("/api/train/tasks/task-1/last-attempt") && method === "GET") {
+          return jsonResponse(buildRuntimeLastAttemptPayload("task-1", "2026-02-26T10:01:00+09:00"));
+        }
+        if (url.endsWith("/api/train/tasks/task-1") && method === "GET") {
+          return jsonResponse(payload);
+        }
+        return jsonResponse({ detail: "not found" }, 404);
+      });
+      vi.stubGlobal("fetch", fetchMock);
+
+      render(
+        <LocaleProvider initialLocale="en">
+          <TrainTaskDetail taskId="task-1" />
+        </LocaleProvider>,
+      );
+      await flushAsyncEffects();
+
+      const initialRuntimeCalls = fetchMock.mock.calls.filter(([request]) =>
+        String(request).includes("/api/train/tasks/task-1/last-attempt"),
+      ).length;
+
+      await act(async () => {
+        vi.advanceTimersByTime(5 * 60 * 1000);
+        await Promise.resolve();
+      });
+
+      const updatedRuntimeCalls = fetchMock.mock.calls.filter(([request]) =>
+        String(request).includes("/api/train/tasks/task-1/last-attempt"),
+      ).length;
+      expect(updatedRuntimeCalls).toBe(initialRuntimeCalls + 1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

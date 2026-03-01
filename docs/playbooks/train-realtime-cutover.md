@@ -116,6 +116,14 @@ Cut over train UI live updates to Supabase Realtime as the primary transport, ke
 - `docs/humans/engineering/ARCHITECTURE.md`
 - `docs/humans/operations/DEPLOYMENT.md`
 
+## Runtime Last-Attempt Note
+
+- Task detail `Last attempt` display now reads runtime state from backend endpoint `GET /api/train/tasks/{task_id}/last-attempt`.
+- Source is Redis-only key `train:task:last-attempt:user:{user_id}:task:{task_id}` with 30-day TTL.
+- Missing runtime key is expected to render as `-` in UI.
+- Attempt timeline remains DB-backed and can stay compacted/deduplicated independently from runtime timestamp freshness.
+
 ## Change History
 
 - [0000000] Added initial train realtime cutover playbook with phased rollout, fallback behavior, and deprecation gate procedure.
+- [0000000] Added runtime last-attempt timestamp contract note for train task detail (Redis-only source with 5-minute frontend refresh cadence).
