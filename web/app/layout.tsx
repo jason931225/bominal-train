@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 
 import "./globals.css";
 
@@ -9,7 +9,7 @@ import { ThemeInitScript } from "@/components/theme-init-script";
 import { ThemeProvider } from "@/components/theme-provider";
 import { localeFromAcceptLanguage, localeFromUser, type Locale } from "@/lib/i18n";
 import { getOptionalUser } from "@/lib/server-auth";
-import { seasonFromMonth } from "@/lib/theme";
+import { resolveInitialThemeFromCookies, THEME_RESOLVED_COOKIE_KEY, THEME_STORAGE_KEY } from "@/lib/theme";
 
 const DEFAULT_FONT_BASE_URL =
   "https://github.com/jason931225/bominal.github.io/raw/refs/heads/main/public/font";
@@ -93,16 +93,20 @@ export default async function RootLayout({
 }>) {
   const user = await getOptionalUser();
   const headerStore = await headers();
+  const cookieStore = await cookies();
   const acceptLanguage = headerStore.get("accept-language");
   const locale = resolveRequestLocale(localeFromUser(user), acceptLanguage);
-  const initialTheme = seasonFromMonth(new Date().getMonth() + 1);
+  const initialTheme = resolveInitialThemeFromCookies({
+    modeCookie: cookieStore.get(THEME_STORAGE_KEY)?.value,
+    resolvedCookie: cookieStore.get(THEME_RESOLVED_COOKIE_KEY)?.value,
+  });
   const fontBaseUrl = resolveFontBaseUrl(process.env.NEXT_PUBLIC_FONT_BASE_URL);
 
   return (
     <html
       lang={locale}
-      data-theme-mode="auto"
-      data-theme={initialTheme}
+      data-theme-mode={initialTheme.mode}
+      data-theme={initialTheme.theme}
       suppressHydrationWarning
     >
       <head>

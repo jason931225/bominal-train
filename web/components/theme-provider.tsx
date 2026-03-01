@@ -2,7 +2,15 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
-import { THEME_STORAGE_KEY, isThemeMode, resolveTheme, type ThemeMode, type ThemeName } from "@/lib/theme";
+import {
+  THEME_COOKIE_MAX_AGE_SECONDS,
+  THEME_RESOLVED_COOKIE_KEY,
+  THEME_STORAGE_KEY,
+  isThemeMode,
+  resolveTheme,
+  type ThemeMode,
+  type ThemeName,
+} from "@/lib/theme";
 
 type ThemeContextValue = {
   mode: ThemeMode;
@@ -30,6 +38,12 @@ function getInitialMode(): ThemeMode {
   return "auto";
 }
 
+function persistThemeCookies(mode: ThemeMode, theme: ThemeName): void {
+  if (typeof document === "undefined") return;
+  document.cookie = `${THEME_STORAGE_KEY}=${mode}; Path=/; Max-Age=${THEME_COOKIE_MAX_AGE_SECONDS}; SameSite=Lax`;
+  document.cookie = `${THEME_RESOLVED_COOKIE_KEY}=${theme}; Path=/; Max-Age=${THEME_COOKIE_MAX_AGE_SECONDS}; SameSite=Lax`;
+}
+
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [mode, setModeState] = useState<ThemeMode>(() => getInitialMode());
   const [theme, setTheme] = useState<ThemeName>(() => resolveTheme(getInitialMode()));
@@ -48,6 +62,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     if (typeof window !== "undefined") {
       window.localStorage.setItem(THEME_STORAGE_KEY, nextMode);
     }
+    persistThemeCookies(nextMode, resolved);
   }, []);
 
   useEffect(() => {

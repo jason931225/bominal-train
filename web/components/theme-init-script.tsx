@@ -1,9 +1,13 @@
 import Script from "next/script";
 
+import { THEME_COOKIE_MAX_AGE_SECONDS, THEME_RESOLVED_COOKIE_KEY, THEME_STORAGE_KEY } from "@/lib/theme";
+
 const initThemeScript = `
 (function() {
   try {
-    var key = "bominal_theme_mode";
+    var key = "${THEME_STORAGE_KEY}";
+    var resolvedKey = "${THEME_RESOLVED_COOKIE_KEY}";
+    var cookieMaxAge = ${THEME_COOKIE_MAX_AGE_SECONDS};
     var raw = window.localStorage.getItem(key);
     var mode = (raw === "auto" || raw === "spring" || raw === "summer" || raw === "autumn" || raw === "winter") ? raw : "auto";
     var month = new Date().getMonth() + 1;
@@ -18,6 +22,8 @@ const initThemeScript = `
     var root = document.documentElement;
     root.dataset.themeMode = mode;
     root.dataset.theme = season;
+    document.cookie = key + "=" + mode + "; Path=/; Max-Age=" + cookieMaxAge + "; SameSite=Lax";
+    document.cookie = resolvedKey + "=" + season + "; Path=/; Max-Age=" + cookieMaxAge + "; SameSite=Lax";
 
     window.requestAnimationFrame(function() {
       root.classList.add("theme-ready");
