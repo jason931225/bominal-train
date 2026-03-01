@@ -250,6 +250,15 @@ def test_rejects_non_positive_db_pool_settings(monkeypatch) -> None:
         Settings(_env_file=None)
 
 
+def test_db_pool_pre_ping_can_be_disabled(monkeypatch) -> None:
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("DB_POOL_PRE_PING", "false")
+
+    settings = Settings(_env_file=None)
+
+    assert settings.db_pool_pre_ping is False
+
+
 def test_legacy_mode_allows_missing_supabase_configuration(monkeypatch) -> None:
     monkeypatch.setenv("APP_ENV", "development")
     monkeypatch.setenv("AUTH_MODE", "legacy")

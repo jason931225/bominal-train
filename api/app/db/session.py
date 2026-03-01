@@ -17,7 +17,7 @@ def build_async_engine_options(cfg) -> dict[str, object]:
 
     return {
         "future": True,
-        "pool_pre_ping": True,
+        "pool_pre_ping": cfg.db_pool_pre_ping,
         "pool_size": cfg.db_pool_size,
         "max_overflow": cfg.db_max_overflow,
         "pool_timeout": cfg.db_pool_timeout_seconds,

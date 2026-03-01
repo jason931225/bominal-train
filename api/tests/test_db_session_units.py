@@ -5,6 +5,7 @@ from app.db import session as session_mod
 
 def test_build_async_engine_options_applies_pool_and_timeout_settings() -> None:
     settings = SimpleNamespace(
+        db_pool_pre_ping=False,
         db_pool_size=7,
         db_max_overflow=3,
         db_pool_timeout_seconds=11.5,
@@ -17,7 +18,7 @@ def test_build_async_engine_options_applies_pool_and_timeout_settings() -> None:
 
     options = session_mod.build_async_engine_options(settings)
 
-    assert options["pool_pre_ping"] is True
+    assert options["pool_pre_ping"] is False
     assert options["pool_size"] == 7
     assert options["max_overflow"] == 3
     assert options["pool_timeout"] == 11.5
@@ -30,6 +31,7 @@ def test_build_async_engine_options_applies_pool_and_timeout_settings() -> None:
 
 def test_build_async_engine_options_omits_statement_timeout_when_disabled() -> None:
     settings = SimpleNamespace(
+        db_pool_pre_ping=True,
         db_pool_size=5,
         db_max_overflow=5,
         db_pool_timeout_seconds=10.0,
@@ -42,4 +44,5 @@ def test_build_async_engine_options_omits_statement_timeout_when_disabled() -> N
 
     options = session_mod.build_async_engine_options(settings)
 
+    assert options["pool_pre_ping"] is True
     assert "server_settings" not in options["connect_args"]

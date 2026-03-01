@@ -117,6 +117,7 @@ class Settings(BaseSettings):
     )
     db_pool_size: int = Field(default=5, alias="DB_POOL_SIZE")
     db_max_overflow: int = Field(default=5, alias="DB_MAX_OVERFLOW")
+    db_pool_pre_ping: bool = Field(default=True, alias="DB_POOL_PRE_PING")
     db_pool_timeout_seconds: float = Field(default=10.0, alias="DB_POOL_TIMEOUT_SECONDS")
     db_pool_recycle_seconds: int = Field(default=600, alias="DB_POOL_RECYCLE_SECONDS")
     db_pool_use_lifo: bool = Field(default=True, alias="DB_POOL_USE_LIFO")
