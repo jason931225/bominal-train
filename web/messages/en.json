@@ -61,6 +61,7 @@
     "sendMagicLink": "Send one time link to my email",
     "requestingMagicLink": "Sending one-time link...",
     "magicLinkSent": "If an account exists, a sign-in link has been sent.",
+    "magicLinkRequestFailed": "Could not request sign-in link.",
     "signInWithOtp": "Sign in with OTP",
     "requestingOtp": "Sending OTP...",
     "otpRequestSent": "If an account exists, a sign-in code has been sent.",

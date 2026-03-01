@@ -61,6 +61,7 @@
     "sendMagicLink": "이메일로 1회용 링크 보내기",
     "requestingMagicLink": "1회용 링크 전송 중...",
     "magicLinkSent": "계정이 존재하면 로그인 링크가 전송되었습니다.",
+    "magicLinkRequestFailed": "로그인 링크를 요청할 수 없습니다.",
     "signInWithOtp": "OTP로 로그인",
     "requestingOtp": "OTP 전송 중...",
     "otpRequestSent": "계정이 존재하면 로그인 코드가 전송되었습니다.",

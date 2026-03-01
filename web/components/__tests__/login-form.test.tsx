@@ -257,4 +257,33 @@ describe("LoginForm", () => {
       remember_me: false,
     });
   });
+
+  it("shows magic-link specific fallback error when one-time link request fails", async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ password: true, passkey: true, magic_link: true, otp: false }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(null, {
+          status: 500,
+        }),
+      );
+
+    renderLoginForm();
+
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "magiclink@example.com" } });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Send one time link to my email" })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send one time link to my email" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Could not request sign-in link.")).toBeInTheDocument();
+    });
+  });
 });

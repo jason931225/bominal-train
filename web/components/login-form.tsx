@@ -298,7 +298,7 @@ export function LoginForm() {
       });
       if (!response.ok) {
         const body = (await response.json().catch(() => null)) as { detail?: string } | null;
-        setFormError(body?.detail ?? t("auth.passwordResetRequestFailed"));
+        setFormError(body?.detail ?? t("auth.magicLinkRequestFailed"));
         return;
       }
       setNotice(t("auth.magicLinkSent"));
