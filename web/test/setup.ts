@@ -15,7 +15,7 @@ vi.mock("next/link", () => ({
   }) => React.createElement("a", { href, ...props }, children),
 }));
 
-vi.mock("server-only", () => ({}), { virtual: true });
+vi.mock("server-only", () => ({}));
 
 afterEach(() => {
   cleanup();

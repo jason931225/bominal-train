@@ -334,7 +334,7 @@ If you choose manual editing instead, required values are:
 - `infra/env/prod/api.env`: optional Supabase Auth redirect overrides:
   - `SUPABASE_AUTH_SITE_URL` (defaults to `NEXT_PUBLIC_API_BASE_URL`, then `https://$CADDY_SITE_ADDRESS`)
   - `SUPABASE_AUTH_REDIRECT_URLS` (comma-separated allow-list; defaults to `<site_url>/auth/verify,<site_url>/auth/confirm,<site_url>/reset-password,<site_url>/login`)
-- `infra/env/prod/web.env`: `NEXT_PUBLIC_API_BASE_URL`, `API_SERVER_URL` (`http://api:8000` for monolithic API runtime), and Supabase browser auth/realtime/read-path keys (`NEXT_PUBLIC_SUPABASE_DIRECT_AUTH_ENABLED`, `NEXT_PUBLIC_SUPABASE_REALTIME_ENABLED`, `NEXT_PUBLIC_SUPABASE_REALTIME_DELTA_READ_ENABLED`, `NEXT_PUBLIC_TRAIN_READS_VIA_DATA_API`, `NEXT_PUBLIC_TRAIN_DETAIL_VIA_GRAPHQL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`)
+- `infra/env/prod/web.env`: `NEXT_PUBLIC_API_BASE_URL`, `API_SERVER_URL` (`http://api:8000` for monolithic API runtime), and Supabase browser auth/realtime/read-path keys (`NEXT_PUBLIC_SUPABASE_DIRECT_AUTH_ENABLED`, `NEXT_PUBLIC_SUPABASE_REALTIME_ENABLED`, `NEXT_PUBLIC_SUPABASE_REALTIME_DELTA_READ_ENABLED`, `NEXT_PUBLIC_TRAIN_READS_VIA_DATA_API`, `NEXT_PUBLIC_TRAIN_DETAIL_VIA_GRAPHQL`, `NEXT_PUBLIC_TRAIN_EVENTS_REALTIME_ENABLED`, `NEXT_PUBLIC_TRAIN_EVENTS_REALTIME_CANARY_PERCENT`, `NEXT_PUBLIC_TRAIN_EVENTS_REALTIME_RETRY_SECONDS`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`)
 - `infra/env/prod/caddy.env`: `CADDY_SITE_ADDRESS`, `CADDY_ACME_EMAIL`
 - `infra/env/prod/deploy.env` (optional helper): set `GHCR_USERNAME` + `GHCR_TOKEN` when GHCR packages are private
 
@@ -405,6 +405,12 @@ Production URL scheme enforcement (predeploy gate):
 - `EMAIL_PROVIDER=resend`: configure exactly one source (`RESEND_API_KEY`, `RESEND_API_KEY_SECRET_ID` + pinned version, or edge-only `RESEND_API_KEY_VAULT_NAME` with `SUPABASE_VAULT_ENABLED=true` and `EDGE_TASK_NOTIFY_ENABLED=true`)
 - `TRAIN_PROVIDER_EGRESS_PROXY_URL` / `RESTAURANT_PROVIDER_EGRESS_PROXY_URL`: set to internal egress gateways when outbound provider traffic must be centralized through path-allowlist proxies
 - `NEXT_PUBLIC_FONT_BASE_URL`: optional remote font base URL (must be `https://` when set). Expected files at that base path: `NotoSansKR-Regular.woff2`, `NotoSerifKR-Regular.woff2`, `NotoSerifKR-SemiBold.woff2`, `NotoSerifKR-Bold.woff2`, `DynaPuff-SemiBold.woff2`
+- Train live-event cutover flags:
+  - `NEXT_PUBLIC_TRAIN_EVENTS_REALTIME_ENABLED`: enables realtime-primary transport manager (SSE remains automatic fallback during deprecation window).
+  - `NEXT_PUBLIC_TRAIN_EVENTS_REALTIME_CANARY_PERCENT`: deterministic realtime canary rollout percent (`0..100`) keyed by user identity.
+  - `NEXT_PUBLIC_TRAIN_EVENTS_REALTIME_RETRY_SECONDS`: retry cadence while temporarily operating on SSE fallback.
+  - Recommended rollout phases: `10% -> 50% -> 100%`.
+  - Immediate rollback: set `NEXT_PUBLIC_TRAIN_EVENTS_REALTIME_ENABLED=false` (or set canary percent to `0`) and redeploy web.
 
 Production note: `DATABASE_URL` / `SYNC_DATABASE_URL` must target Supabase Postgres (`*.supabase.co`) with TLS required (`sslmode=require` or equivalent). Local development must use Docker-local Postgres/Redis (no VM/remote Postgres URLs).
 

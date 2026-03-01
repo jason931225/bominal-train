@@ -160,9 +160,15 @@ Task list performance controls:
 - Dashboard/task-detail/top-nav-alert live updates:
   - API publishes per-user train task state events to Redis channel `train:task-events:user:{user_id}` on user-visible state transitions.
   - High-frequency internal retry states (`RUNNING`, `RESERVING`, `PAYING`, `POLLING`) are intentionally suppressed from publish emits to avoid refetch churn in web clients.
-  - UI live updates are Supabase Realtime-first (`public.task_realtime_events` on publication `bominal_realtime`) when `NEXT_PUBLIC_SUPABASE_REALTIME_ENABLED=true` and a valid browser Supabase session token is available.
-  - Web live-event subscriptions are managed through shared cross-module realtime helpers in `web/lib/realtime/` (`client.ts`, `subscription.ts`, `registry.ts`, `types.ts`), with train-specific mapping adapters layered in module code (`web/lib/train/task-events.ts`).
-  - SSE transport is intentionally disabled; no `/api/train/tasks/events` stream is served.
+  - UI live updates are managed by `web/lib/train/task-events.ts` transport manager.
+  - Primary transport is Supabase Realtime (`public.task_realtime_events` on publication `bominal_realtime`) when all realtime eligibility gates pass:
+    - `NEXT_PUBLIC_TRAIN_EVENTS_REALTIME_ENABLED=true`
+    - browser Supabase config present (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`)
+    - user has a valid Supabase browser access token
+    - deterministic canary pass by JWT `sub` and `NEXT_PUBLIC_TRAIN_EVENTS_REALTIME_CANARY_PERCENT`
+  - On realtime subscribe failure/timeout/channel error/close, or when token/config is unavailable, transport falls back automatically to SSE endpoint `/api/train/tasks/events`.
+  - While on SSE fallback, the manager retries realtime cutover every `NEXT_PUBLIC_TRAIN_EVENTS_REALTIME_RETRY_SECONDS` and switches back to realtime once subscribe succeeds.
+  - SSE transport is deprecated (registry `DEP-2026-03-01-001`) as of `2026-03-01` with scheduled removal after `2026-03-31`; it remains functional during the compatibility window.
   - Dashboard, task-detail, and top-nav attention do not use fixed-interval task polling.
   - Event-driven reconciliation is dedupe-throttled client-side to avoid burst list refetch loops on repeated terminal/ticket transitions.
   - `public.task_realtime_events` is maintained by DB triggers and owner-scoped RLS, includes ticket/list-bucket projection fields, suppresses no-op updates, and is shared across Realtime/Data API/GraphQL consumers.

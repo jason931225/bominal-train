@@ -71,6 +71,7 @@ Pointer format convention (mandatory):
 - [PTR-PLAY-002] `docs/playbooks/TEMPLATE.md` - playbook template.
 - [PTR-PLAY-003] `docs/playbooks/release-1.0.0-deploy-readiness.md` - release readiness and deployment execution playbook for version 1.0.0.
 - [PTR-PLAY-004] `docs/playbooks/db-deep-dive-production.md` - production DB-path latency investigation and deploy-gate workflow.
+- [PTR-PLAY-005] `docs/playbooks/train-realtime-cutover.md` - phased train live-event cutover playbook for Supabase Realtime primary transport with SSE fallback/deprecation lifecycle.
 
 ### Registry and Compliance
 

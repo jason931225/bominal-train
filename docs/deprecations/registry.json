@@ -1,7 +1,28 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-02-14",
+  "generated_at": "2026-03-01",
   "deprecations": [
+    {
+      "id": "DEP-2026-03-01-001",
+      "surface": "runtime",
+      "scope": "production",
+      "artifact": "/api/train/tasks/events",
+      "replacement": "Supabase Realtime `public.task_realtime_events` with automatic SSE fallback during transition",
+      "owner": "Train UI / Realtime",
+      "status": "deprecated",
+      "deprecated_on": "2026-03-01",
+      "remove_after": "2026-03-31",
+      "window_policy": "prod30_github14_local2",
+      "window_exception_approved": false,
+      "callers_scan_paths": [
+        "web/lib/train",
+        "web/components",
+        "api/app/modules/train",
+        "docs/humans/engineering",
+        "docs/playbooks"
+      ],
+      "notes": "Train UI cutover to Supabase Realtime primary transport is active. SSE endpoint remains functional as automatic fallback until removal window opens."
+    },
     {
       "id": "DEP-2026-02-14-001",
       "surface": "runtime",
