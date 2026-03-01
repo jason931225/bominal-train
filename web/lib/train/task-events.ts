@@ -164,7 +164,13 @@ function ensureSseSource(store: TrainTaskEventsStore): void {
     return;
   }
   const eventsBase = resolveEventsBaseUrl();
-  const source = new EventSource(`${eventsBase}/api/train/tasks/events`, { withCredentials: true });
+  let source: EventSource;
+  try {
+    source = new EventSource(`${eventsBase}/api/train/tasks/events`, { withCredentials: true });
+  } catch {
+    // Mixed-content/CSP/invalid-URL failures should not crash the app shell.
+    return;
+  }
   const onTaskState = (event: MessageEvent<string>) => dispatchSseEvent(store, event);
   const onAttentionSnapshot = (event: MessageEvent<string>) => dispatchSseEvent(store, event);
   const onTaskTicketStatus = (event: MessageEvent<string>) => dispatchSseEvent(store, event);

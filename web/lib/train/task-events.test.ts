@@ -316,4 +316,34 @@ describe("train task event transport manager", () => {
 
     unsubscribe();
   });
+
+  it("does not crash when EventSource constructor throws", async () => {
+    class ThrowingEventSource {
+      constructor() {
+        throw new DOMException("Mixed content blocked", "SecurityError");
+      }
+    }
+
+    vi.stubGlobal("EventSource", ThrowingEventSource as unknown as typeof EventSource);
+    Object.defineProperty(window, "EventSource", {
+      configurable: true,
+      writable: true,
+      value: ThrowingEventSource,
+    });
+
+    const { createClientMock, subscribeTrainTaskEvents } = await loadTaskEventsModule({
+      token: null,
+      realtimeEnabled: false,
+      canaryPercent: 0,
+      retrySeconds: 60,
+      subscribeStatusByAttempt: [],
+    });
+
+    const unsubscribe = subscribeTrainTaskEvents(() => undefined);
+    await flushAsyncEffects(20);
+
+    expect(createClientMock).not.toHaveBeenCalled();
+
+    unsubscribe();
+  });
 });
