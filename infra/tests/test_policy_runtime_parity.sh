@@ -35,6 +35,7 @@ assert_contains "INTERNAL_API_KEY_SECRET_VERSION" "$PREDEPLOY_FILE" "predeploy m
 assert_contains "SUPABASE_MANAGEMENT_API_TOKEN_SECRET_ID" "$PREDEPLOY_FILE" "predeploy missing supabase management token gsm source contract"
 assert_contains "SUPABASE_MANAGEMENT_API_TOKEN must not be set in infra/env/prod/api.env" "$PREDEPLOY_FILE" "predeploy missing plaintext management token guard"
 assert_contains "PAYMENT_PROVIDER" "$PREDEPLOY_FILE" "predeploy missing payment-provider contract checks"
+assert_contains 'uv run --python "\$VENV_PATH/bin/python" pytest' "$PREDEPLOY_FILE" "predeploy backend smoke tests must use uv-run fallback"
 
 assert_contains "load_runtime_api_secrets_from_gsm" "$DEPLOY_FILE" "deploy missing runtime secret loader"
 assert_contains "INTERNAL_API_KEY_SECRET_ID" "$DEPLOY_FILE" "deploy missing internal gsm reference resolution"
