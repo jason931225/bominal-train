@@ -32,7 +32,7 @@ export function RegisterForm() {
   const canSubmit = useMemo(() => !submitting, [submitting]);
 
   const navigateAfterAuth = () => {
-    const destination = `${ROUTES.authPasskeySetup}?source=signup&next=${encodeURIComponent(ROUTES.modules.train)}`;
+    const destination = `${ROUTES.authPasskeyAdd}?source=signup&next=${encodeURIComponent(ROUTES.modules.train)}`;
     if (typeof window !== "undefined") {
       // Full navigation ensures persistent root layout re-resolves authenticated user state.
       try {

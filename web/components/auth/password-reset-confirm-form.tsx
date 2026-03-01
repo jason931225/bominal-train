@@ -119,7 +119,7 @@ export function PasswordResetConfirmForm({
       clearSupabaseAccessToken();
       setNotice(t("auth.passwordResetComplete"));
       setTimeout(() => {
-        router.push(`${ROUTES.authPasskeySetup}?source=reset&next=${encodeURIComponent(ROUTES.modules.train)}`);
+        router.push(`${ROUTES.authPasskeyAdd}?source=reset&next=${encodeURIComponent(ROUTES.modules.train)}`);
       }, 700);
     } catch {
       setFormError(t("auth.apiUnreachable"));

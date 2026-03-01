@@ -68,6 +68,12 @@ describe("PasswordResetConfirmForm", () => {
     expect((init.headers as Record<string, string>).Authorization).toBeUndefined();
     expect(JSON.parse(String(init.body))).toEqual({ new_password: "NewPassword123" });
     expect(clearSupabaseAccessToken).toHaveBeenCalledTimes(1);
+    await waitFor(
+      () => {
+        expect(pushMock).toHaveBeenCalledWith("/auth/passkey/add?source=reset&next=%2Fmodules%2Ftrain");
+      },
+      { timeout: 1600 },
+    );
   });
 
   it("shows backend recovery error when supabase recovery context is missing or expired", async () => {

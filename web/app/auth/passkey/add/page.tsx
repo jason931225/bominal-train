@@ -23,7 +23,7 @@ function normalizeSource(raw: string | undefined): "signup" | "reset" | "magicli
   return "unknown";
 }
 
-export default async function PasskeySetupPage({
+export default async function PasskeyPage({
   searchParams,
 }: {
   searchParams?: Promise<SearchParams>;

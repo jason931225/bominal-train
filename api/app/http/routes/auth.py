@@ -151,6 +151,30 @@ def _extract_bearer_token(authorization_header: str | None) -> str | None:
     return token or None
 
 
+async def _verify_sensitive_current_password(*, db: AsyncSession, user: User, current_password: str) -> bool:
+    normalized_password = str(current_password or "")
+    if not normalized_password:
+        return False
+
+    if await async_verify_password(normalized_password, user.password_hash):
+        return True
+
+    supabase_mode = settings.auth_mode == "supabase" and settings.supabase_auth_enabled
+    if not supabase_mode:
+        return False
+
+    supabase_identity = await verify_supabase_password(email=user.email, password=normalized_password)
+    if supabase_identity is None:
+        return False
+    if str(supabase_identity.email or "").strip().lower() != str(user.email or "").strip().lower():
+        return False
+
+    user.password_hash = await async_hash_password(normalized_password)
+    if user.supabase_user_id != supabase_identity.user_id:
+        user.supabase_user_id = supabase_identity.user_id
+    return True
+
+
 def _is_dev_demo_mode_enabled() -> bool:
     return settings.dev_demo_auth_enabled and not settings.is_production
 
@@ -832,6 +856,7 @@ async def login(
                     )
                 elif user.supabase_user_id != supabase_identity.user_id:
                     user.supabase_user_id = supabase_identity.user_id
+                user.password_hash = await async_hash_password(payload.password)
 
         if user is None:
             outcome = "user_missing"
@@ -1009,9 +1034,10 @@ async def update_account(
     if sensitive_update:
         has_valid_password = False
         if payload.current_password:
-            has_valid_password = await async_verify_password(
-                payload.current_password,
-                current_user.password_hash,
+            has_valid_password = await _verify_sensitive_current_password(
+                db=db,
+                user=current_user,
+                current_password=payload.current_password,
             )
         has_valid_step_up = bool(payload.passkey_step_up_token) and await consume_passkey_step_up_token(
             db,
@@ -1068,9 +1094,16 @@ async def update_account(
 async def verify_current_password(
     payload: PasswordVerifyRequest,
     current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ) -> MessageResponse:
-    if not await async_verify_password(payload.current_password, current_user.password_hash):
+    is_valid_password = await _verify_sensitive_current_password(
+        db=db,
+        user=current_user,
+        current_password=payload.current_password,
+    )
+    if not is_valid_password:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Current password is invalid")
+    await db.commit()
     return MessageResponse(message="Password verified")
 
 
@@ -1546,7 +1579,7 @@ async def supabase_confirm(
 
     response_payload = SupabaseConfirmResponse(
         mode="magiclink",
-        redirect_to="/auth/passkey-setup?source=magiclink&next=/modules/train",
+        redirect_to="/auth/passkey/add?source=magiclink&next=/modules/train",
         access_token=callback_access_token,
     )
     response = JSONResponse(content=response_payload.model_dump(mode="json"))

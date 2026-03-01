@@ -13,17 +13,23 @@ export default async function ResetPasswordPage({
 }: {
   searchParams?: Promise<{ email?: string; code?: string }>;
 }) {
+  const cookieStore = await cookies();
+  const hasSupabaseRecoveryContext = Boolean(cookieStore.get("bominal_supabase_recovery_ctx")?.value);
+  const hasPasskeySetupContext = Boolean(cookieStore.get("bominal_passkey_setup_ctx")?.value);
   const user = await getOptionalUser();
   if (user) {
-    redirect(postLoginRouteForUser(user));
+    if (hasPasskeySetupContext) {
+      redirect(`${ROUTES.authPasskeyAdd}?source=reset&next=${encodeURIComponent(ROUTES.modules.train)}`);
+    }
+    if (!hasSupabaseRecoveryContext) {
+      redirect(postLoginRouteForUser(user));
+    }
   }
 
   const { t } = await getServerT();
-  const cookieStore = await cookies();
   const resolvedSearchParams = (await searchParams) ?? {};
   const initialEmail = resolvedSearchParams.email ?? "";
   const initialCode = resolvedSearchParams.code ?? "";
-  const hasSupabaseRecoveryContext = Boolean(cookieStore.get("bominal_supabase_recovery_ctx")?.value);
   const mode = hasSupabaseRecoveryContext ? "supabase" : "otp";
   const subtitle = mode === "supabase" ? t("auth.resetPasswordSupabaseSubtitle") : t("auth.resetPasswordSubtitle");
 

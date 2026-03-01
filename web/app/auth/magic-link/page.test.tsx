@@ -65,7 +65,7 @@ describe("AuthMagicLinkPage", () => {
         credentials: "include",
       }),
     );
-    expect(replaceMock).toHaveBeenCalledWith("/auth/passkey-setup?source=magiclink&next=%2Fmodules%2Ftrain");
+    expect(replaceMock).toHaveBeenCalledWith("/auth/passkey/add?source=magiclink&next=%2Fmodules%2Ftrain");
   });
 
   it("shows invalid-link error when required params are missing", async () => {

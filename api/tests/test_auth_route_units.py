@@ -560,6 +560,45 @@ async def test_login_rehashes_password_when_policy_changes(db_session, monkeypat
 
 
 @pytest.mark.asyncio
+async def test_login_supabase_password_success_syncs_local_hash(db_session, monkeypatch):
+    role_user = (await db_session.execute(select(Role).where(Role.name == "user"))).scalar_one()
+    email = f"supabase-sync-{uuid4().hex[:8]}@example.com"
+    old_password_hash = hash_password("OldLocalOnly123")
+    user = User(
+        email=email,
+        password_hash=old_password_hash,
+        display_name=f"SupabaseSync-{uuid4().hex[:6]}",
+        role_id=role_user.id,
+        ui_locale="en",
+        supabase_user_id="supabase-sync-subject",
+    )
+    db_session.add(user)
+    await db_session.commit()
+
+    monkeypatch.setattr(auth_routes.settings, "auth_mode", "supabase")
+    monkeypatch.setattr(auth_routes.settings, "supabase_auth_enabled", True)
+
+    async def _verify_supabase_password(*, email: str, password: str):  # noqa: ARG001
+        if password == "SupabaseFresh123":
+            return SimpleNamespace(user_id="supabase-sync-subject", email=email)
+        return None
+
+    monkeypatch.setattr(auth_routes, "verify_supabase_password", _verify_supabase_password)
+
+    response = await auth_routes.login(
+        payload=LoginRequest(email=email, password="SupabaseFresh123", remember_me=False),
+        request=_request_for_login(),
+        background_tasks=BackgroundTasks(),
+        db=db_session,
+    )
+    assert response.status_code == 200
+
+    await db_session.refresh(user)
+    assert verify_password("SupabaseFresh123", user.password_hash)
+    assert user.password_hash != old_password_hash
+
+
+@pytest.mark.asyncio
 async def test_login_refreshes_train_reservations_after_sign_in(db_session, monkeypatch):
     role_user = (await db_session.execute(select(Role).where(Role.name == "user"))).scalar_one()
     email = f"signin-refresh-{uuid4().hex[:8]}@example.com"
@@ -834,6 +873,7 @@ async def test_passkey_route_units_with_mocked_service(db_session, monkeypatch):
     verified_password = await auth_routes.verify_current_password(
         payload=PasswordVerifyRequest(current_password="SuperSecret123"),
         current_user=user,
+        db=db_session,
     )
     assert "verified" in verified_password.message.lower()
 
@@ -841,8 +881,81 @@ async def test_passkey_route_units_with_mocked_service(db_session, monkeypatch):
         await auth_routes.verify_current_password(
             payload=PasswordVerifyRequest(current_password="WrongPass123"),
             current_user=user,
+            db=db_session,
         )
     assert invalid_password.value.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_update_account_accepts_supabase_verified_current_password(db_session, monkeypatch):
+    role_user = (await db_session.execute(select(Role).where(Role.name == "user"))).scalar_one()
+    email = f"supabase-sensitive-{uuid4().hex[:8]}@example.com"
+    user = User(
+        email=email,
+        password_hash=hash_password("LocalOnlyOld123"),
+        display_name=f"SupabaseSensitive-{uuid4().hex[:6]}",
+        role_id=role_user.id,
+        ui_locale="en",
+        supabase_user_id="supabase-sensitive-subject",
+    )
+    db_session.add(user)
+    await db_session.commit()
+    user = await _load_user_with_role(db_session, email=email)
+
+    monkeypatch.setattr(auth_routes.settings, "auth_mode", "supabase")
+    monkeypatch.setattr(auth_routes.settings, "supabase_auth_enabled", True)
+
+    async def _verify_supabase_password(*, email: str, password: str):  # noqa: ARG001
+        if password == "SupabaseCurrent123":
+            return SimpleNamespace(user_id="supabase-sensitive-subject", email=email)
+        return None
+
+    monkeypatch.setattr(auth_routes, "verify_supabase_password", _verify_supabase_password)
+
+    updated = await auth_routes.update_account(
+        payload=AccountUpdateRequest(
+            new_password="BrandNewSecret123",
+            current_password="SupabaseCurrent123",
+        ),
+        current_user=user,
+        db=db_session,
+    )
+    assert updated.user.email == email
+    await db_session.refresh(user)
+    assert verify_password("BrandNewSecret123", user.password_hash)
+
+
+@pytest.mark.asyncio
+async def test_verify_current_password_accepts_supabase_verified_password(db_session, monkeypatch):
+    role_user = (await db_session.execute(select(Role).where(Role.name == "user"))).scalar_one()
+    email = f"supabase-verify-{uuid4().hex[:8]}@example.com"
+    user = User(
+        email=email,
+        password_hash=hash_password("DifferentLocalPassword123"),
+        display_name=f"SupabaseVerify-{uuid4().hex[:6]}",
+        role_id=role_user.id,
+        ui_locale="en",
+        supabase_user_id="supabase-verify-subject",
+    )
+    db_session.add(user)
+    await db_session.commit()
+
+    monkeypatch.setattr(auth_routes.settings, "auth_mode", "supabase")
+    monkeypatch.setattr(auth_routes.settings, "supabase_auth_enabled", True)
+
+    async def _verify_supabase_password(*, email: str, password: str):  # noqa: ARG001
+        if password == "SupabaseCurrent123":
+            return SimpleNamespace(user_id="supabase-verify-subject", email=email)
+        return None
+
+    monkeypatch.setattr(auth_routes, "verify_supabase_password", _verify_supabase_password)
+
+    verified = await auth_routes.verify_current_password(
+        payload=PasswordVerifyRequest(current_password="SupabaseCurrent123"),
+        current_user=user,
+        db=db_session,
+    )
+    assert "verified" in verified.message.lower()
 
 
 @pytest.mark.asyncio

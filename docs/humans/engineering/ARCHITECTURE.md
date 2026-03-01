@@ -104,7 +104,7 @@ Module contract:
   - `POST /api/auth/request-magic-link`
   - `POST /api/auth/request-signin-otp` (only active when Supabase OTP sign-in is enabled)
 - Magic-link + OTP sign-in contracts:
-  - `AUTH_MODE=supabase`: magic-link requests call Supabase Auth (`/auth/v1/otp`) and callback confirmation redirects to `/auth/passkey-setup?source=magiclink&next=/modules/train`
+  - `AUTH_MODE=supabase`: magic-link requests call Supabase Auth (`/auth/v1/otp`) and callback confirmation redirects to `/auth/passkey/add?source=magiclink&next=/modules/train`
   - `AUTH_MODE=legacy`: magic-link requests issue local one-time verification tokens (`purpose=magic_login`) and confirm through `POST /api/auth/magic-link/confirm`
   - Supabase OTP sign-in endpoints are opt-in behind `SUPABASE_SIGNIN_OTP_ENABLED`
 - Password reset confirmation endpoints now bootstrap an authenticated session cookie on success in both modes (`POST /api/auth/reset-password`, `POST /api/auth/reset-password/supabase`).
@@ -113,7 +113,7 @@ Module contract:
   - authenticated enrollment (`/api/auth/passkeys/register/options`, `/api/auth/passkeys/register/verify`)
   - passkey login bootstrap (`/api/auth/passkeys/auth/options`, `/api/auth/passkeys/auth/verify`)
   - account-level passkey listing/removal (`/api/auth/passkeys`, `/api/auth/passkeys/{id}`)
-  - post-auth passkey-offer interstitial route (`/auth/passkey-setup`) is shared by sign-up, reset, and magic-link flows; users can enroll passkey or skip.
+  - post-auth passkey-offer interstitial route (`/auth/passkey/add`) is shared by sign-up, reset, and magic-link flows; users can enroll passkey or skip.
 - Account email changes are two-step:
   - settings update requests verification to the new email address
   - email value changes only after `/api/auth/account/email-change/confirm` succeeds

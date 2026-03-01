@@ -816,7 +816,7 @@ async def test_supabase_confirm_magiclink_sets_cookie(client, monkeypatch):
     )
     assert response.status_code == 200
     assert response.json()["mode"] == "magiclink"
-    assert response.json()["redirect_to"].startswith("/auth/passkey-setup")
+    assert response.json()["redirect_to"].startswith("/auth/passkey/add")
     assert response.cookies.get("bominal_session")
     assert response.cookies.get("bominal_passkey_setup_ctx")
 
@@ -847,7 +847,7 @@ async def test_supabase_confirm_email_type_sets_cookie(client, monkeypatch):
     assert response.status_code == 200
     payload = response.json()
     assert payload["mode"] == "magiclink"
-    assert payload["redirect_to"] == "/auth/passkey-setup?source=magiclink&next=/modules/train"
+    assert payload["redirect_to"] == "/auth/passkey/add?source=magiclink&next=/modules/train"
     assert response.cookies.get("bominal_session")
     assert response.cookies.get("bominal_passkey_setup_ctx")
 

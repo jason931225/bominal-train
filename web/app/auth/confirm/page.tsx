@@ -27,10 +27,6 @@ export default function AuthConfirmPage() {
     [searchParams],
   );
   const isRecoveryConfirm = confirmPayload?.type === "recovery";
-  const normalizedNext = useMemo(() => {
-    const nextPath = searchParams.get("next")?.trim();
-    return nextPath && nextPath.startsWith("/") ? nextPath : null;
-  }, [searchParams]);
 
   async function onContinue() {
     if (!confirmPayload) {
@@ -58,7 +54,10 @@ export default function AuthConfirmPage() {
         return;
       }
 
-      const destination = payload.redirect_to?.trim() || normalizedNext || ROUTES.modules.train;
+      const fallbackPasskeyDestination = `${ROUTES.authPasskeyAdd}?source=magiclink&next=${encodeURIComponent(
+        ROUTES.modules.train,
+      )}`;
+      const destination = payload.redirect_to?.trim() || fallbackPasskeyDestination;
       router.replace(destination);
     } catch {
       setErrorMessage(t("auth.callbackFailed"));

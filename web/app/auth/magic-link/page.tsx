@@ -38,7 +38,7 @@ export default function AuthMagicLinkPage() {
         setError(body?.detail ?? t("auth.callbackFailed"));
         return;
       }
-      router.replace(`${ROUTES.authPasskeySetup}?source=magiclink&next=${encodeURIComponent(ROUTES.modules.train)}`);
+      router.replace(`${ROUTES.authPasskeyAdd}?source=magiclink&next=${encodeURIComponent(ROUTES.modules.train)}`);
     } catch {
       setError(t("auth.callbackFailed"));
     } finally {

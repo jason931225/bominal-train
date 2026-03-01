@@ -9,7 +9,7 @@ export const ROUTES = {
   authConfirm: "/auth/confirm",
   authCallback: "/auth/callback",
   authMagicLink: "/auth/magic-link",
-  authPasskeySetup: "/auth/passkey-setup",
+  authPasskeyAdd: "/auth/passkey/add",
 
   modules: {
     train: "/modules/train",
