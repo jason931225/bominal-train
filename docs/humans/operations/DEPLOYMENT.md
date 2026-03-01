@@ -30,9 +30,11 @@ The deployment uses Docker Compose health checks plus callback-route smoke check
      - unchanged services are skipped to reduce restart churn and blast radius
 3. **Web Failover Phase** - when `web` changes and canary is enabled:
    - start `web-canary` (`127.0.0.1:3001`) on the target image and wait healthy
+   - switch Caddy runtime upstream include to `web + web-canary` and reload Caddy
    - verify `/auth/verify?...type=recovery` through Caddy returns non-5xx
    - restart primary `web` (`127.0.0.1:3000`) while Caddy can fail over to canary
    - verify callback route again, then stop/remove `web-canary`
+   - switch Caddy runtime upstream include back to `web` only and reload Caddy
 4. **Verify Phase** - health checks confirm API/web + callback-route reachability.
 5. **Failure Phase** - on smoke-check failure, script can auto-trigger rollback to previous deployment (and intentionally leaves canary running when needed for continuity).
 
@@ -105,6 +107,11 @@ Evervault secret sourcing (production):
 - Auth callback smoke gate is enforced during deploy and verify:
   - probe path: `/auth/verify?token_hash=aaaaaaaa&type=recovery`
   - deploy fails on callback `5xx` responses
+- Caddy web-upstream runtime include is deploy-managed:
+  - active include file: `infra/caddy/upstreams/active.caddy`
+  - templates: `infra/caddy/upstreams/web-only.caddy`, `infra/caddy/upstreams/web-with-canary.caddy`
+  - deploy reloads Caddy after include changes so active health checks do not probe canary when canary is down
+- Caddy access logging is enabled in JSON to container stdout for route/latency triage (`docker logs bominal-caddy`)
 - Auto rollback on smoke failure is enabled by default (`AUTO_ROLLBACK_ON_SMOKE_FAILURE=true`).
 - Evervault relay verification is disabled by default and reserved for troubleshooting:
   - `DEPLOY_EVERVAULT_RELAY_VERIFY_ENABLED=false` (default)

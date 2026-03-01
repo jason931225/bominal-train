@@ -63,6 +63,10 @@ DEPLOY_WEB_CHANGED="true"
 WEB_CANARY_IMAGE="${WEB_CANARY_IMAGE:-}"
 PROD_API_ENV_FILE="infra/env/prod/api.env"
 EVERVAULT_RELAY_PROBE_SCRIPT="${EVERVAULT_RELAY_PROBE_SCRIPT:-$SCRIPT_DIR/evervault-relay-probe.sh}"
+CADDY_UPSTREAMS_DIR_REL="infra/caddy/upstreams"
+CADDY_ACTIVE_UPSTREAMS_FILE_REL="$CADDY_UPSTREAMS_DIR_REL/active.caddy"
+CADDY_WEB_ONLY_UPSTREAMS_FILE_REL="$CADDY_UPSTREAMS_DIR_REL/web-only.caddy"
+CADDY_WEB_CANARY_UPSTREAMS_FILE_REL="$CADDY_UPSTREAMS_DIR_REL/web-with-canary.caddy"
 
 # Registry configuration
 GHCR_NAMESPACE="${GHCR_NAMESPACE:-ghcr.io/jason931225/bominal}"
@@ -988,6 +992,71 @@ web_canary_enabled() {
   is_truthy_bool "$DEPLOY_WEB_CANARY_ENABLED"
 }
 
+set_caddy_web_upstreams_mode() {
+  local mode="$1"
+  local source_file
+  local target_file="$REPO_DIR/$CADDY_ACTIVE_UPSTREAMS_FILE_REL"
+
+  case "$mode" in
+    web-only)
+      source_file="$REPO_DIR/$CADDY_WEB_ONLY_UPSTREAMS_FILE_REL"
+      ;;
+    web-with-canary)
+      source_file="$REPO_DIR/$CADDY_WEB_CANARY_UPSTREAMS_FILE_REL"
+      ;;
+    *)
+      log_error "Unknown Caddy upstream mode: $mode"
+      return 1
+      ;;
+  esac
+
+  if [[ ! -f "$source_file" ]]; then
+    log_error "Missing Caddy upstream template: $source_file"
+    return 1
+  fi
+
+  mkdir -p "$(dirname "$target_file")"
+  if [[ -f "$target_file" ]] && cmp -s "$source_file" "$target_file"; then
+    return 0
+  fi
+
+  cp "$source_file" "$target_file"
+  log_info "Set Caddy upstream mode to '$mode'"
+}
+
+reload_caddy_runtime_config() {
+  if [[ "$(container_running_state "bominal-caddy")" != "true" ]]; then
+    log_info "Caddy is not running; skipping runtime config reload."
+    return 0
+  fi
+
+  if "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" exec -T caddy caddy reload --config /etc/caddy/Caddyfile >/dev/null 2>&1; then
+    log_ok "Reloaded Caddy runtime config."
+    return 0
+  fi
+
+  log_warn "Caddy reload failed; attempting isolated caddy restart."
+  if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait --remove-orphans --no-deps caddy; then
+    log_error "Failed to restart caddy while applying runtime config."
+    return 1
+  fi
+
+  log_ok "Restarted Caddy with refreshed runtime config."
+}
+
+reconcile_caddy_canary_health_targets() {
+  local target_mode="web-only"
+
+  if web_canary_enabled && [[ "$(container_running_state "bominal-web-canary")" == "true" ]]; then
+    target_mode="web-with-canary"
+  fi
+
+  if ! set_caddy_web_upstreams_mode "$target_mode"; then
+    return 1
+  fi
+  reload_caddy_runtime_config
+}
+
 stop_web_canary() {
   if ! web_canary_enabled; then
     return 0
@@ -1000,6 +1069,14 @@ stop_web_canary() {
   if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" rm -f web-canary >/dev/null 2>&1; then
     log_warn "Could not remove web-canary cleanly (continuing)."
   fi
+
+  if ! set_caddy_web_upstreams_mode "web-only"; then
+    return 1
+  fi
+  if ! reload_caddy_runtime_config; then
+    return 1
+  fi
+
   return 0
 }
 
@@ -1015,6 +1092,14 @@ start_web_canary() {
     log_error "Failed to start web-canary service"
     return 1
   fi
+
+  if ! set_caddy_web_upstreams_mode "web-with-canary"; then
+    return 1
+  fi
+  if ! reload_caddy_runtime_config; then
+    return 1
+  fi
+
   log_ok "web-canary is healthy"
 }
 
@@ -1057,6 +1142,10 @@ deploy_services() {
   if stack_has_running_containers; then
     log_info "Running stack detected. Using rolling-update path."
     calculate_rollout_changes
+
+    if ! reconcile_caddy_canary_health_targets; then
+      return 1
+    fi
 
     log_info "Ensuring redis service is healthy..."
     if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait --remove-orphans redis; then
@@ -1134,6 +1223,10 @@ deploy_services() {
       return 1
     fi
     return 0
+  fi
+
+  if ! set_caddy_web_upstreams_mode "web-only"; then
+    return 1
   fi
 
   log_warn "No running bominal containers detected. Using first-deploy bootstrap path."

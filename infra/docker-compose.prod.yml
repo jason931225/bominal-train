@@ -167,6 +167,7 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./caddy/upstreams:/etc/caddy/upstreams:ro
       - caddy_data:/data
       - caddy_config:/config
     ports:

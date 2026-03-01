@@ -30,6 +30,10 @@ cat >"$TMP_DIR/bin/curl" <<'CURL'
 #!/usr/bin/env bash
 set -euo pipefail
 if [[ "${SIMULATE_SMOKE_FAILURE:-0}" == "1" ]]; then
+  url="${*: -1}"
+  if [[ "$url" == *"/health/ready" ]]; then
+    exit 0
+  fi
   exit 1
 fi
 exit 0

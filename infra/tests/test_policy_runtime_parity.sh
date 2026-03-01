@@ -9,6 +9,8 @@ DEPLOY_FILE="$ROOT_DIR/infra/scripts/deploy.sh"
 SYNC_SUPABASE_AUTH_TEMPLATES_SCRIPT="$ROOT_DIR/infra/scripts/sync-supabase-auth-templates.sh"
 COMPOSE_FILE="$ROOT_DIR/infra/docker-compose.prod.yml"
 CADDY_FILE="$ROOT_DIR/infra/caddy/Caddyfile"
+CADDY_ACTIVE_UPSTREAM_FILE="$ROOT_DIR/infra/caddy/upstreams/active.caddy"
+CADDY_WEB_CANARY_UPSTREAM_FILE="$ROOT_DIR/infra/caddy/upstreams/web-with-canary.caddy"
 WALLET_SCHEMA_FILE="$ROOT_DIR/api/app/schemas/wallet.py"
 ADMIN_ROUTES_FILE="$ROOT_DIR/api/app/http/routes/admin.py"
 
@@ -54,6 +56,7 @@ assert_contains "RESEND_API_KEY:[[:space:]]+\\$\\{RESEND_API_KEY:-\\}" "$COMPOSE
 assert_contains "web-canary:" "$COMPOSE_FILE" "compose missing web-canary service"
 assert_contains "127\\.0\\.0\\.1:3001:3000" "$COMPOSE_FILE" "compose web-canary port mapping missing"
 assert_contains "host\\.docker\\.internal:host-gateway" "$COMPOSE_FILE" "compose caddy host-gateway mapping missing"
+assert_contains "\\./caddy/upstreams:/etc/caddy/upstreams:ro" "$COMPOSE_FILE" "compose missing caddy upstream include mount"
 if rg -n -- '\./env/prod/pay\.env' "$COMPOSE_FILE" >/dev/null; then
   echo "FAIL: compose must not reference retired pay.env" >&2
   exit 1
@@ -62,7 +65,10 @@ fi
 assert_contains "/health/live /health/ready" "$CADDY_FILE" "caddy api matcher missing live/ready routes"
 assert_contains "handle_errors" "$CADDY_FILE" "caddy missing callback unavailability error handler"
 assert_contains "path /auth/verify\\* /auth/confirm\\*" "$CADDY_FILE" "caddy missing callback error scope matcher"
-assert_contains "web:3000 web-canary:3000" "$CADDY_FILE" "caddy missing dual web upstream failover"
+assert_contains "import /etc/caddy/upstreams/active\\.caddy" "$CADDY_FILE" "caddy missing runtime upstream include"
+assert_contains "output stdout" "$CADDY_FILE" "caddy missing request log output config"
+assert_contains "to web:3000" "$CADDY_ACTIVE_UPSTREAM_FILE" "caddy active upstream default must target primary web"
+assert_contains "to web:3000 web-canary:3000" "$CADDY_WEB_CANARY_UPSTREAM_FILE" "caddy canary upstream template missing failover target"
 
 assert_contains "field is no longer accepted" "$WALLET_SCHEMA_FILE" "wallet schema must reject cvv plaintext input"
 assert_contains "plaintext card fields are not accepted when PAYMENT_PROVIDER=evervault" "$WALLET_SCHEMA_FILE" "wallet schema must reject plaintext fallback in evervault mode"

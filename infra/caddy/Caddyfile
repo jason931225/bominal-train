@@ -10,6 +10,13 @@ bominal.com {
 {$CADDY_SITE_ADDRESS} {
 	encode zstd gzip
 
+	# Access logs are emitted in JSON to container stdout so hot routes and
+	# latency spikes can be correlated via `docker logs bominal-caddy`.
+	log {
+		output stdout
+		format json
+	}
+
 	# Security headers
 	header {
 		X-Content-Type-Options "nosniff"
@@ -50,7 +57,7 @@ bominal.com {
 
 	handle {
 		reverse_proxy {
-			to web:3000 web-canary:3000
+			import /etc/caddy/upstreams/active.caddy
 			lb_policy first
 			lb_try_duration 3s
 			lb_try_interval 200ms
