@@ -97,7 +97,7 @@ Module contract:
   - `AUTH_MODE=supabase`: `POST /api/auth/request-password-reset` always triggers Supabase recovery (`/auth/v1/recover`) with redirect target `/auth/verify?type=recovery` (not gated by local user presence)
   - `AUTH_MODE=legacy`: local OTP reset token issuance/email delivery path remains active
 - Supabase recovery-link confirmation (`POST /api/auth/supabase/confirm`, `type=recovery`) now issues an opaque, short-lived one-time recovery context cookie and redirects to `/reset-password` without exposing auth mode in URL query params.
-- Supabase password reset completion (`POST /api/auth/reset-password/supabase`) accepts bearer recovery tokens for compatibility but primarily consumes server-stored one-time recovery context (with refresh-token retry fallback), and clears recovery context cookie state on both success and failure.
+- Supabase password reset completion (`POST /api/auth/reset-password/supabase`) accepts bearer recovery tokens for compatibility but primarily uses server-stored recovery context (with refresh-token retry fallback). Invalid/expired-token failures clear context, while password-policy failures return Supabase policy detail and keep context so users can retry with a stronger password.
 - Sign-in capability discovery is API-owned via `GET /api/auth/methods` (`password`, `passkey`, `magic_link`, `otp`) so web login alternatives stay mode/config aware.
 - Request-style auth endpoints keep anti-enumeration-safe generic responses:
   - `POST /api/auth/request-password-reset`

@@ -88,7 +88,7 @@ from app.services.supabase_auth import (
     send_supabase_magic_link,
     send_supabase_password_recovery,
     send_supabase_signin_otp,
-    update_supabase_password,
+    update_supabase_password_detailed,
     verify_supabase_signin_otp,
     verify_supabase_password,
 )
@@ -377,7 +377,7 @@ async def _issue_supabase_recovery_context(*, access_token: str, refresh_token: 
     return token
 
 
-async def _consume_supabase_recovery_context(*, token: str) -> tuple[str, str | None] | None:
+async def _load_supabase_recovery_context(*, token: str) -> tuple[str, str | None] | None:
     normalized_token = str(token or "").strip()
     if not normalized_token:
         return None
@@ -385,9 +385,9 @@ async def _consume_supabase_recovery_context(*, token: str) -> tuple[str, str | 
 
     try:
         redis = await get_redis_client()
-        raw_payload = await redis.execute_command("GETDEL", key)
+        raw_payload = await redis.get(key)
     except Exception as exc:  # noqa: BLE001
-        logger.warning("Supabase recovery context consume failed: %s", type(exc).__name__)
+        logger.warning("Supabase recovery context load failed: %s", type(exc).__name__)
         return None
 
     if raw_payload is None:
@@ -412,6 +412,26 @@ async def _consume_supabase_recovery_context(*, token: str) -> tuple[str, str | 
     if not access_token:
         return None
     return access_token, (refresh_token or None)
+
+
+async def _delete_supabase_recovery_context(*, token: str) -> None:
+    normalized_token = str(token or "").strip()
+    if not normalized_token:
+        return
+    key = _supabase_recovery_context_key(normalized_token)
+    try:
+        redis = await get_redis_client()
+        await redis.delete(key)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Supabase recovery context delete failed: %s", type(exc).__name__)
+
+
+def _is_supabase_password_policy_failure(*, status_code: int | None, error_message: str | None) -> bool:
+    if status_code == 422:
+        return True
+    if status_code == 400 and "password" in str(error_message or "").lower():
+        return True
+    return False
 
 
 async def _issue_passkey_setup_context(db: AsyncSession, *, user_id: UUID, source: str) -> str:
@@ -1552,11 +1572,12 @@ async def reset_password_supabase(
     db: AsyncSession = Depends(get_db),
     supabase_recovery_context_cookie: Annotated[str | None, Cookie(alias=SUPABASE_RECOVERY_CONTEXT_COOKIE)] = None,
 ) -> Response:
+    recovery_context_token = str(supabase_recovery_context_cookie or "").strip()
     header_access_token = _extract_bearer_token(request.headers.get("authorization"))
     access_token = str(header_access_token or "").strip()
     refresh_token: str | None = None
     if not access_token:
-        context = await _consume_supabase_recovery_context(token=supabase_recovery_context_cookie or "")
+        context = await _load_supabase_recovery_context(token=recovery_context_token)
         if context is not None:
             access_token, refresh_token = context
 
@@ -1566,12 +1587,21 @@ async def reset_password_supabase(
             detail="Recovery token required",
         )
 
-    supabase_identity = await update_supabase_password(
+    password_update_result = await update_supabase_password_detailed(
         access_token=access_token,
         new_password=payload.new_password,
         refresh_token=refresh_token,
     )
+    supabase_identity = password_update_result.identity
     if supabase_identity is None:
+        if _is_supabase_password_policy_failure(
+            status_code=password_update_result.status_code,
+            error_message=password_update_result.error_message,
+        ):
+            detail = password_update_result.error_message or "Password does not meet policy requirements"
+            return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"detail": detail})
+        if recovery_context_token:
+            await _delete_supabase_recovery_context(token=recovery_context_token)
         return _supabase_recovery_error_response(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid or expired recovery link",
@@ -1605,6 +1635,8 @@ async def reset_password_supabase(
     if background_tasks.tasks:
         response.background = background_tasks
     set_session_cookie(response, session_token, False)
+    if recovery_context_token:
+        await _delete_supabase_recovery_context(token=recovery_context_token)
     _clear_supabase_recovery_context_cookie(response)
     passkey_setup_context_token = await _issue_passkey_setup_context(db, user_id=user.id, source="reset")
     _set_passkey_setup_context_cookie(response, passkey_setup_context_token)
