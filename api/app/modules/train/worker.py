@@ -87,6 +87,7 @@ POLL_CURVE_ANCHOR_72H_MEAN_SECONDS = 2.0
 POLL_GAMMA_SHAPE = 4.0
 POLL_DELAY_MIN_SECONDS = 0.1
 WAITING_STATUS_POLL_SECONDS = 5 * 60
+SEARCH_ATTEMPT_SCHEDULE_SAMPLE_LIMIT = 5
 SYNC_PROVIDER_META_STABLE_KEYS = frozenset(
     {
         "provider",
@@ -242,6 +243,43 @@ def _pick_reservable_seat_class(schedule: ProviderSchedule, seat_class: str) -> 
     if _wait_reserve_supported(schedule):
         return _standby_seat_class(seat_class)
     return None
+
+
+def _to_optional_int(value: Any) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _build_search_schedule_evaluation(
+    *,
+    ranked_row: dict[str, Any],
+    schedule: ProviderSchedule | None,
+    requested_seat_class: str,
+) -> dict[str, Any]:
+    schedule_id = str(ranked_row.get("schedule_id") or "")
+    evaluation: dict[str, Any] = {
+        "rank": _to_optional_int(ranked_row.get("rank")),
+        "schedule_id": schedule_id,
+        "matched_in_search": schedule is not None,
+    }
+    if schedule is None:
+        return evaluation
+
+    availability = schedule.availability or {}
+    evaluation.update(
+        {
+            "train_no": schedule.train_no,
+            "departure_at": schedule.departure_at.isoformat(),
+            "arrival_at": schedule.arrival_at.isoformat(),
+            "general_available": bool(availability.get("general")),
+            "special_available": bool(availability.get("special")),
+            "wait_reserve_supported": _wait_reserve_supported(schedule),
+            "resolvable_seat_class": _pick_reservable_seat_class(schedule, requested_seat_class),
+        }
+    )
+    return evaluation
 
 
 def _is_provider_auth_required_error(outcome: ProviderOutcome) -> bool:
@@ -1229,6 +1267,25 @@ async def _provider_search_and_reserve(
         for candidate in [schedule_map.get(str(row.get("schedule_id") or ""))]
         if candidate is not None
     ]
+    seat_preference_order = list(_seat_preference_order(spec["seat_class"]))
+    ranked_unresolved_schedule_ids: list[str] = []
+    ranked_evaluation_sample: list[dict[str, Any]] = []
+    ranked_resolvable_count = 0
+    for row in ranked_for_provider:
+        schedule_id = str(row.get("schedule_id") or "")
+        candidate = schedule_map.get(schedule_id)
+        evaluation = _build_search_schedule_evaluation(
+            ranked_row=row,
+            schedule=candidate,
+            requested_seat_class=spec["seat_class"],
+        )
+        if candidate is None and schedule_id:
+            ranked_unresolved_schedule_ids.append(schedule_id)
+        elif evaluation.get("resolvable_seat_class") is not None:
+            ranked_resolvable_count += 1
+
+        if len(ranked_evaluation_sample) < SEARCH_ATTEMPT_SCHEDULE_SAMPLE_LIMIT:
+            ranked_evaluation_sample.append(evaluation)
 
     selected_schedule: ProviderSchedule | None = None
     selected_rank: int | None = None
@@ -1257,6 +1314,13 @@ async def _provider_search_and_reserve(
                     "rate_limit_wait_ms": limit_result.waited_ms,
                     "rate_limit_rounds": limit_result.rounds,
                     "requested_seat_class": spec["seat_class"],
+                    "seat_preference_order": seat_preference_order,
+                    "ranked_schedule_count": len(ranked_for_provider),
+                    "search_schedule_count": len(schedule_map),
+                    "ranked_resolvable_count": ranked_resolvable_count,
+                    "ranked_unresolved_schedule_count": len(ranked_unresolved_schedule_ids),
+                    "ranked_unresolved_schedule_ids": ranked_unresolved_schedule_ids[:SEARCH_ATTEMPT_SCHEDULE_SAMPLE_LIMIT],
+                    "ranked_evaluation_sample": ranked_evaluation_sample,
                 },
                 started_at=search_started,
             )

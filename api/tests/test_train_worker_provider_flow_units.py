@@ -114,6 +114,21 @@ async def test_provider_search_and_reserve_handles_no_seat_and_reserve_exception
     assert no_seat.retryable is True
     assert no_seat.attempts[-1].error_code == "seat_unavailable"
     assert no_seat.attempts[-1].error_message_safe == "No reservable seats are available for this schedule."
+    assert no_seat.attempts[-1].meta_json_safe is not None
+    assert no_seat.attempts[-1].meta_json_safe["requested_seat_class"] == "general"
+    assert no_seat.attempts[-1].meta_json_safe["seat_preference_order"] == ["general"]
+    assert no_seat.attempts[-1].meta_json_safe["ranked_schedule_count"] == 1
+    assert no_seat.attempts[-1].meta_json_safe["search_schedule_count"] == 1
+    assert no_seat.attempts[-1].meta_json_safe["ranked_resolvable_count"] == 0
+    assert no_seat.attempts[-1].meta_json_safe["ranked_unresolved_schedule_count"] == 0
+    eval_sample = no_seat.attempts[-1].meta_json_safe["ranked_evaluation_sample"]
+    assert isinstance(eval_sample, list)
+    assert len(eval_sample) == 1
+    assert eval_sample[0]["schedule_id"] == "SRT-1"
+    assert eval_sample[0]["matched_in_search"] is True
+    assert eval_sample[0]["general_available"] is False
+    assert eval_sample[0]["special_available"] is False
+    assert eval_sample[0]["resolvable_seat_class"] is None
 
     class _ReserveBoomClient:
         async def login(self, **_kwargs):  # noqa: ANN003
@@ -138,6 +153,39 @@ async def test_provider_search_and_reserve_handles_no_seat_and_reserve_exception
     assert reserve_boom.candidate is None
     assert reserve_boom.retryable is True
     assert reserve_boom.attempts[-1].error_code == "provider_transport_error"
+
+
+@pytest.mark.asyncio
+async def test_provider_search_and_reserve_reports_unresolved_ranked_schedule_metadata(monkeypatch):
+    class _MismatchedScheduleClient:
+        async def login(self, **_kwargs):  # noqa: ANN003
+            return ProviderOutcome(ok=True)
+
+        async def search(self, **_kwargs):  # noqa: ANN003
+            return ProviderOutcome(ok=True, data={"schedules": [_schedule(schedule_id="SRT-OTHER")]})
+
+    monkeypatch.setattr(train_worker, "get_provider_client", lambda _provider: _MismatchedScheduleClient())
+    unresolved = await train_worker._provider_search_and_reserve(
+        provider="SRT",
+        ranked_for_provider=_ranked("SRT-MISSING"),
+        spec=_spec(),
+        auto_pay_enabled=True,
+        task_user_id=uuid4(),
+        credentials={"username": "u", "password": "p"},
+        limiter=_Limiter(),
+    )
+    assert unresolved.candidate is None
+    assert unresolved.retryable is True
+    assert unresolved.attempts[-1].error_code == "seat_unavailable"
+    assert unresolved.attempts[-1].meta_json_safe is not None
+    assert unresolved.attempts[-1].meta_json_safe["ranked_unresolved_schedule_count"] == 1
+    assert unresolved.attempts[-1].meta_json_safe["ranked_unresolved_schedule_ids"] == ["SRT-MISSING"]
+    assert unresolved.attempts[-1].meta_json_safe["search_schedule_count"] == 1
+    eval_sample = unresolved.attempts[-1].meta_json_safe["ranked_evaluation_sample"]
+    assert isinstance(eval_sample, list)
+    assert len(eval_sample) == 1
+    assert eval_sample[0]["schedule_id"] == "SRT-MISSING"
+    assert eval_sample[0]["matched_in_search"] is False
 
 
 @pytest.mark.asyncio
