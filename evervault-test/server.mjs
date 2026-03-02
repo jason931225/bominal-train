@@ -138,7 +138,6 @@ async function runHandler(req, res) {
       timeoutMs: config.pollTimeoutSeconds * 1000,
       formData: {
         encrypted_card_number: encryptedCardNumber,
-        encrypted_card_number_echo: encryptedCardNumber,
         session_id: created.id,
         session_nonce: created.nonce,
         expected_last4: expectedLast4,
@@ -210,13 +209,12 @@ function relayListenerHandler(req, res) {
   const sessionId = String(req.body?.session_id || "").trim();
   const nonce = String(req.body?.session_nonce || "").trim();
   const decryptedPan = String(req.body?.encrypted_card_number || "").trim();
-  const relayEchoEncryptedPan = String(req.body?.encrypted_card_number_echo || "").trim();
 
   if (!sessionId || !nonce || !decryptedPan) {
     return res.status(400).json({ ok: false, detail: "missing session_id, session_nonce, or encrypted_card_number" });
   }
 
-  const receipt = sessionStore.recordListenerReceipt({ sessionId, nonce, decryptedPan, relayEchoEncryptedPan });
+  const receipt = sessionStore.recordListenerReceipt({ sessionId, nonce, decryptedPan });
   if (!receipt.ok) {
     return res.status(400).json({ ok: false, detail: receipt.error });
   }

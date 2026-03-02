@@ -14,7 +14,6 @@ This project is isolated under `evervault-test/` and has no dependency on the ma
 - Listener endpoint at `/evervault-test/relay-listener` validating shared secret + session nonce.
 - Output includes:
   - browser encrypted token (`ev:...`)
-  - relay echo encrypted token
   - decrypted PAN from listener
   - masked PAN + last4 verification
 - In-memory session storage with TTL (no DB or disk persistence).
@@ -57,7 +56,7 @@ Keep this route temporary and remove it after validation.
 4. Inspect final result payload:
    - `status: received`
    - `proof.matched_expected_last4: true`
-   - `proof.browser_encrypted_pan` and `proof.relay_echo_encrypted_pan`
+   - `proof.browser_encrypted_pan`
    - `proof.decrypted_pan` (mock PAN in this tester)
 
 ## Security Notes

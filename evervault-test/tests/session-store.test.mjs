@@ -21,14 +21,12 @@ describe("SessionStore", () => {
       sessionId: created.id,
       nonce: created.nonce,
       decryptedPan: "4111111111111111",
-      relayEchoEncryptedPan: encryptedToken,
     });
     assert.equal(received.ok, true);
 
     const result = store.getResult(created.id);
     assert.equal(result.status, "received");
     assert.equal(result.proof.browser_encrypted_pan, encryptedToken);
-    assert.equal(result.proof.relay_echo_encrypted_pan, encryptedToken);
     assert.equal(result.proof.decrypted_pan, "4111111111111111");
   });
 

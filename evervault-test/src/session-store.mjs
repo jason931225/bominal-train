@@ -93,7 +93,7 @@ export class SessionStore {
     return true;
   }
 
-  recordListenerReceipt({ sessionId, nonce, decryptedPan, relayEchoEncryptedPan }) {
+  recordListenerReceipt({ sessionId, nonce, decryptedPan }) {
     const session = this.sessions.get(sessionId);
     if (!session) {
       return { ok: false, error: "Session not found" };
@@ -122,7 +122,6 @@ export class SessionStore {
       matched_expected_last4: cardLast4 === session.expected_last4,
       received_at: toIso(this.now()),
       browser_encrypted_pan: session.browser_encrypted_pan,
-      relay_echo_encrypted_pan: String(relayEchoEncryptedPan || ""),
       decrypted_pan: digits,
     };
 
@@ -237,7 +236,6 @@ export class SessionStore {
       matched_expected_last4: session.proof.matched_expected_last4,
       received_at: session.proof.received_at,
       browser_encrypted_pan: session.proof.browser_encrypted_pan,
-      relay_echo_encrypted_pan: session.proof.relay_echo_encrypted_pan,
       decrypted_pan: session.proof.decrypted_pan,
     };
 
