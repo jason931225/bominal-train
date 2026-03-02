@@ -31,7 +31,7 @@ export class SessionStore {
     this.sessions = new Map();
   }
 
-  createSession({ expectedLast4, revealFullOnce }) {
+  createSession({ expectedLast4, browserEncryptedPan }) {
     const createdAtMs = this.now();
     const id = this.randomUUID();
     const nonce = this.randomNonce();
@@ -43,8 +43,7 @@ export class SessionStore {
       expires_at: toIso(createdAtMs + this.ttlSeconds * 1000),
       expires_at_ms: createdAtMs + this.ttlSeconds * 1000,
       expected_last4: String(expectedLast4 || ""),
-      reveal_full_once: Boolean(revealFullOnce),
-      full_pan_consumed: false,
+      browser_encrypted_pan: String(browserEncryptedPan || ""),
       status: "pending",
       error: null,
       relay: null,
@@ -94,7 +93,7 @@ export class SessionStore {
     return true;
   }
 
-  recordListenerReceipt({ sessionId, nonce, decryptedPan }) {
+  recordListenerReceipt({ sessionId, nonce, decryptedPan, relayEchoEncryptedPan }) {
     const session = this.sessions.get(sessionId);
     if (!session) {
       return { ok: false, error: "Session not found" };
@@ -122,6 +121,8 @@ export class SessionStore {
       last4: cardLast4,
       matched_expected_last4: cardLast4 === session.expected_last4,
       received_at: toIso(this.now()),
+      browser_encrypted_pan: session.browser_encrypted_pan,
+      relay_echo_encrypted_pan: String(relayEchoEncryptedPan || ""),
       decrypted_pan: digits,
     };
 
@@ -194,6 +195,9 @@ export class SessionStore {
       created_at: session.created_at,
       expires_at: session.expires_at,
       relay: session.relay,
+      input: {
+        browser_encrypted_pan: session.browser_encrypted_pan,
+      },
       error: null,
     };
   }
@@ -205,6 +209,9 @@ export class SessionStore {
       created_at: session.created_at,
       expires_at: session.expires_at,
       relay: session.relay,
+      input: {
+        browser_encrypted_pan: session.browser_encrypted_pan,
+      },
       error: session.error || "Unknown failure",
     };
   }
@@ -216,6 +223,9 @@ export class SessionStore {
       created_at: session.created_at,
       expires_at: session.expires_at,
       relay: session.relay,
+      input: {
+        browser_encrypted_pan: session.browser_encrypted_pan,
+      },
       error: session.error || "Session expired",
     };
   }
@@ -226,12 +236,10 @@ export class SessionStore {
       last4: session.proof.last4,
       matched_expected_last4: session.proof.matched_expected_last4,
       received_at: session.proof.received_at,
+      browser_encrypted_pan: session.proof.browser_encrypted_pan,
+      relay_echo_encrypted_pan: session.proof.relay_echo_encrypted_pan,
+      decrypted_pan: session.proof.decrypted_pan,
     };
-
-    if (session.reveal_full_once && !session.full_pan_consumed) {
-      proof.full_pan_once = session.proof.decrypted_pan;
-      session.full_pan_consumed = true;
-    }
 
     return {
       status: "received",

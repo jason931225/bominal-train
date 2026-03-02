@@ -14,6 +14,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+const publicDir = path.join(__dirname, "public");
 
 const config = buildRuntimeConfig(process.env);
 
@@ -26,7 +27,8 @@ setInterval(() => {
 app.disable("x-powered-by");
 app.use(express.json({ limit: "100kb" }));
 app.use(express.urlencoded({ extended: false }));
-app.use(express.static(path.join(__dirname, "public")));
+app.use(express.static(publicDir));
+app.use("/evervault-test", express.static(publicDir));
 
 function missingConfigKeys() {
   const keys = [];
@@ -47,7 +49,7 @@ function sanitizeRelayBodySnippet(text) {
   return truncated.replace(/\s+/g, " ").trim();
 }
 
-app.get("/api/test/config", (_req, res) => {
+function getConfigHandler(_req, res) {
   res.json({
     evervault_team_id: config.evervaultTeamId,
     evervault_app_id: config.evervaultAppId,
@@ -55,9 +57,9 @@ app.get("/api/test/config", (_req, res) => {
     listener_path: config.listenerPath,
     destination_domain: config.destinationDomain,
   });
-});
+}
 
-app.post("/api/test/self-check", async (_req, res) => {
+async function selfCheckHandler(_req, res) {
   const missingKeys = missingConfigKeys();
   if (missingKeys.length > 0) {
     return res.status(400).json({
@@ -86,9 +88,9 @@ app.post("/api/test/self-check", async (_req, res) => {
       detail: toErrorMessage(error, "Evervault management auth check failed"),
     });
   }
-});
+}
 
-app.post("/api/test/run", async (req, res) => {
+async function runHandler(req, res) {
   const missingKeys = missingConfigKeys();
   if (missingKeys.length > 0) {
     return res.status(400).json({
@@ -99,7 +101,6 @@ app.post("/api/test/run", async (req, res) => {
 
   const encryptedCardNumber = String(req.body?.encrypted_card_number || "").trim();
   const expectedLast4 = String(req.body?.expected_last4 || "").trim();
-  const revealFullOnce = Boolean(req.body?.reveal_full_once);
 
   if (!encryptedCardNumber || !encryptedCardNumber.startsWith("ev:")) {
     return res.status(400).json({
@@ -117,7 +118,7 @@ app.post("/api/test/run", async (req, res) => {
 
   const created = sessionStore.createSession({
     expectedLast4,
-    revealFullOnce,
+    browserEncryptedPan: encryptedCardNumber,
   });
 
   try {
@@ -137,6 +138,7 @@ app.post("/api/test/run", async (req, res) => {
       timeoutMs: config.pollTimeoutSeconds * 1000,
       formData: {
         encrypted_card_number: encryptedCardNumber,
+        encrypted_card_number_echo: encryptedCardNumber,
         session_id: created.id,
         session_nonce: created.nonce,
         expected_last4: expectedLast4,
@@ -168,6 +170,9 @@ app.post("/api/test/run", async (req, res) => {
         listener_path: relayRuntime.listenerPath,
         dispatch_status_code: relayResponse.statusCode,
       },
+      input: {
+        browser_encrypted_pan: encryptedCardNumber,
+      },
     });
   } catch (error) {
     sessionStore.recordFailure(created.id, toErrorMessage(error, "Relay flow setup failed"));
@@ -178,9 +183,9 @@ app.post("/api/test/run", async (req, res) => {
       detail: toErrorMessage(error, "Relay flow setup failed"),
     });
   }
-});
+}
 
-app.get("/api/test/result/:sessionId", (req, res) => {
+function resultHandler(req, res) {
   const sessionId = String(req.params.sessionId || "").trim();
   if (!sessionId) {
     return res.status(400).json({
@@ -194,9 +199,9 @@ app.get("/api/test/result/:sessionId", (req, res) => {
     return res.status(404).json(result);
   }
   return res.json(result);
-});
+}
 
-app.post("/evervault-test/relay-listener", (req, res) => {
+function relayListenerHandler(req, res) {
   const sharedSecret = String(req.body?.shared_secret || "").trim();
   if (sharedSecret !== config.sharedSecret) {
     return res.status(401).json({ ok: false, detail: "listener shared_secret mismatch" });
@@ -205,12 +210,13 @@ app.post("/evervault-test/relay-listener", (req, res) => {
   const sessionId = String(req.body?.session_id || "").trim();
   const nonce = String(req.body?.session_nonce || "").trim();
   const decryptedPan = String(req.body?.encrypted_card_number || "").trim();
+  const relayEchoEncryptedPan = String(req.body?.encrypted_card_number_echo || "").trim();
 
   if (!sessionId || !nonce || !decryptedPan) {
     return res.status(400).json({ ok: false, detail: "missing session_id, session_nonce, or encrypted_card_number" });
   }
 
-  const receipt = sessionStore.recordListenerReceipt({ sessionId, nonce, decryptedPan });
+  const receipt = sessionStore.recordListenerReceipt({ sessionId, nonce, decryptedPan, relayEchoEncryptedPan });
   if (!receipt.ok) {
     return res.status(400).json({ ok: false, detail: receipt.error });
   }
@@ -219,10 +225,25 @@ app.post("/evervault-test/relay-listener", (req, res) => {
   return res.json({
     ok: true,
     status: result.status,
-    masked_pan: result?.proof?.masked_pan || null,
-    matched_expected_last4: result?.proof?.matched_expected_last4 || false,
+    proof: result?.proof || null,
   });
-});
+}
+
+app.get("/api/test/config", getConfigHandler);
+app.get("/evervault-test/api/test/config", getConfigHandler);
+
+app.post("/api/test/self-check", selfCheckHandler);
+app.post("/evervault-test/api/test/self-check", selfCheckHandler);
+
+app.post("/api/test/run", runHandler);
+app.post("/evervault-test/api/test/run", runHandler);
+
+app.get("/api/test/result/:sessionId", resultHandler);
+app.get("/evervault-test/api/test/result/:sessionId", resultHandler);
+
+// Support both prefix-preserving and prefix-stripping reverse proxies.
+app.post("/evervault-test/relay-listener", relayListenerHandler);
+app.post("/relay-listener", relayListenerHandler);
 
 app.listen(config.port, "0.0.0.0", () => {
   // Intentionally avoid logging request payloads to protect decrypted values.

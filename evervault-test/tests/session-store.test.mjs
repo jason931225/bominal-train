@@ -4,7 +4,7 @@ import { describe, it } from "node:test";
 import { SessionStore } from "../src/session-store.mjs";
 
 describe("SessionStore", () => {
-  it("returns full pan only once when reveal mode is enabled", () => {
+  it("returns encrypted + decrypted proof values after listener receipt", () => {
     let nowMs = Date.UTC(2026, 2, 2, 0, 0, 0);
     const store = new SessionStore({
       ttlSeconds: 120,
@@ -13,23 +13,23 @@ describe("SessionStore", () => {
       randomNonce: () => "nonce-1",
     });
 
-    const created = store.createSession({ expectedLast4: "1111", revealFullOnce: true });
+    const encryptedToken = "ev:abcd1234";
+    const created = store.createSession({ expectedLast4: "1111", browserEncryptedPan: encryptedToken });
     store.recordRelayDispatch(created.id, { dispatchStatusCode: 200, relayId: "relay_1", relayDomain: "demo.relay.evervault.app" });
 
     const received = store.recordListenerReceipt({
       sessionId: created.id,
       nonce: created.nonce,
       decryptedPan: "4111111111111111",
+      relayEchoEncryptedPan: encryptedToken,
     });
     assert.equal(received.ok, true);
 
-    const firstResult = store.getResult(created.id);
-    assert.equal(firstResult.status, "received");
-    assert.equal(firstResult.proof.full_pan_once, "4111111111111111");
-
-    const secondResult = store.getResult(created.id);
-    assert.equal(secondResult.status, "received");
-    assert.equal("full_pan_once" in secondResult.proof, false);
+    const result = store.getResult(created.id);
+    assert.equal(result.status, "received");
+    assert.equal(result.proof.browser_encrypted_pan, encryptedToken);
+    assert.equal(result.proof.relay_echo_encrypted_pan, encryptedToken);
+    assert.equal(result.proof.decrypted_pan, "4111111111111111");
   });
 
   it("marks stale pending sessions as expired", () => {
@@ -41,7 +41,7 @@ describe("SessionStore", () => {
       randomNonce: () => "nonce-2",
     });
 
-    const created = store.createSession({ expectedLast4: "1111", revealFullOnce: false });
+    const created = store.createSession({ expectedLast4: "1111", browserEncryptedPan: "ev:xyz" });
 
     nowMs += 3000;
     const expired = store.getResult(created.id);

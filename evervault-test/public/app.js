@@ -1,13 +1,12 @@
 const statusLine = document.getElementById("status-line");
 const resultJson = document.getElementById("result-json");
 const mockPanInput = document.getElementById("mock-pan");
-const unsafeToggle = document.getElementById("unsafe-proof-toggle");
 const selfCheckBtn = document.getElementById("self-check-btn");
 const runTestBtn = document.getElementById("run-test-btn");
 
 let cachedConfig = null;
 let evervaultScriptPromise = null;
-const API_BASE = "./api/test";
+const API_BASE = "/evervault-test/api/test";
 
 function setStatus(message) {
   statusLine.textContent = message;
@@ -147,13 +146,17 @@ runTestBtn.addEventListener("click", async () => {
       appId: config.evervault_app_id,
     });
 
+    setResult({
+      stage: "browser_encrypted",
+      encrypted_card_number: encrypted,
+    });
+
     setStatus("Dispatching to backend and relay...");
     const runPayload = await fetchJson(`${API_BASE}/run`, {
       method: "POST",
       body: JSON.stringify({
         encrypted_card_number: encrypted,
         expected_last4: cardNumber.slice(-4),
-        reveal_full_once: Boolean(unsafeToggle.checked),
       }),
     });
 

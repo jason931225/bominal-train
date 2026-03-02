@@ -12,7 +12,11 @@ This project is isolated under `evervault-test/` and has no dependency on the ma
 - Browser encryption using Evervault JS SDK (`https://js.evervault.com/v2`).
 - Backend relay management (`GET/POST/PATCH /relays`) to auto-create/update the listener route.
 - Listener endpoint at `/evervault-test/relay-listener` validating shared secret + session nonce.
-- One-time full PAN proof mode (explicit unsafe toggle); default output remains masked.
+- Output includes:
+  - browser encrypted token (`ev:...`)
+  - relay echo encrypted token
+  - decrypted PAN from listener
+  - masked PAN + last4 verification
 - In-memory session storage with TTL (no DB or disk persistence).
 
 ## Local Run
@@ -49,12 +53,12 @@ Keep this route temporary and remove it after validation.
 
 1. Click **Self Check** to verify Evervault management auth.
 2. Enter a mock card number.
-3. Optionally enable **Allow one-time full PAN proof in result**.
-4. Click **Run Encrypt + Relay Test**.
-5. Inspect final result payload:
+3. Click **Run Encrypt + Relay Test**.
+4. Inspect final result payload:
    - `status: received`
    - `proof.matched_expected_last4: true`
-   - `proof.full_pan_once` appears only once when unsafe mode is enabled
+   - `proof.browser_encrypted_pan` and `proof.relay_echo_encrypted_pan`
+   - `proof.decrypted_pan` (mock PAN in this tester)
 
 ## Security Notes
 
