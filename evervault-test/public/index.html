@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>bominal Evervault Tester</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="card">
+        <h1>bominal Evervault Mini Tester</h1>
+        <p class="subtitle">Encrypt mock PAN in browser and verify Relay decryption at listener.</p>
+
+        <div class="row">
+          <label for="mock-pan">Mock Card Number</label>
+          <input id="mock-pan" type="text" placeholder="4111 1111 1111 1111" autocomplete="off" />
+        </div>
+
+        <label class="checkbox-row" for="unsafe-proof-toggle">
+          <input id="unsafe-proof-toggle" type="checkbox" />
+          Allow one-time full PAN proof in result
+        </label>
+
+        <div class="actions">
+          <button id="self-check-btn" type="button">Self Check</button>
+          <button id="run-test-btn" type="button">Run Encrypt + Relay Test</button>
+        </div>
+
+        <p id="status-line" class="status">Idle</p>
+
+        <pre id="result-json" class="result" aria-live="polite">No result yet.</pre>
+      </section>
+    </main>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
