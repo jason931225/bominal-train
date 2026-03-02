@@ -55,6 +55,9 @@ if [[ -z "${EV_TEST_DESTINATION_DOMAIN:-}" ]]; then
   export EV_TEST_DESTINATION_DOMAIN="$site"
 fi
 
+export EV_TEST_CARD_LISTENER_PATH="${EV_TEST_CARD_LISTENER_PATH:-/evervault-test/relay-listener-card}"
+export EV_TEST_SRT_LISTENER_PATH="${EV_TEST_SRT_LISTENER_PATH:-/evervault-test/srt-listener}"
+
 if [[ -z "${EV_TEST_SHARED_SECRET:-}" ]]; then
   if command -v openssl >/dev/null 2>&1; then
     export EV_TEST_SHARED_SECRET="$(openssl rand -hex 24)"

@@ -3,6 +3,7 @@
 Standalone mini fullstack tester for verifying:
 1. Browser-side Evervault JS encryption of a mock PAN.
 2. Relay-side decryption arriving at a listener endpoint.
+3. Go SDK outbound relay request with mock SRT payment payload + mock headers.
 
 This project is isolated under `evervault-test/` and has no dependency on the main bominal app runtime.
 
@@ -10,13 +11,17 @@ This project is isolated under `evervault-test/` and has no dependency on the ma
 
 - Frontend input for mock card number.
 - Frontend Evervault UI Card form for encrypted number/expiry/cvc capture.
+- Frontend mock SRT payment form (PAN/expiry/cvc) encrypted with Evervault JS.
 - Browser encryption using Evervault JS SDK (`https://js.evervault.com/v2`).
+- Go helper (`evervault-go`) dispatching outbound relay requests.
 - Backend relay management (`GET/POST/PATCH /relays`) to auto-create/update the listener route.
 - Listener endpoint at `/evervault-test/relay-listener` validating shared secret + session nonce.
 - UI Card listener endpoint at `/evervault-test/relay-listener-card` for multi-field decrypt tests.
+- Mock SRT listener endpoint at `/evervault-test/srt-listener`.
 - Output includes:
   - browser encrypted token (`ev:...`)
   - browser encrypted UI Card payload
+  - browser encrypted SRT payment payload
   - decrypted PAN from listener
   - masked PAN + last4 verification
 
@@ -46,6 +51,8 @@ Optional:
 - `EV_TEST_DESTINATION_DOMAIN` (default `www.bominal.com`)
 - `EV_TEST_LISTENER_PATH` (default `/evervault-test/relay-listener`)
 - `EV_TEST_CARD_LISTENER_PATH` (default `/evervault-test/relay-listener-card`)
+- `EV_TEST_SRT_LISTENER_PATH` (default `/evervault-test/srt-listener`)
+- `EV_TEST_GO_RELAY_SENDER_BIN` (default `evervault-test/bin/relay-sender`)
 
 ## VM Routing Note (`www.bominal.com`)
 
@@ -60,17 +67,23 @@ Keep this route temporary and remove it after validation.
 2. Enter a mock card number.
 3. Click **Run Encrypt + Relay Test**.
 4. Optionally fill Evervault UI Card and click **Run UI Card + Relay Test**.
-5. Inspect final result payload:
+5. Fill Mock SRT Payment Inputs and click **Run SRT Payload + Go SDK Relay Test**.
+6. Inspect final result payload:
    - `status: received`
    - `proof.matched_expected_last4: true`
    - `proof.browser_encrypted_pan`
    - `proof.decrypted_pan` (mock PAN in this tester)
+   - for SRT flow:
+     - `outbound_request.headers` (mock headers including encrypted values)
+     - `outbound_request.body` (mock SRT payload)
+     - `outbound_response.body` (listener response body)
 
 ## Security Notes
 
 - Do not use real card data.
 - Listener rejects requests without `shared_secret` and matching `session_nonce`.
-- Backend avoids payload logging and only returns masked PAN by default.
+- Mock SRT listener rejects requests without matching `X-EV-Test-Shared-Secret`.
+- Backend avoids payload logging; tester API response intentionally shows full mock payload for debugging.
 
 ## VM Run with prod env files
 

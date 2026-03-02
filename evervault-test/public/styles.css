@@ -45,6 +45,12 @@ h1 {
   gap: 8px;
 }
 
+.grid-two {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 label {
   font-size: 14px;
   color: #2b4464;
@@ -127,5 +133,9 @@ button:disabled {
 
   h1 {
     font-size: 22px;
+  }
+
+  .grid-two {
+    grid-template-columns: 1fr;
   }
 }

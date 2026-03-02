@@ -1,10 +1,18 @@
 const statusLine = document.getElementById("status-line");
 const resultJson = document.getElementById("result-json");
 const mockPanInput = document.getElementById("mock-pan");
+const srtCardNumberInput = document.getElementById("srt-card-number");
+const srtCardCvcInput = document.getElementById("srt-card-cvc");
+const srtCardExpiryMonthInput = document.getElementById("srt-card-expiry-month");
+const srtCardExpiryYearInput = document.getElementById("srt-card-expiry-year");
+const srtAmountInput = document.getElementById("srt-amount");
+const srtCurrencyInput = document.getElementById("srt-currency");
+const srtBookingReferenceInput = document.getElementById("srt-booking-reference");
 const cardStateLine = document.getElementById("ev-card-state");
 const selfCheckBtn = document.getElementById("self-check-btn");
 const runTestBtn = document.getElementById("run-test-btn");
 const runCardTestBtn = document.getElementById("run-card-test-btn");
+const runSrtGoTestBtn = document.getElementById("run-srt-go-test-btn");
 
 let cachedConfig = null;
 let evervaultScriptPromise = null;
@@ -55,6 +63,7 @@ function setBusy(isBusy) {
   selfCheckBtn.disabled = isBusy;
   runTestBtn.disabled = isBusy;
   runCardTestBtn.disabled = isBusy;
+  runSrtGoTestBtn.disabled = isBusy;
 }
 
 async function getConfig() {
@@ -300,6 +309,80 @@ runCardTestBtn.addEventListener("click", async () => {
   } catch (error) {
     setResult({ ok: false, detail: String(error.message || error) });
     setStatus("UI Card test failed");
+  } finally {
+    setBusy(false);
+  }
+});
+
+runSrtGoTestBtn.addEventListener("click", async () => {
+  setBusy(true);
+  setStatus("Preparing mock SRT payload (Go SDK relay test)...");
+
+  try {
+    const cardNumberDigits = digitsOnly(srtCardNumberInput.value);
+    const cvcDigits = digitsOnly(srtCardCvcInput.value);
+    const expiryMonthDigits = digitsOnly(srtCardExpiryMonthInput.value);
+    const expiryYearDigits = digitsOnly(srtCardExpiryYearInput.value);
+    const amount = String(srtAmountInput.value || "").trim();
+    const currency = String(srtCurrencyInput.value || "").trim().toUpperCase();
+    const bookingReference = String(srtBookingReferenceInput.value || "").trim();
+
+    if (cardNumberDigits.length < 12 || cardNumberDigits.length > 19) {
+      throw new Error("SRT card number must be 12-19 digits");
+    }
+    if (cvcDigits.length < 3 || cvcDigits.length > 4) {
+      throw new Error("SRT card CVC must be 3-4 digits");
+    }
+    if (expiryMonthDigits.length < 1 || expiryMonthDigits.length > 2) {
+      throw new Error("SRT expiry month must be 1-2 digits");
+    }
+    if (expiryYearDigits.length < 2 || expiryYearDigits.length > 4) {
+      throw new Error("SRT expiry year must be 2-4 digits");
+    }
+    if (!amount) {
+      throw new Error("SRT amount is required");
+    }
+    if (!currency) {
+      throw new Error("SRT currency is required");
+    }
+    if (!bookingReference) {
+      throw new Error("SRT booking reference is required");
+    }
+
+    setStatus("Encrypting SRT payment form fields in browser...");
+    const [encNumber, encMonth, encYear, encCvc] = await Promise.all([
+      encryptMockPan(cardNumberDigits),
+      encryptMockPan(expiryMonthDigits),
+      encryptMockPan(expiryYearDigits),
+      encryptMockPan(cvcDigits),
+    ]);
+
+    const encryptedPayload = {
+      encrypted_card_number: encNumber,
+      encrypted_card_expiry_month: encMonth,
+      encrypted_card_expiry_year: encYear,
+      encrypted_card_cvc: encCvc,
+      amount,
+      currency,
+      booking_reference: bookingReference,
+    };
+
+    setResult({
+      stage: "browser_srt_form_encrypted",
+      encrypted_payload: encryptedPayload,
+    });
+
+    setStatus("Sending mock SRT payload through Go SDK outbound relay...");
+    const runPayload = await fetchJson(`${API_BASE}/run-srt-go`, {
+      method: "POST",
+      body: JSON.stringify(encryptedPayload),
+    });
+
+    setResult(runPayload);
+    setStatus("Go SDK relay test completed");
+  } catch (error) {
+    setResult({ ok: false, detail: String(error.message || error) });
+    setStatus("Go SDK relay test failed");
   } finally {
     setBusy(false);
   }

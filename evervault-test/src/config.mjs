@@ -39,6 +39,7 @@ export function buildRuntimeConfig(env = process.env) {
     destinationDomain,
     listenerPath: clean(env.EV_TEST_LISTENER_PATH || "/evervault-test/relay-listener"),
     cardListenerPath: clean(env.EV_TEST_CARD_LISTENER_PATH || "/evervault-test/relay-listener-card"),
+    srtListenerPath: clean(env.EV_TEST_SRT_LISTENER_PATH || "/evervault-test/srt-listener"),
     sharedSecret: clean(env.EV_TEST_SHARED_SECRET),
     resultTtlSeconds: Number(env.EV_TEST_RESULT_TTL_SECONDS || 120),
     pollTimeoutSeconds: Number(env.EV_TEST_POLL_TIMEOUT_SECONDS || 20),

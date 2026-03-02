@@ -18,6 +18,19 @@
         </div>
 
         <div class="row">
+          <label>Mock SRT Payment Inputs (encrypted in browser)</label>
+          <div class="grid-two">
+            <input id="srt-card-number" type="text" placeholder="Card Number" autocomplete="off" />
+            <input id="srt-card-cvc" type="text" placeholder="CVC" autocomplete="off" />
+            <input id="srt-card-expiry-month" type="text" placeholder="Expiry Month (MM)" autocomplete="off" />
+            <input id="srt-card-expiry-year" type="text" placeholder="Expiry Year (YY or YYYY)" autocomplete="off" />
+            <input id="srt-amount" type="text" placeholder="Amount" value="1300" autocomplete="off" />
+            <input id="srt-currency" type="text" placeholder="Currency" value="TWD" autocomplete="off" />
+            <input id="srt-booking-reference" type="text" placeholder="Booking Reference" value="SRT-ORDER-0001" autocomplete="off" />
+          </div>
+        </div>
+
+        <div class="row">
           <label>Evervault UI Card</label>
           <div id="ev-card-fields" class="ev-card-host" aria-label="Evervault UI Card"></div>
           <p id="ev-card-state" class="helper">Initializing UI Card...</p>
@@ -27,6 +40,7 @@
           <button id="self-check-btn" type="button">Self Check</button>
           <button id="run-test-btn" type="button">Run Encrypt + Relay Test</button>
           <button id="run-card-test-btn" type="button">Run UI Card + Relay Test</button>
+          <button id="run-srt-go-test-btn" type="button">Run SRT Payload + Go SDK Relay Test</button>
         </div>
 
         <p id="status-line" class="status">Idle (auto-updates while polling; no page refresh needed)</p>
