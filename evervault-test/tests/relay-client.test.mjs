@@ -24,8 +24,6 @@ describe("buildExpectedRelayDefinition", () => {
     assert.equal(payload.routes[1].path, "/evervault-test/relay-listener-card");
     assert.deepEqual(payload.routes[1].request[0].selections, [
       { type: "form", selector: "encrypted_card_number" },
-      { type: "form", selector: "encrypted_card_expiry_month" },
-      { type: "form", selector: "encrypted_card_expiry_year" },
       { type: "form", selector: "encrypted_card_cvc" },
     ]);
   });

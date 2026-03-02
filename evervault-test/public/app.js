@@ -268,6 +268,12 @@ runCardTestBtn.addEventListener("click", async () => {
     if (!encryptedCard.encrypted_card_number || !encryptedCard.encrypted_card_number.startsWith("ev:")) {
       throw new Error("Fill UI Card with valid card details so encrypted values are available");
     }
+    if (!encryptedCard.encrypted_card_cvc || !encryptedCard.encrypted_card_cvc.startsWith("ev:")) {
+      throw new Error("UI Card CVC is required and must be encrypted");
+    }
+    if (!encryptedCard.encrypted_card_expiry_month || !encryptedCard.encrypted_card_expiry_year) {
+      throw new Error("UI Card expiry month/year are required");
+    }
 
     setResult({
       stage: "browser_ui_card_encrypted",

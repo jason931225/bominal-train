@@ -19,6 +19,8 @@ This project is isolated under `evervault-test/` and has no dependency on the ma
   - browser encrypted UI Card payload
   - decrypted PAN from listener
   - masked PAN + last4 verification
+
+Note: Evervault UI Card returns encrypted `number` + `cvc`, but `expiry.month` / `expiry.year` are plaintext digits.
 - In-memory session storage with TTL (no DB or disk persistence).
 
 ## Local Run

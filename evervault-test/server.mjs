@@ -209,17 +209,25 @@ async function runCardHandler(req, res) {
     });
   }
 
-  for (const [field, value] of Object.entries({
-    encrypted_card_expiry_month: encryptedExpiryMonth,
-    encrypted_card_expiry_year: encryptedExpiryYear,
-    encrypted_card_cvc: encryptedCvc,
-  })) {
-    if (value && !value.startsWith("ev:")) {
-      return res.status(400).json({
-        ok: false,
-        detail: `${field} must be Evervault-encrypted when provided`,
-      });
-    }
+  if (encryptedCvc && !encryptedCvc.startsWith("ev:")) {
+    return res.status(400).json({
+      ok: false,
+      detail: "encrypted_card_cvc must be Evervault-encrypted when provided",
+    });
+  }
+
+  if (encryptedExpiryMonth && !/^\d{1,2}$/.test(encryptedExpiryMonth)) {
+    return res.status(400).json({
+      ok: false,
+      detail: "encrypted_card_expiry_month must be plain month digits from UI Card",
+    });
+  }
+
+  if (encryptedExpiryYear && !/^\d{2,4}$/.test(encryptedExpiryYear)) {
+    return res.status(400).json({
+      ok: false,
+      detail: "encrypted_card_expiry_year must be plain year digits from UI Card",
+    });
   }
 
   const created = sessionStore.createSession({
