@@ -68,6 +68,7 @@ Pointer format convention (mandatory):
 - [PTR-PLAN-002] `docs/plans/active/README.md` - active plans state marker.
 - [PTR-PLAN-003] `docs/plans/archive/2026-02-14-program-closure-report.md` - restructure closure report.
 - [PTR-PLAN-004] `docs/plans/active/2026-03-01-rust-leptos-ssr-cutover.md` - executable plan for Rust 2024 + Leptos SSR migration track.
+- [PTR-PLAN-005] `docs/plans/active/2026-03-02-rust-backend-parity-continuation.md` - task-by-task implementation plan for Rust backend parity completion (API + worker + data lifecycle).
 - [PTR-PLAY-001] `docs/playbooks/README.md` - playbook index.
 - [PTR-PLAY-002] `docs/playbooks/TEMPLATE.md` - playbook template.
 - [PTR-PLAY-003] `docs/playbooks/release-1.0.0-deploy-readiness.md` - release readiness and deployment execution playbook for version 1.0.0.
@@ -95,6 +96,7 @@ Pointer format convention (mandatory):
 - [PTR-DOCS-017] `docs/handoff/RESOURCE_MANIFEST.json` - machine-readable handoff resource manifest.
 - [PTR-DOCS-018] `docs/handoff/output/auth_scope_probe/latest_auth_scope_probe.json` - auth-scope probe evidence snapshot.
 - [PTR-DOCS-019] `docs/handoff/RUST_IMPLEMENTATION_FILE_MANIFEST.md` - authoritative inventory of files created for Rust migration scope.
+- [PTR-DOCS-020] `docs/handoff/RUST_BACKEND_PARITY.md` - legacy-to-rust backend parity matrix for route/worker cutover tracking.
 
 ### Validation
 

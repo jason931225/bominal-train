@@ -7,6 +7,7 @@ This folder is the discoverability layer for external provider-rewrite handoff a
 
 ## Start Here
 
+- `docs/handoff/RUST_BACKEND_PARITY.md`
 - `docs/handoff/RESOURCE_INDEX.md`
 - `docs/handoff/RUST_IMPLEMENTATION_FILE_MANIFEST.md`
 - `docs/handoff/EXTERNAL_REWRITE_RUNBOOK.md`
