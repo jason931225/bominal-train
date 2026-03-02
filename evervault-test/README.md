@@ -82,3 +82,28 @@ And maps:
 - `CADDY_SITE_ADDRESS` -> `EV_TEST_DESTINATION_DOMAIN` (when unset)
 
 If `EVERVAULT_API_KEY` is empty but GSM refs are present, it resolves key via `gcloud secrets versions access`.
+
+## VM Run without host Node (container)
+
+If Node is not installed on VM, run the tester as a Docker container:
+
+```bash
+cd /opt/bominal/repo
+bash evervault-test/scripts/run-container-with-vm-prod-env.sh
+```
+
+What this script does:
+- Sources `infra/env/prod/api.env`, `infra/env/prod/web.env`, `infra/env/prod/caddy.env`
+- Resolves `EVERVAULT_TEAM_ID` / `EVERVAULT_APP_ID` from `NEXT_PUBLIC_*` fallbacks
+- Resolves `EVERVAULT_API_KEY` in this order:
+  1) direct value from `api.env`
+  2) environment of running `bominal-api` container
+  3) GSM lookup via `gcloud` (when secret refs are configured)
+- Builds image `evervault-test:local`
+- Runs container `evervault-test` on host port `8787`
+
+Stop/remove container:
+
+```bash
+bash evervault-test/scripts/stop-container.sh
+```
