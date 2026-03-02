@@ -9,6 +9,7 @@ curl-transport = ["reqwest/native-tls"]
 
 [dependencies]
 anyhow.workspace = true
+axum.workspace = true
 chrono.workspace = true
 dotenvy.workspace = true
 hmac.workspace = true

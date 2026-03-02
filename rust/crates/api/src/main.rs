@@ -12,6 +12,7 @@ use axum::{
 };
 use bominal_shared::{
     config::AppConfig,
+    error::{ApiError, ApiErrorCode, ApiErrorStatus},
     http_client::build_http_client,
     queue::RuntimeQueueJob,
     supabase::{Jwks, SupabaseClaims, fetch_jwks, verify_supabase_jwt},
@@ -27,7 +28,7 @@ use tower_http::{
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
-struct AppState {
+pub(crate) struct AppState {
     config: AppConfig,
     db_pool: Option<PgPool>,
     redis_client: Option<RedisClient>,
@@ -95,6 +96,16 @@ struct QueueContractResponse {
     dlq_key: String,
 }
 
+fn request_id_from_headers(headers: &HeaderMap) -> String {
+    headers
+        .get("x-request-id")
+        .and_then(|value| value.to_str().ok())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| Uuid::new_v4().to_string())
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let config = AppConfig::from_env()?;
@@ -115,7 +126,7 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn build_state(config: AppConfig) -> Result<AppState> {
+pub(crate) async fn build_state(config: AppConfig) -> Result<AppState> {
     let db_pool = if config.database_url.is_empty() {
         None
     } else {
@@ -144,7 +155,7 @@ async fn build_state(config: AppConfig) -> Result<AppState> {
     })
 }
 
-fn build_router(state: Arc<AppState>) -> Router {
+pub(crate) fn build_router(state: Arc<AppState>) -> Router {
     let assets_dir =
         std::env::var("FRONTEND_ASSETS_DIR").unwrap_or_else(|_| "rust/frontend/dist".to_string());
 
@@ -226,14 +237,26 @@ async fn verify_supabase_token(
     headers: HeaderMap,
 ) -> impl IntoResponse {
     let Some(token) = bearer_token(&headers) else {
-        return (StatusCode::UNAUTHORIZED, "missing bearer token").into_response();
+        return ApiError::new(
+            ApiErrorStatus::Unauthorized,
+            ApiErrorCode::InvalidRequest,
+            "missing bearer token",
+            request_id_from_headers(&headers),
+        )
+        .into_response();
     };
 
     let jwks = match get_or_refresh_jwks(&state).await {
         Ok(value) => value,
         Err(err) => {
             error!(error = %err, "failed to load supabase jwks");
-            return (StatusCode::SERVICE_UNAVAILABLE, "jwks unavailable").into_response();
+            return ApiError::new(
+                ApiErrorStatus::ServiceUnavailable,
+                ApiErrorCode::ServiceUnavailable,
+                "jwks unavailable",
+                request_id_from_headers(&headers),
+            )
+            .into_response();
         }
     };
 
@@ -246,7 +269,13 @@ async fn verify_supabase_token(
         Ok(value) => value,
         Err(err) => {
             warn!(error = %err, "supabase token verification failed");
-            return (StatusCode::UNAUTHORIZED, "invalid token").into_response();
+            return ApiError::new(
+                ApiErrorStatus::Unauthorized,
+                ApiErrorCode::Unauthorized,
+                "invalid token",
+                request_id_from_headers(&headers),
+            )
+            .into_response();
         }
     };
 
@@ -272,7 +301,13 @@ async fn supabase_auth_webhook(
             .unwrap_or("");
 
         if provided != expected_secret {
-            return (StatusCode::UNAUTHORIZED, "invalid webhook secret").into_response();
+            return ApiError::new(
+                ApiErrorStatus::Unauthorized,
+                ApiErrorCode::Unauthorized,
+                "invalid webhook secret",
+                request_id_from_headers(&headers),
+            )
+            .into_response();
         }
     }
 
@@ -280,11 +315,13 @@ async fn supabase_auth_webhook(
         && let Err(err) = persist_auth_sync(pool, &payload).await
     {
         error!(error = %err, "failed to persist supabase auth sync payload");
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
+        return ApiError::new(
+            ApiErrorStatus::InternalServerError,
+            ApiErrorCode::InternalError,
             "auth sync persistence failed",
+            request_id_from_headers(&headers),
         )
-            .into_response();
+        .into_response();
     }
 
     info!(
@@ -306,10 +343,17 @@ async fn runtime_queue_contract(State(state): State<Arc<AppState>>) -> impl Into
 
 async fn enqueue_runtime_job(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Json(payload): Json<EnqueueRuntimeJobRequest>,
 ) -> impl IntoResponse {
     let Some(redis_client) = state.redis_client.as_ref() else {
-        return (StatusCode::SERVICE_UNAVAILABLE, "redis unavailable").into_response();
+        return ApiError::new(
+            ApiErrorStatus::ServiceUnavailable,
+            ApiErrorCode::ServiceUnavailable,
+            "redis unavailable",
+            request_id_from_headers(&headers),
+        )
+        .into_response();
     };
 
     let job = RuntimeQueueJob {
@@ -324,7 +368,14 @@ async fn enqueue_runtime_job(
         Ok(value) => value,
         Err(err) => {
             error!(error = %err, "failed to encode queue payload");
-            return (StatusCode::BAD_REQUEST, "invalid payload").into_response();
+            return ApiError::new(
+                ApiErrorStatus::BadRequest,
+                ApiErrorCode::InvalidRequest,
+                "invalid payload",
+                request_id_from_headers(&headers),
+            )
+            .with_details(serde_json::json!({"stage": "encode"}))
+            .into_response();
         }
     };
 
@@ -332,7 +383,14 @@ async fn enqueue_runtime_job(
         Ok(value) => value,
         Err(err) => {
             error!(error = %err, "failed to connect to redis");
-            return (StatusCode::SERVICE_UNAVAILABLE, "redis connection failed").into_response();
+            return ApiError::new(
+                ApiErrorStatus::ServiceUnavailable,
+                ApiErrorCode::ServiceUnavailable,
+                "redis connection failed",
+                request_id_from_headers(&headers),
+            )
+            .with_details(serde_json::json!({"stage": "connect"}))
+            .into_response();
         }
     };
 
@@ -342,7 +400,14 @@ async fn enqueue_runtime_job(
 
     if let Err(err) = result {
         error!(error = %err, "failed to enqueue queue payload");
-        return (StatusCode::SERVICE_UNAVAILABLE, "queue push failed").into_response();
+        return ApiError::new(
+            ApiErrorStatus::ServiceUnavailable,
+            ApiErrorCode::ServiceUnavailable,
+            "queue push failed",
+            request_id_from_headers(&headers),
+        )
+        .with_details(serde_json::json!({"stage": "push"}))
+        .into_response();
     }
 
     (
