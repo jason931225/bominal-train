@@ -17,9 +17,16 @@
           <input id="mock-pan" type="text" placeholder="4111 1111 1111 1111" autocomplete="off" />
         </div>
 
+        <div class="row">
+          <label>Evervault UI Card</label>
+          <div id="ev-card-fields" class="ev-card-host" aria-label="Evervault UI Card"></div>
+          <p id="ev-card-state" class="helper">Initializing UI Card...</p>
+        </div>
+
         <div class="actions">
           <button id="self-check-btn" type="button">Self Check</button>
           <button id="run-test-btn" type="button">Run Encrypt + Relay Test</button>
+          <button id="run-card-test-btn" type="button">Run UI Card + Relay Test</button>
         </div>
 
         <p id="status-line" class="status">Idle (auto-updates while polling; no page refresh needed)</p>

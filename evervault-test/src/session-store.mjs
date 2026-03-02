@@ -22,6 +22,15 @@ function normalizeError(message) {
   return text || "Unknown error";
 }
 
+function normalizeEncryptedCard(input = {}) {
+  return {
+    number: String(input.number || "").trim(),
+    expiry_month: String(input.expiry_month || "").trim(),
+    expiry_year: String(input.expiry_year || "").trim(),
+    cvc: String(input.cvc || "").trim(),
+  };
+}
+
 export class SessionStore {
   constructor({ ttlSeconds = 120, now = () => Date.now(), randomUUID, randomNonce } = {}) {
     this.ttlSeconds = Math.max(1, Number(ttlSeconds) || 120);
@@ -31,7 +40,7 @@ export class SessionStore {
     this.sessions = new Map();
   }
 
-  createSession({ expectedLast4, browserEncryptedPan }) {
+  createSession({ expectedLast4, browserEncryptedPan, browserEncryptedCard }) {
     const createdAtMs = this.now();
     const id = this.randomUUID();
     const nonce = this.randomNonce();
@@ -44,6 +53,7 @@ export class SessionStore {
       expires_at_ms: createdAtMs + this.ttlSeconds * 1000,
       expected_last4: String(expectedLast4 || ""),
       browser_encrypted_pan: String(browserEncryptedPan || ""),
+      browser_encrypted_card: normalizeEncryptedCard(browserEncryptedCard),
       status: "pending",
       error: null,
       relay: null,
@@ -93,7 +103,7 @@ export class SessionStore {
     return true;
   }
 
-  recordListenerReceipt({ sessionId, nonce, decryptedPan }) {
+  recordListenerReceipt({ sessionId, nonce, decryptedPan, decryptedExpiryMonth, decryptedExpiryYear, decryptedCvc }) {
     const session = this.sessions.get(sessionId);
     if (!session) {
       return { ok: false, error: "Session not found" };
@@ -119,10 +129,14 @@ export class SessionStore {
     session.proof = {
       masked_pan: maskPan(digits),
       last4: cardLast4,
-      matched_expected_last4: cardLast4 === session.expected_last4,
+      matched_expected_last4: /^\d{4}$/.test(session.expected_last4) ? cardLast4 === session.expected_last4 : null,
       received_at: toIso(this.now()),
       browser_encrypted_pan: session.browser_encrypted_pan,
+      browser_encrypted_card: session.browser_encrypted_card,
       decrypted_pan: digits,
+      decrypted_expiry_month: String(decryptedExpiryMonth || "").trim(),
+      decrypted_expiry_year: String(decryptedExpiryYear || "").trim(),
+      decrypted_cvc: String(decryptedCvc || "").trim(),
     };
 
     return { ok: true };
@@ -196,6 +210,7 @@ export class SessionStore {
       relay: session.relay,
       input: {
         browser_encrypted_pan: session.browser_encrypted_pan,
+        browser_encrypted_card: session.browser_encrypted_card,
       },
       error: null,
     };
@@ -210,6 +225,7 @@ export class SessionStore {
       relay: session.relay,
       input: {
         browser_encrypted_pan: session.browser_encrypted_pan,
+        browser_encrypted_card: session.browser_encrypted_card,
       },
       error: session.error || "Unknown failure",
     };
@@ -224,6 +240,7 @@ export class SessionStore {
       relay: session.relay,
       input: {
         browser_encrypted_pan: session.browser_encrypted_pan,
+        browser_encrypted_card: session.browser_encrypted_card,
       },
       error: session.error || "Session expired",
     };
@@ -236,7 +253,11 @@ export class SessionStore {
       matched_expected_last4: session.proof.matched_expected_last4,
       received_at: session.proof.received_at,
       browser_encrypted_pan: session.proof.browser_encrypted_pan,
+      browser_encrypted_card: session.proof.browser_encrypted_card,
       decrypted_pan: session.proof.decrypted_pan,
+      decrypted_expiry_month: session.proof.decrypted_expiry_month,
+      decrypted_expiry_year: session.proof.decrypted_expiry_year,
+      decrypted_cvc: session.proof.decrypted_cvc,
     };
 
     return {

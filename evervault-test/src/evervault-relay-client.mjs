@@ -91,8 +91,9 @@ function extractRelayRuntime(relay) {
   return { relayId, relayDomain };
 }
 
-export function buildExpectedRelayDefinition({ destinationDomain, listenerPath }) {
-  const normalizedPath = normalizePath(listenerPath);
+export function buildExpectedRelayDefinition({ destinationDomain, listenerPath, cardListenerPath }) {
+  const panPath = normalizePath(listenerPath);
+  const cardPath = normalizePath(cardListenerPath || `${listenerPath}-card`);
   return {
     destinationDomain: String(destinationDomain || "").trim().toLowerCase(),
     authentication: "api-key",
@@ -100,11 +101,27 @@ export function buildExpectedRelayDefinition({ destinationDomain, listenerPath }
     routes: [
       {
         method: "POST",
-        path: normalizedPath,
+        path: panPath,
         request: [
           {
             action: "decrypt",
             selections: [{ type: "form", selector: "encrypted_card_number" }],
+          },
+        ],
+        response: [],
+      },
+      {
+        method: "POST",
+        path: cardPath,
+        request: [
+          {
+            action: "decrypt",
+            selections: [
+              { type: "form", selector: "encrypted_card_number" },
+              { type: "form", selector: "encrypted_card_expiry_month" },
+              { type: "form", selector: "encrypted_card_expiry_year" },
+              { type: "form", selector: "encrypted_card_cvc" },
+            ],
           },
         ],
         response: [],
@@ -136,13 +153,14 @@ export async function ensureRelayDefinition({
   apiBaseUrl = "https://api.evervault.com",
   destinationDomain,
   listenerPath,
+  cardListenerPath,
   fetchImpl = fetch,
 }) {
   assertRequiredEnv(appId, "EVERVAULT_APP_ID");
   assertRequiredEnv(apiKey, "EVERVAULT_API_KEY");
   assertRequiredEnv(destinationDomain, "EV_TEST_DESTINATION_DOMAIN");
 
-  const definition = buildExpectedRelayDefinition({ destinationDomain, listenerPath });
+  const definition = buildExpectedRelayDefinition({ destinationDomain, listenerPath, cardListenerPath });
 
   const listPayload = await evervaultManagementRequest({
     appId,
@@ -169,7 +187,12 @@ export async function ensureRelayDefinition({
       fetchImpl,
     });
     const runtime = extractRelayRuntime(selected);
-    return { ...runtime, listenerPath: normalizePath(listenerPath), destinationDomain: definition.destinationDomain };
+    return {
+      ...runtime,
+      listenerPath: normalizePath(listenerPath),
+      cardListenerPath: normalizePath(cardListenerPath || `${listenerPath}-card`),
+      destinationDomain: definition.destinationDomain,
+    };
   }
 
   if (!relayMatchesDefinition(selected, definition)) {
@@ -194,7 +217,12 @@ export async function ensureRelayDefinition({
   }
 
   const runtime = extractRelayRuntime(selected);
-  return { ...runtime, listenerPath: normalizePath(listenerPath), destinationDomain: definition.destinationDomain };
+  return {
+    ...runtime,
+    listenerPath: normalizePath(listenerPath),
+    cardListenerPath: normalizePath(cardListenerPath || `${listenerPath}-card`),
+    destinationDomain: definition.destinationDomain,
+  };
 }
 
 export async function dispatchViaRelay({

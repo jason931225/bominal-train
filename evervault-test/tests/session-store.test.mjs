@@ -26,8 +26,12 @@ describe("SessionStore", () => {
 
     const result = store.getResult(created.id);
     assert.equal(result.status, "received");
+    assert.equal(result.proof.matched_expected_last4, true);
     assert.equal(result.proof.browser_encrypted_pan, encryptedToken);
     assert.equal(result.proof.decrypted_pan, "4111111111111111");
+    assert.equal(result.proof.decrypted_expiry_month, "");
+    assert.equal(result.proof.decrypted_expiry_year, "");
+    assert.equal(result.proof.decrypted_cvc, "");
   });
 
   it("marks stale pending sessions as expired", () => {

@@ -9,11 +9,14 @@ This project is isolated under `evervault-test/` and has no dependency on the ma
 ## Features
 
 - Frontend input for mock card number.
+- Frontend Evervault UI Card form for encrypted number/expiry/cvc capture.
 - Browser encryption using Evervault JS SDK (`https://js.evervault.com/v2`).
 - Backend relay management (`GET/POST/PATCH /relays`) to auto-create/update the listener route.
 - Listener endpoint at `/evervault-test/relay-listener` validating shared secret + session nonce.
+- UI Card listener endpoint at `/evervault-test/relay-listener-card` for multi-field decrypt tests.
 - Output includes:
   - browser encrypted token (`ev:...`)
+  - browser encrypted UI Card payload
   - decrypted PAN from listener
   - masked PAN + last4 verification
 - In-memory session storage with TTL (no DB or disk persistence).
@@ -40,6 +43,7 @@ Optional:
 - `EVERVAULT_API_BASE_URL` (default `https://api.evervault.com`)
 - `EV_TEST_DESTINATION_DOMAIN` (default `www.bominal.com`)
 - `EV_TEST_LISTENER_PATH` (default `/evervault-test/relay-listener`)
+- `EV_TEST_CARD_LISTENER_PATH` (default `/evervault-test/relay-listener-card`)
 
 ## VM Routing Note (`www.bominal.com`)
 
@@ -53,7 +57,8 @@ Keep this route temporary and remove it after validation.
 1. Click **Self Check** to verify Evervault management auth.
 2. Enter a mock card number.
 3. Click **Run Encrypt + Relay Test**.
-4. Inspect final result payload:
+4. Optionally fill Evervault UI Card and click **Run UI Card + Relay Test**.
+5. Inspect final result payload:
    - `status: received`
    - `proof.matched_expected_last4: true`
    - `proof.browser_encrypted_pan`

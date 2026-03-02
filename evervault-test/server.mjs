@@ -55,6 +55,7 @@ function getConfigHandler(_req, res) {
     evervault_app_id: config.evervaultAppId,
     poll_timeout_seconds: config.pollTimeoutSeconds,
     listener_path: config.listenerPath,
+    card_listener_path: config.cardListenerPath,
     destination_domain: config.destinationDomain,
   });
 }
@@ -81,6 +82,7 @@ async function selfCheckHandler(_req, res) {
       relay_count: probe.relayCount,
       destination_domain: config.destinationDomain,
       listener_path: config.listenerPath,
+      card_listener_path: config.cardListenerPath,
     });
   } catch (error) {
     return res.status(502).json({
@@ -128,6 +130,7 @@ async function runHandler(req, res) {
       apiBaseUrl: config.evervaultApiBaseUrl,
       destinationDomain: config.destinationDomain,
       listenerPath: config.listenerPath,
+      cardListenerPath: config.cardListenerPath,
     });
 
     const relayResponse = await dispatchViaRelay({
@@ -184,6 +187,124 @@ async function runHandler(req, res) {
   }
 }
 
+async function runCardHandler(req, res) {
+  const missingKeys = missingConfigKeys();
+  if (missingKeys.length > 0) {
+    return res.status(400).json({
+      ok: false,
+      detail: `Missing required config: ${missingKeys.join(", ")}`,
+    });
+  }
+
+  const encryptedCardNumber = String(req.body?.encrypted_card_number || "").trim();
+  const encryptedExpiryMonth = String(req.body?.encrypted_card_expiry_month || "").trim();
+  const encryptedExpiryYear = String(req.body?.encrypted_card_expiry_year || "").trim();
+  const encryptedCvc = String(req.body?.encrypted_card_cvc || "").trim();
+  const expectedLast4 = String(req.body?.expected_last4 || "").trim();
+
+  if (!encryptedCardNumber || !encryptedCardNumber.startsWith("ev:")) {
+    return res.status(400).json({
+      ok: false,
+      detail: "encrypted_card_number must be an Evervault-encrypted token",
+    });
+  }
+
+  for (const [field, value] of Object.entries({
+    encrypted_card_expiry_month: encryptedExpiryMonth,
+    encrypted_card_expiry_year: encryptedExpiryYear,
+    encrypted_card_cvc: encryptedCvc,
+  })) {
+    if (value && !value.startsWith("ev:")) {
+      return res.status(400).json({
+        ok: false,
+        detail: `${field} must be Evervault-encrypted when provided`,
+      });
+    }
+  }
+
+  const created = sessionStore.createSession({
+    expectedLast4,
+    browserEncryptedPan: encryptedCardNumber,
+    browserEncryptedCard: {
+      number: encryptedCardNumber,
+      expiry_month: encryptedExpiryMonth,
+      expiry_year: encryptedExpiryYear,
+      cvc: encryptedCvc,
+    },
+  });
+
+  try {
+    const relayRuntime = await ensureRelayDefinition({
+      appId: config.evervaultAppId,
+      apiKey: config.evervaultApiKey,
+      apiBaseUrl: config.evervaultApiBaseUrl,
+      destinationDomain: config.destinationDomain,
+      listenerPath: config.listenerPath,
+      cardListenerPath: config.cardListenerPath,
+    });
+
+    const relayResponse = await dispatchViaRelay({
+      appId: config.evervaultAppId,
+      apiKey: config.evervaultApiKey,
+      relayDomain: relayRuntime.relayDomain,
+      listenerPath: relayRuntime.cardListenerPath,
+      timeoutMs: config.pollTimeoutSeconds * 1000,
+      formData: {
+        encrypted_card_number: encryptedCardNumber,
+        encrypted_card_expiry_month: encryptedExpiryMonth,
+        encrypted_card_expiry_year: encryptedExpiryYear,
+        encrypted_card_cvc: encryptedCvc,
+        session_id: created.id,
+        session_nonce: created.nonce,
+        expected_last4: expectedLast4,
+        shared_secret: config.sharedSecret,
+      },
+    });
+
+    sessionStore.recordRelayDispatch(created.id, {
+      relayId: relayRuntime.relayId,
+      relayDomain: relayRuntime.relayDomain,
+      destinationDomain: relayRuntime.destinationDomain,
+      listenerPath: relayRuntime.cardListenerPath,
+      dispatchStatusCode: relayResponse.statusCode,
+      dispatchResponseSnippet: sanitizeRelayBodySnippet(relayResponse.text),
+    });
+
+    if (relayResponse.statusCode >= 400) {
+      sessionStore.recordFailure(created.id, `Relay request failed with status ${relayResponse.statusCode}`);
+    }
+
+    return res.status(202).json({
+      ok: true,
+      session_id: created.id,
+      status: "pending",
+      relay: {
+        relay_id: relayRuntime.relayId,
+        relay_domain: relayRuntime.relayDomain,
+        destination_domain: relayRuntime.destinationDomain,
+        listener_path: relayRuntime.cardListenerPath,
+        dispatch_status_code: relayResponse.statusCode,
+      },
+      input: {
+        browser_encrypted_card: {
+          number: encryptedCardNumber,
+          expiry_month: encryptedExpiryMonth,
+          expiry_year: encryptedExpiryYear,
+          cvc: encryptedCvc,
+        },
+      },
+    });
+  } catch (error) {
+    sessionStore.recordFailure(created.id, toErrorMessage(error, "Relay flow setup failed"));
+
+    return res.status(502).json({
+      ok: false,
+      session_id: created.id,
+      detail: toErrorMessage(error, "Relay flow setup failed"),
+    });
+  }
+}
+
 function resultHandler(req, res) {
   const sessionId = String(req.params.sessionId || "").trim();
   if (!sessionId) {
@@ -209,12 +330,22 @@ function relayListenerHandler(req, res) {
   const sessionId = String(req.body?.session_id || "").trim();
   const nonce = String(req.body?.session_nonce || "").trim();
   const decryptedPan = String(req.body?.encrypted_card_number || "").trim();
+  const decryptedExpiryMonth = String(req.body?.encrypted_card_expiry_month || "").trim();
+  const decryptedExpiryYear = String(req.body?.encrypted_card_expiry_year || "").trim();
+  const decryptedCvc = String(req.body?.encrypted_card_cvc || "").trim();
 
   if (!sessionId || !nonce || !decryptedPan) {
     return res.status(400).json({ ok: false, detail: "missing session_id, session_nonce, or encrypted_card_number" });
   }
 
-  const receipt = sessionStore.recordListenerReceipt({ sessionId, nonce, decryptedPan });
+  const receipt = sessionStore.recordListenerReceipt({
+    sessionId,
+    nonce,
+    decryptedPan,
+    decryptedExpiryMonth,
+    decryptedExpiryYear,
+    decryptedCvc,
+  });
   if (!receipt.ok) {
     return res.status(400).json({ ok: false, detail: receipt.error });
   }
@@ -235,6 +366,8 @@ app.post("/evervault-test/api/test/self-check", selfCheckHandler);
 
 app.post("/api/test/run", runHandler);
 app.post("/evervault-test/api/test/run", runHandler);
+app.post("/api/test/run-card", runCardHandler);
+app.post("/evervault-test/api/test/run-card", runCardHandler);
 
 app.get("/api/test/result/:sessionId", resultHandler);
 app.get("/evervault-test/api/test/result/:sessionId", resultHandler);
@@ -242,6 +375,8 @@ app.get("/evervault-test/api/test/result/:sessionId", resultHandler);
 // Support both prefix-preserving and prefix-stripping reverse proxies.
 app.post("/evervault-test/relay-listener", relayListenerHandler);
 app.post("/relay-listener", relayListenerHandler);
+app.post("/evervault-test/relay-listener-card", relayListenerHandler);
+app.post("/relay-listener-card", relayListenerHandler);
 
 app.listen(config.port, "0.0.0.0", () => {
   // Intentionally avoid logging request payloads to protect decrypted values.

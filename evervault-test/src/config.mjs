@@ -38,6 +38,7 @@ export function buildRuntimeConfig(env = process.env) {
     evervaultApiBaseUrl: clean(env.EVERVAULT_API_BASE_URL || "https://api.evervault.com"),
     destinationDomain,
     listenerPath: clean(env.EV_TEST_LISTENER_PATH || "/evervault-test/relay-listener"),
+    cardListenerPath: clean(env.EV_TEST_CARD_LISTENER_PATH || "/evervault-test/relay-listener-card"),
     sharedSecret: clean(env.EV_TEST_SHARED_SECRET),
     resultTtlSeconds: Number(env.EV_TEST_RESULT_TTL_SECONDS || 120),
     pollTimeoutSeconds: Number(env.EV_TEST_POLL_TIMEOUT_SECONDS || 20),

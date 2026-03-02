@@ -27,5 +27,6 @@ describe("buildRuntimeConfig", () => {
     });
 
     assert.equal(config.destinationDomain, "www.bominal.com");
+    assert.equal(config.cardListenerPath, "/evervault-test/relay-listener-card");
   });
 });
