@@ -32,31 +32,15 @@ services:
     restart: unless-stopped
 
   api:
-    image: ${API_IMAGE:-${GHCR_NAMESPACE:-ghcr.io/jason931225/bominal}/api:latest}
+    image: ${API_IMAGE:-${GHCR_NAMESPACE:-ghcr.io/jason931225/bominal}/rust-api:latest}
     container_name: bominal-api
-    working_dir: /app
-    command: >
-      sh -c "python scripts/check_duplicate_display_names.py && alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
     env_file:
       - ./env/prod/api.env
-    environment:
-      MASTER_KEY_OVERRIDE: ${MASTER_KEY_OVERRIDE:-}
-      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-}
-      RESEND_API_KEY: ${RESEND_API_KEY:-}
-      EVERVAULT_APP_ID: ${EVERVAULT_APP_ID:-}
-      EVERVAULT_API_KEY: ${EVERVAULT_API_KEY:-}
     deploy:
       resources:
         limits:
           memory: 320M
-    healthcheck:
-      # NOTE: use explicit IPv4 loopback instead of `localhost` to avoid
-      # slow/blocked IPv6 resolution in minimal base images.
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/live', timeout=5)\""]
-      interval: 30s
-      timeout: 30s
-      retries: 3
-      start_period: 300s
+    command: ["/usr/local/bin/bominal-rust-api"]
     depends_on:
       redis:
         condition: service_healthy
@@ -67,29 +51,15 @@ services:
     restart: unless-stopped
 
   worker:
-    image: ${WORKER_IMAGE:-${GHCR_NAMESPACE:-ghcr.io/jason931225/bominal}/api:latest}
+    image: ${WORKER_IMAGE:-${GHCR_NAMESPACE:-ghcr.io/jason931225/bominal}/rust-worker:latest}
     container_name: bominal-worker
-    working_dir: /app
-    command: >
-      sh -c "python -m app.worker_entrypoint app.worker.WorkerSettings"
     env_file:
       - ./env/prod/api.env
-    environment:
-      MASTER_KEY_OVERRIDE: ${MASTER_KEY_OVERRIDE:-}
-      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-}
-      RESEND_API_KEY: ${RESEND_API_KEY:-}
-      EVERVAULT_APP_ID: ${EVERVAULT_APP_ID:-}
-      EVERVAULT_API_KEY: ${EVERVAULT_API_KEY:-}
     deploy:
       resources:
         limits:
           memory: 224M
-    healthcheck:
-      test: ["CMD-SHELL", "python -c \"import os; needle='app.worker.WorkerSettings'; exit(0 if any(needle in open(f'/proc/{p}/cmdline','rb').read().decode('utf-8','ignore') for p in os.listdir('/proc') if p.isdigit() and os.path.exists(f'/proc/{p}/cmdline')) else 1)\""]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 15s
+    command: ["/usr/local/bin/bominal-rust-worker"]
     depends_on:
       redis:
         condition: service_healthy
@@ -98,57 +68,41 @@ services:
     restart: unless-stopped
 
   web:
-    image: ${WEB_IMAGE:-${GHCR_NAMESPACE:-ghcr.io/jason931225/bominal}/web:latest}
+    image: ${WEB_IMAGE:-${GHCR_NAMESPACE:-ghcr.io/jason931225/bominal}/rust-api:latest}
     container_name: bominal-web
-    init: true
     env_file:
+      - ./env/prod/api.env
       - ./env/prod/web.env
+    environment:
+      APP_PORT: 3000
     deploy:
       resources:
         limits:
           memory: 200M
-    healthcheck:
-      # Use Node (guaranteed present in runtime image) instead of wget/curl
-      # so health checks do not depend on extra OS packages.
-      test:
-        [
-          "CMD-SHELL",
-          "node -e \"fetch('http://127.0.0.1:3000').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\"",
-        ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 60s
+    command: ["/usr/local/bin/bominal-rust-api"]
     depends_on:
       api:
-        condition: service_healthy
+        condition: service_started
     ports:
       - "127.0.0.1:3000:3000"
     restart: unless-stopped
 
   web-canary:
-    image: ${WEB_CANARY_IMAGE:-${WEB_IMAGE:-${GHCR_NAMESPACE:-ghcr.io/jason931225/bominal}/web:latest}}
+    image: ${WEB_CANARY_IMAGE:-${WEB_IMAGE:-${GHCR_NAMESPACE:-ghcr.io/jason931225/bominal}/rust-api:latest}}
     container_name: bominal-web-canary
-    init: true
     env_file:
+      - ./env/prod/api.env
       - ./env/prod/web.env
+    environment:
+      APP_PORT: 3000
     deploy:
       resources:
         limits:
           memory: 200M
-    healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "node -e \"fetch('http://127.0.0.1:3000').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\"",
-        ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 60s
+    command: ["/usr/local/bin/bominal-rust-api"]
     depends_on:
       api:
-        condition: service_healthy
+        condition: service_started
     ports:
       - "127.0.0.1:3001:3000"
     restart: unless-stopped
@@ -158,9 +112,9 @@ services:
     container_name: bominal-caddy
     depends_on:
       api:
-        condition: service_healthy
+        condition: service_started
       web:
-        condition: service_healthy
+        condition: service_started
     env_file:
       - ./env/prod/caddy.env
     extra_hosts:

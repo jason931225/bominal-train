@@ -74,6 +74,7 @@ Deploy script guardrails:
 Canonical deployment artifacts:
 - Use `infra/docker-compose.prod.yml` and `infra/scripts/deploy.sh` exclusively.
 - Deprecation lifecycle policy is tracked in `docs/governance/DEPRECATION_POLICY.md` and `docs/deprecations/registry.json`.
+- Runtime baseline is Rust-only (`api`, `worker`, `web` services).
 
 Quick restart after VM reset (no rebuild, existing images):
 

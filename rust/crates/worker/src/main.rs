@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use bominal_shared::{config::AppConfig, telemetry::init_tracing};
+use bominal_shared::{config::AppConfig, queue::RuntimeQueueJob, telemetry::init_tracing};
 use redis::{AsyncCommands, Client as RedisClient};
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use tokio::{
@@ -186,8 +186,31 @@ async fn poll_queue_once(state: &WorkerState) -> Result<()> {
     let mut conn = client.get_multiplexed_async_connection().await?;
     let payload: Option<String> = conn.lpop(&state.config.redis.queue_key, None).await?;
 
-    if let Some(task_payload) = payload {
-        info!(queue = %state.config.redis.queue_key, payload_size = task_payload.len(), "polled queue item");
+    let Some(raw_payload) = payload else {
+        return Ok(());
+    };
+
+    match serde_json::from_str::<RuntimeQueueJob>(&raw_payload) {
+        Ok(job) => {
+            info!(
+                queue = %state.config.redis.queue_key,
+                job_id = %job.job_id,
+                user_id = %job.user_id,
+                kind = %job.kind,
+                "processed runtime queue job"
+            );
+        }
+        Err(err) => {
+            warn!(
+                error = %err,
+                queue = %state.config.redis.queue_key,
+                dlq = %state.config.redis.queue_dlq_key,
+                "failed to decode runtime queue payload; moving to dlq"
+            );
+            let _: usize = conn
+                .rpush(&state.config.redis.queue_dlq_key, raw_payload)
+                .await?;
+        }
     }
 
     Ok(())

@@ -23,3 +23,10 @@ cargo test --workspace
 npm --prefix frontend install
 npm --prefix frontend run build:css
 ```
+
+## Images
+
+```bash
+docker build -f rust/Dockerfile.api -t bominal/rust-api:local rust
+docker build -f rust/Dockerfile.worker -t bominal/rust-worker:local rust
+```

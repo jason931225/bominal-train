@@ -2,7 +2,7 @@
 
 ## Goal
 
-Safely migrate Bominal runtime to a Rust-first stack while preserving production continuity:
+Complete full runtime cutover to Rust-only services (no legacy runtime fallback):
 
 1. Frontend -> Leptos SSR + Tailwind.
 2. API -> axum 0.8 + Tokio.
@@ -23,11 +23,10 @@ Safely migrate Bominal runtime to a Rust-first stack while preserving production
 
 ## Safety Model
 
-1. Build the Rust stack in parallel under `rust/`; keep current Python/Next runtime intact until explicit cutover.
-2. Maintain contract parity using `docs/handoff/PROVIDER_CONTRACT.md` and `docs/handoff/PROVIDER_FIELD_MAP.{json,md}`.
-3. Track every Rust-implementation file in `docs/handoff/RUST_IMPLEMENTATION_FILE_MANIFEST.md`.
-4. Remove stale deprecated references from active operator docs before introducing new runtime docs.
-5. Cutover only after health checks, API contract checks, and shadow validation succeed.
+1. Keep strict file-level tracking for every Rust implementation artifact in `docs/handoff/RUST_IMPLEMENTATION_FILE_MANIFEST.md`.
+2. Maintain provider contract parity using `docs/handoff/PROVIDER_CONTRACT.md` and `docs/handoff/PROVIDER_FIELD_MAP.{json,md}`.
+3. Retire legacy runtime support in compose/runtime docs and make Rust services canonical.
+4. Gate every change with compile/test/doc validation before promoting runtime changes.
 
 ## Phase Plan
 
@@ -74,7 +73,7 @@ Deliverables:
 - Redis queue poll/reconcile/watch loops controlled by env durations.
 - graceful shutdown for API + worker.
 
-### Phase 4: Cutover Readiness
+### Phase 4: Rust-Only Runtime Operations
 
 Target paths:
 - `infra/docker-compose*.yml`
@@ -84,9 +83,9 @@ Target paths:
 - `docs/humans/operations/RUNBOOK.md`
 
 Deliverables:
-- runtime selector to run legacy or Rust services.
-- documented rollback path and cutover gate checklist.
-- explicit "delete candidates" list for legacy files after Rust parity acceptance.
+- Rust-only compose/runtime wiring (`api`, `worker`, `web`) in dev/prod.
+- documented rollback path and Rust runtime gate checklist.
+- explicit "delete candidates" list for retired legacy runtime files.
 
 ## Verification
 
@@ -108,8 +107,8 @@ bash infra/tests/test_intent_routing.sh
 
 ## Acceptance Criteria
 
-1. Rust API + worker compile and run independently of legacy Python runtime.
+1. Rust API + worker compile and run as canonical runtime services.
 2. Leptos SSR frontend is served by the Rust API with Tailwind styles.
 3. Supabase and Redis contracts are represented in Rust config/runtime scaffolding.
 4. Rust implementation file manifest is complete and kept in sync.
-5. Active/operator docs contain no stale references to removed deployment artifacts.
+5. Active/operator docs reflect Rust-only runtime policy and contain no stale deployment references.

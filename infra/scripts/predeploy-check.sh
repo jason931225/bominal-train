@@ -890,30 +890,11 @@ fi
 echo "==> Running backend smoke tests"
 "${COMPOSE_CMD[@]}" -f infra/docker-compose.yml exec -T "$api_service" sh -lc '
 set -eu
-cd /app
-export PYTHONPATH=/app
-
-if command -v pytest >/dev/null 2>&1; then
-  exec pytest -q tests/test_auth_flow.py tests/test_train_provider_crud.py
-fi
-
-if ! command -v uv >/dev/null 2>&1; then
-  python -m pip install --no-cache-dir uv >/dev/null
-fi
-
-VENV_PATH=".venv-predeploy"
-if [ ! -x "$VENV_PATH/bin/python" ]; then
-  uv venv "$VENV_PATH" >/dev/null
-fi
-
-if ! uv run --python "$VENV_PATH/bin/python" python -c "import pytest" >/dev/null 2>&1; then
-  uv pip install --python "$VENV_PATH/bin/python" pytest pytest-asyncio pytest-cov >/dev/null
-fi
-
-exec uv run --python "$VENV_PATH/bin/python" pytest -q tests/test_auth_flow.py tests/test_train_provider_crud.py
+cd /workspace/rust
+exec cargo test --workspace
 '
 
-echo "==> Running frontend type check"
-"${COMPOSE_CMD[@]}" -f infra/docker-compose.yml exec -T web sh -lc 'cd /app && npx tsc --noEmit'
+echo "==> Running Rust workspace checks"
+"${COMPOSE_CMD[@]}" -f infra/docker-compose.yml exec -T "$api_service" sh -lc 'cd /workspace/rust && cargo check --workspace'
 
 echo "Pre-deploy checks passed."

@@ -59,132 +59,60 @@ services:
       - "8025:8025"
 
   api:
-    build:
-      context: ../api
+    image: rust:1.93-bookworm
     container_name: bominal-api
-    working_dir: /app
+    working_dir: /workspace/rust
     command: >
-      sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+      sh -c "cargo run -p bominal-rust-api"
     env_file:
-      - ./env/dev/api.env
+      - ./env/dev/rust.env
     volumes:
-      - ../api:/app
+      - ../rust:/workspace/rust
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-      egress-train:
-        condition: service_healthy
-      egress-restaurant:
-        condition: service_healthy
-      mailpit:
-        condition: service_started
     ports:
       - "8000:8000"
 
   worker:
-    build:
-      context: ../api
+    image: rust:1.93-bookworm
     container_name: bominal-worker
-    working_dir: /app
+    working_dir: /workspace/rust
     command: >
-      sh -c "python -m app.worker_entrypoint app.worker.WorkerSettings"
+      sh -c "cargo run -p bominal-rust-worker"
     env_file:
-      - ./env/dev/api.env
+      - ./env/dev/rust.env
     volumes:
-      - ../api:/app
+      - ../rust:/workspace/rust
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-      egress-train:
-        condition: service_healthy
-      egress-restaurant:
-        condition: service_healthy
-      mailpit:
-        condition: service_started
-    healthcheck:
-      test: ["CMD-SHELL", "python -c \"import os; needle='app.worker.WorkerSettings'; exit(0 if any(needle in open(f'/proc/{p}/cmdline','rb').read().decode('utf-8','ignore') for p in os.listdir('/proc') if p.isdigit() and os.path.exists(f'/proc/{p}/cmdline')) else 1)\""]
-      interval: 15s
-      timeout: 5s
-      retries: 6
 
   web:
-    build:
-      context: ../web
-      dockerfile: Dockerfile.dev
+    image: rust:1.93-bookworm
     container_name: bominal-web
-    working_dir: /app
-    environment:
-      APP_VERSION: ${APP_VERSION:-0.0.0}
-      BUILD_VERSION: ${BUILD_VERSION:-dev}
-    command:
-      - sh
-      - -ec
-      - |
-        if [ -z "$${APP_VERSION:-}" ] || [ "$${APP_VERSION}" = "0.0.0" ]; then
-          RESOLVED_APP_VERSION="$$(python3 /repo/infra/scripts/version_guard.py resolve --commit HEAD 2>/dev/null | sed 's/^v//' || true)"
-          if [ -n "$$RESOLVED_APP_VERSION" ]; then
-            export APP_VERSION="$$RESOLVED_APP_VERSION"
-          fi
-        fi
-        if [ -z "$${APP_VERSION:-}" ]; then
-          export APP_VERSION="0.0.0"
-        fi
-
-        if [ -z "$${BUILD_VERSION:-}" ] || [ "$${BUILD_VERSION}" = "dev" ]; then
-          RESOLVED_BUILD_VERSION="$$(git -C /repo rev-parse --short HEAD 2>/dev/null || true)"
-          if [ -n "$$RESOLVED_BUILD_VERSION" ]; then
-            export BUILD_VERSION="$$RESOLVED_BUILD_VERSION"
-          fi
-        fi
-        if [ -z "$${BUILD_VERSION:-}" ]; then
-          export BUILD_VERSION="dev"
-        fi
-
-        echo "→ web using APP_VERSION=$$APP_VERSION BUILD_VERSION=$$BUILD_VERSION"
-        npm install
-        rm -rf .next
-        npm run dev -- -H 0.0.0.0 -p 3000
+    working_dir: /workspace/rust
+    command: >
+      sh -c "cargo run -p bominal-rust-api"
     env_file:
-      - ./env/dev/web.env
+      - ./env/dev/rust.env
+    environment:
+      APP_PORT: 3000
     volumes:
-      - ../web:/app
-      - ..:/repo:ro
-      - web_node_modules:/app/node_modules
+      - ../rust:/workspace/rust
     depends_on:
-      - api
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_started
     ports:
       - "3000:3000"
 
-  web-e2e:
-    profiles: ["e2e"]
-    build:
-      context: ../web
-      dockerfile: Dockerfile.e2e
-    container_name: bominal-web-e2e
-    working_dir: /app
-    environment:
-      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
-      PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH: /usr/bin/chromium-browser
-      API_SERVER_URL: http://api:8000
-    env_file:
-      - ./env/dev/web.env
-    command:
-      - sh
-      - -ec
-      - |
-        npm ci
-        npm run test:e2e
-    volumes:
-      - ../web:/app
-      - web_e2e_node_modules:/app/node_modules
-    depends_on:
-      - api
-
 volumes:
   pgdata_dev:
-  web_node_modules:
-  web_e2e_node_modules:

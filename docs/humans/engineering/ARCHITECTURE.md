@@ -2,12 +2,11 @@
 
 ## System overview
 
-Bominal is a modular monorepo with three runtime tiers:
+Bominal is now a Rust runtime with three executable surfaces:
 
-1. **Web** (`web/`): Next.js App Router UI, server-rendered pages + client components
-2. **API** (`api/`): FastAPI REST backend with configurable auth mode (`legacy` | `supabase`)
-3. **Workers**:
-   - `api/app/worker.py` -> train-task + queued email execution
+1. **Web/API SSR runtime** (`rust/crates/api`): axum service serving both API routes and Leptos SSR pages.
+2. **Worker runtime** (`rust/crates/worker`): Tokio loop worker for queue polling/reconcile/watch/rotation schedules.
+3. **Shared runtime crate** (`rust/crates/shared`): typed config, Supabase JWT/JWKS verification helpers, queue contract types, and telemetry/bootstrap helpers.
 
 Shared infrastructure:
 
@@ -25,17 +24,20 @@ Shared infrastructure:
 
 Queue domain contracts:
 
-- `train:queue` is consumed by `worker` (`app.worker.WorkerSettings`) for train tasks and queued email delivery jobs.
-- `restaurant:queue` remains reserved for future restaurant-domain execution; no dedicated restaurant worker container is active in the monolithic runtime profile.
+- `train:queue` is consumed by `bominal-rust-worker`.
+- malformed queue payloads are moved to `train:queue:dlq`.
+- queue payload schema is `RuntimeQueueJob` in `rust/crates/shared/src/queue.rs`.
 
 ## Runtime topology (Docker Compose)
 
 - `infra/docker-compose.yml` (development): hot reload + bind mounts
 - `infra/docker-compose.prod.yml` (deployment): immutable containers, no dev reload flags
 - API runtime:
-  - `api` (public FastAPI runtime, bound to host `:8000`)
+  - `api` (Rust axum runtime, bound to host `:8000`)
 - Worker runtime:
   - `worker` consumes `train:queue`
+- Web runtime:
+  - `web` (Rust axum + Leptos SSR runtime, bound to host `:3000`)
 - Internal outbound-control runtime:
   - `egress-train` (`infra/egress/train/Caddyfile`)
   - `egress-restaurant` (`infra/egress/restaurant/Caddyfile`, development profile only)

@@ -8,7 +8,9 @@ use serde::{Deserialize, Serialize};
 pub struct SupabaseConfig {
     pub url: String,
     pub jwt_issuer: String,
+    pub jwt_audience: Option<String>,
     pub jwks_url: String,
+    pub jwks_cache_seconds: u64,
     pub auth_webhook_secret: Option<String>,
 }
 
@@ -16,6 +18,7 @@ pub struct SupabaseConfig {
 pub struct RedisConfig {
     pub url: String,
     pub queue_key: String,
+    pub queue_dlq_key: String,
     pub lease_prefix: String,
     pub rate_limit_prefix: String,
 }
@@ -61,25 +64,29 @@ impl AppConfig {
 
         let supabase_url = env_or("SUPABASE_URL", "")?;
         let jwt_issuer = env_or("SUPABASE_JWT_ISSUER", "")?;
+        let database_url = normalize_database_url(&env_or("DATABASE_URL", "")?);
 
         Ok(Self {
             app_env: env_or("APP_ENV", "dev")?,
             app_host: env_or("APP_HOST", "0.0.0.0")?,
             app_port: parse_u16("APP_PORT", 8080)?,
             log_json: parse_bool("LOG_JSON", true),
-            database_url: env_or("DATABASE_URL", "")?,
+            database_url,
             supabase: SupabaseConfig {
                 jwks_url: env_or(
                     "SUPABASE_JWKS_URL",
                     &format!("{}/auth/v1/.well-known/jwks.json", supabase_url),
                 )?,
                 url: supabase_url,
-                jwt_issuer: jwt_issuer,
+                jwt_issuer,
+                jwt_audience: env_opt("SUPABASE_JWT_AUDIENCE"),
+                jwks_cache_seconds: parse_u64("SUPABASE_JWKS_CACHE_SECONDS", 300)?,
                 auth_webhook_secret: env_opt("SUPABASE_AUTH_WEBHOOK_SECRET"),
             },
             redis: RedisConfig {
                 url: env_or("REDIS_URL", "redis://127.0.0.1:6379")?,
                 queue_key: env_or("RUNTIME_QUEUE_KEY", "train:queue")?,
+                queue_dlq_key: env_or("RUNTIME_QUEUE_DLQ_KEY", "train:queue:dlq")?,
                 lease_prefix: env_or("RUNTIME_LEASE_PREFIX", "train:lease")?,
                 rate_limit_prefix: env_or("RUNTIME_RATE_LIMIT_PREFIX", "rate_limit")?,
             },
@@ -96,6 +103,12 @@ impl AppConfig {
             },
         })
     }
+}
+
+fn normalize_database_url(raw: &str) -> String {
+    raw.replace("postgresql+asyncpg://", "postgresql://")
+        .replace("postgresql+psycopg://", "postgresql://")
+        .replace("postgresql+psycopg2://", "postgresql://")
 }
 
 fn env_or(key: &str, default: &str) -> Result<String> {
@@ -130,6 +143,17 @@ fn parse_u16(key: &str, default: u16) -> Result<u16> {
         .map(|raw| {
             raw.parse::<u16>()
                 .with_context(|| format!("{key} must be a valid u16"))
+        })
+        .transpose()?
+        .map_or(Ok(default), Ok)
+}
+
+fn parse_u64(key: &str, default: u64) -> Result<u64> {
+    env::var(key)
+        .ok()
+        .map(|raw| {
+            raw.parse::<u64>()
+                .with_context(|| format!("{key} must be a valid u64"))
         })
         .transpose()?
         .map_or(Ok(default), Ok)

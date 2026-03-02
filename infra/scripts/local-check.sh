@@ -45,7 +45,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-if [[ ! -f "infra/env/dev/api.env" ]]; then
+if [[ ! -f "infra/env/dev/rust.env" ]]; then
   echo "Error: Environment files not found. Run ./infra/scripts/local-setup.sh first."
   exit 1
 fi
@@ -110,7 +110,7 @@ fi
 
 check_worker_service() {
   local service="$1"
-  local expected_settings="$2"
+  local expected_process="$2"
 
   echo "→ Checking worker service: $service..."
   for _ in $(seq 1 30); do
@@ -121,7 +121,13 @@ check_worker_service() {
       running_state="$(docker inspect -f '{{.State.Running}}' "$container_id" 2>/dev/null || true)"
       health_state="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$container_id" 2>/dev/null || true)"
       if [[ "$running_state" == "true" ]] && [[ "$health_state" == "healthy" || "$health_state" == "none" ]]; then
-        if "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" exec -T "$service" python -c "import os,sys; needle=sys.argv[1]; found=any(needle in open(f'/proc/{p}/cmdline','rb').read().decode('utf-8','ignore') for p in os.listdir('/proc') if p.isdigit() and os.path.exists(f'/proc/{p}/cmdline')); raise SystemExit(0 if found else 1)" "$expected_settings" >/dev/null 2>&1; then
+        if "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" exec -T "$service" sh -lc '
+needle="$1"
+for cmdline in /proc/[0-9]*/cmdline; do
+  tr "\000" " " <"$cmdline" || true
+  echo
+done | grep -Fq -- "$needle"
+' sh "$expected_process" >/dev/null 2>&1; then
           echo "  OK"
           return 0
         fi
@@ -130,23 +136,23 @@ check_worker_service() {
     sleep 1
   done
 
-  echo "  FAILED: $service is not healthy with expected process '$expected_settings'"
+  echo "  FAILED: $service is not healthy with expected process '$expected_process'"
   print_logs
   exit 1
 }
 
-check_worker_service "worker" "app.worker.WorkerSettings"
+check_worker_service "worker" "bominal-rust-worker"
 
-echo "→ Running backend tests (api: pytest -q)..."
-if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" exec -T api pytest -q; then
-  echo "  FAILED: backend tests"
+echo "→ Running Rust workspace tests (api: cargo test --workspace)..."
+if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" exec -T api cargo test --workspace; then
+  echo "  FAILED: Rust workspace tests"
   print_logs
   exit 1
 fi
 
-echo "→ Running web typecheck (web: npx tsc --noEmit)..."
-if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" exec -T web npx tsc --noEmit; then
-  echo "  FAILED: web typecheck"
+echo "→ Running Rust workspace checks (api: cargo check --workspace)..."
+if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" exec -T api cargo check --workspace; then
+  echo "  FAILED: Rust workspace checks"
   print_logs
   exit 1
 fi

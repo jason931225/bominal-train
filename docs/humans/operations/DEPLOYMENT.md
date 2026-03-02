@@ -6,12 +6,16 @@ This project supports separated dev/prod compose stacks with zero-downtime deplo
 
 - Dev compose: `infra/docker-compose.yml`
 - Prod compose: `infra/docker-compose.prod.yml`
-- Dev env files: `infra/env/dev/*`
+- Dev env files: `infra/env/dev/*` (`rust.env` is the Rust runtime baseline)
 - Prod env files: `infra/env/prod/*.example` -> copy to real `.env` files
 
 Canonical deployment artifacts:
 - `infra/docker-compose.prod.yml`
 - `infra/scripts/deploy.sh`
+
+Runtime policy:
+- Legacy Python/Next runtime services are retired.
+- Canonical runtime services are Rust-only (`api`, `worker`, `web`).
 
 ---
 

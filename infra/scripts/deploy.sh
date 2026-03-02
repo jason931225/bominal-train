@@ -24,10 +24,6 @@
 #   DEPLOY_DOCKER_KEEP_BOMINAL_IMAGES - retain latest N bominal image tags; when >0, skips full image prune -a and
 #                                       removes only older bominal tags outside retention (default: 0)
 #
-# Backward compatibility:
-#   Older split-runtime env overrides (API_GATEWAY_IMAGE, API_TRAIN_IMAGE,
-#   API_RESTAURANT_IMAGE, WORKER_TRAIN_IMAGE, WORKER_RESTAURANT_IMAGE) are
-#   still accepted and mapped to monolithic API/worker image overrides.
 # ==============================================================================
 set -euo pipefail
 
@@ -313,13 +309,7 @@ image_revision_label() {
 }
 
 set_images_from_legacy_overrides() {
-  if [[ -z "${API_IMAGE:-}" ]]; then
-    API_IMAGE="${API_GATEWAY_IMAGE:-${API_TRAIN_IMAGE:-${API_RESTAURANT_IMAGE:-}}}"
-  fi
-
-  if [[ -z "${WORKER_IMAGE:-}" ]]; then
-    WORKER_IMAGE="${WORKER_IMAGE:-${WORKER_TRAIN_IMAGE:-${WORKER_RESTAURANT_IMAGE:-${API_IMAGE:-}}}}"
-  fi
+  :
 }
 
 calculate_rollout_changes() {
@@ -897,16 +887,16 @@ do_rollback() {
     else
       log_warn "Deployment record missing digests; falling back to commit tags"
       resolve_ghcr_namespace
-      export API_IMAGE="${GHCR_NAMESPACE}/api:${prev_commit}"
-      export WORKER_IMAGE="${GHCR_NAMESPACE}/api:${prev_commit}"
-      export WEB_IMAGE="${GHCR_NAMESPACE}/web:${prev_commit}"
+      export API_IMAGE="${GHCR_NAMESPACE}/rust-api:${prev_commit}"
+      export WORKER_IMAGE="${GHCR_NAMESPACE}/rust-worker:${prev_commit}"
+      export WEB_IMAGE="${GHCR_NAMESPACE}/rust-api:${prev_commit}"
     fi
   else
     log_warn "No valid detailed record found; using commit tags"
     resolve_ghcr_namespace
-    export API_IMAGE="${GHCR_NAMESPACE}/api:${prev_commit}"
-    export WORKER_IMAGE="${GHCR_NAMESPACE}/api:${prev_commit}"
-    export WEB_IMAGE="${GHCR_NAMESPACE}/web:${prev_commit}"
+    export API_IMAGE="${GHCR_NAMESPACE}/rust-api:${prev_commit}"
+    export WORKER_IMAGE="${GHCR_NAMESPACE}/rust-worker:${prev_commit}"
+    export WEB_IMAGE="${GHCR_NAMESPACE}/rust-api:${prev_commit}"
   fi
 
   current_commit="$(get_current_version)"
@@ -1168,8 +1158,6 @@ deploy_services() {
     fi
 
     local web_canary_started="false"
-    local -a post_api_services=()
-
     if [[ "$DEPLOY_WEB_CHANGED" == "true" ]]; then
       if web_canary_enabled; then
         if ! start_web_canary; then
@@ -1182,27 +1170,30 @@ deploy_services() {
       else
         log_warn "Web canary disabled; web restart may briefly interrupt callback traffic."
       fi
-      post_api_services+=("web")
+      log_info "Deploying web service..."
+      if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait --remove-orphans --no-deps web; then
+        log_error "Failed to deploy web service"
+        if [[ "$web_canary_started" == "true" ]]; then
+          log_warn "Keeping web-canary running after web rollout failure."
+        fi
+        return 1
+      fi
     else
       log_info "Skipping web rollout (image unchanged)."
       stop_web_canary
     fi
 
     if [[ "$DEPLOY_WORKER_CHANGED" == "true" ]]; then
-      post_api_services+=("worker")
-    else
-      log_info "Skipping worker rollout (image unchanged)."
-    fi
-
-    if [[ "${#post_api_services[@]}" -gt 0 ]]; then
-      log_info "Deploying post-API services in parallel: ${post_api_services[*]}"
-      if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait --remove-orphans --no-deps "${post_api_services[@]}"; then
-        log_error "Failed to deploy one or more post-API services (${post_api_services[*]})"
+      log_info "Deploying worker service..."
+      if ! "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --wait --remove-orphans --no-deps worker; then
+        log_error "Failed to deploy worker service"
         if [[ "$web_canary_started" == "true" ]]; then
-          log_warn "Keeping web-canary running after rollout failure."
+          log_warn "Keeping web-canary running after worker rollout failure."
         fi
         return 1
       fi
+    else
+      log_info "Skipping worker rollout (image unchanged)."
     fi
 
     if [[ "$DEPLOY_WEB_CHANGED" == "true" ]]; then
@@ -1605,15 +1596,15 @@ main() {
 
   if [[ -n "${target_commit:-}" ]]; then
     log_info "Deploying specific commit: $target_commit"
-    export API_IMAGE="${GHCR_NAMESPACE}/api:${target_commit}"
-    export WORKER_IMAGE="${GHCR_NAMESPACE}/api:${target_commit}"
-    export WEB_IMAGE="${GHCR_NAMESPACE}/web:${target_commit}"
+    export API_IMAGE="${GHCR_NAMESPACE}/rust-api:${target_commit}"
+    export WORKER_IMAGE="${GHCR_NAMESPACE}/rust-worker:${target_commit}"
+    export WEB_IMAGE="${GHCR_NAMESPACE}/rust-api:${target_commit}"
   else
     log_info "Deploying latest images"
     set_images_from_legacy_overrides
-    export API_IMAGE="${API_IMAGE:-${GHCR_NAMESPACE}/api:latest}"
-    export WORKER_IMAGE="${WORKER_IMAGE:-$API_IMAGE}"
-    export WEB_IMAGE="${WEB_IMAGE:-${GHCR_NAMESPACE}/web:latest}"
+    export API_IMAGE="${API_IMAGE:-${GHCR_NAMESPACE}/rust-api:latest}"
+    export WORKER_IMAGE="${WORKER_IMAGE:-${GHCR_NAMESPACE}/rust-worker:latest}"
+    export WEB_IMAGE="${WEB_IMAGE:-${GHCR_NAMESPACE}/rust-api:latest}"
   fi
   export WEB_CANARY_IMAGE="${WEB_CANARY_IMAGE:-$WEB_IMAGE}"
 

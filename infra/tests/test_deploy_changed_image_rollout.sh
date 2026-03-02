@@ -68,8 +68,10 @@ if [[ "${1:-}" == "inspect" ]]; then
 
   if [[ "$*" == *"--format={{.Id}}"* ]]; then
     case "${2:-}" in
-      */api:*) echo "sha256:api-new" ;;
-      */web:*) echo "sha256:web-new" ;;
+      */rust-api:*) echo "sha256:rust-api-new" ;;
+      */rust-worker:*) echo "sha256:rust-worker-new" ;;
+      */api:*) echo "sha256:rust-api-new" ;;
+      */web:*) echo "sha256:rust-api-new" ;;
       *) echo "sha256:unknown-new" ;;
     esac
     exit 0
@@ -79,9 +81,9 @@ if [[ "${1:-}" == "inspect" ]]; then
     case "${2:-}" in
       bominal-api)
         if [[ "${SIM_API_CHANGED:-0}" == "1" ]]; then
-          echo "sha256:api-old"
+          echo "sha256:rust-api-old"
         else
-          echo "sha256:api-new"
+          echo "sha256:rust-api-new"
         fi
         exit 0
         ;;
@@ -90,17 +92,17 @@ if [[ "${1:-}" == "inspect" ]]; then
           exit 0
         fi
         if [[ "${SIM_WORKER_CHANGED:-0}" == "1" ]]; then
-          echo "sha256:api-old"
+          echo "sha256:rust-worker-old"
         else
-          echo "sha256:api-new"
+          echo "sha256:rust-worker-new"
         fi
         exit 0
         ;;
       bominal-web)
         if [[ "${SIM_WEB_CHANGED:-0}" == "1" ]]; then
-          echo "sha256:web-old"
+          echo "sha256:rust-api-old"
         else
-          echo "sha256:web-new"
+          echo "sha256:rust-api-new"
         fi
         exit 0
         ;;
