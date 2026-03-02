@@ -15,6 +15,7 @@ node_modules/
 .next/
 web/.next_corrupt_*/
 *.tsbuildinfo
+rust/target/
 
 # Env
 .env

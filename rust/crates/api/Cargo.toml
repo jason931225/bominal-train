@@ -1,0 +1,29 @@
+[package]
+name = "bominal-rust-api"
+version.workspace = true
+edition.workspace = true
+
+[features]
+default = []
+curl-transport = ["bominal-shared/curl-transport"]
+
+[dependencies]
+anyhow.workspace = true
+axum.workspace = true
+bominal-shared = { path = "../shared" }
+leptos.workspace = true
+leptos_axum.workspace = true
+leptos_meta.workspace = true
+leptos_router.workspace = true
+redis.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true
+tokio.workspace = true
+tower.workspace = true
+tower-http.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+
+[lints]
+workspace = true

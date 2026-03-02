@@ -9,10 +9,9 @@ This project supports separated dev/prod compose stacks with zero-downtime deplo
 - Dev env files: `infra/env/dev/*`
 - Prod env files: `infra/env/prod/*.example` -> copy to real `.env` files
 
-Compatibility notice:
-- `infra/docker-compose.deploy.yml.deprecated` is a deprecated legacy artifact.
-- Canonical replacement: `infra/docker-compose.prod.yml` + `infra/scripts/deploy.sh`.
-- Removal condition/date: remove after caller scan and guard test pass (completed 2026-02-14).
+Canonical deployment artifacts:
+- `infra/docker-compose.prod.yml`
+- `infra/scripts/deploy.sh`
 
 ---
 

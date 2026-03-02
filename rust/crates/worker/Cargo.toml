@@ -1,0 +1,20 @@
+[package]
+name = "bominal-rust-worker"
+version.workspace = true
+edition.workspace = true
+
+[features]
+default = []
+curl-transport = ["bominal-shared/curl-transport"]
+
+[dependencies]
+anyhow.workspace = true
+bominal-shared = { path = "../shared" }
+chrono.workspace = true
+redis.workspace = true
+sqlx.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true

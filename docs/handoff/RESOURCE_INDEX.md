@@ -8,6 +8,7 @@ Pointers to resources useful for external rewrite with third-party functional pa
 - `docs/handoff/PROVIDER_CONTRACT.md`
 - `docs/handoff/PROVIDER_FIELD_MAP.json`
 - `docs/handoff/PROVIDER_FIELD_MAP.md`
+- `docs/handoff/RUST_IMPLEMENTATION_FILE_MANIFEST.md`
 - `docs/handoff/RESOURCE_MANIFEST.json`
 - `docs/handoff/RESOURCE_MANIFEST.md`
 - `docs/handoff/STATLESS_ENDPOINT_SHORTLIST.md`

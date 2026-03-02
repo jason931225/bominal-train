@@ -71,8 +71,7 @@ Deploy script guardrails:
 - VM deploy agent guardrail:
   - `DEPLOY_SCRIPT` must point to canonical `infra/scripts/deploy.sh`; deprecated script paths are rejected fail-closed.
 
-Compatibility notice:
-- `infra/docker-compose.deploy.yml.deprecated` is deprecated and removed from active operator workflow.
+Canonical deployment artifacts:
 - Use `infra/docker-compose.prod.yml` and `infra/scripts/deploy.sh` exclusively.
 - Deprecation lifecycle policy is tracked in `docs/governance/DEPRECATION_POLICY.md` and `docs/deprecations/registry.json`.
 
