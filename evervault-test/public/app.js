@@ -7,6 +7,7 @@ const runTestBtn = document.getElementById("run-test-btn");
 
 let cachedConfig = null;
 let evervaultScriptPromise = null;
+const API_BASE = "./api/test";
 
 function setStatus(message) {
   statusLine.textContent = message;
@@ -44,7 +45,7 @@ async function getConfig() {
   if (cachedConfig) {
     return cachedConfig;
   }
-  cachedConfig = await fetchJson("/api/test/config", { method: "GET", headers: {} });
+  cachedConfig = await fetchJson(`${API_BASE}/config`, { method: "GET", headers: {} });
   return cachedConfig;
 }
 
@@ -92,7 +93,7 @@ async function pollResult(sessionId, timeoutSeconds) {
   const timeoutAt = Date.now() + timeoutSeconds * 1000;
 
   while (Date.now() < timeoutAt) {
-    const result = await fetchJson(`/api/test/result/${encodeURIComponent(sessionId)}`, { method: "GET", headers: {} });
+    const result = await fetchJson(`${API_BASE}/result/${encodeURIComponent(sessionId)}`, { method: "GET", headers: {} });
 
     if (["received", "failed", "expired"].includes(result.status)) {
       return result;
@@ -110,7 +111,7 @@ selfCheckBtn.addEventListener("click", async () => {
   setStatus("Running self-check...");
 
   try {
-    const payload = await fetchJson("/api/test/self-check", { method: "POST", body: JSON.stringify({}) });
+    const payload = await fetchJson(`${API_BASE}/self-check`, { method: "POST", body: JSON.stringify({}) });
     setResult(payload);
     setStatus("Self-check passed");
   } catch (error) {
@@ -147,7 +148,7 @@ runTestBtn.addEventListener("click", async () => {
     });
 
     setStatus("Dispatching to backend and relay...");
-    const runPayload = await fetchJson("/api/test/run", {
+    const runPayload = await fetchJson(`${API_BASE}/run`, {
       method: "POST",
       body: JSON.stringify({
         encrypted_card_number: encrypted,
