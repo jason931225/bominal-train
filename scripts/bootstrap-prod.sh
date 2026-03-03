@@ -234,6 +234,8 @@ bootstrap_vm_secret_env() {
   local runtime_env_path="${PROD_ENV_DIR}/runtime.env"
   local vm_secret_path="${PROD_ENV_DIR}/vm-secrets.env"
   local database_url=""
+  local ghcr_username="${GHCR_USERNAME:-CHANGE_ME_GHCR_USERNAME}"
+  local ghcr_token="${GHCR_TOKEN:-CHANGE_ME_GHCR_TOKEN}"
   local secret_line=""
 
   if [ -f "${vm_secret_path}" ]; then
@@ -260,12 +262,19 @@ bootstrap_vm_secret_env() {
   fi
 
   umask 077
-  printf '%s\n' "${secret_line}" > "${vm_secret_path}"
+  {
+    printf '%s\n' "${secret_line}"
+    printf 'GHCR_USERNAME=%s\n' "${ghcr_username}"
+    printf 'GHCR_TOKEN=%s\n' "${ghcr_token}"
+  } > "${vm_secret_path}"
   chmod 600 "${vm_secret_path}"
   if [[ "${secret_line}" == *"CHANGE_ME"* ]]; then
     log "wrote ${vm_secret_path} with placeholder BOMINAL_DATABASE_URL; update before deploy"
   else
     log "wrote ${vm_secret_path} from runtime.env DATABASE_URL"
+  fi
+  if [[ "${ghcr_username}" == *"CHANGE_ME"* || "${ghcr_token}" == *"CHANGE_ME"* ]]; then
+    log "vm secret env includes GHCR placeholders; set GHCR_USERNAME and GHCR_TOKEN before deploy if registry is private"
   fi
 }
 

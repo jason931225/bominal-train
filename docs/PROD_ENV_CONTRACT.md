@@ -69,9 +69,12 @@ VM baseline expectation (performed by deploy script or one-time host prep):
 VM secret file expectation:
 - `VM_SECRET_ENV_FILE` points to an on-host `0600` env file.
 - Deploy script creates this file when missing and persists `BOMINAL_DATABASE_URL`.
+- Deploy script reads optional GHCR credentials from this file for private image pulls.
 - File should include one of:
   - `BOMINAL_DATABASE_URL=...`
   - `BOMINAL_POSTGRES_PASSWORD=...`
+  - `GHCR_USERNAME=...` (required when GHCR images are private)
+  - `GHCR_TOKEN=...` (required when GHCR images are private)
 
 | Key | Classification | Rationale |
 |---|---|---|
@@ -147,7 +150,7 @@ VM secret file expectation:
 ## GitHub Actions Production Environment Secrets (`.github/workflows/cd.yml`)
 
 No custom production-environment secrets are read directly by `cd.yml`.
-Database credential material is read on-VM via `VM_SECRET_ENV_FILE`.
+Database credential material and optional GHCR pull credentials are read on-VM via `VM_SECRET_ENV_FILE`.
 
 ## Mandatory Production Guards
 

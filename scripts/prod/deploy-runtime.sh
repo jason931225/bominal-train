@@ -100,6 +100,28 @@ fi
 set_env_key "${BOMINAL_VM_SECRET_ENV_FILE}" "BOMINAL_DATABASE_URL" "${database_url}"
 chmod 600 "${BOMINAL_VM_SECRET_ENV_FILE}"
 
+ensure_registry_auth() {
+  local ghcr_username="${BOMINAL_GHCR_USERNAME:-}"
+  local ghcr_token="${BOMINAL_GHCR_TOKEN:-}"
+
+  if [ -z "${ghcr_username}" ]; then
+    ghcr_username="$(read_env_key "${BOMINAL_VM_SECRET_ENV_FILE}" "GHCR_USERNAME")"
+  fi
+  if [ -z "${ghcr_token}" ]; then
+    ghcr_token="$(read_env_key "${BOMINAL_VM_SECRET_ENV_FILE}" "GHCR_TOKEN")"
+  fi
+
+  if [ -n "${ghcr_username}" ] && [ -n "${ghcr_token}" ]; then
+    if ! printf '%s' "${ghcr_token}" | docker login ghcr.io --username "${ghcr_username}" --password-stdin >/dev/null; then
+      fail "failed to authenticate to ghcr.io using VM secret env credentials"
+    fi
+    log "authenticated to ghcr.io"
+    return
+  fi
+
+  log "GHCR credentials not configured in VM secret env; attempting anonymous pull"
+}
+
 migrations_script="${SCRIPT_DIR}/apply-migrations.sh"
 if [ ! -f "${migrations_script}" ]; then
   fail "migrations script not found: ${migrations_script}"
@@ -129,9 +151,13 @@ set_env_key "${BOMINAL_RUNTIME_ENV_PATH}" "BOMINAL_API_IMAGE" "${BOMINAL_API_IMA
 set_env_key "${BOMINAL_RUNTIME_ENV_PATH}" "BOMINAL_WORKER_IMAGE" "${BOMINAL_WORKER_IMAGE}"
 set_env_key "${BOMINAL_RUNTIME_ENV_PATH}" "DATABASE_URL" "${database_url}"
 
+ensure_registry_auth
+
 log "pulling deploy images"
-compose_cmd "${BOMINAL_RUNTIME_ENV_PATH}" "${BOMINAL_COMPOSE_FILE}" pull \
-  "${BOMINAL_API_SERVICE}" "${BOMINAL_WORKER_SERVICE}"
+if ! compose_cmd "${BOMINAL_RUNTIME_ENV_PATH}" "${BOMINAL_COMPOSE_FILE}" pull \
+  "${BOMINAL_API_SERVICE}" "${BOMINAL_WORKER_SERVICE}"; then
+  fail "image pull failed; set GHCR_USERNAME and GHCR_TOKEN in ${BOMINAL_VM_SECRET_ENV_FILE} for private registries"
+fi
 
 log "starting updated services"
 compose_cmd "${BOMINAL_RUNTIME_ENV_PATH}" "${BOMINAL_COMPOSE_FILE}" up -d --no-build \

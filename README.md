@@ -169,7 +169,7 @@ Outputs (from `env/prod/*.example` templates; depends on `--only` selection):
 - `env/prod/runtime.env`
 - `env/prod/caddy.env`
 - `env/prod/deploy.env`
-- `env/prod/vm-secrets.env` (auto-created if missing; seeded from runtime `DATABASE_URL` or placeholder)
+- `env/prod/vm-secrets.env` (auto-created if missing; includes `BOMINAL_DATABASE_URL` and GHCR credential placeholders for private pulls)
 
 ## Security and Safety Baseline
 
