@@ -1,140 +1,979 @@
-use std::time::Duration;
+use std::{
+    env,
+    fmt::Write as _,
+    sync::{Arc, OnceLock},
+    time::Instant,
+};
 
-use anyhow::{Context, Result};
+use argon2::{
+    Algorithm, Argon2, Params, Version,
+    password_hash::{
+        Ident, PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng,
+    },
+};
 use axum::http::HeaderMap;
-use bominal_shared::supabase::{Jwks, SupabaseClaims, fetch_jwks, verify_supabase_jwt};
-use sqlx::PgPool;
-use tracing::{error, info, warn};
+use chrono::{DateTime, Duration, Utc};
+use redis::AsyncCommands;
+use sha2::{Digest, Sha256};
+use tokio::{sync::Semaphore, task};
+use tracing::info;
+use uuid::Uuid;
 
-use super::super::{AppState, JwksCacheEntry};
+use super::super::AppState;
 
-#[derive(Debug, serde::Deserialize)]
-pub(crate) struct SupabaseAuthWebhook {
-    #[serde(rename = "type")]
-    pub(crate) event_type: String,
-    pub(crate) user_id: Option<String>,
-    pub(crate) email: Option<String>,
-}
+const SESSION_KEY_PREFIX: &str = "auth:session:";
+const INVITE_TTL_SECONDS: u64 = 86_400;
+const ARGON2_MEMORY_KIB: u32 = 16 * 1024;
+const ARGON2_TIME_COST: u32 = 1;
+const ARGON2_PARALLELISM: u32 = 1;
+const SIGNIN_FAIL_WINDOW_SECONDS: u64 = 900;
+const SIGNIN_LOCKOUT_SECONDS: u64 = 900;
+const SIGNIN_MAX_FAILS_PER_EMAIL: u64 = 6;
+const SIGNIN_MAX_FAILS_PER_IP: u64 = 20;
+const SIGNIN_FAIL_EMAIL_PREFIX: &str = "auth:signin:fail:email:";
+const SIGNIN_FAIL_IP_PREFIX: &str = "auth:signin:fail:ip:";
+const SIGNIN_LOCK_EMAIL_PREFIX: &str = "auth:signin:lock:email:";
+const SIGNIN_LOCK_IP_PREFIX: &str = "auth:signin:lock:ip:";
 
-#[derive(Debug)]
-pub(crate) enum VerifySupabaseTokenError {
-    MissingBearerToken,
-    JwksUnavailable,
-    Unauthorized,
-}
-
-#[derive(Debug)]
-pub(crate) enum SupabaseAuthWebhookError {
-    SecretMismatch,
-    PersistenceFailure,
-}
-
-pub(crate) async fn verify_supabase_token(
-    state: &AppState,
-    headers: &HeaderMap,
-) -> Result<SupabaseClaims, VerifySupabaseTokenError> {
-    let Some(token) = bearer_token(headers) else {
-        return Err(VerifySupabaseTokenError::MissingBearerToken);
-    };
-
-    let jwks = match get_or_refresh_jwks(state).await {
-        Ok(value) => value,
-        Err(err) => {
-            error!(error = %err, "failed to load supabase jwks");
-            return Err(VerifySupabaseTokenError::JwksUnavailable);
-        }
-    };
-
-    verify_supabase_jwt(
-        token,
-        &jwks,
-        &state.config.supabase.jwt_issuer,
-        state.config.supabase.jwt_audience.as_deref(),
-    )
-    .map_err(|err| {
-        warn!(error = %err, "supabase token verification failed");
-        VerifySupabaseTokenError::Unauthorized
+fn password_hash_concurrency_limit() -> usize {
+    static PASSWORD_HASH_CONCURRENCY: OnceLock<usize> = OnceLock::new();
+    *PASSWORD_HASH_CONCURRENCY.get_or_init(|| {
+        env::var("PASSWORD_HASH_CONCURRENCY")
+            .ok()
+            .and_then(|raw| raw.parse::<usize>().ok())
+            .map(|value| value.clamp(1, 32))
+            .unwrap_or(1)
     })
 }
 
-pub(crate) async fn process_supabase_auth_webhook(
-    state: &AppState,
-    headers: &HeaderMap,
-    payload: &SupabaseAuthWebhook,
-) -> Result<(), SupabaseAuthWebhookError> {
-    if let Some(expected_secret) = state.config.supabase.auth_webhook_secret.as_deref() {
-        let provided = headers
-            .get("x-bominal-supabase-webhook-secret")
-            .and_then(|value| value.to_str().ok())
-            .unwrap_or("");
-
-        if provided != expected_secret {
-            return Err(SupabaseAuthWebhookError::SecretMismatch);
-        }
-    }
-
-    if let Some(pool) = state.db_pool.as_ref()
-        && let Err(err) = persist_auth_sync(pool, payload).await
-    {
-        error!(error = %err, "failed to persist supabase auth sync payload");
-        return Err(SupabaseAuthWebhookError::PersistenceFailure);
-    }
-
-    info!(
-        event_type = %payload.event_type,
-        user_id = payload.user_id.as_deref().unwrap_or("unknown"),
-        has_email = payload.email.is_some(),
-        "received supabase auth webhook"
-    );
-
-    Ok(())
+fn password_hash_semaphore() -> Arc<Semaphore> {
+    static PASSWORD_HASH_SEMAPHORE: OnceLock<Arc<Semaphore>> = OnceLock::new();
+    PASSWORD_HASH_SEMAPHORE
+        .get_or_init(|| Arc::new(Semaphore::new(password_hash_concurrency_limit())))
+        .clone()
 }
 
-async fn persist_auth_sync(pool: &PgPool, payload: &SupabaseAuthWebhook) -> Result<()> {
-    let user_id = payload
-        .user_id
-        .as_deref()
-        .context("supabase webhook payload missing user_id")?;
+#[derive(Debug, serde::Deserialize)]
+pub(crate) struct PasswordSigninRequest {
+    pub(crate) email: String,
+    pub(crate) password: String,
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub(crate) struct AcceptInviteRequest {
+    pub(crate) invite_token: String,
+    pub(crate) email: String,
+    pub(crate) password: String,
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub(crate) struct CreateInviteRequest {
+    pub(crate) email: String,
+    pub(crate) expires_in_seconds: Option<u64>,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub(crate) struct CreateInviteResponse {
+    pub(crate) invite_url: String,
+    pub(crate) expires_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub(crate) struct SessionUser {
+    pub(crate) user_id: String,
+    pub(crate) email: String,
+}
+
+#[derive(Debug)]
+pub(crate) enum AuthServiceError {
+    InvalidRequest(&'static str),
+    Unauthorized(&'static str),
+    NotFound(&'static str),
+    Conflict(&'static str),
+    ServiceUnavailable(&'static str),
+    Internal,
+}
+
+pub(crate) async fn signin_with_password(
+    state: &AppState,
+    request: PasswordSigninRequest,
+    client_ip: &str,
+) -> Result<SessionUser, AuthServiceError> {
+    let email = request.email.trim().to_ascii_lowercase();
+    if email.is_empty() || request.password.is_empty() {
+        return Err(AuthServiceError::InvalidRequest(
+            "email and password are required",
+        ));
+    }
+    ensure_signin_not_locked(state, &email, client_ip).await?;
+
+    let pool = state
+        .db_pool
+        .as_ref()
+        .ok_or(AuthServiceError::ServiceUnavailable("database unavailable"))?;
+
+    let user = sqlx::query_as::<_, (Uuid, String, String)>(
+        "select id, email, password_hash from auth_users where lower(email) = lower($1) and status = 'active' limit 1",
+    )
+    .bind(&email)
+    .fetch_optional(pool)
+    .await
+    .map_err(|_| AuthServiceError::Internal)?;
+
+    let Some((user_id, persisted_email, password_hash)) = user else {
+        record_signin_failure(state, &email, client_ip).await?;
+        return Err(AuthServiceError::Unauthorized("invalid email or password"));
+    };
+
+    match verify_password_hash(request.password, password_hash).await {
+        Ok(()) => {}
+        Err(AuthServiceError::Unauthorized(message)) => {
+            record_signin_failure(state, &email, client_ip).await?;
+            return Err(AuthServiceError::Unauthorized(message));
+        }
+        Err(error) => return Err(error),
+    }
+    clear_signin_failure_state(state, &email, client_ip).await?;
+
+    Ok(SessionUser {
+        user_id: user_id.to_string(),
+        email: persisted_email,
+    })
+}
+
+pub(crate) async fn accept_invite(
+    state: &AppState,
+    request: AcceptInviteRequest,
+) -> Result<SessionUser, AuthServiceError> {
+    let invite_token = request.invite_token.trim();
+    let email = request.email.trim().to_ascii_lowercase();
+    if invite_token.is_empty() || email.is_empty() || request.password.is_empty() {
+        return Err(AuthServiceError::InvalidRequest(
+            "invite token, email, and password are required",
+        ));
+    }
+    if !looks_like_email(&email) {
+        return Err(AuthServiceError::InvalidRequest("email format is invalid"));
+    }
+    if request.password.len() < 8 {
+        return Err(AuthServiceError::InvalidRequest(
+            "password must be at least 8 characters",
+        ));
+    }
+
+    let pool = state
+        .db_pool
+        .as_ref()
+        .ok_or(AuthServiceError::ServiceUnavailable("database unavailable"))?;
+
+    let token_hash = hash_token(&state.config.session_secret, invite_token);
+    let invite = sqlx::query_as::<_, (Uuid, String, DateTime<Utc>, Option<DateTime<Utc>>)>(
+        "select id, email, expires_at, accepted_at from auth_invites where token_hash = $1 limit 1",
+    )
+    .bind(&token_hash)
+    .fetch_optional(pool)
+    .await
+    .map_err(|_| AuthServiceError::Internal)?;
+
+    let Some((invite_id, invite_email, expires_at, accepted_at)) = invite else {
+        return Err(AuthServiceError::Unauthorized("invalid invite token"));
+    };
+
+    if accepted_at.is_some() {
+        return Err(AuthServiceError::Unauthorized("invite token already used"));
+    }
+    if expires_at < Utc::now() {
+        return Err(AuthServiceError::Unauthorized("invite token expired"));
+    }
+    if !invite_email.eq_ignore_ascii_case(&email) {
+        return Err(AuthServiceError::Unauthorized(
+            "invite token does not match email",
+        ));
+    }
+
+    let existing = sqlx::query_scalar::<_, Uuid>(
+        "select id from auth_users where lower(email) = lower($1) limit 1",
+    )
+    .bind(&email)
+    .fetch_optional(pool)
+    .await
+    .map_err(|_| AuthServiceError::Internal)?;
+
+    if existing.is_some() {
+        return Err(AuthServiceError::Conflict(
+            "account already exists for email",
+        ));
+    }
+
+    let password_hash = hash_password(request.password).await?;
+    let user_id = Uuid::new_v4();
+
+    let mut tx = pool.begin().await.map_err(|_| AuthServiceError::Internal)?;
 
     sqlx::query(
-        "insert into supabase_auth_user_sync (user_id, email, last_event_type, last_synced_at) values ($1, $2, $3, now()) on conflict (user_id) do update set email = excluded.email, last_event_type = excluded.last_event_type, last_synced_at = now()",
+        "insert into auth_users (id, email, password_hash, status, created_at, updated_at) values ($1, $2, $3, 'active', now(), now())",
     )
     .bind(user_id)
-    .bind(payload.email.as_deref())
-    .bind(payload.event_type.as_str())
+    .bind(&email)
+    .bind(&password_hash)
+    .execute(&mut *tx)
+    .await
+    .map_err(|_| AuthServiceError::Internal)?;
+
+    let update_result = sqlx::query(
+        "update auth_invites set accepted_at = now() where id = $1 and accepted_at is null",
+    )
+    .bind(invite_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(|_| AuthServiceError::Internal)?;
+
+    if update_result.rows_affected() != 1 {
+        return Err(AuthServiceError::Unauthorized("invite token already used"));
+    }
+
+    tx.commit().await.map_err(|_| AuthServiceError::Internal)?;
+
+    Ok(SessionUser {
+        user_id: user_id.to_string(),
+        email,
+    })
+}
+
+pub(crate) async fn create_invite(
+    state: &AppState,
+    request: CreateInviteRequest,
+) -> Result<CreateInviteResponse, AuthServiceError> {
+    let email = request.email.trim().to_ascii_lowercase();
+    if email.is_empty() || !looks_like_email(&email) {
+        return Err(AuthServiceError::InvalidRequest("email format is invalid"));
+    }
+
+    let pool = state
+        .db_pool
+        .as_ref()
+        .ok_or(AuthServiceError::ServiceUnavailable("database unavailable"))?;
+
+    let ttl = request
+        .expires_in_seconds
+        .unwrap_or(INVITE_TTL_SECONDS)
+        .clamp(60, 7 * 24 * 60 * 60);
+    let expires_at = Utc::now() + Duration::seconds(ttl as i64);
+
+    let raw_token = generate_token();
+    let token_hash = hash_token(&state.config.session_secret, &raw_token);
+
+    sqlx::query(
+        "insert into auth_invites (id, email, token_hash, expires_at, accepted_at, created_at) values ($1, $2, $3, $4, null, now())",
+    )
+    .bind(Uuid::new_v4())
+    .bind(&email)
+    .bind(&token_hash)
+    .bind(expires_at)
     .execute(pool)
     .await
-    .context("failed to upsert supabase auth sync row")?;
+    .map_err(|_| AuthServiceError::Internal)?;
+
+    let base = state.config.invite_base_url.trim_end_matches('/');
+    let invite_url = format!("{base}/auth?invite_token={raw_token}");
+
+    Ok(CreateInviteResponse {
+        invite_url,
+        expires_at,
+    })
+}
+
+pub(crate) async fn establish_session(
+    state: &AppState,
+    user: &SessionUser,
+) -> Result<String, AuthServiceError> {
+    let redis_client = state
+        .redis_client
+        .as_ref()
+        .ok_or(AuthServiceError::ServiceUnavailable(
+            "session store unavailable",
+        ))?;
+
+    let mut conn = redis_client
+        .get_multiplexed_async_connection()
+        .await
+        .map_err(|_| AuthServiceError::ServiceUnavailable("session store unavailable"))?;
+
+    let session_id = generate_token();
+    let key = format!("{SESSION_KEY_PREFIX}{session_id}");
+    let value = serde_json::to_string(user).map_err(|_| AuthServiceError::Internal)?;
+
+    conn.set_ex::<_, _, ()>(key, value, state.config.session_ttl_seconds)
+        .await
+        .map_err(|_| AuthServiceError::ServiceUnavailable("session store unavailable"))?;
+
+    Ok(session_id)
+}
+
+pub(crate) async fn revoke_session(
+    state: &AppState,
+    headers: &HeaderMap,
+) -> Result<(), AuthServiceError> {
+    let Some(session_id) = extract_session_cookie(headers, &state.config.session_cookie_name)
+    else {
+        return Ok(());
+    };
+
+    let redis_client = state
+        .redis_client
+        .as_ref()
+        .ok_or(AuthServiceError::ServiceUnavailable(
+            "session store unavailable",
+        ))?;
+    let mut conn = redis_client
+        .get_multiplexed_async_connection()
+        .await
+        .map_err(|_| AuthServiceError::ServiceUnavailable("session store unavailable"))?;
+
+    let key = format!("{SESSION_KEY_PREFIX}{session_id}");
+    conn.del::<_, ()>(key)
+        .await
+        .map_err(|_| AuthServiceError::ServiceUnavailable("session store unavailable"))?;
 
     Ok(())
 }
 
-async fn get_or_refresh_jwks(state: &AppState) -> Result<Jwks> {
-    {
-        let guard = state.jwks_cache.read().await;
-        if let Some(entry) = guard.as_ref()
-            && entry.fetched_at.elapsed()
-                < Duration::from_secs(state.config.supabase.jwks_cache_seconds)
-        {
-            return Ok(entry.jwks.clone());
+pub(crate) async fn require_session_user(
+    state: &AppState,
+    headers: &HeaderMap,
+) -> Result<SessionUser, AuthServiceError> {
+    current_session_user(state, headers)
+        .await?
+        .ok_or(AuthServiceError::Unauthorized("active session required"))
+}
+
+pub(crate) async fn current_session_user(
+    state: &AppState,
+    headers: &HeaderMap,
+) -> Result<Option<SessionUser>, AuthServiceError> {
+    let Some(session_id) = extract_session_cookie(headers, &state.config.session_cookie_name)
+    else {
+        return Ok(None);
+    };
+
+    let redis_client = state
+        .redis_client
+        .as_ref()
+        .ok_or(AuthServiceError::ServiceUnavailable(
+            "session store unavailable",
+        ))?;
+
+    let mut conn = redis_client
+        .get_multiplexed_async_connection()
+        .await
+        .map_err(|_| AuthServiceError::ServiceUnavailable("session store unavailable"))?;
+
+    let key = format!("{SESSION_KEY_PREFIX}{session_id}");
+    let raw: Option<String> = conn
+        .get(key)
+        .await
+        .map_err(|_| AuthServiceError::ServiceUnavailable("session store unavailable"))?;
+
+    let Some(raw) = raw else {
+        return Ok(None);
+    };
+
+    let user = serde_json::from_str::<SessionUser>(&raw).map_err(|_| AuthServiceError::Internal)?;
+    Ok(Some(user))
+}
+
+pub(crate) async fn load_user_by_id(
+    state: &AppState,
+    user_id: &str,
+) -> Result<SessionUser, AuthServiceError> {
+    let user_uuid = Uuid::parse_str(user_id)
+        .map_err(|_| AuthServiceError::InvalidRequest("invalid user id"))?;
+
+    let pool = state
+        .db_pool
+        .as_ref()
+        .ok_or(AuthServiceError::ServiceUnavailable("database unavailable"))?;
+
+    let row = sqlx::query_as::<_, (Uuid, String)>(
+        "select id, email from auth_users where id = $1 and status = 'active' limit 1",
+    )
+    .bind(user_uuid)
+    .fetch_optional(pool)
+    .await
+    .map_err(|_| AuthServiceError::Internal)?;
+
+    let Some((id, email)) = row else {
+        return Err(AuthServiceError::NotFound("user not found"));
+    };
+
+    Ok(SessionUser {
+        user_id: id.to_string(),
+        email,
+    })
+}
+
+pub(crate) fn session_set_cookie(state: &AppState, session_id: &str) -> String {
+    let secure = if state.config.app_env.eq_ignore_ascii_case("production") {
+        "; Secure"
+    } else {
+        ""
+    };
+
+    format!(
+        "{}={}; Path=/; HttpOnly; SameSite=Lax; Max-Age={}{}",
+        state.config.session_cookie_name, session_id, state.config.session_ttl_seconds, secure
+    )
+}
+
+pub(crate) fn session_clear_cookie(state: &AppState) -> String {
+    let secure = if state.config.app_env.eq_ignore_ascii_case("production") {
+        "; Secure"
+    } else {
+        ""
+    };
+
+    format!(
+        "{}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0{}",
+        state.config.session_cookie_name, secure
+    )
+}
+
+async fn ensure_signin_not_locked(
+    state: &AppState,
+    email: &str,
+    client_ip: &str,
+) -> Result<(), AuthServiceError> {
+    let redis_client = state
+        .redis_client
+        .as_ref()
+        .ok_or(AuthServiceError::ServiceUnavailable(
+            "authentication rate-limit store unavailable",
+        ))?;
+    let mut conn = redis_client
+        .get_multiplexed_async_connection()
+        .await
+        .map_err(|_| {
+            AuthServiceError::ServiceUnavailable("authentication rate-limit store unavailable")
+        })?;
+
+    let keys = signin_rate_keys(state, email, client_ip);
+    let email_locked: bool = conn.exists(keys.email_lock).await.map_err(|_| {
+        AuthServiceError::ServiceUnavailable("authentication rate-limit check failed")
+    })?;
+    let ip_locked: bool = conn.exists(keys.ip_lock).await.map_err(|_| {
+        AuthServiceError::ServiceUnavailable("authentication rate-limit check failed")
+    })?;
+
+    if email_locked || ip_locked {
+        return Err(AuthServiceError::Unauthorized(
+            "too many failed sign-in attempts, try again later",
+        ));
+    }
+    Ok(())
+}
+
+async fn record_signin_failure(
+    state: &AppState,
+    email: &str,
+    client_ip: &str,
+) -> Result<(), AuthServiceError> {
+    let redis_client = state
+        .redis_client
+        .as_ref()
+        .ok_or(AuthServiceError::ServiceUnavailable(
+            "authentication rate-limit store unavailable",
+        ))?;
+    let mut conn = redis_client
+        .get_multiplexed_async_connection()
+        .await
+        .map_err(|_| {
+            AuthServiceError::ServiceUnavailable("authentication rate-limit store unavailable")
+        })?;
+
+    let keys = signin_rate_keys(state, email, client_ip);
+    let email_count: u64 = conn
+        .incr(keys.email_fail.clone(), 1_u64)
+        .await
+        .map_err(|_| {
+            AuthServiceError::ServiceUnavailable("authentication failure tracking failed")
+        })?;
+    let _: bool = conn
+        .expire(keys.email_fail.clone(), SIGNIN_FAIL_WINDOW_SECONDS as i64)
+        .await
+        .map_err(|_| {
+            AuthServiceError::ServiceUnavailable("authentication failure tracking failed")
+        })?;
+
+    let ip_count: u64 = conn.incr(keys.ip_fail.clone(), 1_u64).await.map_err(|_| {
+        AuthServiceError::ServiceUnavailable("authentication failure tracking failed")
+    })?;
+    let _: bool = conn
+        .expire(keys.ip_fail.clone(), SIGNIN_FAIL_WINDOW_SECONDS as i64)
+        .await
+        .map_err(|_| {
+            AuthServiceError::ServiceUnavailable("authentication failure tracking failed")
+        })?;
+
+    if email_count >= SIGNIN_MAX_FAILS_PER_EMAIL {
+        conn.set_ex::<_, _, ()>(keys.email_lock, "1", SIGNIN_LOCKOUT_SECONDS)
+            .await
+            .map_err(|_| {
+                AuthServiceError::ServiceUnavailable("authentication lockout activation failed")
+            })?;
+    }
+
+    if ip_count >= SIGNIN_MAX_FAILS_PER_IP {
+        conn.set_ex::<_, _, ()>(keys.ip_lock, "1", SIGNIN_LOCKOUT_SECONDS)
+            .await
+            .map_err(|_| {
+                AuthServiceError::ServiceUnavailable("authentication lockout activation failed")
+            })?;
+    }
+
+    Ok(())
+}
+
+async fn clear_signin_failure_state(
+    state: &AppState,
+    email: &str,
+    client_ip: &str,
+) -> Result<(), AuthServiceError> {
+    let redis_client = state
+        .redis_client
+        .as_ref()
+        .ok_or(AuthServiceError::ServiceUnavailable(
+            "authentication rate-limit store unavailable",
+        ))?;
+    let mut conn = redis_client
+        .get_multiplexed_async_connection()
+        .await
+        .map_err(|_| {
+            AuthServiceError::ServiceUnavailable("authentication rate-limit store unavailable")
+        })?;
+
+    let keys = signin_rate_keys(state, email, client_ip);
+    let _: u64 = conn
+        .del(&[
+            keys.email_fail.as_str(),
+            keys.ip_fail.as_str(),
+            keys.email_lock.as_str(),
+            keys.ip_lock.as_str(),
+        ])
+        .await
+        .map_err(|_| AuthServiceError::ServiceUnavailable("authentication failure reset failed"))?;
+
+    Ok(())
+}
+
+struct SigninRateKeys {
+    email_fail: String,
+    ip_fail: String,
+    email_lock: String,
+    ip_lock: String,
+}
+
+fn signin_rate_keys(state: &AppState, email: &str, client_ip: &str) -> SigninRateKeys {
+    let email_id = hash_token(&state.config.session_secret, &email.to_ascii_lowercase());
+    let ip_id = hash_token(&state.config.session_secret, client_ip);
+
+    SigninRateKeys {
+        email_fail: format!("{SIGNIN_FAIL_EMAIL_PREFIX}{email_id}"),
+        ip_fail: format!("{SIGNIN_FAIL_IP_PREFIX}{ip_id}"),
+        email_lock: format!("{SIGNIN_LOCK_EMAIL_PREFIX}{email_id}"),
+        ip_lock: format!("{SIGNIN_LOCK_IP_PREFIX}{ip_id}"),
+    }
+}
+
+async fn verify_password_hash(
+    password: String,
+    password_hash: String,
+) -> Result<(), AuthServiceError> {
+    run_password_hash_work("verify", move || {
+        verify_password_hash_blocking(&password, &password_hash)
+    })
+    .await
+}
+
+async fn hash_password(password: String) -> Result<String, AuthServiceError> {
+    run_password_hash_work("hash", move || hash_password_blocking(&password)).await
+}
+
+async fn run_password_hash_work<T, F>(
+    operation: &'static str,
+    work: F,
+) -> Result<T, AuthServiceError>
+where
+    T: Send + 'static,
+    F: FnOnce() -> Result<T, AuthServiceError> + Send + 'static,
+{
+    let semaphore = password_hash_semaphore();
+    let limit = password_hash_concurrency_limit();
+
+    let wait_start = Instant::now();
+    let _permit = semaphore
+        .acquire_owned()
+        .await
+        .map_err(|_| AuthServiceError::Internal)?;
+    let wait_ms = wait_start.elapsed().as_millis() as u64;
+
+    let exec_start = Instant::now();
+    let result = task::spawn_blocking(work)
+        .await
+        .map_err(|_| AuthServiceError::Internal)?;
+    let exec_ms = exec_start.elapsed().as_millis() as u64;
+
+    info!(
+        target: "auth.password_hash",
+        operation,
+        wait_ms,
+        exec_ms,
+        total_ms = wait_ms + exec_ms,
+        concurrency_limit = limit,
+        "password hash workload timing"
+    );
+
+    result
+}
+
+fn verify_password_hash_blocking(
+    password: &str,
+    password_hash: &str,
+) -> Result<(), AuthServiceError> {
+    let parsed_hash = PasswordHash::new(password_hash)
+        .map_err(|_| AuthServiceError::Unauthorized("invalid email or password"))?;
+    if !is_supported_argon2_hash(&parsed_hash) {
+        return Err(AuthServiceError::Unauthorized("invalid email or password"));
+    }
+
+    let argon2 = argon2_hasher()?;
+    argon2
+        .verify_password(password.as_bytes(), &parsed_hash)
+        .map_err(|_| AuthServiceError::Unauthorized("invalid email or password"))
+}
+
+fn hash_password_blocking(password: &str) -> Result<String, AuthServiceError> {
+    let argon2 = argon2_hasher()?;
+    let salt = SaltString::generate(&mut OsRng);
+    let hash = argon2
+        .hash_password(password.as_bytes(), &salt)
+        .map_err(|_| AuthServiceError::Internal)?;
+    Ok(hash.to_string())
+}
+
+fn argon2_hasher() -> Result<Argon2<'static>, AuthServiceError> {
+    let params = Params::new(
+        ARGON2_MEMORY_KIB,
+        ARGON2_TIME_COST,
+        ARGON2_PARALLELISM,
+        None,
+    )
+    .map_err(|_| AuthServiceError::Internal)?;
+    Ok(Argon2::new(Algorithm::Argon2id, Version::V0x13, params))
+}
+
+fn is_supported_argon2_hash(hash: &PasswordHash<'_>) -> bool {
+    let Ok(expected_alg) = Ident::new("argon2id") else {
+        return false;
+    };
+
+    hash.algorithm == expected_alg
+        && hash.version == Some(19)
+        && hash.params.get_decimal("m") == Some(ARGON2_MEMORY_KIB)
+        && hash.params.get_decimal("t") == Some(ARGON2_TIME_COST)
+        && hash.params.get_decimal("p") == Some(ARGON2_PARALLELISM)
+}
+
+fn looks_like_email(value: &str) -> bool {
+    let value = value.trim();
+    !value.is_empty()
+        && value.contains('@')
+        && value.rsplit('.').next().is_some_and(|v| !v.is_empty())
+}
+
+fn extract_session_cookie<'a>(headers: &'a HeaderMap, cookie_name: &str) -> Option<&'a str> {
+    let raw_cookie = headers.get(axum::http::header::COOKIE)?.to_str().ok()?;
+
+    raw_cookie
+        .split(';')
+        .filter_map(|entry| {
+            let mut parts = entry.trim().splitn(2, '=');
+            let key = parts.next()?.trim();
+            let value = parts.next()?.trim();
+            Some((key, value))
+        })
+        .find_map(|(key, value)| (key == cookie_name).then_some(value))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        net::TcpListener,
+        process::{Child, Command, Stdio},
+        time::Duration,
+    };
+
+    use argon2::{
+        Argon2,
+        password_hash::{PasswordHasher, SaltString, rand_core::OsRng},
+    };
+    use bominal_shared::config::{
+        AppConfig, EvervaultConfig, PasskeyConfig, PasskeyProvider, RedisConfig, RuntimeSchedule,
+    };
+    use tokio::time::sleep;
+
+    use super::{
+        ARGON2_MEMORY_KIB, ARGON2_PARALLELISM, ARGON2_TIME_COST, SIGNIN_MAX_FAILS_PER_EMAIL,
+        SIGNIN_MAX_FAILS_PER_IP, clear_signin_failure_state, ensure_signin_not_locked,
+        hash_password_blocking, record_signin_failure, verify_password_hash_blocking,
+    };
+
+    #[test]
+    fn password_hash_uses_expected_argon2_profile() {
+        let hashed =
+            hash_password_blocking("test-password").expect("password hashing should succeed");
+        assert!(hashed.starts_with("$argon2id$"));
+        assert!(hashed.contains(&format!(
+            "m={ARGON2_MEMORY_KIB},t={ARGON2_TIME_COST},p={ARGON2_PARALLELISM}"
+        )));
+    }
+
+    #[test]
+    fn password_verify_is_success_and_fail_closed() {
+        let password = "correct-horse-battery-staple";
+        let hashed = hash_password_blocking(password).expect("password hashing should succeed");
+
+        verify_password_hash_blocking(password, &hashed).expect("correct password should verify");
+
+        let wrong = verify_password_hash_blocking("wrong-password", &hashed);
+        assert!(wrong.is_err());
+    }
+
+    #[test]
+    fn non_argon2_hash_format_is_rejected_fail_closed() {
+        let non_argon2_hash = "$2b$10$YwhsW7X4M59g3mqY2aUQ1eF5QlNydPjKk7w8v8Q1E1Xq7u0wG4hZO";
+        let verification = verify_password_hash_blocking("pw", non_argon2_hash);
+        assert!(matches!(
+            verification,
+            Err(super::AuthServiceError::Unauthorized(_))
+        ));
+    }
+
+    #[test]
+    fn non_current_argon2_parameters_are_rejected_fail_closed() {
+        let password = "argon2-legacy-password";
+        let legacy_hash = Argon2::default()
+            .hash_password(password.as_bytes(), &SaltString::generate(&mut OsRng))
+            .expect("legacy hash generation should succeed")
+            .to_string();
+
+        let verification = verify_password_hash_blocking(password, &legacy_hash);
+        assert!(matches!(
+            verification,
+            Err(super::AuthServiceError::Unauthorized(_))
+        ));
+    }
+
+    struct RedisTestServer {
+        child: Child,
+        url: String,
+    }
+
+    impl RedisTestServer {
+        async fn start() -> Option<Self> {
+            if Command::new("redis-server")
+                .arg("--version")
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+                .ok()?
+                .success()
+                == false
+            {
+                return None;
+            }
+
+            let port = free_port()?;
+            let child = Command::new("redis-server")
+                .arg("--save")
+                .arg("")
+                .arg("--appendonly")
+                .arg("no")
+                .arg("--bind")
+                .arg("127.0.0.1")
+                .arg("--port")
+                .arg(port.to_string())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+                .ok()?;
+            let url = format!("redis://127.0.0.1:{port}/0");
+            if wait_for_redis(&url).await {
+                Some(Self { child, url })
+            } else {
+                None
+            }
         }
     }
 
-    let jwks = fetch_jwks(&state.http_client, &state.config.supabase.jwks_url).await?;
-
-    {
-        let mut guard = state.jwks_cache.write().await;
-        *guard = Some(JwksCacheEntry {
-            fetched_at: std::time::Instant::now(),
-            jwks: jwks.clone(),
-        });
+    impl Drop for RedisTestServer {
+        fn drop(&mut self) {
+            let _ = self.child.kill();
+            let _ = self.child.wait();
+        }
     }
 
-    Ok(jwks)
+    fn free_port() -> Option<u16> {
+        let listener = TcpListener::bind("127.0.0.1:0").ok()?;
+        listener.local_addr().ok().map(|addr| addr.port())
+    }
+
+    async fn wait_for_redis(url: &str) -> bool {
+        for _ in 0..40 {
+            if let Ok(client) = redis::Client::open(url) {
+                if let Ok(mut conn) = client.get_multiplexed_async_connection().await {
+                    let pong: redis::RedisResult<String> =
+                        redis::cmd("PING").query_async(&mut conn).await;
+                    if matches!(pong.as_deref(), Ok("PONG")) {
+                        return true;
+                    }
+                }
+            }
+            sleep(Duration::from_millis(100)).await;
+        }
+        false
+    }
+
+    fn test_state_with_redis(redis_url: &str) -> super::AppState {
+        let config = AppConfig {
+            app_env: "test".to_string(),
+            app_host: "127.0.0.1".to_string(),
+            app_port: 0,
+            log_json: false,
+            session_cookie_name: "bominal_session".to_string(),
+            session_ttl_seconds: 3600,
+            session_secret: "test-session-secret".to_string(),
+            invite_base_url: "http://127.0.0.1:8000".to_string(),
+            database_url: String::new(),
+            redis: RedisConfig {
+                url: redis_url.to_string(),
+                queue_key: "test:runtime:queue".to_string(),
+                queue_dlq_key: "test:runtime:queue:dlq".to_string(),
+                lease_prefix: "test:runtime:lease".to_string(),
+                rate_limit_prefix: "test:runtime:rate".to_string(),
+            },
+            evervault: EvervaultConfig {
+                relay_base_url: "https://relay.evervault.com".to_string(),
+                app_id: None,
+            },
+            resend: None,
+            passkey: PasskeyConfig {
+                provider: PasskeyProvider::ServerWebauthn,
+                webauthn_rp_id: "localhost".to_string(),
+                webauthn_rp_origin: "http://localhost:8000".to_string(),
+                webauthn_rp_name: "bominal".to_string(),
+                webauthn_challenge_ttl_seconds: 300,
+            },
+            runtime: RuntimeSchedule {
+                poll_interval: Duration::from_secs(1),
+                reconcile_interval: Duration::from_secs(1),
+                watch_interval: Duration::from_secs(1),
+                key_rotation_interval: Duration::from_secs(1),
+            },
+        };
+
+        super::AppState {
+            config,
+            db_pool: None,
+            redis_client: Some(
+                redis::Client::open(redis_url).expect("redis url should be valid for test state"),
+            ),
+            http_client: reqwest::Client::new(),
+            webauthn: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn lockout_triggers_after_email_threshold_and_resets() {
+        let Some(redis_server) = RedisTestServer::start().await else {
+            eprintln!("redis-server not available; skipping lockout integration test");
+            return;
+        };
+
+        let state = test_state_with_redis(&redis_server.url);
+        let email = "lockout-email@example.com";
+        let client_ip = "198.51.100.9";
+
+        for _ in 0..SIGNIN_MAX_FAILS_PER_EMAIL {
+            record_signin_failure(&state, email, client_ip)
+                .await
+                .expect("recording failure should succeed");
+        }
+
+        let locked = ensure_signin_not_locked(&state, email, client_ip).await;
+        assert!(matches!(
+            locked,
+            Err(super::AuthServiceError::Unauthorized(
+                "too many failed sign-in attempts, try again later"
+            ))
+        ));
+
+        clear_signin_failure_state(&state, email, client_ip)
+            .await
+            .expect("clearing failure state should succeed");
+
+        ensure_signin_not_locked(&state, email, client_ip)
+            .await
+            .expect("lockout should be cleared after reset");
+    }
+
+    #[tokio::test]
+    async fn ip_lockout_threshold_applies_across_emails() {
+        let Some(redis_server) = RedisTestServer::start().await else {
+            eprintln!("redis-server not available; skipping lockout integration test");
+            return;
+        };
+
+        let state = test_state_with_redis(&redis_server.url);
+        let client_ip = "203.0.113.15";
+
+        for index in 0..SIGNIN_MAX_FAILS_PER_IP {
+            let email = format!("user-{index}@example.com");
+            record_signin_failure(&state, &email, client_ip)
+                .await
+                .expect("recording failure should succeed");
+        }
+
+        let locked = ensure_signin_not_locked(&state, "fresh-email@example.com", client_ip).await;
+        assert!(matches!(
+            locked,
+            Err(super::AuthServiceError::Unauthorized(
+                "too many failed sign-in attempts, try again later"
+            ))
+        ));
+
+        ensure_signin_not_locked(&state, "fresh-email@example.com", "203.0.113.16")
+            .await
+            .expect("different IP should not be locked");
+    }
 }
 
-fn bearer_token(headers: &HeaderMap) -> Option<&str> {
-    let auth_header = headers.get(axum::http::header::AUTHORIZATION)?;
-    let raw = auth_header.to_str().ok()?;
-    raw.strip_prefix("Bearer ")
+fn generate_token() -> String {
+    let first = Uuid::new_v4().simple().to_string();
+    let second = Uuid::new_v4().simple().to_string();
+    format!("{first}{second}")
+}
+
+fn hash_token(secret: &str, value: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(secret.as_bytes());
+    hasher.update(b":");
+    hasher.update(value.as_bytes());
+
+    let digest = hasher.finalize();
+    let mut out = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        let _ = write!(&mut out, "{byte:02x}");
+    }
+
+    out
 }

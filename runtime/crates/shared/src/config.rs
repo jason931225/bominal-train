@@ -5,16 +5,6 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SupabaseConfig {
-    pub url: String,
-    pub jwt_issuer: String,
-    pub jwt_audience: Option<String>,
-    pub jwks_url: String,
-    pub jwks_cache_seconds: u64,
-    pub auth_webhook_secret: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RedisConfig {
     pub url: String,
     pub queue_key: String,
@@ -36,6 +26,21 @@ pub struct ResendConfig {
     pub from_address: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum PasskeyProvider {
+    ServerWebauthn,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PasskeyConfig {
+    pub provider: PasskeyProvider,
+    pub webauthn_rp_id: String,
+    pub webauthn_rp_origin: String,
+    pub webauthn_rp_name: String,
+    pub webauthn_challenge_ttl_seconds: u64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RuntimeSchedule {
     pub poll_interval: Duration,
@@ -50,11 +55,15 @@ pub struct AppConfig {
     pub app_host: String,
     pub app_port: u16,
     pub log_json: bool,
+    pub session_cookie_name: String,
+    pub session_ttl_seconds: u64,
+    pub session_secret: String,
+    pub invite_base_url: String,
     pub database_url: String,
-    pub supabase: SupabaseConfig,
     pub redis: RedisConfig,
     pub evervault: EvervaultConfig,
     pub resend: Option<ResendConfig>,
+    pub passkey: PasskeyConfig,
     pub runtime: RuntimeSchedule,
 }
 
@@ -62,8 +71,6 @@ impl AppConfig {
     pub fn from_env() -> Result<Self> {
         dotenvy::dotenv().ok();
 
-        let supabase_url = env_or("SUPABASE_URL", "")?;
-        let jwt_issuer = env_or("SUPABASE_JWT_ISSUER", "")?;
         let database_url = normalize_database_url(&env_or("DATABASE_URL", "")?);
 
         Ok(Self {
@@ -71,18 +78,11 @@ impl AppConfig {
             app_host: env_or("APP_HOST", "0.0.0.0")?,
             app_port: parse_u16("APP_PORT", 8080)?,
             log_json: parse_bool("LOG_JSON", true),
+            session_cookie_name: env_or("SESSION_COOKIE_NAME", "bominal_session")?,
+            session_ttl_seconds: parse_u64("SESSION_TTL_SECONDS", 86400)?,
+            session_secret: env_or("SESSION_SECRET", "dev-session-secret-change-me")?,
+            invite_base_url: env_or("INVITE_BASE_URL", "http://127.0.0.1:8000")?,
             database_url,
-            supabase: SupabaseConfig {
-                jwks_url: env_or(
-                    "SUPABASE_JWKS_URL",
-                    &format!("{}/auth/v1/.well-known/jwks.json", supabase_url),
-                )?,
-                url: supabase_url,
-                jwt_issuer,
-                jwt_audience: env_opt("SUPABASE_JWT_AUDIENCE"),
-                jwks_cache_seconds: parse_u64("SUPABASE_JWKS_CACHE_SECONDS", 300)?,
-                auth_webhook_secret: env_opt("SUPABASE_AUTH_WEBHOOK_SECRET"),
-            },
             redis: RedisConfig {
                 url: env_or("REDIS_URL", "redis://127.0.0.1:6379")?,
                 queue_key: env_or("RUNTIME_QUEUE_KEY", "train:queue")?,
@@ -95,6 +95,13 @@ impl AppConfig {
                 app_id: env_opt("EVERVAULT_APP_ID"),
             },
             resend: maybe_resend()?,
+            passkey: PasskeyConfig {
+                provider: parse_passkey_provider(&env_or("PASSKEY_PROVIDER", "server_webauthn")?)?,
+                webauthn_rp_id: env_or("WEBAUTHN_RP_ID", "localhost")?,
+                webauthn_rp_origin: env_or("WEBAUTHN_RP_ORIGIN", "http://localhost:8000")?,
+                webauthn_rp_name: env_or("WEBAUTHN_RP_NAME", "bominal")?,
+                webauthn_challenge_ttl_seconds: parse_u64("WEBAUTHN_CHALLENGE_TTL_SECONDS", 300)?,
+            },
             runtime: RuntimeSchedule {
                 poll_interval: parse_seconds("WORKER_POLL_SECONDS", 3)?,
                 reconcile_interval: parse_seconds("WORKER_RECONCILE_SECONDS", 30)?,
@@ -185,4 +192,11 @@ fn maybe_resend() -> Result<Option<ResendConfig>> {
         api_key_present,
         from_address,
     }))
+}
+
+fn parse_passkey_provider(raw: &str) -> Result<PasskeyProvider> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "server_webauthn" => Ok(PasskeyProvider::ServerWebauthn),
+        _ => Err(anyhow::anyhow!("PASSKEY_PROVIDER must be: server_webauthn")),
+    }
 }

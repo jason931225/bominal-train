@@ -1,4 +1,3 @@
-mod auth_sync_repo;
 mod payment_method_secret_repo;
 mod provider_auth_secret_repo;
 mod provider_contract_ledger_repo;
@@ -6,7 +5,6 @@ mod runtime_job_repo;
 mod runtime_job_v2_repo;
 mod srt_reservation_projection_repo;
 
-pub use auth_sync_repo::{AUTH_SYNC_UPSERT_SQL, AuthSyncRecord, upsert_auth_sync};
 pub use payment_method_secret_repo::{
     PAYMENT_METHOD_SECRET_REVOKE_SQL, PAYMENT_METHOD_SECRET_SELECT_ACTIVE_SQL,
     PAYMENT_METHOD_SECRET_UPSERT_SQL, PaymentMethodSecretRecord, PaymentMethodSecretRepoContract,

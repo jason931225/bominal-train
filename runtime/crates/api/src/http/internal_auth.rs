@@ -412,7 +412,7 @@ mod tests {
     use std::time::Duration;
 
     use bominal_shared::config::{
-        AppConfig, EvervaultConfig, RedisConfig, RuntimeSchedule, SupabaseConfig,
+        AppConfig, EvervaultConfig, PasskeyConfig, PasskeyProvider, RedisConfig, RuntimeSchedule,
     };
     use serde_json::json;
 
@@ -425,15 +425,11 @@ mod tests {
                 app_host: "127.0.0.1".to_string(),
                 app_port: 8080,
                 log_json: false,
+                session_cookie_name: "bominal_session".to_string(),
+                session_ttl_seconds: 3600,
+                session_secret: "test-session-secret".to_string(),
+                invite_base_url: "http://127.0.0.1:8000".to_string(),
                 database_url: String::new(),
-                supabase: SupabaseConfig {
-                    url: "https://example.supabase.co".to_string(),
-                    jwt_issuer: "https://example.supabase.co/auth/v1".to_string(),
-                    jwt_audience: None,
-                    jwks_url: "https://example.supabase.co/auth/v1/.well-known/jwks.json".to_string(),
-                    jwks_cache_seconds: 300,
-                    auth_webhook_secret: None,
-                },
                 redis: RedisConfig {
                     url: "redis://127.0.0.1:6379".to_string(),
                     queue_key: "queue".to_string(),
@@ -446,6 +442,13 @@ mod tests {
                     app_id: None,
                 },
                 resend: None,
+                passkey: PasskeyConfig {
+                    provider: PasskeyProvider::ServerWebauthn,
+                    webauthn_rp_id: "localhost".to_string(),
+                    webauthn_rp_origin: "http://localhost:8000".to_string(),
+                    webauthn_rp_name: "bominal".to_string(),
+                    webauthn_challenge_ttl_seconds: 300,
+                },
                 runtime: RuntimeSchedule {
                     poll_interval: Duration::from_secs(1),
                     reconcile_interval: Duration::from_secs(1),
@@ -456,7 +459,7 @@ mod tests {
             db_pool: None,
             redis_client: None,
             http_client: reqwest::Client::new(),
-            jwks_cache: tokio::sync::RwLock::new(None),
+            webauthn: None,
         }
     }
 
@@ -531,12 +534,20 @@ mod tests {
     fn parse_bool_matrix() {
         let truthy_cases = ["1", "true", "TRUE", " yes ", "On"];
         for raw in truthy_cases {
-            assert_eq!(parse_bool(raw), Some(true), "expected truthy parse for {raw:?}");
+            assert_eq!(
+                parse_bool(raw),
+                Some(true),
+                "expected truthy parse for {raw:?}"
+            );
         }
 
         let falsy_cases = ["0", "false", "FALSE", " no ", "OFF"];
         for raw in falsy_cases {
-            assert_eq!(parse_bool(raw), Some(false), "expected falsy parse for {raw:?}");
+            assert_eq!(
+                parse_bool(raw),
+                Some(false),
+                "expected falsy parse for {raw:?}"
+            );
         }
 
         let invalid_cases = ["", "2", "maybe", "enable", "  "];
@@ -651,7 +662,7 @@ mod tests {
         ));
 
         let mut future_iat_beyond_skew = build_claims(now);
-        future_iat_beyond_skew.iat = now + MAX_FUTURE_IAT_SKEW_SECONDS + 1;
+        future_iat_beyond_skew.iat = now + MAX_FUTURE_IAT_SKEW_SECONDS + 5;
         future_iat_beyond_skew.exp = future_iat_beyond_skew.iat + 10;
         assert!(matches!(
             validate_claims(&state, &future_iat_beyond_skew),

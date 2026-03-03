@@ -6,7 +6,7 @@ use axum::{
     http::{StatusCode, header, request::Builder as RequestBuilder},
 };
 use bominal_shared::config::{
-    AppConfig, EvervaultConfig, RedisConfig, RuntimeSchedule, SupabaseConfig,
+    AppConfig, EvervaultConfig, PasskeyConfig, PasskeyProvider, RedisConfig, RuntimeSchedule,
 };
 use tower::util::ServiceExt;
 
@@ -17,6 +17,7 @@ mod api_main;
 const INTERNAL_SERVICE_TOKEN_HEADER: &str = "x-internal-service-token";
 const TEST_INTERNAL_IDENTITY_SECRET_FALLBACK: &str = "test-internal-secret";
 const DEFAULT_INTERNAL_ISSUER: &str = "bominal-internal";
+const INTERNAL_IDENTITY_SECRET_ENV: &str = "INTERNAL_IDENTITY_SECRET";
 
 fn test_config() -> AppConfig {
     AppConfig {
@@ -24,15 +25,11 @@ fn test_config() -> AppConfig {
         app_host: "127.0.0.1".to_string(),
         app_port: 0,
         log_json: false,
+        session_cookie_name: "bominal_session".to_string(),
+        session_ttl_seconds: 3600,
+        session_secret: "test-session-secret".to_string(),
+        invite_base_url: "http://127.0.0.1:8000".to_string(),
         database_url: "".to_string(),
-        supabase: SupabaseConfig {
-            url: "https://example.supabase.co".to_string(),
-            jwt_issuer: "https://example.supabase.co/auth/v1".to_string(),
-            jwt_audience: Some("authenticated".to_string()),
-            jwks_url: "http://127.0.0.1:1/.well-known/jwks.json".to_string(),
-            jwks_cache_seconds: 300,
-            auth_webhook_secret: None,
-        },
         redis: RedisConfig {
             url: "redis://127.0.0.1:6379".to_string(),
             queue_key: "test:runtime:queue".to_string(),
@@ -45,6 +42,13 @@ fn test_config() -> AppConfig {
             app_id: None,
         },
         resend: None,
+        passkey: PasskeyConfig {
+            provider: PasskeyProvider::ServerWebauthn,
+            webauthn_rp_id: "localhost".to_string(),
+            webauthn_rp_origin: "http://localhost:8000".to_string(),
+            webauthn_rp_name: "bominal".to_string(),
+            webauthn_challenge_ttl_seconds: 300,
+        },
         runtime: RuntimeSchedule {
             poll_interval: Duration::from_secs(1),
             reconcile_interval: Duration::from_secs(1),
@@ -96,6 +100,14 @@ fn expected_issuer() -> String {
         .unwrap_or_else(|| DEFAULT_INTERNAL_ISSUER.to_string())
 }
 
+fn expected_internal_identity_secret() -> String {
+    std::env::var(INTERNAL_IDENTITY_SECRET_ENV)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| TEST_INTERNAL_IDENTITY_SECRET_FALLBACK.to_string())
+}
+
 fn build_valid_internal_service_token() -> String {
     let now = chrono::Utc::now().timestamp();
     let payload = serde_json::json!({
@@ -109,7 +121,7 @@ fn build_valid_internal_service_token() -> String {
         "scope": "read:internal"
     });
 
-    build_hs256_jwt(payload, TEST_INTERNAL_IDENTITY_SECRET_FALLBACK)
+    build_hs256_jwt(payload, &expected_internal_identity_secret())
 }
 
 fn build_hs256_jwt(payload: serde_json::Value, secret: &str) -> String {
@@ -129,8 +141,7 @@ fn build_hs256_jwt(payload: serde_json::Value, secret: &str) -> String {
 }
 
 fn encode_base64url(bytes: &[u8]) -> String {
-    const ALPHABET: &[u8; 64] =
-        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
     let mut out = String::new();
     let mut index = 0;
@@ -305,8 +316,7 @@ async fn missing_internal_service_token_returns_unauthorized_envelope() {
                 "password_ciphertext": "password"
             })
             .to_string(),
-        ))
-    {
+        )) {
         Ok(request) => request,
         Err(err) => panic!("failed to build request: {err}"),
     };
@@ -336,8 +346,7 @@ async fn malformed_internal_service_token_returns_unauthorized_envelope() {
                 "password_ciphertext": "password"
             })
             .to_string(),
-        ))
-    {
+        )) {
         Ok(request) => request,
         Err(err) => panic!("failed to build request: {err}"),
     };
@@ -368,8 +377,7 @@ async fn valid_internal_service_token_reaches_handler_and_returns_invalid_reques
                 "password_ciphertext": ""
             })
             .to_string(),
-        ))
-    {
+        )) {
         Ok(request) => request,
         Err(err) => panic!("failed to build request: {err}"),
     };

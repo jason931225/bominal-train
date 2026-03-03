@@ -1,6 +1,7 @@
 pub(crate) mod http;
 pub(crate) mod services {
     pub(crate) mod auth_service;
+    pub(crate) mod passkey_service;
     pub(crate) mod runtime_queue_service;
 }
 mod web;
@@ -15,26 +16,24 @@ use axum::{
     response::{Html, IntoResponse},
 };
 use bominal_shared::{
-    config::AppConfig, http_client::build_http_client, supabase::Jwks, telemetry::init_tracing,
+    config::{AppConfig, PasskeyProvider},
+    http_client::build_http_client,
+    telemetry::init_tracing,
 };
 use redis::{Client as RedisClient, RedisResult};
 use serde::Serialize;
 use sqlx::{PgPool, postgres::PgPoolOptions};
-use tokio::{net::TcpListener, signal, sync::RwLock};
+use tokio::{net::TcpListener, signal};
 use tracing::{error, info};
 use uuid::Uuid;
+use webauthn_rs::prelude::{Webauthn, WebauthnBuilder};
 
 pub(crate) struct AppState {
     config: AppConfig,
     db_pool: Option<PgPool>,
     redis_client: Option<RedisClient>,
     http_client: reqwest::Client,
-    jwks_cache: RwLock<Option<JwksCacheEntry>>,
-}
-
-struct JwksCacheEntry {
-    fetched_at: std::time::Instant,
-    jwks: Jwks,
+    webauthn: Option<Webauthn>,
 }
 
 #[derive(Debug, Serialize)]
@@ -112,14 +111,31 @@ pub(crate) async fn build_state(config: AppConfig) -> Result<AppState> {
     };
 
     let http_client = build_http_client(Duration::from_secs(10))?;
+    let webauthn = build_webauthn(&config)?;
 
     Ok(AppState {
         config,
         db_pool,
         redis_client,
         http_client,
-        jwks_cache: RwLock::new(None),
+        webauthn,
     })
+}
+
+fn build_webauthn(config: &AppConfig) -> Result<Option<Webauthn>> {
+    if config.passkey.provider != PasskeyProvider::ServerWebauthn {
+        return Ok(None);
+    }
+
+    let rp_origin = url::Url::parse(&config.passkey.webauthn_rp_origin)
+        .context("WEBAUTHN_RP_ORIGIN must be a valid URL")?;
+    let builder = WebauthnBuilder::new(&config.passkey.webauthn_rp_id, &rp_origin)
+        .context("invalid WebAuthn relying party configuration")?
+        .rp_name(&config.passkey.webauthn_rp_name);
+    let webauthn = builder
+        .build()
+        .context("failed to construct webauthn server state")?;
+    Ok(Some(webauthn))
 }
 
 pub(crate) fn build_router(state: Arc<AppState>) -> Router {
@@ -130,6 +146,24 @@ async fn ssr_home() -> impl IntoResponse {
     let body = web::render_home();
     Html(format!(
         "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\" /><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\" /><title>bominal | Rust SSR</title><link rel=\"stylesheet\" href=\"/assets/tailwind.css\" /></head><body class=\"min-h-screen bg-slate-50\">{body}</body></html>"
+    ))
+}
+
+async fn ssr_auth(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let preflight = web::AuthPreflight {
+        database_configured: !state.config.database_url.trim().is_empty(),
+        redis_configured: !state.config.redis.url.trim().is_empty(),
+        session_secret_configured: !state.config.session_secret.trim().is_empty(),
+        invite_base_url_configured: !state.config.invite_base_url.trim().is_empty(),
+        passkey_provider_server_only: state.config.passkey.provider
+            == PasskeyProvider::ServerWebauthn,
+        webauthn_rp_id_configured: !state.config.passkey.webauthn_rp_id.trim().is_empty(),
+        webauthn_rp_origin_configured: !state.config.passkey.webauthn_rp_origin.trim().is_empty(),
+    };
+    let body = web::render_auth(&preflight);
+
+    Html(format!(
+        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\" /><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\" /><title>bominal | Auth</title><link rel=\"stylesheet\" href=\"/assets/tailwind.css\" /></head><body class=\"min-h-screen bg-slate-50\">{body}</body></html>"
     ))
 }
 
@@ -172,12 +206,12 @@ async fn list_modules() -> impl IntoResponse {
             ModuleCapability {
                 name: "train",
                 enabled: true,
-                auth_source: "supabase",
+                auth_source: "local",
             },
             ModuleCapability {
                 name: "auth",
                 enabled: true,
-                auth_source: "supabase",
+                auth_source: "local",
             },
         ],
     })
@@ -195,7 +229,7 @@ async fn db_ready(pool: Option<&PgPool>) -> bool {
         return false;
     };
 
-    match sqlx::query_scalar::<_, i64>("select 1")
+    match sqlx::query_scalar::<_, i32>("select 1")
         .fetch_one(pool)
         .await
     {

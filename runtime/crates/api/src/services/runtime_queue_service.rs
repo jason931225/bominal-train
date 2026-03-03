@@ -331,9 +331,8 @@ mod tests {
     use std::time::Duration;
 
     use bominal_shared::config::{
-        AppConfig, EvervaultConfig, RedisConfig, RuntimeSchedule, SupabaseConfig,
+        AppConfig, EvervaultConfig, PasskeyConfig, PasskeyProvider, RedisConfig, RuntimeSchedule,
     };
-    use tokio::sync::RwLock;
 
     use super::*;
 
@@ -344,15 +343,11 @@ mod tests {
                 app_host: "127.0.0.1".to_string(),
                 app_port: 8080,
                 log_json: false,
+                session_cookie_name: "bominal_session".to_string(),
+                session_ttl_seconds: 3600,
+                session_secret: "test-session-secret".to_string(),
+                invite_base_url: "http://127.0.0.1:8000".to_string(),
                 database_url: String::new(),
-                supabase: SupabaseConfig {
-                    url: String::new(),
-                    jwt_issuer: String::new(),
-                    jwt_audience: None,
-                    jwks_url: String::new(),
-                    jwks_cache_seconds: 300,
-                    auth_webhook_secret: None,
-                },
                 redis: RedisConfig {
                     url: "redis://127.0.0.1:6379".to_string(),
                     queue_key: "runtime:test:queue".to_string(),
@@ -365,6 +360,13 @@ mod tests {
                     app_id: None,
                 },
                 resend: None,
+                passkey: PasskeyConfig {
+                    provider: PasskeyProvider::ServerWebauthn,
+                    webauthn_rp_id: "localhost".to_string(),
+                    webauthn_rp_origin: "http://localhost:8000".to_string(),
+                    webauthn_rp_name: "bominal".to_string(),
+                    webauthn_challenge_ttl_seconds: 300,
+                },
                 runtime: RuntimeSchedule {
                     poll_interval: Duration::from_secs(1),
                     reconcile_interval: Duration::from_secs(1),
@@ -375,7 +377,7 @@ mod tests {
             db_pool: None,
             redis_client,
             http_client: reqwest::Client::new(),
-            jwks_cache: RwLock::new(None),
+            webauthn: None,
         }
     }
 
