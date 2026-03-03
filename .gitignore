@@ -1,0 +1,43 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+api/mutants/
+.coverage
+api/.coverage
+htmlcov/
+
+# Node
+node_modules/
+.next/
+web/.next_corrupt_*/
+*.tsbuildinfo
+rust/target/
+runtime/target/
+
+# Env
+.env
+.env.local
+infra/env/prod/*.env
+
+# Docker
+*.log
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+
+# Git worktrees (local only)
+.worktrees/
+
+# One-off GCP exports (often contain sensitive data)
+gcp_resources*.tf
+
+# Local-only runtime envs
+infra/env/local/
