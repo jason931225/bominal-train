@@ -78,7 +78,8 @@ Runtime route map:
 - running bootstrap with `BOMINAL_RUN_TESTS=0` (faster dev loop),
 - applying migrations,
 - starting both `bominal-api` and `bominal-worker`,
-- running Tailwind CSS watch for local frontend edits.
+- running Tailwind CSS watch for local frontend edits,
+- failing fast if `APP_PORT` is already occupied (to avoid partial startup thrash).
 
 Useful flags:
 
@@ -88,8 +89,49 @@ Useful flags:
 ./scripts/dev-up.sh --no-bootstrap
 ./scripts/dev-up.sh --no-css-watch
 ./scripts/dev-up.sh --rust-watch
+./scripts/dev-up.sh --takeover-watchers
 ./scripts/dev-up.sh --rust-watch --port 8001
 ```
+
+Common startup failures:
+- `error: another dev-up instance is already running`:
+
+```bash
+ps -p <pid> -o pid,command
+kill <pid>
+./scripts/dev-up.sh
+```
+
+- `error: stale cargo-watch supervisor(s) detected for this repo`:
+
+```bash
+kill <pid>
+./scripts/dev-up.sh
+```
+
+or auto-stop stale watchers:
+
+```bash
+./scripts/dev-up.sh --takeover-watchers
+```
+
+- `error: APP_PORT 8000 is already in use`:
+
+```bash
+lsof -nP -iTCP:8000 -sTCP:LISTEN
+kill <pid>
+./scripts/dev-up.sh
+```
+
+or run on another port:
+
+```bash
+./scripts/dev-up.sh --port 8001
+```
+
+- `Blocking waiting for file lock on package cache/artifact directory`:
+  - expected occasionally when API and worker start in parallel,
+  - only actionable if followed by a process exit/error (for example port conflict).
 
 `--rust-watch` requires:
 
@@ -178,6 +220,28 @@ Outputs (from `env/prod/*.example` templates; depends on `--only` selection):
 - `env/prod/caddy.env`
 - `env/prod/deploy.env`
 - `env/prod/vm-secrets.env` (auto-created if missing; includes `BOMINAL_DATABASE_URL` and GHCR credential placeholders for private pulls)
+
+## Production Operations (VM)
+
+Use `scripts/prod-up.sh` as the canonical operator entrypoint on the VM:
+
+```bash
+cd /opt/bominal/repo
+./scripts/prod-up.sh start
+./scripts/prod-up.sh status
+./scripts/prod-up.sh health
+./scripts/prod-up.sh logs -f --since 30m --service api
+```
+
+Deploy/rollback are explicit and guarded:
+
+```bash
+cd /opt/bominal/repo
+./scripts/prod-up.sh deploy --yes
+./scripts/prod-up.sh rollback --yes
+```
+
+`deploy` reuses `scripts/prod/deploy-runtime.sh` and still requires deploy inputs (`BOMINAL_API_IMAGE`, `BOMINAL_WORKER_IMAGE`, `BOMINAL_POSTGRES_*`) to be set by CI/CD or operator exports.
 
 ## Security and Safety Baseline
 

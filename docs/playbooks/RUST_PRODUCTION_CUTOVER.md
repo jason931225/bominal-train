@@ -100,6 +100,13 @@ Required files:
   - service restart
   - health checks (`/health`, `/ready`)
 
+VM-local manual fallback (explicit):
+
+```bash
+cd /opt/bominal/repo
+./scripts/prod-up.sh deploy --yes
+```
+
 ## 6) Rollback Procedure
 
 Automatic rollback runs when healthcheck step fails.
@@ -108,16 +115,21 @@ Manual rollback command:
 
 ```bash
 cd /opt/bominal/repo
-export BOMINAL_RUNTIME_ENV_PATH=/opt/bominal/repo/env/prod/runtime.env
-export BOMINAL_COMPOSE_FILE=/opt/bominal/repo/runtime/compose.prod.yml
-export BOMINAL_API_SERVICE=api
-export BOMINAL_WORKER_SERVICE=worker
-/opt/bominal/repo/scripts/prod/rollback-runtime.sh
+./scripts/prod-up.sh rollback --yes
 ```
 
 ## 7) Post-Cutover Verification
 
-- API liveness: `curl -fsS http://127.0.0.1:8000/health/live`
-- API readiness: `curl -fsS http://127.0.0.1:8000/health/ready`
+- API liveness: `curl -fsS http://127.0.0.1:8000/health`
+- API readiness: `curl -fsS http://127.0.0.1:8000/ready`
 - API service: `docker compose -f /opt/bominal/repo/runtime/compose.prod.yml ps api`
 - Worker service: `docker compose -f /opt/bominal/repo/runtime/compose.prod.yml ps worker`
+
+Day-2 operator checks:
+
+```bash
+cd /opt/bominal/repo
+./scripts/prod-up.sh status
+./scripts/prod-up.sh health
+./scripts/prod-up.sh logs -f --since 30m --service api
+```

@@ -39,6 +39,29 @@ jobs:
         run: |
           docker run --rm -v "$PWD":/repo -w /repo rhysd/actionlint:latest -color -oneline .github/workflows/*.yml
 
+  script-quality:
+    name: Script Quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs:
+      - workflow-lint
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install shellcheck
+        run: |
+          if ! command -v shellcheck >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install --yes shellcheck
+          fi
+
+      - name: Lint production operator scripts
+        run: shellcheck -x scripts/prod-up.sh scripts/tests/test_prod_up.sh
+
+      - name: Run production operator script tests
+        run: bash scripts/tests/test_prod_up.sh
+
   changes:
     name: Detect Changed Paths
     runs-on: ubuntu-latest
