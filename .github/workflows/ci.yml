@@ -17,6 +17,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -80,7 +81,7 @@ jobs:
 
   dependency-review:
     name: Dependency Review
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && vars.CI_ENABLE_DEPENDENCY_REVIEW == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -95,6 +96,17 @@ jobs:
         with:
           fail-on-severity: high
           fail-on-scopes: runtime
+
+  dependency-review-policy:
+    name: Dependency Review Policy
+    if: github.event_name == 'pull_request' && vars.CI_ENABLE_DEPENDENCY_REVIEW != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Explain dependency review policy
+        run: |
+          echo "Dependency Review is disabled by policy (CI_ENABLE_DEPENDENCY_REVIEW != 'true')."
+          echo "Enable repo variable CI_ENABLE_DEPENDENCY_REVIEW=true after required GitHub security features are available."
 
   rust-quality:
     name: Rust Quality Gates
