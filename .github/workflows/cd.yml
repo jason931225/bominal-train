@@ -121,6 +121,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Attest API image provenance
+        if: vars.CD_ENABLE_ATTESTATIONS == 'true'
         uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661 # v3
         with:
           subject-name: ${{ env.REGISTRY }}/${{ env.API_IMAGE_NAME }}
@@ -128,11 +129,18 @@ jobs:
           push-to-registry: true
 
       - name: Attest worker image provenance
+        if: vars.CD_ENABLE_ATTESTATIONS == 'true'
         uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661 # v3
         with:
           subject-name: ${{ env.REGISTRY }}/${{ env.WORKER_IMAGE_NAME }}
           subject-digest: ${{ steps.build-worker.outputs.digest }}
           push-to-registry: true
+
+      - name: Attestation policy note
+        if: vars.CD_ENABLE_ATTESTATIONS != 'true'
+        run: |
+          echo "Image attestation is disabled by policy (CD_ENABLE_ATTESTATIONS != 'true')."
+          echo "Enable repository variable CD_ENABLE_ATTESTATIONS=true once attestation is available for this repository."
 
       - name: Publish image refs
         id: refs
