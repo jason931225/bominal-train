@@ -63,9 +63,10 @@ class _FakeRedisSubscriber:
 
 
 class _FakeRequest:
-    def __init__(self, *, disconnect_after: int) -> None:
+    def __init__(self, *, disconnect_after: int, headers: dict[str, str] | None = None) -> None:
         self._calls = 0
         self._disconnect_after = disconnect_after
+        self.headers = headers or {}
 
     async def is_disconnected(self) -> bool:
         self._calls += 1
@@ -156,11 +157,39 @@ async def test_stream_train_task_events_emits_connected_and_task_state(monkeypat
     await response.body_iterator.aclose()
 
     assert chunks[0].startswith("event: connected")
+    assert "id: 1" in chunks[0]
+    assert "retry: 3000" in chunks[0]
     assert "event: task_state" in chunks[1]
+    assert "id: 2" in chunks[1]
     assert '"state":"RUNNING"' in chunks[1]
     assert pubsub.subscribed_channel == channel
     assert pubsub.unsubscribed_channel == channel
     assert pubsub.closed is True
+
+
+@pytest.mark.asyncio
+async def test_stream_train_task_events_applies_last_event_id_header(monkeypatch):
+    user = SimpleNamespace(id=uuid4())
+    pubsub = _FakePubSub(messages=[b'{"task_id":"next","state":"COMPLETED"}'])
+
+    async def _fake_get_redis_client():
+        return _FakeRedisSubscriber(pubsub)
+
+    monkeypatch.setattr("app.modules.train.router.get_redis_client", _fake_get_redis_client)
+
+    request = _FakeRequest(disconnect_after=2, headers={"last-event-id": "41"})
+    response = await stream_train_task_events(request=request, user=user)
+
+    chunks: list[str] = []
+    async for chunk in response.body_iterator:
+        chunks.append(_as_text(chunk))
+        if len(chunks) >= 2:
+            break
+
+    await response.body_iterator.aclose()
+
+    assert "id: 42" in chunks[0]
+    assert "id: 43" in chunks[1]
 
 
 @pytest.mark.asyncio

@@ -70,8 +70,14 @@ ATTENTION_REFRESH_TASK_STATES = frozenset({"COMPLETED", "CANCELLED", "EXPIRED", 
 logger = logging.getLogger(__name__)
 
 
-def _sse(event: str, data: str) -> str:
-    return f"event: {event}\ndata: {data}\n\n"
+def _sse(event: str, data: str, *, event_id: int | None = None, retry_ms: int | None = None) -> str:
+    message = [f"event: {event}"]
+    if event_id is not None:
+        message.append(f"id: {event_id}")
+    if retry_ms is not None:
+        message.append(f"retry: {retry_ms}")
+    message.append(f"data: {data}")
+    return "\n".join(message) + "\n\n"
 
 
 def _event_name_for_payload(payload_text: str) -> str:
@@ -97,10 +103,23 @@ async def _task_events_stream(
     pubsub = redis.pubsub()
     channel = task_events_channel(user_id)
     await pubsub.subscribe(channel)
+    request_headers = getattr(request, "headers", None)
+    last_event_id_header = request_headers.get("last-event-id") if request_headers is not None else None
     try:
-        yield _sse("connected", json.dumps({"channel": channel}, separators=(",", ":")))
+        sequence = int(last_event_id_header) if last_event_id_header else 0
+    except (TypeError, ValueError):
+        sequence = 0
+    try:
+        sequence += 1
+        yield _sse(
+            "connected",
+            json.dumps({"channel": channel}, separators=(",", ":")),
+            event_id=sequence,
+            retry_ms=3000,
+        )
         if attention_snapshot_payload is not None:
-            yield _sse("attention_snapshot", attention_snapshot_payload)
+            sequence += 1
+            yield _sse("attention_snapshot", attention_snapshot_payload, event_id=sequence)
         while True:
             if await request.is_disconnected():
                 break
@@ -119,7 +138,8 @@ async def _task_events_stream(
                 payload_text = payload_raw.decode("utf-8", errors="replace")
             else:
                 payload_text = str(payload_raw)
-            yield _sse(_event_name_for_payload(payload_text), payload_text)
+            sequence += 1
+            yield _sse(_event_name_for_payload(payload_text), payload_text, event_id=sequence)
     finally:
         try:
             await pubsub.unsubscribe(channel)

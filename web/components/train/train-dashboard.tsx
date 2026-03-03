@@ -68,6 +68,7 @@ type CredentialFormState = {
 type CredentialProvider = "KTX" | "SRT";
 type ScheduleSortOrder = "asc" | "desc";
 type DuplicateMatchCategory = "already_reserved" | "waiting" | "polling";
+type MobileNavTarget = "search" | "schedules" | "active" | "completed";
 
 type TrainTaskDuplicateMatch = {
   task_id: string;
@@ -1464,6 +1465,8 @@ export function TrainDashboard() {
   const [reviewScheduleScrollIndex, setReviewScheduleScrollIndex] = useState(0);
   const [stickyBaseTopPx, setStickyBaseTopPx] = useState(64);
   const [statusBannerHeightPx, setStatusBannerHeightPx] = useState(0);
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
+  const [mobileNavTarget, setMobileNavTarget] = useState<MobileNavTarget>("search");
   const tasksLoadInFlight = useRef(false);
   const activeTasksRef = useRef<TrainTaskSummary[]>([]);
   const completedTasksRef = useRef<TrainTaskSummary[]>([]);
@@ -1475,6 +1478,8 @@ export function TrainDashboard() {
   const dummyTaskCardsModeRef = useRef(false);
   const searchPanelRef = useRef<HTMLDivElement | null>(null);
   const schedulePanelRef = useRef<HTMLDivElement | null>(null);
+  const activeTasksSectionRef = useRef<HTMLDivElement | null>(null);
+  const completedTasksSectionRef = useRef<HTMLDivElement | null>(null);
   const searchSummaryCardRef = useRef<HTMLDivElement | null>(null);
   const statusBannerRef = useRef<HTMLDivElement | null>(null);
   const reviewSchedulesCarouselRef = useRef<HTMLDivElement | null>(null);
@@ -1498,8 +1503,14 @@ export function TrainDashboard() {
     .toLowerCase()
     .includes("temporarily unavailable");
   const ktxProviderEnabled = TRAIN_KTX_FEATURE_ENABLED && !ktxTemporarilyUnavailable;
-  const searchProviderOptions: CredentialProvider[] = ktxProviderEnabled ? ["SRT", "KTX"] : ["SRT"];
-  const credentialProviderOptions: CredentialProvider[] = ktxProviderEnabled ? ["KTX", "SRT"] : ["SRT"];
+  const searchProviderOptions = useMemo<CredentialProvider[]>(
+    () => (ktxProviderEnabled ? ["SRT", "KTX"] : ["SRT"]),
+    [ktxProviderEnabled],
+  );
+  const credentialProviderOptions = useMemo<CredentialProvider[]>(
+    () => (ktxProviderEnabled ? ["KTX", "SRT"] : ["SRT"]),
+    [ktxProviderEnabled],
+  );
   const selectedSearchProviders = useMemo(
     () => searchProviderOptions.filter((provider) => searchForm.providers[provider]),
     [searchForm.providers, searchProviderOptions],
@@ -1555,6 +1566,9 @@ export function TrainDashboard() {
   const searchSummaryStickyTopPx = stickyBaseTopPx + statusBannerHeightPx;
   const sortedActiveTasks = useMemo(() => sortActiveTasksByImminence(activeTasks), [activeTasks]);
   const sortedCompletedTasks = useMemo(() => sortTasksByScheduleProximity(completedTasks, "asc"), [completedTasks]);
+  const showMobileBottomNav = isMobileViewport && searchUnlocked;
+  const showMobileActionBar = isMobileViewport && showRanking;
+  const mobileBottomInsetPx = showMobileBottomNav ? (showMobileActionBar ? 172 : 92) : 0;
   const autoPayAvailable = TRAIN_AUTO_PAY_FEATURE_ENABLED && paymentCardConfigured;
   const reviewScheduleProviders = useMemo(() => {
     const seen = new Set<string>();
@@ -1872,6 +1886,30 @@ export function TrainDashboard() {
       observer?.disconnect();
     };
   }, [hasStatusBanner, errorMessage, notice]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const mediaQuery = typeof window.matchMedia === "function" ? window.matchMedia("(max-width: 767px)") : null;
+    const updateViewport = () => {
+      const nextIsMobile = mediaQuery ? mediaQuery.matches : window.innerWidth < 768;
+      setIsMobileViewport((current) => (current === nextIsMobile ? current : nextIsMobile));
+    };
+
+    updateViewport();
+
+    if (mediaQuery) {
+      if (typeof mediaQuery.addEventListener === "function") {
+        mediaQuery.addEventListener("change", updateViewport);
+        return () => mediaQuery.removeEventListener("change", updateViewport);
+      }
+      mediaQuery.addListener(updateViewport);
+      return () => mediaQuery.removeListener(updateViewport);
+    }
+
+    window.addEventListener("resize", updateViewport);
+    return () => window.removeEventListener("resize", updateViewport);
+  }, []);
 
   useEffect(() => {
     if (!shouldScrollToSearchResultsSection || !hasSearched) return;
@@ -2434,12 +2472,42 @@ export function TrainDashboard() {
   };
 
   const onExpandSearchMobile = () => {
+    setMobileNavTarget("search");
     if (typeof window !== "undefined") {
       window.scrollTo({ top: 0, behavior: "smooth" });
       return;
     }
     scrollElementToViewportTop(searchPanelRef.current);
   };
+
+  const scrollToDashboardSection = useCallback(
+    (target: MobileNavTarget) => {
+      setMobileNavTarget(target);
+      const offsetPx = stickyBaseTopPx + (hasStatusBanner ? statusBannerHeightPx : 0);
+
+      if (target === "search") {
+        scrollElementToViewportTop(searchPanelRef.current, { offsetPx });
+        return;
+      }
+      if (target === "schedules") {
+        if (!showRanking) {
+          scrollElementToViewportTop(searchPanelRef.current, { offsetPx });
+          return;
+        }
+        const summaryHeight = searchSummaryCardRef.current?.getBoundingClientRect().height ?? 0;
+        scrollElementToViewportTop(schedulePanelRef.current, {
+          offsetPx: offsetPx + summaryHeight + 16,
+        });
+        return;
+      }
+      if (target === "active") {
+        scrollElementToViewportTop(activeTasksSectionRef.current, { offsetPx });
+        return;
+      }
+      scrollElementToViewportTop(completedTasksSectionRef.current, { offsetPx });
+    },
+    [hasStatusBanner, showRanking, statusBannerHeightPx, stickyBaseTopPx],
+  );
 
   const createTaskReviewModal =
     createTaskReviewOpen && typeof document !== "undefined"
@@ -2812,7 +2880,7 @@ export function TrainDashboard() {
     ) : null;
 
   return (
-    <section className="space-y-8">
+    <section className="space-y-6 sm:space-y-8" style={mobileBottomInsetPx > 0 ? { paddingBottom: mobileBottomInsetPx } : undefined}>
       {hasStatusBanner ? (
         <div ref={statusBannerRef} className="sticky z-40 space-y-2" style={{ top: stickyBaseTopPx }}>
           {errorMessage ? (
@@ -2830,7 +2898,7 @@ export function TrainDashboard() {
       {createTaskReviewModal}
       {duplicateWarningModal}
 
-      <div ref={searchPanelRef} className="rounded-2xl border border-blossom-100 bg-white p-6 shadow-petal">
+      <div ref={searchPanelRef} className="rounded-2xl border border-blossom-100 bg-white p-4 shadow-petal sm:p-6">
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold text-slate-800">{t("train.searchSchedules")}</h2>
           <div className="flex items-center gap-2">
@@ -2890,7 +2958,7 @@ export function TrainDashboard() {
         ) : null}
 
         {credentialPanelOpen ? (
-          <div className="mt-4 rounded-2xl border border-blossom-100 bg-blossom-50/30 p-4">
+          <div className="mt-4 rounded-2xl border border-blossom-100 bg-blossom-50/30 p-3 sm:p-4">
             {credentialLoading ? (
               <p className="text-sm text-slate-500">{t("train.checkingCredentials")}</p>
             ) : (
@@ -3012,7 +3080,7 @@ export function TrainDashboard() {
               className="mt-4"
             >
             <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-              <div className="rounded-2xl border border-blossom-100 bg-blossom-50/40 p-4">
+              <div className="rounded-2xl border border-blossom-100 bg-blossom-50/40 p-3.5 sm:p-4">
                 <p className={SEARCH_SECTION_LABEL_CLASS}>{t("train.station")}</p>
                 <div className="mt-3 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-end gap-2 sm:gap-3">
                   <StationAutocompleteField
@@ -3136,7 +3204,7 @@ export function TrainDashboard() {
 
               </div>
 
-              <div className="rounded-2xl border border-blossom-100 bg-blossom-50/40 p-4">
+              <div className="rounded-2xl border border-blossom-100 bg-blossom-50/40 p-3.5 sm:p-4">
                 <p className="text-xs font-medium uppercase tracking-[0.14em] text-blossom-500">
                   {t("train.passengerSeatClass")}
                 </p>
@@ -3264,7 +3332,7 @@ export function TrainDashboard() {
         <div className="space-y-4">
           {searchSummaryCard}
           {showRanking ? (
-              <div ref={schedulePanelRef} className="rounded-2xl border border-blossom-100 bg-white p-6 shadow-petal">
+              <div ref={schedulePanelRef} className="rounded-2xl border border-blossom-100 bg-white p-4 shadow-petal sm:p-6">
                 <h2 className="text-lg font-semibold text-slate-800">
                   {t("train.selectSchedules", { date: selectedDateLabel })}
                 </h2>
@@ -3453,7 +3521,7 @@ export function TrainDashboard() {
                   </div>
                 </div>
 
-                <div className="mt-5 flex flex-wrap items-center gap-2">
+                <div className="mt-5 hidden flex-wrap items-center gap-2 md:flex">
                   <div className="ml-auto flex w-full items-center gap-2 sm:w-auto">
                     <button
                       type="button"
@@ -3474,7 +3542,7 @@ export function TrainDashboard() {
                 </div>
               </div>
             ) : (
-              <div className="rounded-2xl border border-blossom-100 bg-white p-6 text-sm text-slate-500 shadow-petal">
+              <div className="rounded-2xl border border-blossom-100 bg-white p-4 text-sm text-slate-500 shadow-petal sm:p-6">
                 <p className="mt-4">{t("train.noSchedulesYet")}</p>
                 <div className="mt-4 flex justify-end">
                   <button
@@ -3516,9 +3584,9 @@ export function TrainDashboard() {
       ) : null}
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-2xl border border-blossom-100 bg-white p-6 shadow-petal">
+        <div ref={activeTasksSectionRef} className="rounded-2xl border border-blossom-100 bg-white p-4 shadow-petal sm:p-6">
           <h2 className="text-lg font-semibold text-slate-800">{t("train.activeTasks")}</h2>
-          <ul className="mt-4 space-y-3 text-sm">
+          <ul className="mt-3 space-y-2.5 text-sm sm:mt-4 sm:space-y-3">
             {sortedActiveTasks.length === 0 ? <li className="text-slate-500">{t("train.empty.activeTasks")}</li> : null}
             <AnimatePresence initial={false}>
             {sortedActiveTasks.map((task) => {
@@ -3538,7 +3606,7 @@ export function TrainDashboard() {
                   transition={TASK_CARD_ENTER_EXIT_TRANSITION}
                   className="overflow-hidden rounded-2xl border border-blossom-200 bg-white shadow-sm"
                 >
-                  <div className="border-b border-dashed border-blossom-200 bg-gradient-to-r from-blossom-50 via-white to-sky-50 px-4 py-3 sm:px-5">
+                  <div className="border-b border-dashed border-blossom-200 bg-gradient-to-r from-blossom-50 via-white to-sky-50 px-3 py-2.5 sm:px-5 sm:py-3">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-blossom-500">
@@ -3632,7 +3700,7 @@ export function TrainDashboard() {
                   </div>
 
                   {taskError ? (
-                    <div className="px-4 py-3">
+                    <div className="px-3 py-2.5 sm:px-4 sm:py-3">
                       <p className={`rounded-xl border px-3 py-2 text-xs ${taskError.className}`}>
                         <span className="font-medium">{t("train.label.message")} </span>
                         <span>{taskError.message}</span>
@@ -3640,7 +3708,7 @@ export function TrainDashboard() {
                     </div>
                   ) : null}
 
-                  <div className="relative flex flex-wrap gap-2 border-t border-dashed border-blossom-200 px-4 py-3">
+                  <div className="relative flex flex-wrap gap-2 border-t border-dashed border-blossom-200 px-3 py-2.5 sm:px-4 sm:py-3">
                     <span
                       aria-hidden="true"
                       className="pointer-events-none absolute -left-3 top-0 h-6 w-6 -translate-y-1/2 rounded-full border border-blossom-200 bg-white"
@@ -3719,9 +3787,9 @@ export function TrainDashboard() {
           </ul>
         </div>
 
-        <div className="rounded-2xl border border-blossom-100 bg-white p-6 shadow-petal">
+        <div ref={completedTasksSectionRef} className="rounded-2xl border border-blossom-100 bg-white p-4 shadow-petal sm:p-6">
           <h2 className="text-lg font-semibold text-slate-800">{t("train.completedTasks")}</h2>
-          <ul className="mt-4 space-y-3 text-sm">
+          <ul className="mt-3 space-y-2.5 text-sm sm:mt-4 sm:space-y-3">
             {sortedCompletedTasks.length === 0 ? <li className="text-slate-500">{t("train.empty.completedTasks")}</li> : null}
             <AnimatePresence initial={false}>
             {sortedCompletedTasks.map((task) => {
@@ -3740,7 +3808,7 @@ export function TrainDashboard() {
                   transition={TASK_CARD_ENTER_EXIT_TRANSITION}
                   className="overflow-hidden rounded-2xl border border-blossom-200 bg-white shadow-sm"
                 >
-                  <div className="border-b border-dashed border-blossom-200 bg-gradient-to-r from-slate-50 via-white to-blossom-50 px-4 py-3 sm:px-5">
+                  <div className="border-b border-dashed border-blossom-200 bg-gradient-to-r from-slate-50 via-white to-blossom-50 px-3 py-2.5 sm:px-5 sm:py-3">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-slate-500">
@@ -3855,7 +3923,7 @@ export function TrainDashboard() {
                     </div>
                   </div>
 
-                  <div className="relative flex flex-wrap gap-2 border-t border-dashed border-blossom-200 px-4 py-3">
+                  <div className="relative flex flex-wrap gap-2 border-t border-dashed border-blossom-200 px-3 py-2.5 sm:px-4 sm:py-3">
                     <span
                       aria-hidden="true"
                       className="pointer-events-none absolute -left-3 top-0 h-6 w-6 -translate-y-1/2 rounded-full border border-blossom-200 bg-white"
@@ -3936,6 +4004,96 @@ export function TrainDashboard() {
           </ul>
         </div>
       </div>
+
+      {showMobileActionBar ? (
+        <div
+          className="fixed inset-x-0 z-[120] border-t border-blossom-100 bg-white/95 px-3 py-2.5 shadow-[0_-8px_24px_rgba(15,23,42,0.14)] backdrop-blur"
+          style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 4.5rem)" }}
+        >
+          <div className="mx-auto flex max-w-screen-sm items-center gap-2">
+            <button
+              type="button"
+              onClick={onExpandSearchMobile}
+              aria-label={t("train.mobileNav.editSearchAction")}
+              className={`${SECONDARY_BUTTON_CLASS} h-11 flex-1 px-4`}
+            >
+              {t("train.editSearch")}
+            </button>
+            <button
+              type="button"
+              onClick={() => void openCreateTaskReview()}
+              disabled={createDisabled}
+              aria-label={t("train.mobileNav.continueAction")}
+              className={`${PRIMARY_BUTTON_CLASS} h-11 flex-1 px-4`}
+            >
+              {creatingTask ? t("train.creatingTask") : t("train.continueTask")}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {showMobileBottomNav ? (
+        <nav
+          aria-label={t("train.mobileNav.ariaLabel")}
+          className="fixed inset-x-0 bottom-0 z-[130] border-t border-blossom-100 bg-white/95 px-2 pt-1.5 shadow-[0_-4px_18px_rgba(15,23,42,0.12)] backdrop-blur"
+          style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 0.5rem)" }}
+        >
+          <div className="mx-auto grid max-w-screen-sm grid-cols-4 gap-1">
+            <button
+              type="button"
+              aria-current={mobileNavTarget === "search" ? "page" : undefined}
+              aria-label={t("train.mobileNav.gotoSearch")}
+              onClick={() => scrollToDashboardSection("search")}
+              className={`inline-flex h-12 flex-col items-center justify-center rounded-xl px-1 text-[11px] font-medium transition ${
+                mobileNavTarget === "search"
+                  ? "bg-blossom-100 text-blossom-700"
+                  : "text-slate-500 hover:bg-blossom-50 hover:text-slate-700"
+              }`}
+            >
+              <span aria-hidden="true">{t("train.mobileNav.search")}</span>
+            </button>
+            <button
+              type="button"
+              aria-current={mobileNavTarget === "schedules" ? "page" : undefined}
+              aria-label={t("train.mobileNav.gotoSchedules")}
+              onClick={() => scrollToDashboardSection("schedules")}
+              className={`inline-flex h-12 flex-col items-center justify-center rounded-xl px-1 text-[11px] font-medium transition ${
+                mobileNavTarget === "schedules"
+                  ? "bg-blossom-100 text-blossom-700"
+                  : "text-slate-500 hover:bg-blossom-50 hover:text-slate-700"
+              }`}
+            >
+              <span aria-hidden="true">{t("train.mobileNav.schedules")}</span>
+            </button>
+            <button
+              type="button"
+              aria-current={mobileNavTarget === "active" ? "page" : undefined}
+              aria-label={t("train.mobileNav.gotoActive")}
+              onClick={() => scrollToDashboardSection("active")}
+              className={`inline-flex h-12 flex-col items-center justify-center rounded-xl px-1 text-[11px] font-medium transition ${
+                mobileNavTarget === "active"
+                  ? "bg-blossom-100 text-blossom-700"
+                  : "text-slate-500 hover:bg-blossom-50 hover:text-slate-700"
+              }`}
+            >
+              <span aria-hidden="true">{t("train.mobileNav.active")}</span>
+            </button>
+            <button
+              type="button"
+              aria-current={mobileNavTarget === "completed" ? "page" : undefined}
+              aria-label={t("train.mobileNav.gotoCompleted")}
+              onClick={() => scrollToDashboardSection("completed")}
+              className={`inline-flex h-12 flex-col items-center justify-center rounded-xl px-1 text-[11px] font-medium transition ${
+                mobileNavTarget === "completed"
+                  ? "bg-blossom-100 text-blossom-700"
+                  : "text-slate-500 hover:bg-blossom-50 hover:text-slate-700"
+              }`}
+            >
+              <span aria-hidden="true">{t("train.mobileNav.completed")}</span>
+            </button>
+          </div>
+        </nav>
+      ) : null}
     </section>
   );
 }

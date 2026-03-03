@@ -477,6 +477,19 @@
     "noSchedulesYet": "아직 시간표가 없습니다. 필터를 조정하고 다시 검색하세요.",
     "activeTasks": "진행 중 작업",
     "completedTasks": "완료된 작업",
+    "mobileNav": {
+      "ariaLabel": "기차 대시보드 섹션",
+      "search": "검색",
+      "schedules": "시간표",
+      "active": "진행중",
+      "completed": "완료",
+      "gotoSearch": "검색 섹션으로 이동",
+      "gotoSchedules": "시간표 섹션으로 이동",
+      "gotoActive": "진행 중 작업 섹션으로 이동",
+      "gotoCompleted": "완료된 작업 섹션으로 이동",
+      "editSearchAction": "하단 고정 바에서 검색 수정",
+      "continueAction": "하단 고정 바에서 작업 계속"
+    },
     "taskListError": "작업 목록을 불러올 수 없습니다.",
     "sessionExpired": "세션이 만료되었습니다. 다시 로그인해 주세요."
     ,

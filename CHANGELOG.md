@@ -11,6 +11,10 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## Unreleased
 
+### Changed
+
+- [0000000] Fixed CD workflow schema validity by removing invalid combined `push.paths` + `push.paths-ignore` usage, and added a CI workflow lint gate (`actionlint`) to fail fast on workflow configuration errors before deploy workflows trigger (`.github/workflows/cd.yml`, `.github/workflows/ci.yml`).
+
 ### Added
 
 - [0000000] Switched runtime support policy to Rust-only by replacing development and production compose service wiring (`api`, `worker`, `web`, `web-canary`) with Rust service images/commands, adding Rust runtime env templates, and documenting the retired legacy runtime stance in architecture/deployment/runbook docs (`infra/docker-compose.yml`, `infra/docker-compose.prod.yml`, `infra/env/dev/rust.env`, `infra/env/prod/rust.env.example`, `docs/humans/engineering/ARCHITECTURE.md`, `docs/humans/operations/DEPLOYMENT.md`, `docs/humans/operations/RUNBOOK.md`, `docs/plans/active/2026-03-01-rust-leptos-ssr-cutover.md`).

@@ -477,7 +477,20 @@
     "configureIn": "Configure in",
     "noSchedulesYet": "No schedules returned yet. Adjust filters and search again.",
     "activeTasks": "Active Tasks",
-    "completedTasks": "Completed Tasks"
+    "completedTasks": "Completed Tasks",
+    "mobileNav": {
+      "ariaLabel": "Train dashboard sections",
+      "search": "Search",
+      "schedules": "Schedules",
+      "active": "Active",
+      "completed": "Done",
+      "gotoSearch": "Go to search section",
+      "gotoSchedules": "Go to schedules section",
+      "gotoActive": "Go to active tasks section",
+      "gotoCompleted": "Go to completed tasks section",
+      "editSearchAction": "Edit search from sticky action bar",
+      "continueAction": "Continue task setup from sticky action bar"
+    }
     ,
     "taskListError": "Could not load task lists.",
     "sessionExpired": "Session expired. Please log in again."
