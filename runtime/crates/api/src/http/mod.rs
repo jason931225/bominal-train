@@ -5,11 +5,12 @@ use std::{
 
 use axum::{
     Router,
-    extract::{MatchedPath, Request},
+    extract::{MatchedPath, Request, State},
     http::{HeaderName, StatusCode},
     middleware::{self, Next},
-    response::Response,
+    response::{IntoResponse, Redirect, Response},
 };
+use bominal_shared::error::{ApiError, ApiErrorCode, ApiErrorStatus};
 use metrics::{counter, histogram};
 use tower::{ServiceBuilder, limit::ConcurrencyLimitLayer};
 use tower_http::{
@@ -26,7 +27,9 @@ use tracing::{Span, info, info_span};
 
 use super::AppState;
 
+mod admin;
 mod auth;
+mod dashboard;
 mod internal;
 mod internal_auth;
 mod internal_auth_invites;
@@ -69,6 +72,8 @@ pub(crate) fn build_router(state: Arc<AppState>) -> Router {
     let router = register_internal_api(router, state.clone());
     let router = modules::register(router);
     let router = auth::register(router);
+    let router = dashboard::register(router);
+    let router = admin::register(router);
     let router = runtime_queue::register(router);
     let request_id_header = HeaderName::from_static("x-request-id");
     let trace_layer = TraceLayer::new_for_http()
@@ -112,6 +117,10 @@ pub(crate) fn build_router(state: Arc<AppState>) -> Router {
     router
         .nest_service("/assets", ServeDir::new(assets_dir))
         .layer(middleware::from_fn(record_http_metrics))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            enforce_canonical_hosts,
+        ))
         .layer(
             ServiceBuilder::new()
                 .layer(SetRequestIdLayer::new(
@@ -130,6 +139,74 @@ pub(crate) fn build_router(state: Arc<AppState>) -> Router {
                 )),
         )
         .with_state(state)
+}
+
+async fn enforce_canonical_hosts(
+    State(state): State<Arc<AppState>>,
+    request: Request,
+    next: Next,
+) -> Response {
+    let host = request
+        .headers()
+        .get("x-forwarded-host")
+        .and_then(|value| value.to_str().ok())
+        .or_else(|| {
+            request
+                .headers()
+                .get("host")
+                .and_then(|value| value.to_str().ok())
+        })
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| {
+            value
+                .split(':')
+                .next()
+                .unwrap_or(value)
+                .to_ascii_lowercase()
+        });
+
+    let Some(host) = host else {
+        return next.run(request).await;
+    };
+    if is_local_host(&host) {
+        return next.run(request).await;
+    }
+
+    let path = request.uri().path();
+    let path_and_query = request
+        .uri()
+        .path_and_query()
+        .map(|value| value.as_str())
+        .unwrap_or(path);
+    let admin_host = state.config.admin_app_host.to_ascii_lowercase();
+    let user_host = state.config.user_app_host.to_ascii_lowercase();
+
+    if path.starts_with("/api/admin") && host != admin_host {
+        return ApiError::new(
+            ApiErrorStatus::Unauthorized,
+            ApiErrorCode::Unauthorized,
+            "admin api must be requested via admin host",
+            super::request_id_from_headers(request.headers()),
+        )
+        .into_response();
+    }
+    if path.starts_with("/admin") && host != admin_host {
+        return Redirect::permanent(&format!("https://{}{}", admin_host, path_and_query))
+            .into_response();
+    }
+    if matches!(path, "/" | "/auth") || path.starts_with("/dashboard") {
+        if host == admin_host {
+            return Redirect::permanent(&format!("https://{}{}", user_host, path_and_query))
+                .into_response();
+        }
+    }
+
+    next.run(request).await
+}
+
+fn is_local_host(value: &str) -> bool {
+    value == "localhost" || value == "127.0.0.1" || value.ends_with(".local") || value == "0.0.0.0"
 }
 
 fn register_internal_api(

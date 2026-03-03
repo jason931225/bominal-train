@@ -1,9 +1,5 @@
 pub(crate) mod http;
-pub(crate) mod services {
-    pub(crate) mod auth_service;
-    pub(crate) mod passkey_service;
-    pub(crate) mod runtime_queue_service;
-}
+pub(crate) mod services;
 mod web;
 
 use std::{
@@ -15,12 +11,12 @@ use std::{
 use anyhow::{Context, Result};
 use axum::{
     Json, Router,
-    extract::State,
+    extract::{Path, State},
     http::{
         HeaderMap, StatusCode,
         header::{self, HeaderValue},
     },
-    response::{Html, IntoResponse},
+    response::{Html, IntoResponse, Redirect},
 };
 use bominal_shared::{
     config::{AppConfig, PasskeyProvider},
@@ -171,45 +167,90 @@ pub(crate) fn build_router(state: Arc<AppState>) -> Router {
     http::build_router(state)
 }
 
-async fn ssr_home(headers: HeaderMap) -> impl IntoResponse {
+async fn ssr_auth_landing(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
     let request_id = request_id_from_headers(&headers);
     let render_started_at = Instant::now();
-    let body = web::render_home();
+    let theme_mode = theme_mode_from_headers(&state.config, &headers);
+    let body = web::render_auth_landing();
     info!(
         request_id = %request_id,
         route = "/",
         render_ms = render_started_at.elapsed().as_millis(),
         "ssr render complete",
     );
-    Html(format!(
-        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\" /><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\" /><title>bominal | Rust SSR</title><link rel=\"stylesheet\" href=\"/assets/tailwind.css\" /></head><body class=\"min-h-screen bg-slate-50\">{body}</body></html>"
+    Html(render_document(
+        "bominal | Authenticate",
+        &body,
+        &theme_mode,
     ))
 }
 
-async fn ssr_auth(State(state): State<Arc<AppState>>, headers: HeaderMap) -> impl IntoResponse {
-    let request_id = request_id_from_headers(&headers);
-    let render_started_at = Instant::now();
-    let preflight = web::AuthPreflight {
-        database_configured: !state.config.database_url.trim().is_empty(),
-        redis_configured: !state.config.redis.url.trim().is_empty(),
-        session_secret_configured: !state.config.session_secret.trim().is_empty(),
-        invite_base_url_configured: !state.config.invite_base_url.trim().is_empty(),
-        passkey_provider_server_only: state.config.passkey.provider
-            == PasskeyProvider::ServerWebauthn,
-        webauthn_rp_id_configured: !state.config.passkey.webauthn_rp_id.trim().is_empty(),
-        webauthn_rp_origin_configured: !state.config.passkey.webauthn_rp_origin.trim().is_empty(),
-    };
-    let body = web::render_auth(&preflight);
-    info!(
-        request_id = %request_id,
-        route = "/auth",
-        render_ms = render_started_at.elapsed().as_millis(),
-        "ssr render complete",
-    );
+async fn ssr_auth_alias() -> impl IntoResponse {
+    Redirect::permanent("/")
+}
 
-    Html(format!(
-        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\" /><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\" /><title>bominal | Auth</title><link rel=\"stylesheet\" href=\"/assets/tailwind.css\" /></head><body class=\"min-h-screen bg-slate-50\">{body}</body></html>"
-    ))
+async fn ssr_dashboard(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> axum::response::Response {
+    let request_id = request_id_from_headers(&headers);
+    let session =
+        match services::auth_service::require_session_state(state.as_ref(), &headers).await {
+            Ok(value) => value,
+            Err(err) => return map_auth_service_error(err, &request_id).into_response(),
+        };
+    let body = web::render_dashboard_overview(&session.email);
+    let theme_mode = theme_mode_from_headers(&state.config, &headers);
+    Html(render_document("bominal | Dashboard", &body, &theme_mode)).into_response()
+}
+
+async fn ssr_dashboard_jobs(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> axum::response::Response {
+    let request_id = request_id_from_headers(&headers);
+    let session =
+        match services::auth_service::require_session_state(state.as_ref(), &headers).await {
+            Ok(value) => value,
+            Err(err) => return map_auth_service_error(err, &request_id).into_response(),
+        };
+    let body = web::render_dashboard_jobs(&session.email);
+    let theme_mode = theme_mode_from_headers(&state.config, &headers);
+    Html(render_document("bominal | Jobs", &body, &theme_mode)).into_response()
+}
+
+async fn ssr_dashboard_job_detail(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(job_id): Path<String>,
+) -> axum::response::Response {
+    let request_id = request_id_from_headers(&headers);
+    let session =
+        match services::auth_service::require_session_state(state.as_ref(), &headers).await {
+            Ok(value) => value,
+            Err(err) => return map_auth_service_error(err, &request_id).into_response(),
+        };
+    let body = web::render_dashboard_job_detail(&session.email, &job_id);
+    let theme_mode = theme_mode_from_headers(&state.config, &headers);
+    Html(render_document("bominal | Job Detail", &body, &theme_mode)).into_response()
+}
+
+async fn ssr_dashboard_security(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> axum::response::Response {
+    let request_id = request_id_from_headers(&headers);
+    let session =
+        match services::auth_service::require_session_state(state.as_ref(), &headers).await {
+            Ok(value) => value,
+            Err(err) => return map_auth_service_error(err, &request_id).into_response(),
+        };
+    let body = web::render_dashboard_security(&session.email);
+    let theme_mode = theme_mode_from_headers(&state.config, &headers);
+    Html(render_document("bominal | Security", &body, &theme_mode)).into_response()
 }
 
 async fn ssr_admin_maintenance(
@@ -244,10 +285,78 @@ async fn ssr_admin_maintenance(
         "ssr render complete",
     );
 
-    Html(format!(
-        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\" /><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\" /><title>bominal | Admin Maintenance</title><link rel=\"stylesheet\" href=\"/assets/tailwind.css\" /></head><body class=\"min-h-screen bg-slate-50\">{body}</body></html>"
+    let theme_mode = theme_mode_from_headers(&state.config, &headers);
+    Html(render_document(
+        "bominal | Admin Maintenance",
+        &body,
+        &theme_mode,
     ))
     .into_response()
+}
+
+async fn ssr_admin_users(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> axum::response::Response {
+    ssr_admin_shell_page(state, headers, "users", "bominal | Admin Users").await
+}
+
+async fn ssr_admin_runtime(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> axum::response::Response {
+    ssr_admin_shell_page(state, headers, "runtime", "bominal | Admin Runtime").await
+}
+
+async fn ssr_admin_observability(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> axum::response::Response {
+    ssr_admin_shell_page(
+        state,
+        headers,
+        "observability",
+        "bominal | Admin Observability",
+    )
+    .await
+}
+
+async fn ssr_admin_security(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> axum::response::Response {
+    ssr_admin_shell_page(state, headers, "security", "bominal | Admin Security").await
+}
+
+async fn ssr_admin_config(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> axum::response::Response {
+    ssr_admin_shell_page(state, headers, "config", "bominal | Admin Config").await
+}
+
+async fn ssr_admin_audit(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> axum::response::Response {
+    ssr_admin_shell_page(state, headers, "audit", "bominal | Admin Audit").await
+}
+
+async fn ssr_admin_shell_page(
+    state: Arc<AppState>,
+    headers: HeaderMap,
+    section: &'static str,
+    title: &'static str,
+) -> axum::response::Response {
+    let request_id = request_id_from_headers(&headers);
+    let admin_user =
+        match services::auth_service::require_admin_session_user(state.as_ref(), &headers).await {
+            Ok(user) => user,
+            Err(err) => return map_auth_service_error(err, &request_id).into_response(),
+        };
+    let theme_mode = theme_mode_from_headers(&state.config, &headers);
+    let body = web::render_admin_section(&admin_user.email, section);
+    Html(render_document(title, &body, &theme_mode)).into_response()
 }
 
 async fn admin_maintenance_metrics(
@@ -301,6 +410,38 @@ fn map_auth_service_error(
             request_id.to_string(),
         ),
     }
+}
+
+fn render_document(title: &str, body: &str, theme_mode: &str) -> String {
+    format!(
+        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\" /><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\" /><title>{title}</title><link rel=\"stylesheet\" href=\"/assets/tailwind.css\" /></head><body class=\"stripe theme\" data-theme-mode=\"{theme_mode}\">{body}</body></html>"
+    )
+}
+
+fn theme_mode_from_headers(config: &AppConfig, headers: &HeaderMap) -> String {
+    let Some(raw_cookie) = headers
+        .get(header::COOKIE)
+        .and_then(|value| value.to_str().ok())
+    else {
+        return "system".to_string();
+    };
+    let mut selected = "system".to_string();
+    for pair in raw_cookie.split(';') {
+        let mut parts = pair.trim().splitn(2, '=');
+        let Some(key) = parts.next() else {
+            continue;
+        };
+        let Some(value) = parts.next() else {
+            continue;
+        };
+        if key == config.ui_theme_cookie_name {
+            let value = value.trim().to_ascii_lowercase();
+            if matches!(value.as_str(), "light" | "dark" | "system") {
+                selected = value;
+            }
+        }
+    }
+    selected
 }
 
 async fn health_live() -> impl IntoResponse {

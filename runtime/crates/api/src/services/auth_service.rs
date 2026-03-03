@@ -12,6 +12,7 @@ use argon2::{
     },
 };
 use axum::http::HeaderMap;
+use bominal_shared::config::AdminRole;
 use chrono::{DateTime, Duration, Utc};
 use redis::AsyncCommands;
 use sha2::{Digest, Sha256};
@@ -83,6 +84,16 @@ pub(crate) struct CreateInviteResponse {
 pub(crate) struct SessionUser {
     pub(crate) user_id: String,
     pub(crate) email: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub(crate) struct SessionState {
+    pub(crate) user_id: String,
+    pub(crate) email: String,
+    pub(crate) role: AdminRole,
+    pub(crate) issued_at: DateTime<Utc>,
+    pub(crate) last_seen_at: DateTime<Utc>,
+    pub(crate) step_up_verified_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug)]
@@ -302,11 +313,22 @@ pub(crate) async fn establish_session(
 
     let session_id = generate_token();
     let key = format!("{SESSION_KEY_PREFIX}{session_id}");
-    let value = serde_json::to_string(user).map_err(|_| AuthServiceError::Internal)?;
+    let issued_at = Utc::now();
+    let role = resolve_admin_role(state, user).await?;
+    let session = SessionState {
+        user_id: user.user_id.clone(),
+        email: user.email.clone(),
+        role,
+        issued_at,
+        last_seen_at: issued_at,
+        step_up_verified_at: None,
+    };
+    let value = serde_json::to_string(&session).map_err(|_| AuthServiceError::Internal)?;
 
     conn.set_ex::<_, _, ()>(key, value, state.config.session_ttl_seconds)
         .await
         .map_err(|_| AuthServiceError::ServiceUnavailable("session store unavailable"))?;
+    upsert_auth_session_row(state, &session_id, &session, headers_client_ip(None), None).await;
 
     Ok(session_id)
 }
@@ -335,6 +357,7 @@ pub(crate) async fn revoke_session(
     conn.del::<_, ()>(key)
         .await
         .map_err(|_| AuthServiceError::ServiceUnavailable("session store unavailable"))?;
+    mark_auth_session_revoked(state, session_id, "logout").await;
 
     Ok(())
 }
@@ -352,11 +375,86 @@ pub(crate) async fn require_admin_session_user(
     state: &AppState,
     headers: &HeaderMap,
 ) -> Result<SessionUser, AuthServiceError> {
-    let user = require_session_user(state, headers).await?;
-    if !is_admin_email(&user.email) {
+    let session = require_session_state(state, headers).await?;
+    if !matches!(
+        session.role,
+        AdminRole::Admin | AdminRole::Operator | AdminRole::Viewer
+    ) {
         return Err(AuthServiceError::Unauthorized("admin access required"));
     }
-    Ok(user)
+    Ok(SessionUser {
+        user_id: session.user_id,
+        email: session.email,
+    })
+}
+
+pub(crate) async fn require_session_state(
+    state: &AppState,
+    headers: &HeaderMap,
+) -> Result<SessionState, AuthServiceError> {
+    current_session_state(state, headers)
+        .await?
+        .ok_or(AuthServiceError::Unauthorized("active session required"))
+}
+
+pub(crate) async fn require_admin_session_state(
+    state: &AppState,
+    headers: &HeaderMap,
+) -> Result<SessionState, AuthServiceError> {
+    let session = require_session_state(state, headers).await?;
+    if !matches!(
+        session.role,
+        AdminRole::Admin | AdminRole::Operator | AdminRole::Viewer
+    ) {
+        return Err(AuthServiceError::Unauthorized("admin access required"));
+    }
+    Ok(session)
+}
+
+pub(crate) fn ensure_recent_step_up(session: &SessionState, ttl_seconds: u64) -> bool {
+    let Some(verified_at) = session.step_up_verified_at else {
+        return false;
+    };
+    let ttl = Duration::seconds(ttl_seconds as i64);
+    Utc::now() - verified_at <= ttl
+}
+
+pub(crate) async fn mark_step_up_verified(
+    state: &AppState,
+    headers: &HeaderMap,
+) -> Result<SessionState, AuthServiceError> {
+    let Some(session_id) = extract_session_cookie(headers, &state.config.session_cookie_name)
+    else {
+        return Err(AuthServiceError::Unauthorized("active session required"));
+    };
+    let mut session = require_session_state(state, headers).await?;
+    session.step_up_verified_at = Some(Utc::now());
+    session.last_seen_at = Utc::now();
+
+    let redis_client = state
+        .redis_client
+        .as_ref()
+        .ok_or(AuthServiceError::ServiceUnavailable(
+            "session store unavailable",
+        ))?;
+    let mut conn = redis_client
+        .get_multiplexed_async_connection()
+        .await
+        .map_err(|_| AuthServiceError::ServiceUnavailable("session store unavailable"))?;
+    let key = format!("{SESSION_KEY_PREFIX}{session_id}");
+    let value = serde_json::to_string(&session).map_err(|_| AuthServiceError::Internal)?;
+    conn.set_ex::<_, _, ()>(key, value, state.config.session_ttl_seconds)
+        .await
+        .map_err(|_| AuthServiceError::ServiceUnavailable("session store unavailable"))?;
+    upsert_auth_session_row(
+        state,
+        session_id,
+        &session,
+        headers_client_ip(Some(headers)),
+        headers_user_agent(Some(headers)),
+    )
+    .await;
+    Ok(session)
 }
 
 pub(crate) async fn current_session_user(
@@ -385,13 +483,61 @@ pub(crate) async fn current_session_user(
         .get(key)
         .await
         .map_err(|_| AuthServiceError::ServiceUnavailable("session store unavailable"))?;
-
     let Some(raw) = raw else {
         return Ok(None);
     };
+    let session = parse_session_state(&raw)?;
 
-    let user = serde_json::from_str::<SessionUser>(&raw).map_err(|_| AuthServiceError::Internal)?;
+    let user = SessionUser {
+        user_id: session.user_id,
+        email: session.email,
+    };
     Ok(Some(user))
+}
+
+pub(crate) async fn current_session_state(
+    state: &AppState,
+    headers: &HeaderMap,
+) -> Result<Option<SessionState>, AuthServiceError> {
+    let Some(session_id) = extract_session_cookie(headers, &state.config.session_cookie_name)
+    else {
+        return Ok(None);
+    };
+    let redis_client = state
+        .redis_client
+        .as_ref()
+        .ok_or(AuthServiceError::ServiceUnavailable(
+            "session store unavailable",
+        ))?;
+    let mut conn = redis_client
+        .get_multiplexed_async_connection()
+        .await
+        .map_err(|_| AuthServiceError::ServiceUnavailable("session store unavailable"))?;
+
+    let key = format!("{SESSION_KEY_PREFIX}{session_id}");
+    let raw: Option<String> = conn
+        .get(&key)
+        .await
+        .map_err(|_| AuthServiceError::ServiceUnavailable("session store unavailable"))?;
+    let Some(raw) = raw else {
+        return Ok(None);
+    };
+    let mut session = parse_session_state(&raw)?;
+    session.last_seen_at = Utc::now();
+    let value = serde_json::to_string(&session).map_err(|_| AuthServiceError::Internal)?;
+    conn.set_ex::<_, _, ()>(key, value, state.config.session_ttl_seconds)
+        .await
+        .map_err(|_| AuthServiceError::ServiceUnavailable("session store unavailable"))?;
+    upsert_auth_session_row(
+        state,
+        session_id,
+        &session,
+        headers_client_ip(Some(headers)),
+        headers_user_agent(Some(headers)),
+    )
+    .await;
+
+    Ok(Some(session))
 }
 
 pub(crate) async fn load_user_by_id(
@@ -424,16 +570,122 @@ pub(crate) async fn load_user_by_id(
     })
 }
 
+#[derive(Debug, Clone, serde::Serialize)]
+pub(crate) struct PasskeySummary {
+    pub(crate) credential_id: String,
+    pub(crate) friendly_name: Option<String>,
+    pub(crate) created_at: DateTime<Utc>,
+    pub(crate) last_used_at: Option<DateTime<Utc>>,
+}
+
+pub(crate) async fn list_session_passkeys(
+    state: &AppState,
+    headers: &HeaderMap,
+) -> Result<Vec<PasskeySummary>, AuthServiceError> {
+    let session = require_session_state(state, headers).await?;
+    let user_uuid = Uuid::parse_str(&session.user_id)
+        .map_err(|_| AuthServiceError::InvalidRequest("invalid user id"))?;
+    let pool = state
+        .db_pool
+        .as_ref()
+        .ok_or(AuthServiceError::ServiceUnavailable("database unavailable"))?;
+    let rows = sqlx::query_as::<_, (String, Option<String>, DateTime<Utc>, Option<DateTime<Utc>>)>(
+        "select credential_id, friendly_name, created_at, last_used_at
+         from user_passkeys
+         where user_id = $1
+         order by coalesce(last_used_at, created_at) desc",
+    )
+    .bind(user_uuid)
+    .fetch_all(pool)
+    .await
+    .map_err(|_| AuthServiceError::Internal)?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| PasskeySummary {
+            credential_id: row.0,
+            friendly_name: row.1,
+            created_at: row.2,
+            last_used_at: row.3,
+        })
+        .collect())
+}
+
+pub(crate) async fn delete_session_passkey(
+    state: &AppState,
+    headers: &HeaderMap,
+    credential_id: &str,
+) -> Result<(), AuthServiceError> {
+    let session = require_session_state(state, headers).await?;
+    let user_uuid = Uuid::parse_str(&session.user_id)
+        .map_err(|_| AuthServiceError::InvalidRequest("invalid user id"))?;
+    if credential_id.trim().is_empty() {
+        return Err(AuthServiceError::InvalidRequest(
+            "credential_id is required",
+        ));
+    }
+    let pool = state
+        .db_pool
+        .as_ref()
+        .ok_or(AuthServiceError::ServiceUnavailable("database unavailable"))?;
+    let result = sqlx::query("delete from user_passkeys where user_id = $1 and credential_id = $2")
+        .bind(user_uuid)
+        .bind(credential_id.trim())
+        .execute(pool)
+        .await
+        .map_err(|_| AuthServiceError::Internal)?;
+    if result.rows_affected() == 0 {
+        return Err(AuthServiceError::NotFound("passkey not found"));
+    }
+    Ok(())
+}
+
+pub(crate) async fn revoke_user_sessions(
+    state: &AppState,
+    user_id: &str,
+    reason: &str,
+) -> Result<u64, AuthServiceError> {
+    let user_uuid = Uuid::parse_str(user_id)
+        .map_err(|_| AuthServiceError::InvalidRequest("invalid user id"))?;
+    let pool = state
+        .db_pool
+        .as_ref()
+        .ok_or(AuthServiceError::ServiceUnavailable("database unavailable"))?;
+    let result = sqlx::query(
+        "update auth_sessions
+         set revoked_at = now(), revoked_reason = $2
+         where user_id = $1 and revoked_at is null",
+    )
+    .bind(user_uuid)
+    .bind(reason)
+    .execute(pool)
+    .await
+    .map_err(|_| AuthServiceError::Internal)?;
+    Ok(result.rows_affected())
+}
+
 pub(crate) fn session_set_cookie(state: &AppState, session_id: &str) -> String {
     let secure = if state.config.app_env.eq_ignore_ascii_case("production") {
         "; Secure"
     } else {
         ""
     };
+    let domain = state
+        .config
+        .session_cookie_domain
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| format!("; Domain={value}"))
+        .unwrap_or_default();
 
     format!(
-        "{}={}; Path=/; HttpOnly; SameSite=Lax; Max-Age={}{}",
-        state.config.session_cookie_name, session_id, state.config.session_ttl_seconds, secure
+        "{}={}; Path=/; HttpOnly; SameSite=Lax; Max-Age={}{}{}",
+        state.config.session_cookie_name,
+        session_id,
+        state.config.session_ttl_seconds,
+        secure,
+        domain
     )
 }
 
@@ -444,9 +696,18 @@ pub(crate) fn session_clear_cookie(state: &AppState) -> String {
         ""
     };
 
+    let domain = state
+        .config
+        .session_cookie_domain
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| format!("; Domain={value}"))
+        .unwrap_or_default();
+
     format!(
-        "{}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0{}",
-        state.config.session_cookie_name, secure
+        "{}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0{}{}",
+        state.config.session_cookie_name, secure, domain
     )
 }
 
@@ -615,6 +876,189 @@ fn is_admin_email_with_list(admin_emails: &str, email: &str) -> bool {
         .any(|value| value == normalized_email)
 }
 
+fn parse_admin_role(raw: &str) -> Option<AdminRole> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "admin" => Some(AdminRole::Admin),
+        "operator" => Some(AdminRole::Operator),
+        "viewer" => Some(AdminRole::Viewer),
+        "user" => Some(AdminRole::User),
+        _ => None,
+    }
+}
+
+pub(crate) fn admin_role_as_str(role: &AdminRole) -> &'static str {
+    match role {
+        AdminRole::Admin => "admin",
+        AdminRole::Operator => "operator",
+        AdminRole::Viewer => "viewer",
+        AdminRole::User => "user",
+    }
+}
+
+pub(crate) fn admin_role_can_mutate(role: &AdminRole) -> bool {
+    matches!(role, AdminRole::Admin | AdminRole::Operator)
+}
+
+pub(crate) fn parse_session_state(raw: &str) -> Result<SessionState, AuthServiceError> {
+    match serde_json::from_str::<SessionState>(raw) {
+        Ok(session) => Ok(session),
+        Err(_) => {
+            let legacy =
+                serde_json::from_str::<SessionUser>(raw).map_err(|_| AuthServiceError::Internal)?;
+            let now = Utc::now();
+            Ok(SessionState {
+                user_id: legacy.user_id,
+                email: legacy.email,
+                role: AdminRole::User,
+                issued_at: now,
+                last_seen_at: now,
+                step_up_verified_at: None,
+            })
+        }
+    }
+}
+
+async fn resolve_admin_role(
+    state: &AppState,
+    user: &SessionUser,
+) -> Result<AdminRole, AuthServiceError> {
+    let user_id = match Uuid::parse_str(&user.user_id) {
+        Ok(value) => value,
+        Err(_) => return Ok(AdminRole::User),
+    };
+
+    let Some(pool) = state.db_pool.as_ref() else {
+        if is_admin_email(&user.email) {
+            return Ok(AdminRole::Admin);
+        }
+        return Ok(AdminRole::User);
+    };
+
+    let row = sqlx::query_as::<_, (String, bool)>(
+        "select role, access_enabled from auth_user_role_bindings where user_id = $1",
+    )
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await;
+
+    match row {
+        Ok(Some((role_raw, access_enabled))) => {
+            if !access_enabled {
+                return Err(AuthServiceError::Unauthorized("account access disabled"));
+            }
+            match parse_admin_role(&role_raw) {
+                Some(role) => Ok(role),
+                None => Ok(AdminRole::User),
+            }
+        }
+        Ok(None) => {
+            if is_admin_email(&user.email) {
+                Ok(AdminRole::Admin)
+            } else {
+                Ok(AdminRole::User)
+            }
+        }
+        Err(_) => {
+            if is_admin_email(&user.email) {
+                Ok(AdminRole::Admin)
+            } else {
+                Ok(AdminRole::User)
+            }
+        }
+    }
+}
+
+fn hash_session_id(state: &AppState, session_id: &str) -> String {
+    hash_token(&state.config.session_secret, session_id)
+}
+
+fn headers_client_ip(headers: Option<&HeaderMap>) -> Option<String> {
+    let Some(headers) = headers else {
+        return None;
+    };
+    let ip = headers
+        .get("x-forwarded-for")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.split(',').next())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .or_else(|| {
+            headers
+                .get("x-real-ip")
+                .and_then(|value| value.to_str().ok())
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToOwned::to_owned)
+        });
+    ip
+}
+
+fn headers_user_agent(headers: Option<&HeaderMap>) -> Option<String> {
+    let Some(headers) = headers else {
+        return None;
+    };
+    headers
+        .get("user-agent")
+        .and_then(|value| value.to_str().ok())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+}
+
+async fn upsert_auth_session_row(
+    state: &AppState,
+    session_id: &str,
+    session: &SessionState,
+    ip: Option<String>,
+    user_agent: Option<String>,
+) {
+    let Some(pool) = state.db_pool.as_ref() else {
+        return;
+    };
+    let Ok(user_uuid) = Uuid::parse_str(&session.user_id) else {
+        return;
+    };
+    let ip_addr = ip.and_then(|value| {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    });
+    let _ = sqlx::query(
+        "insert into auth_sessions (session_id_hash, user_id, email, role, issued_at, last_seen_at, step_up_verified_at, ip, user_agent)
+         values ($1, $2, $3, $4, $5, $6, $7, cast($8 as inet), $9)
+         on conflict (session_id_hash)
+         do update set role = excluded.role, last_seen_at = excluded.last_seen_at, step_up_verified_at = excluded.step_up_verified_at, ip = coalesce(excluded.ip, auth_sessions.ip), user_agent = coalesce(excluded.user_agent, auth_sessions.user_agent), revoked_at = null, revoked_reason = null",
+    )
+    .bind(hash_session_id(state, session_id))
+    .bind(user_uuid)
+    .bind(&session.email)
+    .bind(admin_role_as_str(&session.role))
+    .bind(session.issued_at)
+    .bind(session.last_seen_at)
+    .bind(session.step_up_verified_at)
+    .bind(ip_addr)
+    .bind(user_agent)
+    .execute(pool)
+    .await;
+}
+
+async fn mark_auth_session_revoked(state: &AppState, session_id: &str, reason: &str) {
+    let Some(pool) = state.db_pool.as_ref() else {
+        return;
+    };
+    let _ = sqlx::query(
+        "update auth_sessions set revoked_at = now(), revoked_reason = $2 where session_id_hash = $1",
+    )
+    .bind(hash_session_id(state, session_id))
+    .bind(reason)
+    .execute(pool)
+    .await;
+}
+
 async fn verify_password_hash(
     password: String,
     password_hash: String,
@@ -755,7 +1199,8 @@ mod tests {
     use super::{
         ARGON2_MEMORY_KIB, ARGON2_PARALLELISM, ARGON2_TIME_COST, SIGNIN_MAX_FAILS_PER_EMAIL,
         SIGNIN_MAX_FAILS_PER_IP, clear_signin_failure_state, ensure_signin_not_locked,
-        hash_password_blocking, record_signin_failure, verify_password_hash_blocking,
+        hash_password_blocking, record_signin_failure, session_clear_cookie, session_set_cookie,
+        verify_password_hash_blocking,
     };
 
     #[test]
@@ -894,9 +1339,14 @@ mod tests {
             app_port: 0,
             log_json: false,
             session_cookie_name: "bominal_session".to_string(),
+            session_cookie_domain: None,
             session_ttl_seconds: 3600,
+            step_up_ttl_seconds: 600,
             session_secret: "test-session-secret".to_string(),
             invite_base_url: "http://127.0.0.1:8000".to_string(),
+            user_app_host: "www.bominal.com".to_string(),
+            admin_app_host: "ops.bominal.com".to_string(),
+            ui_theme_cookie_name: "bominal_theme".to_string(),
             database_url: String::new(),
             redis: RedisConfig {
                 url: redis_url.to_string(),
@@ -1000,6 +1450,25 @@ mod tests {
         ensure_signin_not_locked(&state, "fresh-email@example.com", "203.0.113.16")
             .await
             .expect("different IP should not be locked");
+    }
+
+    #[test]
+    fn session_cookie_omits_domain_when_not_configured() {
+        let state = test_state_with_redis("redis://127.0.0.1:6379");
+        let set_cookie = session_set_cookie(&state, "session-id-1");
+        let clear_cookie = session_clear_cookie(&state);
+        assert!(!set_cookie.contains("Domain="));
+        assert!(!clear_cookie.contains("Domain="));
+    }
+
+    #[test]
+    fn session_cookie_includes_domain_when_configured() {
+        let mut state = test_state_with_redis("redis://127.0.0.1:6379");
+        state.config.session_cookie_domain = Some(".bominal.com".to_string());
+        let set_cookie = session_set_cookie(&state, "session-id-2");
+        let clear_cookie = session_clear_cookie(&state);
+        assert!(set_cookie.contains("Domain=.bominal.com"));
+        assert!(clear_cookie.contains("Domain=.bominal.com"));
     }
 }
 

@@ -55,16 +55,24 @@ One-command local runtime bring-up (API + worker):
 ./scripts/dev-up.sh
 ```
 
-Auth page:
+Auth landing:
 
 ```bash
-http://127.0.0.1:8000/auth
+http://127.0.0.1:8000/
 ```
 
-`/auth` includes:
+`/` includes:
 - passkey-first sign-in action (when an eligible passkey factor/session context is available),
 - password fallback sign-in,
-- optional passkey registration during/after signup.
+- light/dark/system theme selector (defaults to device preference via `system` mode).
+
+Compatibility alias:
+- `/auth` permanently redirects to `/`.
+
+Runtime route map:
+- User app (`www.bominal.com`): `/`, `/dashboard`, `/dashboard/jobs`, `/dashboard/jobs/{job_id}`, `/dashboard/security`.
+- Admin app (`ops.bominal.com`): `/admin/maintenance`, `/admin/users`, `/admin/runtime`, `/admin/observability`, `/admin/security`, `/admin/config`, `/admin/audit`.
+- Observability contracts: `/health` (liveness), `/ready` (dependency readiness), `/admin/maintenance/metrics` (admin-only Prometheus text).
 
 `dev-up` defaults to:
 - running bootstrap with `BOMINAL_RUN_TESTS=0` (faster dev loop),
@@ -157,8 +165,8 @@ Generate production env files from templates with either prompts (operator mode)
   --set DEPLOY_MIGRATIONS_DIR=/opt/bominal/repo/runtime/migrations \
   --set DEPLOY_API_SERVICE=api \
   --set DEPLOY_WORKER_SERVICE=worker \
-  --set DEPLOY_HEALTHCHECK_LIVE_URL=http://127.0.0.1:8000/health/live \
-  --set DEPLOY_HEALTHCHECK_READY_URL=http://127.0.0.1:8000/health/ready \
+  --set DEPLOY_HEALTHCHECK_LIVE_URL=http://127.0.0.1:8000/health \
+  --set DEPLOY_HEALTHCHECK_READY_URL=http://127.0.0.1:8000/ready \
   --set POSTGRES_HOST=127.0.0.1 \
   --set POSTGRES_PORT=5432 \
   --set POSTGRES_DB=bominal \
@@ -177,5 +185,7 @@ Outputs (from `env/prod/*.example` templates; depends on `--only` selection):
 - Never persist raw cardholder data.
 - Keep provider and internal API auth fail-closed.
 - Preserve secure session-cookie semantics.
+- Keep admin routes and APIs served from `ops.bominal.com`; user app routes stay on `www.bominal.com`.
+- Sensitive admin mutations require recent passkey step-up, typed confirmation target, and a mandatory reason.
 
 See `docs/MANUAL.md` for the complete policy baseline.

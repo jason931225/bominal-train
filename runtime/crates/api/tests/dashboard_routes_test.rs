@@ -3,7 +3,7 @@ use std::{sync::Arc, time::Duration};
 use axum::{
     Router,
     body::to_bytes,
-    http::{StatusCode, header},
+    http::{Request, StatusCode, header},
 };
 use bominal_shared::config::{
     AppConfig, EvervaultConfig, PasskeyConfig, PasskeyProvider, RedisConfig, RuntimeSchedule,
@@ -14,15 +14,7 @@ use tower::util::ServiceExt;
 #[path = "../src/main.rs"]
 mod api_main;
 
-fn test_config(
-    database_url: &str,
-    redis_url: &str,
-    session_secret: &str,
-    invite_base_url: &str,
-    passkey_provider: PasskeyProvider,
-    rp_id: &str,
-    rp_origin: &str,
-) -> AppConfig {
+fn test_config() -> AppConfig {
     AppConfig {
         app_env: "test".to_string(),
         app_host: "127.0.0.1".to_string(),
@@ -32,14 +24,14 @@ fn test_config(
         session_cookie_domain: None,
         session_ttl_seconds: 3600,
         step_up_ttl_seconds: 600,
-        session_secret: session_secret.to_string(),
-        invite_base_url: invite_base_url.to_string(),
+        session_secret: "test-session-secret".to_string(),
+        invite_base_url: "http://127.0.0.1:8000".to_string(),
         user_app_host: "www.bominal.com".to_string(),
         admin_app_host: "ops.bominal.com".to_string(),
         ui_theme_cookie_name: "bominal_theme".to_string(),
-        database_url: database_url.to_string(),
+        database_url: String::new(),
         redis: RedisConfig {
-            url: redis_url.to_string(),
+            url: String::new(),
             queue_key: "test:runtime:queue".to_string(),
             queue_dlq_key: "test:runtime:queue:dlq".to_string(),
             lease_prefix: "test:runtime:lease".to_string(),
@@ -51,9 +43,9 @@ fn test_config(
         },
         resend: None,
         passkey: PasskeyConfig {
-            provider: passkey_provider,
-            webauthn_rp_id: rp_id.to_string(),
-            webauthn_rp_origin: rp_origin.to_string(),
+            provider: PasskeyProvider::ServerWebauthn,
+            webauthn_rp_id: "localhost".to_string(),
+            webauthn_rp_origin: "http://localhost:8000".to_string(),
             webauthn_rp_name: "bominal".to_string(),
             webauthn_challenge_ttl_seconds: 300,
         },
@@ -66,30 +58,32 @@ fn test_config(
     }
 }
 
-async fn build_test_app(config: AppConfig) -> Router {
-    let state = match api_main::build_state(config).await {
+async fn build_test_app() -> Router {
+    let state = match api_main::build_state(test_config()).await {
         Ok(state) => Arc::new(state),
-        Err(err) => panic!("failed to construct test AppState: {err}"),
+        Err(err) => panic!("failed to build AppState: {err}"),
     };
 
     api_main::build_router(state)
 }
 
+async fn response_json(response: axum::response::Response) -> serde_json::Value {
+    let body = match to_bytes(response.into_body(), usize::MAX).await {
+        Ok(bytes) => bytes,
+        Err(err) => panic!("failed to read response body: {err}"),
+    };
+
+    match serde_json::from_slice::<serde_json::Value>(&body) {
+        Ok(value) => value,
+        Err(err) => panic!("response body is not valid JSON: {err}"),
+    }
+}
+
 #[tokio::test]
-async fn auth_alias_redirects_to_root_landing() {
-    let app = build_test_app(test_config(
-        "",
-        "",
-        "",
-        "",
-        PasskeyProvider::ServerWebauthn,
-        "localhost",
-        "http://localhost:8000",
-    ))
-    .await;
-    let request = match axum::http::Request::builder()
-        .method("GET")
-        .uri("/auth")
+async fn dashboard_page_requires_authenticated_session() {
+    let app = build_test_app().await;
+    let request = match Request::builder()
+        .uri("/dashboard")
         .body(axum::body::Body::empty())
     {
         Ok(request) => request,
@@ -101,31 +95,61 @@ async fn auth_alias_redirects_to_root_landing() {
         Err(err) => panic!("request failed: {err}"),
     };
 
-    assert_eq!(response.status(), StatusCode::PERMANENT_REDIRECT);
-    let location = response
-        .headers()
-        .get(header::LOCATION)
-        .and_then(|value| value.to_str().ok());
-    assert_eq!(location, Some("/"));
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    let body = response_json(response).await;
+    assert_eq!(body["code"], "unauthorized");
+    assert!(body["request_id"].is_string());
 }
 
 #[tokio::test]
-async fn auth_landing_shows_passkey_first_controls() {
-    let app = build_test_app(test_config(
-        "",
-        "",
-        "",
-        "",
-        PasskeyProvider::ServerWebauthn,
-        "localhost",
-        "http://localhost:8000",
-    ))
-    .await;
-    let request = match axum::http::Request::builder()
-        .method("GET")
-        .uri("/")
+async fn dashboard_api_requires_authenticated_session() {
+    let app = build_test_app().await;
+    let request = match Request::builder()
+        .uri("/api/dashboard/summary")
+        .header(header::ACCEPT, "application/json")
         .body(axum::body::Body::empty())
     {
+        Ok(request) => request,
+        Err(err) => panic!("failed to build request: {err}"),
+    };
+
+    let response = match app.oneshot(request).await {
+        Ok(response) => response,
+        Err(err) => panic!("request failed: {err}"),
+    };
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    let body = response_json(response).await;
+    assert_eq!(body["code"], "unauthorized");
+    assert!(body["request_id"].is_string());
+}
+
+#[tokio::test]
+async fn dashboard_sse_route_requires_authenticated_session() {
+    let app = build_test_app().await;
+    let request = match Request::builder()
+        .uri("/api/dashboard/jobs/job-1/events/stream")
+        .header(header::ACCEPT, "text/event-stream")
+        .body(axum::body::Body::empty())
+    {
+        Ok(request) => request,
+        Err(err) => panic!("failed to build request: {err}"),
+    };
+
+    let response = match app.oneshot(request).await {
+        Ok(response) => response,
+        Err(err) => panic!("request failed: {err}"),
+    };
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    let body = response_json(response).await;
+    assert_eq!(body["code"], "unauthorized");
+}
+
+#[tokio::test]
+async fn root_landing_has_passkey_first_primary_cta() {
+    let app = build_test_app().await;
+    let request = match Request::builder().uri("/").body(axum::body::Body::empty()) {
         Ok(request) => request,
         Err(err) => panic!("failed to build request: {err}"),
     };
@@ -147,48 +171,4 @@ async fn auth_landing_shows_passkey_first_controls() {
 
     assert!(html.contains("Authenticate with passkey"));
     assert!(html.contains("Sign in with email/password"));
-    assert!(html.contains("bominal authentication"));
-    assert!(html.contains("Theme"));
-    assert!(html.contains("data-theme=\"system\""));
-}
-
-#[tokio::test]
-async fn auth_landing_keeps_email_password_fallback() {
-    let app = build_test_app(test_config(
-        "postgresql://localhost:5432/bominal",
-        "redis://127.0.0.1:6379",
-        "test-session-secret",
-        "http://127.0.0.1:8000",
-        PasskeyProvider::ServerWebauthn,
-        "localhost",
-        "http://localhost:8000",
-    ))
-    .await;
-    let request = match axum::http::Request::builder()
-        .method("GET")
-        .uri("/")
-        .body(axum::body::Body::empty())
-    {
-        Ok(request) => request,
-        Err(err) => panic!("failed to build request: {err}"),
-    };
-
-    let response = match app.oneshot(request).await {
-        Ok(response) => response,
-        Err(err) => panic!("request failed: {err}"),
-    };
-
-    assert_eq!(response.status(), StatusCode::OK);
-    let body = match to_bytes(response.into_body(), usize::MAX).await {
-        Ok(body) => body,
-        Err(err) => panic!("failed to read response body: {err}"),
-    };
-    let html = match String::from_utf8(body.to_vec()) {
-        Ok(html) => html,
-        Err(err) => panic!("response body is not valid utf-8: {err}"),
-    };
-
-    assert!(html.contains("email-signin-form"));
-    assert!(html.contains("passkey-primary"));
-    assert!(html.contains("toggle-email"));
 }

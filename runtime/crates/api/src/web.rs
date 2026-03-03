@@ -1,518 +1,421 @@
-use leptos::prelude::*;
-
-#[component]
-pub fn HomePage() -> impl IntoView {
-    view! {
-        <main class="mx-auto flex min-h-screen w-full max-w-6xl flex-col px-6 py-12 lg:px-10">
-            <section class="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
-                <p class="text-xs uppercase tracking-[0.24em] text-slate-500">"Bominal Rust Cutover"</p>
-                <h1 class="mt-3 text-4xl font-black leading-tight text-slate-900 lg:text-6xl">
-                    "Leptos SSR + Tailwind"
-                </h1>
-                <p class="mt-4 max-w-3xl text-base leading-7 text-slate-600 lg:text-lg">
-                    "Parallel runtime is active. This frontend is server-rendered by Leptos on axum with local auth, passkeys, and Redis-backed runtime services."
-                </p>
-                <div class="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
-                    <article class="rounded-2xl bg-slate-900 p-5 text-slate-100">
-                        <p class="text-xs uppercase tracking-wide text-slate-400">"API"</p>
-                        <p class="mt-2 text-2xl font-semibold">"axum 0.8"</p>
-                    </article>
-                    <article class="rounded-2xl bg-cyan-600 p-5 text-cyan-50">
-                        <p class="text-xs uppercase tracking-wide text-cyan-100">"Data"</p>
-                        <p class="mt-2 text-2xl font-semibold">"postgres + redis"</p>
-                    </article>
-                    <article class="rounded-2xl bg-emerald-600 p-5 text-emerald-50">
-                        <p class="text-xs uppercase tracking-wide text-emerald-100">"Auth"</p>
-                        <p class="mt-2 text-2xl font-semibold">"server WebAuthn"</p>
-                    </article>
-                </div>
-            </section>
-        </main>
-    }
+fn html_escape(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;")
 }
 
-pub fn render_home() -> String {
-    view! { <HomePage /> }.to_html()
-}
-
-#[derive(Debug, Clone)]
-pub struct AuthPreflight {
-    pub database_configured: bool,
-    pub redis_configured: bool,
-    pub session_secret_configured: bool,
-    pub invite_base_url_configured: bool,
-    pub passkey_provider_server_only: bool,
-    pub webauthn_rp_id_configured: bool,
-    pub webauthn_rp_origin_configured: bool,
-}
-
-fn status_badge(ready: bool) -> &'static str {
-    if ready {
-        "<span class=\"rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold uppercase tracking-wide text-emerald-700\">Ready</span>"
-    } else {
-        "<span class=\"rounded-full bg-rose-100 px-2.5 py-1 text-xs font-semibold uppercase tracking-wide text-rose-700\">Missing</span>"
-    }
-}
-
-fn status_row(name: &str, ready: bool, hint: &str) -> String {
+fn app_shell_topbar(title: &str, subtitle: &str) -> String {
     format!(
-        "<li class=\"flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3\"><div><p class=\"text-sm font-semibold text-slate-900\">{name}</p><p class=\"text-xs text-slate-500\">{hint}</p></div>{}</li>",
-        status_badge(ready)
+        r#"<header class="mx-auto w-full max-w-[480px] px-4 pt-4 md:max-w-7xl md:px-6">
+  <div class="glass-card rounded-[20px] p-4">
+    <p class="eyebrow">bominal</p>
+    <h1 class="mt-1 text-xl font-semibold text-slate-900 dark:text-slate-100">{title}</h1>
+    <p class="mt-1 text-sm text-slate-600 dark:text-slate-300">{subtitle}</p>
+  </div>
+</header>"#
     )
 }
 
-pub fn render_auth(preflight: &AuthPreflight) -> String {
-    let rows = [
-        status_row(
-            "DATABASE_URL",
-            preflight.database_configured,
-            "Persistent store for auth users, invites, and passkeys.",
-        ),
-        status_row(
-            "REDIS_URL",
-            preflight.redis_configured,
-            "Session store + passkey challenge TTL state.",
-        ),
-        status_row(
-            "SESSION_SECRET",
-            preflight.session_secret_configured,
-            "Server-side secret for token hashing and invite protection.",
-        ),
-        status_row(
-            "INVITE_BASE_URL",
-            preflight.invite_base_url_configured,
-            "Base URL used when issuing invite links.",
-        ),
-        status_row(
-            "PASSKEY_PROVIDER=server_webauthn",
-            preflight.passkey_provider_server_only,
-            "WebAuthn provider mode (single-provider runtime).",
-        ),
-        status_row(
-            "WEBAUTHN_RP_ID",
-            preflight.webauthn_rp_id_configured,
-            "Relying-party ID for passkey ceremonies.",
-        ),
-        status_row(
-            "WEBAUTHN_RP_ORIGIN",
-            preflight.webauthn_rp_origin_configured,
-            "Expected browser origin for passkey ceremonies.",
-        ),
-    ]
-    .join("");
-
-    let summary = if preflight.database_configured
-        && preflight.redis_configured
-        && preflight.session_secret_configured
-        && preflight.passkey_provider_server_only
-        && preflight.webauthn_rp_id_configured
-        && preflight.webauthn_rp_origin_configured
-    {
-        "<p class=\"rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800\">Local auth runtime contract is ready.</p>"
-    } else {
-        "<p class=\"rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800\">Set missing keys in <code>env/local/runtime.env</code> before production-like testing.</p>"
-    };
-
+pub fn render_auth_landing() -> String {
     let html = r#"
-<main class="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-6 px-6 py-12 lg:px-10">
-  <section class="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
-    <p class="text-xs uppercase tracking-[0.24em] text-slate-500">bominal auth</p>
-    <h1 class="mt-3 text-4xl font-black leading-tight text-slate-900 lg:text-6xl">Auth Workspace</h1>
-    <p class="mt-4 max-w-3xl text-base leading-7 text-slate-600 lg:text-lg">
-      Server-only WebAuthn with invite-only onboarding and password fallback.
+<main class="mx-auto flex min-h-screen w-full max-w-[480px] flex-col px-4 pb-24 pt-4 md:max-w-7xl md:px-6 md:pt-8">
+  <section class="glass-card rounded-[22px] p-6 md:p-8">
+    <p class="eyebrow">bominal authentication</p>
+    <h1 class="mt-2 text-3xl font-semibold text-slate-900 dark:text-slate-100 md:text-5xl">Sign in securely</h1>
+    <p class="mt-3 text-sm leading-6 text-slate-600 dark:text-slate-300">
+      Authenticate with passkey first. Fallback to email/password when needed.
     </p>
+    <button id="passkey-primary" class="btn-primary mt-6 h-12 w-full">Authenticate with passkey</button>
+    <button id="toggle-email" class="btn-ghost mt-3 h-12 w-full">Sign in with email/password</button>
+    <div id="auth-error" class="mt-3 hidden rounded-2xl border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-700"></div>
   </section>
 
-  <section class="grid grid-cols-1 gap-6 lg:grid-cols-2">
-    <article class="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-      <h2 class="text-xl font-semibold text-slate-900">Auth Preflight</h2>
-      <p class="mt-2 text-sm text-slate-600">Runtime auth contract checks.</p>
-      <ul class="mt-4 space-y-3">__ROWS__</ul>
-      <div class="mt-4">__SUMMARY__</div>
-    </article>
+  <section id="email-panel" class="glass-card mt-4 hidden rounded-[22px] p-6">
+    <h2 class="text-lg font-semibold text-slate-900 dark:text-slate-100">Email and password</h2>
+    <form id="email-signin-form" class="mt-4 space-y-3">
+      <label class="field-label" for="signin-email">Email</label>
+      <input id="signin-email" type="email" autocomplete="email" class="field-input h-12 w-full" />
+      <label class="field-label" for="signin-password">Password</label>
+      <input id="signin-password" type="password" autocomplete="current-password" class="field-input h-12 w-full" />
+      <button type="submit" class="btn-primary h-12 w-full">Continue</button>
+    </form>
+  </section>
 
-    <article class="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-      <h2 class="text-xl font-semibold text-slate-900">Session</h2>
-      <p class="mt-2 text-sm text-slate-600">Current app session cookie status.</p>
-      <div class="mt-4 flex gap-3">
-        <button id="refresh-session" type="button" class="inline-flex items-center rounded-xl bg-cyan-600 px-4 py-2 text-sm font-semibold text-cyan-50 hover:bg-cyan-500">Refresh</button>
-        <button id="logout-session" type="button" class="inline-flex items-center rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-100">Logout</button>
+  <section class="glass-card mt-4 rounded-[22px] p-5">
+    <div class="flex items-center justify-between">
+      <span class="text-sm text-slate-600 dark:text-slate-300">Theme</span>
+      <div class="flex gap-2">
+        <button class="btn-chip" data-theme="system">System</button>
+        <button class="btn-chip" data-theme="light">Light</button>
+        <button class="btn-chip" data-theme="dark">Dark</button>
       </div>
-      <pre id="session-output" class="mt-4 overflow-x-auto rounded-xl bg-slate-900 p-4 text-xs leading-6 text-slate-100">Loading session...</pre>
-    </article>
-  </section>
-
-  <section class="grid grid-cols-1 gap-6 lg:grid-cols-2">
-    <article class="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-      <h2 class="text-xl font-semibold text-slate-900">Invite Accept</h2>
-      <p class="mt-2 text-sm text-slate-600">Invite-only onboarding flow.</p>
-      <form id="invite-form" class="mt-4 space-y-3">
-        <div>
-          <label for="invite-token" class="mb-2 block text-sm font-medium text-slate-700">Invite token</label>
-          <input id="invite-token" type="text" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-200" />
-        </div>
-        <div>
-          <label for="invite-email" class="mb-2 block text-sm font-medium text-slate-700">Email</label>
-          <input id="invite-email" type="email" autocomplete="email" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-200" />
-        </div>
-        <div>
-          <label for="invite-password" class="mb-2 block text-sm font-medium text-slate-700">Password</label>
-          <input id="invite-password" type="password" autocomplete="new-password" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-200" />
-        </div>
-        <button type="submit" class="inline-flex items-center rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800">Accept invite</button>
-      </form>
-      <pre id="invite-output" class="mt-4 overflow-x-auto rounded-xl bg-slate-900 p-4 text-xs leading-6 text-slate-100">Accept an invite to create an account.</pre>
-    </article>
-
-    <article class="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-      <h2 class="text-xl font-semibold text-slate-900">Password Sign In</h2>
-      <p class="mt-2 text-sm text-slate-600">Fallback sign in path.</p>
-      <form id="password-signin-form" class="mt-4 space-y-3">
-        <div>
-          <label for="signin-email" class="mb-2 block text-sm font-medium text-slate-700">Email</label>
-          <input id="signin-email" type="email" autocomplete="email" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-200" />
-        </div>
-        <div>
-          <label for="signin-password" class="mb-2 block text-sm font-medium text-slate-700">Password</label>
-          <input id="signin-password" type="password" autocomplete="current-password" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-200" />
-        </div>
-        <button type="submit" class="inline-flex items-center rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800">Sign in</button>
-      </form>
-      <pre id="signin-output" class="mt-4 overflow-x-auto rounded-xl bg-slate-900 p-4 text-xs leading-6 text-slate-100">Sign in to establish a session cookie.</pre>
-    </article>
-  </section>
-
-  <section class="grid grid-cols-1 gap-6 lg:grid-cols-2">
-    <article class="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-      <h2 class="text-xl font-semibold text-slate-900">Passkey Sign In</h2>
-      <p class="mt-2 text-sm text-slate-600">Usernameless discoverable credential flow.</p>
-      <button id="passkey-signin-button" type="button" class="mt-4 inline-flex items-center rounded-xl bg-cyan-600 px-4 py-2 text-sm font-semibold text-cyan-50 hover:bg-cyan-500">Sign in with passkey</button>
-      <pre id="passkey-signin-output" class="mt-4 overflow-x-auto rounded-xl bg-slate-900 p-4 text-xs leading-6 text-slate-100">Use your passkey to sign in.</pre>
-    </article>
-
-    <article class="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-      <h2 class="text-xl font-semibold text-slate-900">Passkey Register</h2>
-      <p class="mt-2 text-sm text-slate-600">Requires an active session cookie.</p>
-      <div class="mt-4 space-y-3">
-        <div>
-          <label for="passkey-friendly-name" class="mb-2 block text-sm font-medium text-slate-700">Friendly name</label>
-          <input id="passkey-friendly-name" type="text" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-200" placeholder="My laptop" />
-        </div>
-        <button id="passkey-register-button" type="button" class="inline-flex items-center rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-100">Register passkey</button>
-      </div>
-      <pre id="passkey-register-output" class="mt-4 overflow-x-auto rounded-xl bg-slate-900 p-4 text-xs leading-6 text-slate-100">Register a passkey after sign-in.</pre>
-    </article>
+    </div>
   </section>
 </main>
 
 <script>
-  (() => {
-    const sessionOutput = document.getElementById('session-output');
-    const refreshSessionButton = document.getElementById('refresh-session');
-    const logoutSessionButton = document.getElementById('logout-session');
+(() => {
+  const passkeyBtn = document.getElementById('passkey-primary');
+  const toggleEmailBtn = document.getElementById('toggle-email');
+  const emailPanel = document.getElementById('email-panel');
+  const emailForm = document.getElementById('email-signin-form');
+  const authError = document.getElementById('auth-error');
+  const themeButtons = Array.from(document.querySelectorAll('[data-theme]'));
 
-    const inviteForm = document.getElementById('invite-form');
-    const inviteTokenInput = document.getElementById('invite-token');
-    const inviteEmailInput = document.getElementById('invite-email');
-    const invitePasswordInput = document.getElementById('invite-password');
-    const inviteOutput = document.getElementById('invite-output');
+  const showError = (message) => {
+    authError.textContent = message;
+    authError.classList.remove('hidden');
+  };
 
-    const passwordSigninForm = document.getElementById('password-signin-form');
-    const signinEmailInput = document.getElementById('signin-email');
-    const signinPasswordInput = document.getElementById('signin-password');
-    const signinOutput = document.getElementById('signin-output');
+  const clearError = () => {
+    authError.textContent = '';
+    authError.classList.add('hidden');
+  };
 
-    const passkeySigninButton = document.getElementById('passkey-signin-button');
-    const passkeySigninOutput = document.getElementById('passkey-signin-output');
-
-    const passkeyRegisterButton = document.getElementById('passkey-register-button');
-    const passkeyFriendlyNameInput = document.getElementById('passkey-friendly-name');
-    const passkeyRegisterOutput = document.getElementById('passkey-register-output');
-
-    function setOutput(el, payload) {
-      if (!el) return;
-      el.textContent = typeof payload === 'string' ? payload : JSON.stringify(payload, null, 2);
-    }
-
-    function toErrorMessage(result, fallback) {
-      if (!result) return fallback;
-      if (typeof result === 'string') return result;
-      if (result.body && typeof result.body.message === 'string') return result.body.message;
-      if (typeof result.status === 'number') return fallback + ' (status ' + result.status + ')';
-      return fallback;
-    }
-
-    async function requestJson(url, method, payload) {
-      const response = await fetch(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-        },
-        body: payload ? JSON.stringify(payload) : undefined,
-      });
-
-      const text = await response.text();
-      let body = text;
-      try {
-        body = text ? JSON.parse(text) : null;
-      } catch (_err) {
-        // keep raw text
-      }
-
-      return {
-        ok: response.ok,
-        status: response.status,
-        body,
-      };
-    }
-
-    function b64urlToBuffer(base64url) {
-      const padded = (base64url + '==='.slice((base64url.length + 3) % 4)).replace(/-/g, '+').replace(/_/g, '/');
-      const binary = atob(padded);
-      const bytes = new Uint8Array(binary.length);
-      for (let i = 0; i < binary.length; i += 1) {
-        bytes[i] = binary.charCodeAt(i);
-      }
-      return bytes.buffer;
-    }
-
-    function bufferToB64url(buffer) {
-      const bytes = new Uint8Array(buffer);
-      let binary = '';
-      for (let i = 0; i < bytes.length; i += 1) {
-        binary += String.fromCharCode(bytes[i]);
-      }
-      return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-    }
-
-    function prepareRegistrationOptions(options) {
-      const publicKey = structuredClone(options.publicKey);
-      publicKey.challenge = b64urlToBuffer(publicKey.challenge);
-      publicKey.user.id = b64urlToBuffer(publicKey.user.id);
-      if (Array.isArray(publicKey.excludeCredentials)) {
-        publicKey.excludeCredentials = publicKey.excludeCredentials.map((credential) => ({
-          ...credential,
-          id: b64urlToBuffer(credential.id),
-        }));
-      }
-      return { publicKey };
-    }
-
-    function prepareAuthenticationOptions(options) {
-      const publicKey = structuredClone(options.publicKey);
-      publicKey.challenge = b64urlToBuffer(publicKey.challenge);
-      if (Array.isArray(publicKey.allowCredentials)) {
-        publicKey.allowCredentials = publicKey.allowCredentials.map((credential) => ({
-          ...credential,
-          id: b64urlToBuffer(credential.id),
-        }));
-      }
-      return {
-        publicKey,
-        mediation: options.mediation,
-      };
-    }
-
-    function serializeRegistrationCredential(credential) {
-      return {
-        id: credential.id,
-        rawId: bufferToB64url(credential.rawId),
-        type: credential.type,
-        response: {
-          attestationObject: bufferToB64url(credential.response.attestationObject),
-          clientDataJSON: bufferToB64url(credential.response.clientDataJSON),
-          transports: typeof credential.response.getTransports === 'function'
-            ? credential.response.getTransports()
-            : undefined,
-        },
-        clientExtensionResults: credential.getClientExtensionResults
-          ? credential.getClientExtensionResults()
-          : {},
-      };
-    }
-
-    function serializeAuthenticationCredential(credential) {
-      return {
-        id: credential.id,
-        rawId: bufferToB64url(credential.rawId),
-        type: credential.type,
-        response: {
-          authenticatorData: bufferToB64url(credential.response.authenticatorData),
-          clientDataJSON: bufferToB64url(credential.response.clientDataJSON),
-          signature: bufferToB64url(credential.response.signature),
-          userHandle: credential.response.userHandle
-            ? bufferToB64url(credential.response.userHandle)
-            : null,
-        },
-        clientExtensionResults: credential.getClientExtensionResults
-          ? credential.getClientExtensionResults()
-          : {},
-      };
-    }
-
-    async function refreshSession() {
-      const result = await requestJson('/api/auth/session/me', 'GET');
-      setOutput(sessionOutput, result.body || result);
-    }
-
-    if (refreshSessionButton) {
-      refreshSessionButton.addEventListener('click', async () => {
-        await refreshSession();
-      });
-    }
-
-    if (logoutSessionButton) {
-      logoutSessionButton.addEventListener('click', async () => {
-        const result = await requestJson('/api/auth/session/logout', 'POST');
-        if (!result.ok) {
-          setOutput(sessionOutput, toErrorMessage(result, 'Logout failed'));
-          return;
-        }
-        await refreshSession();
-      });
-    }
-
-    if (inviteTokenInput) {
-      const params = new URLSearchParams(window.location.search);
-      const token = params.get('invite_token');
-      if (token) {
-        inviteTokenInput.value = token;
-      }
-    }
-
-    if (inviteForm) {
-      inviteForm.addEventListener('submit', async (event) => {
-        event.preventDefault();
-        const payload = {
-          invite_token: inviteTokenInput.value.trim(),
-          email: inviteEmailInput.value.trim(),
-          password: invitePasswordInput.value,
-        };
-
-        setOutput(inviteOutput, 'Accepting invite...');
-        const result = await requestJson('/api/auth/invite/accept', 'POST', payload);
-        if (!result.ok) {
-          setOutput(inviteOutput, toErrorMessage(result, 'Invite accept failed'));
-          return;
-        }
-
-        setOutput(inviteOutput, result.body || result);
-        await refreshSession();
-      });
-    }
-
-    if (passwordSigninForm) {
-      passwordSigninForm.addEventListener('submit', async (event) => {
-        event.preventDefault();
-        const payload = {
-          email: signinEmailInput.value.trim(),
-          password: signinPasswordInput.value,
-        };
-
-        setOutput(signinOutput, 'Signing in...');
-        const result = await requestJson('/api/auth/password/signin', 'POST', payload);
-        if (!result.ok) {
-          setOutput(signinOutput, toErrorMessage(result, 'Sign in failed'));
-          return;
-        }
-
-        setOutput(signinOutput, result.body || result);
-        await refreshSession();
-      });
-    }
-
-    if (passkeySigninButton) {
-      passkeySigninButton.addEventListener('click', async () => {
-        if (!window.PublicKeyCredential || !navigator.credentials) {
-          setOutput(passkeySigninOutput, 'WebAuthn is not supported in this browser.');
-          return;
-        }
-
-        setOutput(passkeySigninOutput, 'Starting passkey sign-in...');
-
-        const start = await requestJson('/api/auth/passkeys/auth/start', 'POST', {});
-        if (!start.ok || !start.body || !start.body.options || !start.body.flow_id) {
-          setOutput(passkeySigninOutput, toErrorMessage(start, 'Failed to start passkey sign-in'));
-          return;
-        }
-
-        try {
-          const credential = await navigator.credentials.get(prepareAuthenticationOptions(start.body.options));
-          if (!credential) {
-            setOutput(passkeySigninOutput, 'Passkey sign-in was cancelled.');
-            return;
-          }
-
-          const finish = await requestJson('/api/auth/passkeys/auth/finish', 'POST', {
-            flow_id: start.body.flow_id,
-            credential: serializeAuthenticationCredential(credential),
-          });
-
-          if (!finish.ok) {
-            setOutput(passkeySigninOutput, toErrorMessage(finish, 'Passkey sign-in failed'));
-            return;
-          }
-
-          setOutput(passkeySigninOutput, finish.body || finish);
-          await refreshSession();
-        } catch (err) {
-          setOutput(passkeySigninOutput, String(err));
-        }
-      });
-    }
-
-    if (passkeyRegisterButton) {
-      passkeyRegisterButton.addEventListener('click', async () => {
-        if (!window.PublicKeyCredential || !navigator.credentials) {
-          setOutput(passkeyRegisterOutput, 'WebAuthn is not supported in this browser.');
-          return;
-        }
-
-        const payload = {
-          friendly_name: passkeyFriendlyNameInput.value.trim() || null,
-        };
-
-        setOutput(passkeyRegisterOutput, 'Starting passkey registration...');
-        const start = await requestJson('/api/auth/passkeys/register/start', 'POST', payload);
-        if (!start.ok || !start.body || !start.body.options || !start.body.flow_id) {
-          setOutput(passkeyRegisterOutput, toErrorMessage(start, 'Failed to start passkey registration'));
-          return;
-        }
-
-        try {
-          const credential = await navigator.credentials.create(prepareRegistrationOptions(start.body.options));
-          if (!credential) {
-            setOutput(passkeyRegisterOutput, 'Passkey registration was cancelled.');
-            return;
-          }
-
-          const finish = await requestJson('/api/auth/passkeys/register/finish', 'POST', {
-            flow_id: start.body.flow_id,
-            credential: serializeRegistrationCredential(credential),
-          });
-
-          if (!finish.ok) {
-            setOutput(passkeyRegisterOutput, toErrorMessage(finish, 'Passkey registration failed'));
-            return;
-          }
-
-          setOutput(passkeyRegisterOutput, finish.body || finish);
-        } catch (err) {
-          setOutput(passkeyRegisterOutput, String(err));
-        }
-      });
-    }
-
-    refreshSession().catch((err) => {
-      setOutput(sessionOutput, String(err));
+  const requestJson = async (url, method, payload) => {
+    const response = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: payload ? JSON.stringify(payload) : undefined,
     });
-  })();
+    const bodyText = await response.text();
+    let body = null;
+    try { body = bodyText ? JSON.parse(bodyText) : null; } catch (_err) {}
+    return { ok: response.ok, status: response.status, body, bodyText };
+  };
+
+  const b64urlToBuffer = (value) => {
+    const padded = (value + '==='.slice((value.length + 3) % 4)).replace(/-/g, '+').replace(/_/g, '/');
+    const binary = atob(padded);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+    return bytes.buffer;
+  };
+
+  const bufferToB64url = (buffer) => {
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]);
+    return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  };
+
+  const serializeAuthCredential = (credential) => ({
+    id: credential.id,
+    rawId: bufferToB64url(credential.rawId),
+    type: credential.type,
+    response: {
+      authenticatorData: bufferToB64url(credential.response.authenticatorData),
+      clientDataJSON: bufferToB64url(credential.response.clientDataJSON),
+      signature: bufferToB64url(credential.response.signature),
+      userHandle: credential.response.userHandle ? bufferToB64url(credential.response.userHandle) : null,
+    },
+    clientExtensionResults: credential.getClientExtensionResults ? credential.getClientExtensionResults() : {},
+  });
+
+  const passkeyAuth = async () => {
+    clearError();
+    const start = await requestJson('/api/auth/passkeys/auth/start', 'POST', {});
+    if (!start.ok || !start.body || !start.body.options || !start.body.flow_id) {
+      const requestId = start.body && start.body.request_id ? ` (request_id: ${start.body.request_id})` : '';
+      showError(`Passkey start failed${requestId}`);
+      return;
+    }
+    if (!window.PublicKeyCredential || !navigator.credentials) {
+      showError('WebAuthn is not supported in this browser.');
+      return;
+    }
+    try {
+      const options = structuredClone(start.body.options);
+      options.publicKey.challenge = b64urlToBuffer(options.publicKey.challenge);
+      if (Array.isArray(options.publicKey.allowCredentials)) {
+        options.publicKey.allowCredentials = options.publicKey.allowCredentials.map((item) => ({ ...item, id: b64urlToBuffer(item.id) }));
+      }
+      const credential = await navigator.credentials.get(options);
+      if (!credential) {
+        showError('Passkey authentication was cancelled.');
+        return;
+      }
+      const finish = await requestJson('/api/auth/passkeys/auth/finish', 'POST', {
+        flow_id: start.body.flow_id,
+        credential: serializeAuthCredential(credential),
+      });
+      if (!finish.ok) {
+        const requestId = finish.body && finish.body.request_id ? ` (request_id: ${finish.body.request_id})` : '';
+        showError(`Passkey sign-in failed${requestId}`);
+        return;
+      }
+      window.location.href = '/dashboard';
+    } catch (err) {
+      showError(String(err));
+    }
+  };
+
+  passkeyBtn.addEventListener('click', passkeyAuth);
+  toggleEmailBtn.addEventListener('click', () => emailPanel.classList.toggle('hidden'));
+
+  emailForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    clearError();
+    const email = document.getElementById('signin-email').value.trim();
+    const password = document.getElementById('signin-password').value;
+    const result = await requestJson('/api/auth/password/signin', 'POST', { email, password });
+    if (!result.ok) {
+      const requestId = result.body && result.body.request_id ? ` (request_id: ${result.body.request_id})` : '';
+      showError(`Sign-in failed${requestId}`);
+      return;
+    }
+    window.location.href = '/dashboard';
+  });
+
+  themeButtons.forEach((button) => {
+    button.addEventListener('click', async () => {
+      await requestJson('/api/ui/theme', 'POST', { mode: button.dataset.theme });
+      window.location.reload();
+    });
+  });
+})();
 </script>
 "#;
+    html.to_string()
+}
 
-    html.replace("__ROWS__", &rows)
-        .replace("__SUMMARY__", summary)
+pub fn render_dashboard_overview(email: &str) -> String {
+    let topbar = app_shell_topbar("Dashboard", &format!("Signed in as {}", html_escape(email)));
+    format!(
+        r#"{topbar}
+<main class="mx-auto w-full max-w-[480px] px-4 pb-24 pt-4 md:max-w-7xl md:px-6 md:pt-8">
+  <section class="glass-card rounded-[22px] p-5">
+    <h2 class="text-lg font-semibold text-slate-900 dark:text-slate-100">Operational summary</h2>
+    <div id="dashboard-summary" class="mt-4 space-y-2">
+      <div class="summary-row"><span>Total jobs</span><span>--</span></div>
+      <div class="summary-row"><span>Queued</span><span>--</span></div>
+      <div class="summary-row"><span>Running</span><span>--</span></div>
+      <div class="summary-row"><span>Failed</span><span>--</span></div>
+    </div>
+    <a href="/dashboard/jobs" class="btn-primary mt-4 inline-flex h-12 w-full items-center justify-center">View Jobs</a>
+  </section>
+</main>
+
+<nav class="bottom-nav">
+  <a href="/dashboard" class="active">Home</a>
+  <a href="/dashboard/jobs">Jobs</a>
+  <a href="/dashboard/security">Security</a>
+</nav>
+
+<script>
+(() => {{
+  const summary = document.getElementById('dashboard-summary');
+  fetch('/api/dashboard/summary', {{ headers: {{ Accept: 'application/json' }} }})
+    .then((res) => res.json().then((json) => [res.ok, json]))
+    .then(([ok, data]) => {{
+      if (!ok) {{
+        summary.innerHTML = `<div class="error-card">Failed to load summary. request_id: ${{data.request_id || 'n/a'}}</div>`;
+        return;
+      }}
+      summary.innerHTML = `
+        <div class="summary-row"><span>Total jobs</span><span>${{data.total_jobs}}</span></div>
+        <div class="summary-row"><span>Queued</span><span>${{data.queued_jobs}}</span></div>
+        <div class="summary-row"><span>Running</span><span>${{data.running_jobs}}</span></div>
+        <div class="summary-row"><span>Failed</span><span>${{data.failed_jobs}}</span></div>
+        <div class="support-row">Support code: ${{data.support_request_id}}</div>`;
+    }})
+    .catch((err) => {{
+      summary.innerHTML = `<div class="error-card">${{String(err)}}</div>`;
+    }});
+}})();
+</script>"#
+    )
+}
+
+pub fn render_dashboard_jobs(email: &str) -> String {
+    let topbar = app_shell_topbar("Jobs", &format!("Signed in as {}", html_escape(email)));
+    format!(
+        r#"{topbar}
+<main class="mx-auto w-full max-w-[480px] px-4 pb-24 pt-4 md:max-w-7xl md:px-6 md:pt-8">
+  <section class="glass-card rounded-[22px] p-5">
+    <h2 class="text-lg font-semibold text-slate-900 dark:text-slate-100">My runtime jobs</h2>
+    <div id="jobs-list" class="mt-4 space-y-2"><div class="loading-card">Loading jobs...</div></div>
+  </section>
+</main>
+<nav class="bottom-nav">
+  <a href="/dashboard">Home</a>
+  <a href="/dashboard/jobs" class="active">Jobs</a>
+  <a href="/dashboard/security">Security</a>
+</nav>
+<script>
+(() => {{
+  const list = document.getElementById('jobs-list');
+  const renderJobs = (jobs) => {{
+    if (!jobs.length) {{
+      list.innerHTML = '<div class="empty-card">No jobs available.</div>';
+      return;
+    }}
+    list.innerHTML = jobs.map((job) => `
+      <a class="summary-card" href="/dashboard/jobs/${{job.job_id}}">
+        <div class="summary-row"><span>Job</span><span>${{job.job_id}}</span></div>
+        <div class="summary-row"><span>Status</span><span class="badge">${{job.status}}</span></div>
+      </a>
+    `).join('');
+  }};
+  fetch('/api/dashboard/jobs', {{ headers: {{ Accept: 'application/json' }} }})
+    .then((res) => res.json().then((json) => [res.ok, json]))
+    .then(([ok, data]) => {{
+      if (!ok) {{
+        list.innerHTML = `<div class="error-card">Failed to load jobs. request_id: ${{data.request_id || 'n/a'}}</div>`;
+        return;
+      }}
+      renderJobs(data.jobs || []);
+    }})
+    .catch((err) => {{
+      list.innerHTML = `<div class="error-card">${{String(err)}}</div>`;
+    }});
+}})();
+</script>"#
+    )
+}
+
+pub fn render_dashboard_job_detail(email: &str, job_id: &str) -> String {
+    let topbar = app_shell_topbar(
+        "Job detail",
+        &format!("{} · {}", html_escape(email), html_escape(job_id)),
+    );
+    format!(
+        r#"{topbar}
+<main class="mx-auto w-full max-w-[480px] px-4 pb-28 pt-4 md:max-w-7xl md:px-6 md:pt-8">
+  <section class="glass-card rounded-[22px] p-5">
+    <div class="summary-row"><span>Job ID</span><span id="job-id">{}</span></div>
+    <div class="summary-row"><span>Status</span><span id="job-status">--</span></div>
+    <div id="events" class="mt-4 space-y-2"></div>
+  </section>
+</main>
+<div class="sticky-action-bar">
+  <a href="/dashboard/jobs" class="btn-ghost h-12 flex-1 text-center leading-[3rem]">Back</a>
+  <button id="manual-refresh" class="btn-primary h-12 flex-1">Refresh</button>
+</div>
+<script>
+(() => {{
+  const jobId = document.getElementById('job-id').textContent.trim();
+  const statusEl = document.getElementById('job-status');
+  const eventsEl = document.getElementById('events');
+  const refreshBtn = document.getElementById('manual-refresh');
+  let lastEventId = 0;
+  let fallbackInterval = null;
+
+  const renderEvents = (events) => {{
+    if (!events.length && !eventsEl.innerHTML.trim()) {{
+      eventsEl.innerHTML = '<div class="empty-card">No events yet.</div>';
+      return;
+    }}
+    events.forEach((event) => {{
+      lastEventId = Math.max(lastEventId, Number(event.id || 0));
+      const node = document.createElement('div');
+      node.className = 'summary-card';
+      node.innerHTML = `<div class="summary-row"><span>${{event.event_type}}</span><span>${{event.id}}</span></div>`;
+      eventsEl.prepend(node);
+    }});
+  }};
+
+  const loadJob = () => fetch(`/api/dashboard/jobs/${{jobId}}`, {{ headers: {{ Accept: 'application/json' }} }})
+    .then((res) => res.json().then((json) => [res.ok, json]))
+    .then(([ok, data]) => {{
+      if (!ok) {{
+        statusEl.textContent = `error (request_id: ${{data.request_id || 'n/a'}})`;
+        return;
+      }}
+      statusEl.textContent = data.status;
+    }});
+
+  const pollEvents = () => fetch(`/api/dashboard/jobs/${{jobId}}/events?since_id=${{lastEventId}}`, {{ headers: {{ Accept: 'application/json' }} }})
+    .then((res) => res.json())
+    .then((data) => renderEvents(data.events || []))
+    .catch(() => {{}});
+
+  const startFallback = () => {{
+    if (fallbackInterval) return;
+    fallbackInterval = setInterval(pollEvents, 10000);
+  }};
+
+  const startSse = () => {{
+    if (!window.EventSource) {{
+      startFallback();
+      return;
+    }}
+    const source = new EventSource(`/api/dashboard/jobs/${{jobId}}/events/stream?since_id=${{lastEventId}}`);
+    source.addEventListener('job_event', (event) => {{
+      try {{
+        const payload = JSON.parse(event.data);
+        renderEvents([payload]);
+      }} catch (_err) {{}}
+    }});
+    source.onerror = () => {{
+      source.close();
+      startFallback();
+    }};
+  }};
+
+  refreshBtn.addEventListener('click', () => {{
+    loadJob();
+    pollEvents();
+  }});
+
+  loadJob();
+  pollEvents();
+  startSse();
+}})();
+</script>"#,
+        html_escape(job_id),
+    )
+}
+
+pub fn render_dashboard_security(email: &str) -> String {
+    let topbar = app_shell_topbar("Security", &format!("Signed in as {}", html_escape(email)));
+    format!(
+        r#"{topbar}
+<main class="mx-auto w-full max-w-[480px] px-4 pb-24 pt-4 md:max-w-7xl md:px-6 md:pt-8">
+  <section class="glass-card rounded-[22px] p-5">
+    <h2 class="text-lg font-semibold text-slate-900 dark:text-slate-100">Passkeys</h2>
+    <div id="passkeys-list" class="mt-4 space-y-2"><div class="loading-card">Loading passkeys...</div></div>
+  </section>
+</main>
+<nav class="bottom-nav">
+  <a href="/dashboard">Home</a>
+  <a href="/dashboard/jobs">Jobs</a>
+  <a href="/dashboard/security" class="active">Security</a>
+</nav>
+<script>
+(() => {{
+  const list = document.getElementById('passkeys-list');
+  const load = () => fetch('/api/auth/passkeys', {{ headers: {{ Accept: 'application/json' }} }})
+    .then((res) => res.json().then((json) => [res.ok, json]))
+    .then(([ok, data]) => {{
+      if (!ok) {{
+        list.innerHTML = `<div class="error-card">Failed to load passkeys. request_id: ${{data.request_id || 'n/a'}}</div>`;
+        return;
+      }}
+      const passkeys = data.passkeys || [];
+      if (!passkeys.length) {{
+        list.innerHTML = '<div class="empty-card">No passkeys registered.</div>';
+        return;
+      }}
+      list.innerHTML = passkeys.map((item) => `
+        <div class="summary-card">
+          <div class="summary-row"><span>${{item.friendly_name || 'Unnamed passkey'}}</span><span>${{item.credential_id}}</span></div>
+          <button class="btn-ghost h-11 w-full mt-2" data-remove="${{item.credential_id}}">Remove</button>
+        </div>
+      `).join('');
+      list.querySelectorAll('[data-remove]').forEach((button) => {{
+        button.addEventListener('click', () => {{
+          fetch(`/api/auth/passkeys/${{button.dataset.remove}}`, {{ method: 'DELETE' }}).then(load);
+        }});
+      }});
+    }});
+  load();
+}})();
+</script>"#
+    )
 }
 
 #[derive(Debug, Clone)]
@@ -527,116 +430,114 @@ pub struct AdminMaintenanceView {
     pub metrics_snapshot: String,
 }
 
-fn html_escape(value: &str) -> String {
-    value
-        .replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-        .replace('\'', "&#39;")
-}
-
-fn readiness_badge(ok: bool) -> &'static str {
-    if ok {
-        "<span class=\"rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold uppercase tracking-wide text-emerald-700\">Healthy</span>"
-    } else {
-        "<span class=\"rounded-full bg-rose-100 px-2.5 py-1 text-xs font-semibold uppercase tracking-wide text-rose-700\">Degraded</span>"
-    }
-}
-
 pub fn render_admin_maintenance(view: &AdminMaintenanceView) -> String {
     let admin_email = html_escape(&view.admin_email);
     let metrics_snapshot = html_escape(&view.metrics_snapshot);
-    let db_badge = readiness_badge(view.db_ok);
-    let redis_badge = readiness_badge(view.redis_ok);
-    let ready_badge = readiness_badge(view.ready_ok);
-
-    let html = r#"
-<main class="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-6 px-6 py-12 lg:px-10">
-  <section class="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
-    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-      <div>
-        <p class="text-xs uppercase tracking-[0.24em] text-slate-500">bominal admin</p>
-        <h1 class="mt-2 text-3xl font-black leading-tight text-slate-900 lg:text-5xl">Maintenance Dashboard</h1>
-        <p class="mt-3 text-sm text-slate-600">Signed in as <code class="rounded bg-slate-100 px-2 py-1 text-xs text-slate-800">__ADMIN_EMAIL__</code></p>
-      </div>
-      __READY_BADGE__
+    let readiness = if view.ready_ok { "Healthy" } else { "Degraded" };
+    format!(
+        r#"<main class="mx-auto w-full max-w-[480px] px-4 pb-24 pt-4 md:max-w-7xl md:px-6 md:pt-8">
+  <section class="glass-card rounded-[22px] p-5">
+    <p class="eyebrow">ops.bominal.com</p>
+    <h1 class="mt-1 text-2xl font-semibold text-slate-900 dark:text-slate-100">Admin maintenance</h1>
+    <p class="mt-2 text-sm text-slate-600 dark:text-slate-300">Signed in as {admin_email}</p>
+    <div class="summary-row mt-4"><span>Readiness</span><span class="badge">{readiness}</span></div>
+    <div class="summary-row"><span>Database</span><span class="badge">{}</span></div>
+    <div class="summary-row"><span>Redis</span><span class="badge">{}</span></div>
+    <div class="mt-4 grid grid-cols-1 gap-2">
+      <a class="btn-ghost h-12 text-center leading-[3rem]" href="{}">/health</a>
+      <a class="btn-ghost h-12 text-center leading-[3rem]" href="{}">/ready</a>
+      <a class="btn-ghost h-12 text-center leading-[3rem]" href="{}">metrics text</a>
     </div>
   </section>
-
-  <section class="grid grid-cols-1 gap-6 lg:grid-cols-3">
-    <article class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div class="flex items-center justify-between">
-        <h2 class="text-base font-semibold text-slate-900">Database</h2>
-        __DB_BADGE__
-      </div>
-      <p class="mt-3 text-sm text-slate-600">Readiness probe dependency status.</p>
-    </article>
-    <article class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div class="flex items-center justify-between">
-        <h2 class="text-base font-semibold text-slate-900">Redis</h2>
-        __REDIS_BADGE__
-      </div>
-      <p class="mt-3 text-sm text-slate-600">Session and queue cache dependency status.</p>
-    </article>
-    <article class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <h2 class="text-base font-semibold text-slate-900">Probe Endpoints</h2>
-      <div class="mt-3 space-y-2 text-sm">
-        <a class="block rounded-lg border border-slate-200 px-3 py-2 text-cyan-700 hover:bg-cyan-50" href="__HEALTH_PATH__" target="_blank" rel="noreferrer">GET __HEALTH_PATH__</a>
-        <a class="block rounded-lg border border-slate-200 px-3 py-2 text-cyan-700 hover:bg-cyan-50" href="__READY_PATH__" target="_blank" rel="noreferrer">GET __READY_PATH__</a>
-      </div>
-    </article>
-  </section>
-
-  <section class="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-      <div>
-        <h2 class="text-xl font-semibold text-slate-900">Prometheus Metrics</h2>
-        <p class="mt-1 text-sm text-slate-600">Admin-only metrics view for runtime observability.</p>
-      </div>
-      <button id="refresh-metrics" type="button" class="inline-flex items-center rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800">Refresh metrics</button>
-    </div>
-    <pre id="metrics-output" class="mt-4 max-h-[28rem] overflow-auto rounded-2xl bg-slate-950 p-4 text-xs leading-5 text-slate-100">__METRICS_SNAPSHOT__</pre>
+  <section class="glass-card mt-4 rounded-[22px] p-5">
+    <h2 class="text-lg font-semibold text-slate-900 dark:text-slate-100">Metrics snapshot</h2>
+    <pre class="mt-3 max-h-[28rem] overflow-auto rounded-2xl bg-slate-950/90 p-4 text-xs text-slate-100">{metrics_snapshot}</pre>
   </section>
 </main>
+{}"#,
+        if view.db_ok { "Healthy" } else { "Degraded" },
+        if view.redis_ok { "Healthy" } else { "Degraded" },
+        view.health_path,
+        view.ready_path,
+        view.metrics_path,
+        admin_bottom_nav("maintenance"),
+    )
+}
 
+pub fn render_admin_section(admin_email: &str, section: &str) -> String {
+    let title = match section {
+        "users" => "Users and sessions",
+        "runtime" => "Runtime operations",
+        "observability" => "Observability",
+        "security" => "Security controls",
+        "config" => "Redacted config",
+        "audit" => "Audit log",
+        _ => "Admin",
+    };
+    format!(
+        r#"<main class="mx-auto w-full max-w-[480px] px-4 pb-24 pt-4 md:max-w-7xl md:px-6 md:pt-8">
+  <section class="glass-card rounded-[22px] p-5">
+    <p class="eyebrow">ops.bominal.com</p>
+    <h1 class="mt-1 text-2xl font-semibold text-slate-900 dark:text-slate-100">{}</h1>
+    <p class="mt-2 text-sm text-slate-600 dark:text-slate-300">Operator: {}</p>
+    <div id="admin-content" class="mt-4 space-y-2"><div class="loading-card">Loading...</div></div>
+  </section>
+</main>
+{}
 <script>
-  (() => {
-    const refreshButton = document.getElementById('refresh-metrics');
-    const metricsOutput = document.getElementById('metrics-output');
-    const metricsPath = '__METRICS_PATH__';
+(() => {{
+  const section = '{}';
+  const content = document.getElementById('admin-content');
+  const map = {{
+    users: '/api/admin/users',
+    runtime: '/api/admin/runtime/jobs',
+    observability: '/api/admin/observability/events',
+    security: '/api/admin/sessions',
+    config: '/api/admin/config/redacted',
+    audit: '/api/admin/audit',
+  }};
+  fetch(map[section], {{ headers: {{ Accept: 'application/json' }} }})
+    .then((res) => res.json().then((json) => [res.ok, json]))
+    .then(([ok, data]) => {{
+      if (!ok) {{
+        content.innerHTML = `<div class="error-card">Request failed. request_id: ${{data.request_id || 'n/a'}}</div>`;
+        return;
+      }}
+      content.innerHTML = `<pre class="rounded-2xl bg-slate-950/90 p-4 text-xs text-slate-100 overflow-auto">${{JSON.stringify(data, null, 2)}}</pre>`;
+    }})
+    .catch((err) => {{
+      content.innerHTML = `<div class="error-card">${{String(err)}}</div>`;
+    }});
+}})();
+</script>"#,
+        title,
+        html_escape(admin_email),
+        admin_bottom_nav(section),
+        section,
+    )
+}
 
-    if (!refreshButton || !metricsOutput) {
-      return;
-    }
-
-    refreshButton.addEventListener('click', async () => {
-      metricsOutput.textContent = 'Refreshing metrics...';
-      try {
-        const response = await fetch(metricsPath, {
-          method: 'GET',
-          headers: { Accept: 'text/plain' },
-        });
-        const text = await response.text();
-        if (!response.ok) {
-          metricsOutput.textContent = text || ('Request failed with status ' + response.status);
-          return;
-        }
-        metricsOutput.textContent = text;
-      } catch (error) {
-        metricsOutput.textContent = String(error);
-      }
-    });
-  })();
-</script>
-"#;
-
-    html.replace("__ADMIN_EMAIL__", &admin_email)
-        .replace("__READY_BADGE__", ready_badge)
-        .replace("__DB_BADGE__", db_badge)
-        .replace("__REDIS_BADGE__", redis_badge)
-        .replace("__HEALTH_PATH__", view.health_path)
-        .replace("__READY_PATH__", view.ready_path)
-        .replace("__METRICS_PATH__", view.metrics_path)
-        .replace("__METRICS_SNAPSHOT__", &metrics_snapshot)
+fn admin_bottom_nav(active: &str) -> String {
+    format!(
+        r#"<nav class="bottom-nav">
+  <a href="/admin/maintenance" class="{}">Maint</a>
+  <a href="/admin/users" class="{}">Users</a>
+  <a href="/admin/runtime" class="{}">Runtime</a>
+  <a href="/admin/observability" class="{}">Obs</a>
+  <a href="/admin/audit" class="{}">Audit</a>
+</nav>"#,
+        if active == "maintenance" {
+            "active"
+        } else {
+            ""
+        },
+        if active == "users" { "active" } else { "" },
+        if active == "runtime" { "active" } else { "" },
+        if active == "observability" {
+            "active"
+        } else {
+            ""
+        },
+        if active == "audit" { "active" } else { "" },
+    )
 }

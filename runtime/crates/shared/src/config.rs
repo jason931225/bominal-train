@@ -32,6 +32,15 @@ pub enum PasskeyProvider {
     ServerWebauthn,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AdminRole {
+    Admin,
+    Operator,
+    Viewer,
+    User,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PasskeyConfig {
     pub provider: PasskeyProvider,
@@ -56,9 +65,14 @@ pub struct AppConfig {
     pub app_port: u16,
     pub log_json: bool,
     pub session_cookie_name: String,
+    pub session_cookie_domain: Option<String>,
     pub session_ttl_seconds: u64,
+    pub step_up_ttl_seconds: u64,
     pub session_secret: String,
     pub invite_base_url: String,
+    pub user_app_host: String,
+    pub admin_app_host: String,
+    pub ui_theme_cookie_name: String,
     pub database_url: String,
     pub redis: RedisConfig,
     pub evervault: EvervaultConfig,
@@ -79,9 +93,14 @@ impl AppConfig {
             app_port: parse_u16("APP_PORT", 8080)?,
             log_json: parse_bool("LOG_JSON", true),
             session_cookie_name: env_or("SESSION_COOKIE_NAME", "bominal_session")?,
+            session_cookie_domain: env_opt("SESSION_COOKIE_DOMAIN"),
             session_ttl_seconds: parse_u64("SESSION_TTL_SECONDS", 86400)?,
+            step_up_ttl_seconds: parse_u64("STEP_UP_TTL_SECONDS", 600)?,
             session_secret: env_or("SESSION_SECRET", "dev-session-secret-change-me")?,
             invite_base_url: env_or("INVITE_BASE_URL", "http://127.0.0.1:8000")?,
+            user_app_host: env_or("USER_APP_HOST", "www.bominal.com")?,
+            admin_app_host: env_or("ADMIN_APP_HOST", "ops.bominal.com")?,
+            ui_theme_cookie_name: env_or("UI_THEME_COOKIE_NAME", "bominal_theme")?,
             database_url,
             redis: RedisConfig {
                 url: env_or("REDIS_URL", "redis://127.0.0.1:6379")?,

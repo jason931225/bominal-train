@@ -2,10 +2,10 @@ use std::sync::Arc;
 
 use axum::{
     Json, Router,
-    extract::State,
+    extract::{Path, State},
     http::{HeaderMap, HeaderValue, StatusCode, header::SET_COOKIE},
     response::IntoResponse,
-    routing::{get, post},
+    routing::{delete, get, post},
 };
 use bominal_shared::error::{ApiError, ApiErrorCode, ApiErrorStatus};
 
@@ -25,6 +25,8 @@ pub(super) fn register(router: Router<Arc<AppState>>) -> Router<Arc<AppState>> {
         .route("/api/auth/password/signin", post(password_signin))
         .route("/api/auth/session/logout", post(session_logout))
         .route("/api/auth/session/me", get(session_me))
+        .route("/api/auth/passkeys", get(passkeys_list))
+        .route("/api/auth/passkeys/{credential_id}", delete(passkey_delete))
         .route("/api/auth/invite/accept", post(invite_accept))
         .route(
             "/api/auth/passkeys/register/start",
@@ -36,6 +38,20 @@ pub(super) fn register(router: Router<Arc<AppState>>) -> Router<Arc<AppState>> {
         )
         .route("/api/auth/passkeys/auth/start", post(passkey_auth_start))
         .route("/api/auth/passkeys/auth/finish", post(passkey_auth_finish))
+        .route(
+            "/api/auth/step-up/passkey/start",
+            post(passkey_step_up_start),
+        )
+        .route(
+            "/api/auth/step-up/passkey/finish",
+            post(passkey_step_up_finish),
+        )
+        .route("/api/ui/theme", post(set_theme_preference))
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct SetThemePreferenceRequest {
+    mode: String,
 }
 
 async fn password_signin(
@@ -162,6 +178,31 @@ async fn session_me(State(state): State<Arc<AppState>>, headers: HeaderMap) -> i
     }
 }
 
+async fn passkeys_list(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    match auth_service::list_session_passkeys(state.as_ref(), &headers).await {
+        Ok(passkeys) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "passkeys": passkeys })),
+        )
+            .into_response(),
+        Err(err) => map_auth_error(err, &headers).into_response(),
+    }
+}
+
+async fn passkey_delete(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(credential_id): Path<String>,
+) -> impl IntoResponse {
+    match auth_service::delete_session_passkey(state.as_ref(), &headers, &credential_id).await {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(err) => map_auth_error(err, &headers).into_response(),
+    }
+}
+
 async fn passkey_register_start(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
@@ -234,6 +275,103 @@ async fn passkey_auth_finish(
             }
         }
         Err(err) => map_passkey_error(err, &headers).into_response(),
+    }
+}
+
+async fn passkey_step_up_start(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    if let Err(err) = auth_service::require_session_state(state.as_ref(), &headers).await {
+        return map_auth_error(err, &headers).into_response();
+    }
+    match passkey_service::start_passkey_authentication(state.as_ref()).await {
+        Ok(response) => (StatusCode::OK, Json(response)).into_response(),
+        Err(err) => map_passkey_error(err, &headers).into_response(),
+    }
+}
+
+async fn passkey_step_up_finish(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(payload): Json<passkey_service::FinishPasskeyAuthenticationRequest>,
+) -> impl IntoResponse {
+    let session = match auth_service::require_session_state(state.as_ref(), &headers).await {
+        Ok(value) => value,
+        Err(err) => return map_auth_error(err, &headers).into_response(),
+    };
+    match passkey_service::finish_passkey_authentication(state.as_ref(), payload).await {
+        Ok(result) => {
+            if result.user_id != session.user_id {
+                return ApiError::new(
+                    ApiErrorStatus::Unauthorized,
+                    ApiErrorCode::Unauthorized,
+                    "step-up credential must match active session user",
+                    request_id_from_headers(&headers),
+                )
+                .into_response();
+            }
+            match auth_service::mark_step_up_verified(state.as_ref(), &headers).await {
+                Ok(updated) => (
+                    StatusCode::OK,
+                    Json(serde_json::json!({
+                        "step_up_verified": true,
+                        "verified_at": updated.step_up_verified_at,
+                    })),
+                )
+                    .into_response(),
+                Err(err) => map_auth_error(err, &headers).into_response(),
+            }
+        }
+        Err(err) => map_passkey_error(err, &headers).into_response(),
+    }
+}
+
+async fn set_theme_preference(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(payload): Json<SetThemePreferenceRequest>,
+) -> impl IntoResponse {
+    let mode = payload.mode.trim().to_ascii_lowercase();
+    if !matches!(mode.as_str(), "system" | "light" | "dark") {
+        return ApiError::new(
+            ApiErrorStatus::BadRequest,
+            ApiErrorCode::InvalidRequest,
+            "mode must be one of: system, light, dark",
+            request_id_from_headers(&headers),
+        )
+        .into_response();
+    }
+    let secure = if state.config.app_env.eq_ignore_ascii_case("production") {
+        "; Secure"
+    } else {
+        ""
+    };
+    let domain = state
+        .config
+        .session_cookie_domain
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| format!("; Domain={value}"))
+        .unwrap_or_default();
+    let cookie = format!(
+        "{}={}; Path=/; SameSite=Lax; Max-Age=31536000{}{}",
+        state.config.ui_theme_cookie_name, mode, secure, domain
+    );
+    let mut response = (StatusCode::OK, Json(serde_json::json!({ "mode": mode }))).into_response();
+    match HeaderValue::from_str(&cookie) {
+        Ok(value) => {
+            response.headers_mut().append(SET_COOKIE, value);
+            response
+        }
+        Err(_) => ApiError::new(
+            ApiErrorStatus::InternalServerError,
+            ApiErrorCode::InternalError,
+            "failed to set theme cookie",
+            request_id_from_headers(&headers),
+        )
+        .into_response(),
     }
 }
 

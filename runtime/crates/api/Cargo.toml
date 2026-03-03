@@ -8,6 +8,7 @@ default = []
 curl-transport = ["bominal-shared/curl-transport"]
 
 [dependencies]
+async-stream.workspace = true
 argon2.workspace = true
 anyhow.workspace = true
 axum.workspace = true
