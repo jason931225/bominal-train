@@ -8,9 +8,6 @@ on:
       - runtime/**
       - env/prod/**
       - .github/workflows/cd.yml
-    paths-ignore:
-      - docs/**
-      - "**/*.md"
   workflow_dispatch:
     inputs:
       deploy:
