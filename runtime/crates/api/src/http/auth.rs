@@ -272,14 +272,12 @@ fn client_ip_from_headers(headers: &HeaderMap) -> String {
     if let Some(value) = headers
         .get("x-forwarded-for")
         .and_then(|value| value.to_str().ok())
-    {
-        if let Some(first) = value
+        && let Some(first) = value
             .split(',')
             .map(str::trim)
             .find(|entry| !entry.is_empty())
-        {
-            return first.to_string();
-        }
+    {
+        return first.to_string();
     }
 
     if let Some(value) = headers

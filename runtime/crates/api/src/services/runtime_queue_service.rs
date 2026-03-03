@@ -167,11 +167,11 @@ async fn enqueue_runtime_job_with_hooks(
     };
 
     let persist_outcome = (hooks.persist_runtime_job)(state, &job).await?;
-    if matches!(persist_outcome, PersistRuntimeJobOutcome::Inserted) {
-        if let Err(err) = (hooks.push_runtime_queue_job)(state, &job).await {
-            (hooks.compensate_persisted_runtime_job)(state, &job.job_id).await;
-            return Err(err);
-        }
+    if matches!(persist_outcome, PersistRuntimeJobOutcome::Inserted)
+        && let Err(err) = (hooks.push_runtime_queue_job)(state, &job).await
+    {
+        (hooks.compensate_persisted_runtime_job)(state, &job.job_id).await;
+        return Err(err);
     }
 
     Ok(EnqueueRuntimeJobResult {

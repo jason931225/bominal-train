@@ -102,10 +102,10 @@ async fn poll_loop(state: Arc<WorkerState>, mut shutdown_rx: watch::Receiver<boo
     loop {
         tokio::select! {
             _ = ticker.tick() => {
-                if let Some(pool) = state.db_pool.as_ref() {
-                    if let Err(err) = runtime::process_next_job(pool, &state.runtime_v2).await {
-                        warn!(error = %err, "runtime v2 poll tick failed");
-                    }
+                if let Some(pool) = state.db_pool.as_ref()
+                    && let Err(err) = runtime::process_next_job(pool, &state.runtime_v2).await
+                {
+                    warn!(error = %err, "runtime v2 poll tick failed");
                 }
             }
             changed = shutdown_rx.changed() => {

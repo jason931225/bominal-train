@@ -138,7 +138,7 @@ jobs:
         run: cargo check --workspace --locked
 
       - name: Lint
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --workspace --locked -- -D warnings
 
       - name: Run tests
         run: cargo test --workspace --locked

@@ -380,7 +380,7 @@ fn parse_srt_execution(
             };
             SrtOperationRequest::Login(login_request)
         }
-        "logout" => SrtOperationRequest::Logout(LogoutRequest::default()),
+        "logout" => SrtOperationRequest::Logout(LogoutRequest),
         "search_train" => {
             SrtOperationRequest::SearchTrain(parse_search_train_request(request_payload)?)
         }

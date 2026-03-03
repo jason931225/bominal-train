@@ -88,7 +88,7 @@ pub async fn process_next_job(
         config.heartbeat_interval,
         config.lease_ttl,
     );
-    let execution = executor::ProviderExecutor::default()
+    let execution = executor::ProviderExecutor
         .execute(&job, &config.payment_policy)
         .await;
     heartbeat.stop().await;

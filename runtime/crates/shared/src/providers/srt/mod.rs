@@ -199,10 +199,10 @@ impl<C: SrtClient> SrtProviderAdapter<C> {
 
     fn current_session(&mut self) -> SrtResult<SessionSnapshot> {
         let now = Utc::now();
-        if let Some(snapshot) = self.session.snapshot() {
-            if !snapshot.is_expired_at(now) {
-                return Ok(snapshot);
-            }
+        if let Some(snapshot) = self.session.snapshot()
+            && !snapshot.is_expired_at(now)
+        {
+            return Ok(snapshot);
         }
 
         self.try_relogin()?;
