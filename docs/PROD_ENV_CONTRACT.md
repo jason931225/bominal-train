@@ -25,13 +25,6 @@ This document defines the production-safe environment-variable contract using ke
 | `LOG_JSON` | `optional` | defaults internally when unset; explicit value recommended for operability |
 | `FRONTEND_ASSETS_DIR` | `optional` | defaults internally when unset; explicit value recommended for deploy consistency |
 | `DATABASE_URL` | `secret-manager-only` | contains secret-bearing value or connection credential |
-| `SUPABASE_URL` | `required` | core production runtime setting |
-| `SUPABASE_PUBLISHABLE_KEY` | `public-safe` | browser-safe key for client auth bootstrap; must not contain secret material |
-| `SUPABASE_JWKS_URL` | `optional` | defaults to `${SUPABASE_URL}/auth/v1/.well-known/jwks.json` when unset |
-| `SUPABASE_JWT_ISSUER` | `required` | core production runtime setting |
-| `SUPABASE_JWT_AUDIENCE` | `required` | core production runtime setting |
-| `SUPABASE_JWKS_CACHE_SECONDS` | `optional` | non-core feature or tuning parameter |
-| `SUPABASE_AUTH_WEBHOOK_SECRET` | `secret-manager-only` | secret used for webhook origin/auth validation |
 | `REDIS_URL` | `secret-manager-only` | contains secret-bearing value or connection credential |
 | `RUNTIME_QUEUE_KEY` | `required` | core runtime queue contract |
 | `RUNTIME_QUEUE_DLQ_KEY` | `required` | core runtime dead-letter queue contract |
@@ -57,13 +50,16 @@ This document defines the production-safe environment-variable contract using ke
 Reference-only mirror of the GitHub `production` environment deploy controls.
 Canonical values must be maintained in GitHub environment variables, not committed env files.
 
-Host bootstrap baseline (non-env, mandatory on deploy VM):
+VM baseline expectation (performed by deploy script or one-time host prep):
 - active `/swapfile` at `2G`,
 - persisted `vm.swappiness=10`,
 - persisted `vm.vfs_cache_pressure=50`.
 
-Operational note:
-- bake an idempotent guard for the above baseline into `DEPLOY_COMMAND` (prefix), and keep the same guard documented in `env/prod/deploy.env.example`.
+VM secret file expectation:
+- `VM_SECRET_ENV_FILE` points to an on-host `0600` env file.
+- File must include one of:
+  - `BOMINAL_DATABASE_URL=...`
+  - `BOMINAL_POSTGRES_PASSWORD=...`
 
 | Key | Classification | Rationale |
 |---|---|---|
@@ -73,8 +69,26 @@ Operational note:
 | `GCP_SERVICE_ACCOUNT` | `required` | required for federated deploy identity |
 | `DEPLOY_VM_NAME` | `required` | required VM target |
 | `DEPLOY_VM_ZONE` | `required` | required VM zone |
-| `DEPLOY_COMMAND` | `required` | fail-closed deploy contract |
-| `DEPLOY_HEALTHCHECK_COMMAND` | `required` | fail-closed post-deploy verification contract |
+| `DEPLOY_WORKDIR` | `required` | required working directory for remote execution |
+| `DEPLOY_SCRIPT_PATH` | `required` | fail-closed deploy script entrypoint |
+| `DEPLOY_HEALTHCHECK_SCRIPT_PATH` | `required` | fail-closed post-deploy verification entrypoint |
+| `DEPLOY_ROLLBACK_SCRIPT_PATH` | `required` | rollback entrypoint used when healthcheck fails |
+| `VM_SECRET_ENV_FILE` | `required` | on-host secret env path for database credential material |
+| `DEPLOY_RUNTIME_ENV_FILE` | `required` | runtime env file updated by deploy script |
+| `DEPLOY_COMPOSE_FILE` | `required` | compose file used for pull/up and health verification |
+| `DEPLOY_API_SERVICE` | `required` | compose service identifier for API |
+| `DEPLOY_WORKER_SERVICE` | `required` | compose service identifier for worker |
+| `DEPLOY_HEALTHCHECK_LIVE_URL` | `required` | live endpoint checked after deploy |
+| `DEPLOY_HEALTHCHECK_READY_URL` | `required` | ready endpoint checked after deploy |
+| `POSTGRES_HOST` | `required` | required deploy-time Postgres host contract for self-hosted DB |
+| `POSTGRES_PORT` | `required` | required deploy-time Postgres port contract for self-hosted DB |
+| `POSTGRES_DB` | `required` | required deploy-time Postgres database name contract |
+| `POSTGRES_USER` | `required` | required deploy-time Postgres username contract |
+| `DEPLOY_COMPOSE_PROJECT_NAME` | `optional` | compose project scoping when non-default naming is used |
+| `DEPLOY_ROLLBACK_STATE_PATH` | `optional` | explicit path for rollback state persistence |
+| `DEPLOY_VM_BASELINE_SCRIPT` | `optional` | override path for host baseline guard script |
+| `DEPLOY_HEALTHCHECK_RETRIES` | `optional` | retry budget for healthcheck script |
+| `DEPLOY_HEALTHCHECK_DELAY_SECONDS` | `optional` | delay between healthcheck retries |
 
 ## Caddy Env (`env/prod/caddy.env*`)
 
@@ -85,6 +99,8 @@ Operational note:
 
 ## GitHub Actions Production Environment Vars (`.github/workflows/cd.yml`)
 
+`cd.yml` consumes these keys from the protected `production` environment.
+
 | Key | Classification | Rationale |
 |---|---|---|
 | `GCP_PROJECT_ID` | `required` | required for workload identity and VM target project |
@@ -92,10 +108,32 @@ Operational note:
 | `GCP_SERVICE_ACCOUNT` | `required` | required for federated deploy identity |
 | `DEPLOY_VM_NAME` | `required` | required VM target |
 | `DEPLOY_VM_ZONE` | `required` | required VM zone |
-| `DEPLOY_COMMAND` | `required` | fail-closed deploy contract |
-| `DEPLOY_HEALTHCHECK_COMMAND` | `required` | fail-closed post-deploy verification contract |
+| `DEPLOY_WORKDIR` | `required` | required working directory for remote execution |
+| `DEPLOY_SCRIPT_PATH` | `required` | fail-closed deploy script entrypoint |
+| `DEPLOY_HEALTHCHECK_SCRIPT_PATH` | `required` | fail-closed post-deploy verification entrypoint |
+| `DEPLOY_ROLLBACK_SCRIPT_PATH` | `required` | rollback entrypoint used when healthcheck fails |
+| `VM_SECRET_ENV_FILE` | `required` | on-host secret env path for database credential material |
+| `DEPLOY_RUNTIME_ENV_FILE` | `required` | runtime env file updated by deploy script |
+| `DEPLOY_COMPOSE_FILE` | `required` | compose file used for pull/up and health verification |
+| `DEPLOY_API_SERVICE` | `required` | compose service identifier for API |
+| `DEPLOY_WORKER_SERVICE` | `required` | compose service identifier for worker |
+| `DEPLOY_HEALTHCHECK_LIVE_URL` | `required` | live endpoint checked after deploy |
+| `DEPLOY_HEALTHCHECK_READY_URL` | `required` | ready endpoint checked after deploy |
+| `POSTGRES_HOST` | `required` | required deploy-time Postgres host contract for self-hosted DB |
+| `POSTGRES_PORT` | `required` | required deploy-time Postgres port contract for self-hosted DB |
+| `POSTGRES_DB` | `required` | required deploy-time Postgres database name contract |
+| `POSTGRES_USER` | `required` | required deploy-time Postgres username contract |
 | `AUTO_DEPLOY_MAIN` | `optional` | enables deploy on push to `main` when explicitly set to `true` |
-| `RUST_COVERAGE_MIN` | `optional` | configurable CI coverage floor |
+| `DEPLOY_COMPOSE_PROJECT_NAME` | `optional` | compose project scoping when non-default naming is used |
+| `DEPLOY_ROLLBACK_STATE_PATH` | `optional` | explicit path for rollback state persistence |
+| `DEPLOY_VM_BASELINE_SCRIPT` | `optional` | override path for host baseline guard script |
+| `DEPLOY_HEALTHCHECK_RETRIES` | `optional` | retry budget for healthcheck script |
+| `DEPLOY_HEALTHCHECK_DELAY_SECONDS` | `optional` | delay between healthcheck retries |
+
+## GitHub Actions Production Environment Secrets (`.github/workflows/cd.yml`)
+
+No custom production-environment secrets are read directly by `cd.yml`.
+Database credential material is read on-VM via `VM_SECRET_ENV_FILE`.
 
 ## Mandatory Production Guards
 

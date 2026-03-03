@@ -1,0 +1,357 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PROD_ENV_DIR="${REPO_ROOT}/env/prod"
+
+INTERACTIVE_MODE="auto"
+FORCE_WRITE=0
+DRY_RUN=0
+
+SELECT_RUNTIME=0
+SELECT_CADDY=0
+SELECT_DEPLOY=0
+SELECT_ANY=0
+
+OVERRIDE_KEYS=()
+OVERRIDE_VALUES=()
+
+log() {
+  printf '[bootstrap-prod] %s\n' "$*"
+}
+
+usage() {
+  cat <<EOF
+Usage: ./scripts/bootstrap-prod.sh [options]
+
+Generates production env files from templates with two modes:
+  - Interactive (default when TTY): prompts for unresolved CHANGE_ME values
+  - Non-interactive (CI): fail-closed unless all required values are provided
+
+Options:
+  --interactive           Force interactive prompts.
+  --non-interactive       Disable prompts (CI-safe fail-closed mode).
+  --set KEY=VALUE         Provide/override a value (repeatable).
+  --only TARGET           Limit output target: runtime | caddy | deploy (repeatable).
+  --force                 Overwrite existing target files without prompt.
+  --dry-run               Print rendered files to stdout, do not write.
+  --help                  Show this help.
+
+Examples:
+  ./scripts/bootstrap-prod.sh --interactive
+  ./scripts/bootstrap-prod.sh --non-interactive --force \\
+    --only deploy \\
+    --set GCP_PROJECT_ID=my-project \\
+    --set DEPLOY_VM_NAME=bominal-deploy \\
+    --set DEPLOY_VM_ZONE=us-central1-a \\
+    --set DEPLOY_WORKDIR=/opt/bominal/repo
+EOF
+}
+
+require_cmd() {
+  local cmd="$1"
+  if ! command -v "${cmd}" >/dev/null 2>&1; then
+    echo "missing required command: ${cmd}" >&2
+    exit 1
+  fi
+}
+
+add_override() {
+  local key="$1"
+  local value="$2"
+  local i
+
+  for i in "${!OVERRIDE_KEYS[@]}"; do
+    if [ "${OVERRIDE_KEYS[i]}" = "${key}" ]; then
+      OVERRIDE_VALUES[i]="${value}"
+      return
+    fi
+  done
+
+  OVERRIDE_KEYS+=("${key}")
+  OVERRIDE_VALUES+=("${value}")
+}
+
+lookup_override() {
+  local key="$1"
+  local i
+  for i in "${!OVERRIDE_KEYS[@]}"; do
+    if [ "${OVERRIDE_KEYS[i]}" = "${key}" ]; then
+      printf '%s' "${OVERRIDE_VALUES[i]}"
+      return 0
+    fi
+  done
+  return 1
+}
+
+is_placeholder_value() {
+  local value="$1"
+  [[ "${value}" == *"CHANGE_ME"* ]]
+}
+
+is_sensitive_key() {
+  local key="$1"
+  [[ "${key}" == *"PASSWORD"* || "${key}" == *"SECRET"* || "${key}" == *"TOKEN"* || "${key}" == *"MASTER_KEY"* || "${key}" == *"API_KEY"* ]]
+}
+
+confirm_overwrite() {
+  local path="$1"
+
+  if [ "${FORCE_WRITE}" = "1" ]; then
+    return 0
+  fi
+
+  if [ "${INTERACTIVE_MODE}" = "1" ]; then
+    local answer
+    while true; do
+      printf 'Overwrite existing file %s? [y/N]: ' "${path}" >/dev/tty
+      read -r answer </dev/tty
+      case "${answer}" in
+        y|Y|yes|YES) return 0 ;;
+        n|N|no|NO|'') return 1 ;;
+        *) ;;
+      esac
+    done
+  fi
+
+  echo "refusing to overwrite existing file in non-interactive mode: ${path}" >&2
+  exit 1
+}
+
+prompt_value() {
+  local key="$1"
+  local default_value="$2"
+  local required="$3"
+  local sensitive=0
+  local value
+
+  if is_sensitive_key "${key}"; then
+    sensitive=1
+  fi
+
+  while true; do
+    if [ -n "${default_value}" ]; then
+      printf '%s [%s]: ' "${key}" "${default_value}" >/dev/tty
+    else
+      printf '%s: ' "${key}" >/dev/tty
+    fi
+
+    if [ "${sensitive}" = "1" ]; then
+      read -r -s value </dev/tty
+      printf '\n' >/dev/tty
+    else
+      read -r value </dev/tty
+    fi
+
+    if [ -z "${value}" ]; then
+      value="${default_value}"
+    fi
+
+    if [ "${required}" = "1" ] && [ -z "${value}" ]; then
+      printf 'value is required for %s\n' "${key}" >/dev/tty
+      continue
+    fi
+
+    printf '%s' "${value}"
+    return 0
+  done
+}
+
+process_template() {
+  local label="$1"
+  local template_path="$2"
+  local output_path="$3"
+  local tmp
+  local line
+  local key
+  local value
+  local resolved_value
+  local missing_keys=()
+  local env_value
+  local override_value
+
+  if [ ! -f "${template_path}" ]; then
+    echo "missing template file: ${template_path}" >&2
+    exit 1
+  fi
+
+  tmp="$(mktemp)"
+  while IFS= read -r line || [ -n "${line}" ]; do
+    if [[ "${line}" =~ ^([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]]; then
+      key="${BASH_REMATCH[1]}"
+      value="${BASH_REMATCH[2]}"
+      resolved_value="${value}"
+
+      if override_value="$(lookup_override "${key}" 2>/dev/null)"; then
+        resolved_value="${override_value}"
+      elif [ -n "${!key:-}" ]; then
+        env_value="${!key}"
+        resolved_value="${env_value}"
+      elif is_placeholder_value "${value}"; then
+        if [ "${INTERACTIVE_MODE}" = "1" ]; then
+          resolved_value="$(prompt_value "${key}" "" "1")"
+        else
+          missing_keys+=("${key}")
+        fi
+      fi
+
+      printf '%s=%s\n' "${key}" "${resolved_value}" >> "${tmp}"
+    else
+      printf '%s\n' "${line}" >> "${tmp}"
+    fi
+  done < "${template_path}"
+
+  if [ "${#missing_keys[@]}" -gt 0 ]; then
+    rm -f "${tmp}"
+    echo "missing required values for ${label} (${output_path}) in non-interactive mode:" >&2
+    printf '  - %s\n' "${missing_keys[@]}" >&2
+    echo "supply with --set KEY=VALUE or environment variables." >&2
+    exit 1
+  fi
+
+  if [ "${DRY_RUN}" = "1" ]; then
+    log "dry-run: ${output_path}"
+    printf '%s\n' "----- ${output_path} -----"
+    cat "${tmp}"
+    printf '%s\n' "----- end ${output_path} -----"
+    rm -f "${tmp}"
+    return
+  fi
+
+  if [ -f "${output_path}" ] && ! confirm_overwrite "${output_path}"; then
+    log "skipped existing file: ${output_path}"
+    rm -f "${tmp}"
+    return
+  fi
+
+  mkdir -p "$(dirname "${output_path}")"
+  mv "${tmp}" "${output_path}"
+  log "wrote ${output_path}"
+}
+
+select_target() {
+  local target="$1"
+  case "${target}" in
+    runtime) SELECT_RUNTIME=1 ;;
+    caddy) SELECT_CADDY=1 ;;
+    deploy) SELECT_DEPLOY=1 ;;
+    *)
+      echo "invalid --only target: ${target} (expected runtime|caddy|deploy)" >&2
+      exit 1
+      ;;
+  esac
+  SELECT_ANY=1
+}
+
+parse_args() {
+  local kv
+  local key
+  local value
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --interactive)
+        INTERACTIVE_MODE="1"
+        ;;
+      --non-interactive)
+        INTERACTIVE_MODE="0"
+        ;;
+      --set)
+        if [ "$#" -lt 2 ]; then
+          echo "--set requires KEY=VALUE" >&2
+          exit 1
+        fi
+        kv="$2"
+        shift
+        if [[ "${kv}" != *=* ]]; then
+          echo "--set must be KEY=VALUE, got: ${kv}" >&2
+          exit 1
+        fi
+        key="${kv%%=*}"
+        value="${kv#*=}"
+        if [[ ! "${key}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+          echo "invalid key in --set: ${key}" >&2
+          exit 1
+        fi
+        add_override "${key}" "${value}"
+        ;;
+      --only)
+        if [ "$#" -lt 2 ]; then
+          echo "--only requires a target" >&2
+          exit 1
+        fi
+        select_target "$2"
+        shift
+        ;;
+      --force)
+        FORCE_WRITE=1
+        ;;
+      --dry-run)
+        DRY_RUN=1
+        ;;
+      --help|-h)
+        usage
+        exit 0
+        ;;
+      *)
+        echo "unknown option: $1" >&2
+        usage
+        exit 1
+        ;;
+    esac
+    shift
+  done
+
+  if [ "${SELECT_ANY}" = "0" ]; then
+    SELECT_RUNTIME=1
+    SELECT_CADDY=1
+    SELECT_DEPLOY=1
+  fi
+
+  if [ "${INTERACTIVE_MODE}" = "auto" ]; then
+    if [ -t 0 ] && [ -t 1 ]; then
+      INTERACTIVE_MODE="1"
+    else
+      INTERACTIVE_MODE="0"
+    fi
+  fi
+}
+
+main() {
+  require_cmd mktemp
+  parse_args "$@"
+
+  log "mode: $( [ "${INTERACTIVE_MODE}" = "1" ] && echo interactive || echo non-interactive )"
+  if [ "${DRY_RUN}" = "1" ]; then
+    log "dry-run enabled (no files will be written)"
+  fi
+
+  if [ "${SELECT_RUNTIME}" = "1" ]; then
+    process_template \
+      "runtime" \
+      "${PROD_ENV_DIR}/runtime.env.example" \
+      "${PROD_ENV_DIR}/runtime.env"
+  fi
+
+  if [ "${SELECT_CADDY}" = "1" ]; then
+    process_template \
+      "caddy" \
+      "${PROD_ENV_DIR}/caddy.env.example" \
+      "${PROD_ENV_DIR}/caddy.env"
+  fi
+
+  if [ "${SELECT_DEPLOY}" = "1" ]; then
+    process_template \
+      "deploy" \
+      "${PROD_ENV_DIR}/deploy.env.example" \
+      "${PROD_ENV_DIR}/deploy.env"
+
+    log "reminder: configure GitHub production variables used by .github/workflows/cd.yml."
+    log "reminder: ensure VM secret env file exists and contains BOMINAL_DATABASE_URL or BOMINAL_POSTGRES_PASSWORD."
+    log "reminder: deploy script enforces VM baseline swap/sysctl guard by default."
+  fi
+
+  log "bootstrap-prod complete"
+}
+
+main "$@"

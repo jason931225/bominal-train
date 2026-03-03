@@ -1,0 +1,404 @@
+name: CD
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - runtime/**
+      - env/prod/**
+      - .github/workflows/cd.yml
+    paths-ignore:
+      - docs/**
+      - "**/*.md"
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: Run production deploy after publishing images
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cd-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  API_IMAGE_NAME: ${{ github.repository_owner }}/bominal-api
+  WORKER_IMAGE_NAME: ${{ github.repository_owner }}/bominal-worker
+
+jobs:
+  build-and-publish:
+    name: Build, Sign, and Publish Images
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+      attestations: write
+      id-token: write
+    outputs:
+      api_image_ref: ${{ steps.refs.outputs.api_image_ref }}
+      worker_image_ref: ${{ steps.refs.outputs.worker_image_ref }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: runtime/frontend/package-lock.json
+
+      - name: Build frontend CSS bundle
+        run: |
+          npm ci --prefix runtime/frontend
+          npm --prefix runtime/frontend run build:css
+
+      - name: Log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Setup QEMU
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
+
+      - name: Extract API image metadata
+        id: meta-api
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.API_IMAGE_NAME }}
+          tags: |
+            type=sha,format=long
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Extract worker image metadata
+        id: meta-worker
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.WORKER_IMAGE_NAME }}
+          tags: |
+            type=sha,format=long
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push API image
+        id: build-api
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: runtime
+          file: runtime/Dockerfile.api
+          push: true
+          provenance: true
+          sbom: true
+          tags: |
+            ${{ steps.meta-api.outputs.tags }}
+            ${{ env.REGISTRY }}/${{ env.API_IMAGE_NAME }}:${{ github.sha }}
+          labels: ${{ steps.meta-api.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push worker image
+        id: build-worker
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: runtime
+          file: runtime/Dockerfile.worker
+          push: true
+          provenance: true
+          sbom: true
+          tags: |
+            ${{ steps.meta-worker.outputs.tags }}
+            ${{ env.REGISTRY }}/${{ env.WORKER_IMAGE_NAME }}:${{ github.sha }}
+          labels: ${{ steps.meta-worker.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Attest API image provenance
+        uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661 # v3
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.API_IMAGE_NAME }}
+          subject-digest: ${{ steps.build-api.outputs.digest }}
+          push-to-registry: true
+
+      - name: Attest worker image provenance
+        uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661 # v3
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.WORKER_IMAGE_NAME }}
+          subject-digest: ${{ steps.build-worker.outputs.digest }}
+          push-to-registry: true
+
+      - name: Publish image refs
+        id: refs
+        run: |
+          echo "api_image_ref=${REGISTRY}/${API_IMAGE_NAME}@${{ steps.build-api.outputs.digest }}" >> "${GITHUB_OUTPUT}"
+          echo "worker_image_ref=${REGISTRY}/${WORKER_IMAGE_NAME}@${{ steps.build-worker.outputs.digest }}" >> "${GITHUB_OUTPUT}"
+
+  deploy-production:
+    name: Deploy Production
+    if: >
+      (github.event_name == 'workflow_dispatch' &&
+      github.ref == 'refs/heads/main' &&
+      inputs.deploy) ||
+      (github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
+      vars.AUTO_DEPLOY_MAIN == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs:
+      - build-and-publish
+    environment: production
+    concurrency:
+      group: production-deploy
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Validate deployment variables
+        env:
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          GCP_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
+          DEPLOY_VM_NAME: ${{ vars.DEPLOY_VM_NAME }}
+          DEPLOY_VM_ZONE: ${{ vars.DEPLOY_VM_ZONE }}
+          DEPLOY_WORKDIR: ${{ vars.DEPLOY_WORKDIR }}
+          DEPLOY_SCRIPT_PATH: ${{ vars.DEPLOY_SCRIPT_PATH }}
+          DEPLOY_HEALTHCHECK_SCRIPT_PATH: ${{ vars.DEPLOY_HEALTHCHECK_SCRIPT_PATH }}
+          DEPLOY_ROLLBACK_SCRIPT_PATH: ${{ vars.DEPLOY_ROLLBACK_SCRIPT_PATH }}
+          VM_SECRET_ENV_FILE: ${{ vars.VM_SECRET_ENV_FILE }}
+          DEPLOY_RUNTIME_ENV_FILE: ${{ vars.DEPLOY_RUNTIME_ENV_FILE }}
+          DEPLOY_COMPOSE_FILE: ${{ vars.DEPLOY_COMPOSE_FILE }}
+          DEPLOY_COMPOSE_PROJECT_NAME: ${{ vars.DEPLOY_COMPOSE_PROJECT_NAME }}
+          DEPLOY_ROLLBACK_STATE_PATH: ${{ vars.DEPLOY_ROLLBACK_STATE_PATH }}
+          DEPLOY_VM_BASELINE_SCRIPT: ${{ vars.DEPLOY_VM_BASELINE_SCRIPT }}
+          DEPLOY_API_SERVICE: ${{ vars.DEPLOY_API_SERVICE }}
+          DEPLOY_WORKER_SERVICE: ${{ vars.DEPLOY_WORKER_SERVICE }}
+          DEPLOY_HEALTHCHECK_LIVE_URL: ${{ vars.DEPLOY_HEALTHCHECK_LIVE_URL }}
+          DEPLOY_HEALTHCHECK_READY_URL: ${{ vars.DEPLOY_HEALTHCHECK_READY_URL }}
+          DEPLOY_HEALTHCHECK_RETRIES: ${{ vars.DEPLOY_HEALTHCHECK_RETRIES }}
+          DEPLOY_HEALTHCHECK_DELAY_SECONDS: ${{ vars.DEPLOY_HEALTHCHECK_DELAY_SECONDS }}
+          POSTGRES_HOST: ${{ vars.POSTGRES_HOST }}
+          POSTGRES_PORT: ${{ vars.POSTGRES_PORT }}
+          POSTGRES_DB: ${{ vars.POSTGRES_DB }}
+          POSTGRES_USER: ${{ vars.POSTGRES_USER }}
+        run: |
+          set -euo pipefail
+          missing=0
+          for name in \
+            GCP_PROJECT_ID \
+            GCP_WORKLOAD_IDENTITY_PROVIDER \
+            GCP_SERVICE_ACCOUNT \
+            DEPLOY_VM_NAME \
+            DEPLOY_VM_ZONE \
+            DEPLOY_WORKDIR \
+            DEPLOY_SCRIPT_PATH \
+            DEPLOY_HEALTHCHECK_SCRIPT_PATH \
+            DEPLOY_ROLLBACK_SCRIPT_PATH \
+            VM_SECRET_ENV_FILE \
+            DEPLOY_RUNTIME_ENV_FILE \
+            DEPLOY_COMPOSE_FILE \
+            DEPLOY_API_SERVICE \
+            DEPLOY_WORKER_SERVICE \
+            DEPLOY_HEALTHCHECK_LIVE_URL \
+            DEPLOY_HEALTHCHECK_READY_URL \
+            POSTGRES_HOST \
+            POSTGRES_PORT \
+            POSTGRES_DB \
+            POSTGRES_USER; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Missing required repository/environment variable '${name}'"
+              missing=1
+            fi
+          done
+          if [ "${missing}" -ne 0 ]; then
+            exit 1
+          fi
+          for path_like in \
+            DEPLOY_WORKDIR \
+            DEPLOY_SCRIPT_PATH \
+            DEPLOY_HEALTHCHECK_SCRIPT_PATH \
+            DEPLOY_ROLLBACK_SCRIPT_PATH \
+            VM_SECRET_ENV_FILE \
+            DEPLOY_RUNTIME_ENV_FILE \
+            DEPLOY_COMPOSE_FILE; do
+            value="${!path_like}"
+            if ! [[ "${value}" =~ ^/[A-Za-z0-9._/-]+$ ]]; then
+              echo "::error::${path_like} must be an absolute safe path (no spaces)"
+              exit 1
+            fi
+            if [[ "${value}" == *".."* ]]; then
+              echo "::error::${path_like} must not contain path traversal segments"
+              exit 1
+            fi
+          done
+          for optional_path in DEPLOY_ROLLBACK_STATE_PATH DEPLOY_VM_BASELINE_SCRIPT; do
+            value="${!optional_path:-}"
+            if [ -z "${value}" ]; then
+              continue
+            fi
+            if ! [[ "${value}" =~ ^/[A-Za-z0-9._/-]+$ ]]; then
+              echo "::error::${optional_path} must be an absolute safe path (no spaces)"
+              exit 1
+            fi
+            if [[ "${value}" == *".."* ]]; then
+              echo "::error::${optional_path} must not contain path traversal segments"
+              exit 1
+            fi
+          done
+          if [ -n "${DEPLOY_COMPOSE_PROJECT_NAME:-}" ] && ! [[ "${DEPLOY_COMPOSE_PROJECT_NAME}" =~ ^[A-Za-z0-9._-]+$ ]]; then
+            echo "::error::DEPLOY_COMPOSE_PROJECT_NAME must match ^[A-Za-z0-9._-]+$"
+            exit 1
+          fi
+          if [ -n "${DEPLOY_HEALTHCHECK_RETRIES:-}" ] && ! [[ "${DEPLOY_HEALTHCHECK_RETRIES}" =~ ^[0-9]+$ ]]; then
+            echo "::error::DEPLOY_HEALTHCHECK_RETRIES must be numeric"
+            exit 1
+          fi
+          if [ -n "${DEPLOY_HEALTHCHECK_DELAY_SECONDS:-}" ] && ! [[ "${DEPLOY_HEALTHCHECK_DELAY_SECONDS}" =~ ^[0-9]+$ ]]; then
+            echo "::error::DEPLOY_HEALTHCHECK_DELAY_SECONDS must be numeric"
+            exit 1
+          fi
+          if ! [[ "${POSTGRES_PORT}" =~ ^[0-9]+$ ]]; then
+            echo "::error::POSTGRES_PORT must be numeric"
+            exit 1
+          fi
+
+      - name: Authenticate to Google Cloud (OIDC)
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Setup gcloud CLI
+        uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f # v2
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+
+      - name: Run remote deploy script
+        env:
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          DEPLOY_VM_NAME: ${{ vars.DEPLOY_VM_NAME }}
+          DEPLOY_VM_ZONE: ${{ vars.DEPLOY_VM_ZONE }}
+          DEPLOY_WORKDIR: ${{ vars.DEPLOY_WORKDIR }}
+          DEPLOY_SCRIPT_PATH: ${{ vars.DEPLOY_SCRIPT_PATH }}
+          VM_SECRET_ENV_FILE: ${{ vars.VM_SECRET_ENV_FILE }}
+          DEPLOY_RUNTIME_ENV_FILE: ${{ vars.DEPLOY_RUNTIME_ENV_FILE }}
+          DEPLOY_COMPOSE_FILE: ${{ vars.DEPLOY_COMPOSE_FILE }}
+          DEPLOY_COMPOSE_PROJECT_NAME: ${{ vars.DEPLOY_COMPOSE_PROJECT_NAME }}
+          DEPLOY_ROLLBACK_STATE_PATH: ${{ vars.DEPLOY_ROLLBACK_STATE_PATH }}
+          DEPLOY_VM_BASELINE_SCRIPT: ${{ vars.DEPLOY_VM_BASELINE_SCRIPT }}
+          DEPLOY_API_SERVICE: ${{ vars.DEPLOY_API_SERVICE }}
+          DEPLOY_WORKER_SERVICE: ${{ vars.DEPLOY_WORKER_SERVICE }}
+          POSTGRES_HOST: ${{ vars.POSTGRES_HOST }}
+          POSTGRES_PORT: ${{ vars.POSTGRES_PORT }}
+          POSTGRES_DB: ${{ vars.POSTGRES_DB }}
+          POSTGRES_USER: ${{ vars.POSTGRES_USER }}
+          API_IMAGE: ${{ needs.build-and-publish.outputs.api_image_ref }}
+          WORKER_IMAGE: ${{ needs.build-and-publish.outputs.worker_image_ref }}
+        run: |
+          set -euo pipefail
+          printf -v remote_command \
+            'set -euo pipefail; cd %q; export BOMINAL_API_IMAGE=%q; export BOMINAL_WORKER_IMAGE=%q; export BOMINAL_POSTGRES_HOST=%q; export BOMINAL_POSTGRES_PORT=%q; export BOMINAL_POSTGRES_DB=%q; export BOMINAL_POSTGRES_USER=%q; export BOMINAL_VM_SECRET_ENV_FILE=%q; export BOMINAL_RUNTIME_ENV_PATH=%q; export BOMINAL_COMPOSE_FILE=%q; export BOMINAL_COMPOSE_PROJECT_NAME=%q; export BOMINAL_ROLLBACK_STATE_PATH=%q; export BOMINAL_VM_BASELINE_SCRIPT=%q; export BOMINAL_API_SERVICE=%q; export BOMINAL_WORKER_SERVICE=%q; %q' \
+            "${DEPLOY_WORKDIR}" \
+            "${API_IMAGE}" \
+            "${WORKER_IMAGE}" \
+            "${POSTGRES_HOST}" \
+            "${POSTGRES_PORT}" \
+            "${POSTGRES_DB}" \
+            "${POSTGRES_USER}" \
+            "${VM_SECRET_ENV_FILE}" \
+            "${DEPLOY_RUNTIME_ENV_FILE}" \
+            "${DEPLOY_COMPOSE_FILE}" \
+            "${DEPLOY_COMPOSE_PROJECT_NAME}" \
+            "${DEPLOY_ROLLBACK_STATE_PATH}" \
+            "${DEPLOY_VM_BASELINE_SCRIPT}" \
+            "${DEPLOY_API_SERVICE}" \
+            "${DEPLOY_WORKER_SERVICE}" \
+            "${DEPLOY_SCRIPT_PATH}"
+
+          gcloud compute ssh "${DEPLOY_VM_NAME}" \
+            --project "${GCP_PROJECT_ID}" \
+            --zone "${DEPLOY_VM_ZONE}" \
+            --tunnel-through-iap \
+            --command "${remote_command}"
+
+      - name: Run remote health check script
+        id: healthcheck
+        env:
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          DEPLOY_VM_NAME: ${{ vars.DEPLOY_VM_NAME }}
+          DEPLOY_VM_ZONE: ${{ vars.DEPLOY_VM_ZONE }}
+          DEPLOY_WORKDIR: ${{ vars.DEPLOY_WORKDIR }}
+          DEPLOY_HEALTHCHECK_SCRIPT_PATH: ${{ vars.DEPLOY_HEALTHCHECK_SCRIPT_PATH }}
+          DEPLOY_RUNTIME_ENV_FILE: ${{ vars.DEPLOY_RUNTIME_ENV_FILE }}
+          DEPLOY_COMPOSE_FILE: ${{ vars.DEPLOY_COMPOSE_FILE }}
+          DEPLOY_COMPOSE_PROJECT_NAME: ${{ vars.DEPLOY_COMPOSE_PROJECT_NAME }}
+          DEPLOY_API_SERVICE: ${{ vars.DEPLOY_API_SERVICE }}
+          DEPLOY_WORKER_SERVICE: ${{ vars.DEPLOY_WORKER_SERVICE }}
+          DEPLOY_HEALTHCHECK_LIVE_URL: ${{ vars.DEPLOY_HEALTHCHECK_LIVE_URL }}
+          DEPLOY_HEALTHCHECK_READY_URL: ${{ vars.DEPLOY_HEALTHCHECK_READY_URL }}
+          DEPLOY_HEALTHCHECK_RETRIES: ${{ vars.DEPLOY_HEALTHCHECK_RETRIES }}
+          DEPLOY_HEALTHCHECK_DELAY_SECONDS: ${{ vars.DEPLOY_HEALTHCHECK_DELAY_SECONDS }}
+        run: |
+          set -euo pipefail
+          printf -v remote_command \
+            'set -euo pipefail; cd %q; export BOMINAL_RUNTIME_ENV_PATH=%q; export BOMINAL_COMPOSE_FILE=%q; export BOMINAL_COMPOSE_PROJECT_NAME=%q; export BOMINAL_API_SERVICE=%q; export BOMINAL_WORKER_SERVICE=%q; export BOMINAL_HEALTHCHECK_LIVE_URL=%q; export BOMINAL_HEALTHCHECK_READY_URL=%q; export BOMINAL_HEALTHCHECK_RETRIES=%q; export BOMINAL_HEALTHCHECK_DELAY_SECONDS=%q; %q' \
+            "${DEPLOY_WORKDIR}" \
+            "${DEPLOY_RUNTIME_ENV_FILE}" \
+            "${DEPLOY_COMPOSE_FILE}" \
+            "${DEPLOY_COMPOSE_PROJECT_NAME}" \
+            "${DEPLOY_API_SERVICE}" \
+            "${DEPLOY_WORKER_SERVICE}" \
+            "${DEPLOY_HEALTHCHECK_LIVE_URL}" \
+            "${DEPLOY_HEALTHCHECK_READY_URL}" \
+            "${DEPLOY_HEALTHCHECK_RETRIES}" \
+            "${DEPLOY_HEALTHCHECK_DELAY_SECONDS}" \
+            "${DEPLOY_HEALTHCHECK_SCRIPT_PATH}"
+
+          gcloud compute ssh "${DEPLOY_VM_NAME}" \
+            --project "${GCP_PROJECT_ID}" \
+            --zone "${DEPLOY_VM_ZONE}" \
+            --tunnel-through-iap \
+            --command "${remote_command}"
+
+      - name: Roll back on failed health check
+        if: failure() && steps.healthcheck.outcome == 'failure'
+        env:
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          DEPLOY_VM_NAME: ${{ vars.DEPLOY_VM_NAME }}
+          DEPLOY_VM_ZONE: ${{ vars.DEPLOY_VM_ZONE }}
+          DEPLOY_WORKDIR: ${{ vars.DEPLOY_WORKDIR }}
+          DEPLOY_ROLLBACK_SCRIPT_PATH: ${{ vars.DEPLOY_ROLLBACK_SCRIPT_PATH }}
+          DEPLOY_RUNTIME_ENV_FILE: ${{ vars.DEPLOY_RUNTIME_ENV_FILE }}
+          DEPLOY_COMPOSE_FILE: ${{ vars.DEPLOY_COMPOSE_FILE }}
+          DEPLOY_COMPOSE_PROJECT_NAME: ${{ vars.DEPLOY_COMPOSE_PROJECT_NAME }}
+          DEPLOY_ROLLBACK_STATE_PATH: ${{ vars.DEPLOY_ROLLBACK_STATE_PATH }}
+          DEPLOY_API_SERVICE: ${{ vars.DEPLOY_API_SERVICE }}
+          DEPLOY_WORKER_SERVICE: ${{ vars.DEPLOY_WORKER_SERVICE }}
+        run: |
+          set -euo pipefail
+          printf -v remote_command \
+            'set -euo pipefail; cd %q; export BOMINAL_RUNTIME_ENV_PATH=%q; export BOMINAL_COMPOSE_FILE=%q; export BOMINAL_COMPOSE_PROJECT_NAME=%q; export BOMINAL_ROLLBACK_STATE_PATH=%q; export BOMINAL_API_SERVICE=%q; export BOMINAL_WORKER_SERVICE=%q; %q' \
+            "${DEPLOY_WORKDIR}" \
+            "${DEPLOY_RUNTIME_ENV_FILE}" \
+            "${DEPLOY_COMPOSE_FILE}" \
+            "${DEPLOY_COMPOSE_PROJECT_NAME}" \
+            "${DEPLOY_ROLLBACK_STATE_PATH}" \
+            "${DEPLOY_API_SERVICE}" \
+            "${DEPLOY_WORKER_SERVICE}" \
+            "${DEPLOY_ROLLBACK_SCRIPT_PATH}"
+
+          gcloud compute ssh "${DEPLOY_VM_NAME}" \
+            --project "${GCP_PROJECT_ID}" \
+            --zone "${DEPLOY_VM_ZONE}" \
+            --tunnel-through-iap \
+            --command "${remote_command}"
