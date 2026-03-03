@@ -413,8 +413,79 @@ fn map_auth_service_error(
 }
 
 fn render_document(title: &str, body: &str, theme_mode: &str) -> String {
+    const THEME_TOGGLE_SCRIPT: &str = r#"
+<script>
+(() => {
+  const toggles = Array.from(document.querySelectorAll('[data-theme-toggle]'));
+  if (!toggles.length || !document.body) return;
+
+  const getStoredMode = () => document.body.dataset.themeMode === 'dark' ? 'dark' : 'light';
+  const setStoredMode = (mode) => {
+    const normalized = mode === 'dark' ? 'dark' : 'light';
+    document.documentElement.dataset.themeMode = normalized;
+    document.body.dataset.themeMode = normalized;
+  };
+
+  const setLabels = () => {
+    const stored = getStoredMode();
+    const label = stored === 'dark' ? 'Theme: Dark' : 'Theme: Light';
+    const hint = 'Click to toggle between dark and light.';
+    toggles.forEach((button) => {
+      const compact = button.hasAttribute('data-theme-toggle-compact');
+      if (compact) {
+        button.dataset.themeEffective = stored;
+      } else {
+        button.textContent = label;
+      }
+      button.title = hint;
+      button.setAttribute('aria-label', hint);
+    });
+  };
+
+  const persistMode = async (mode) => {
+    const response = await fetch('/api/ui/theme', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({ mode }),
+    });
+    if (!response.ok) {
+      throw new Error('failed_to_persist_theme');
+    }
+  };
+
+  let persistInFlight = false;
+  toggles.forEach((button) => {
+    button.addEventListener('click', async (event) => {
+      event.preventDefault();
+      if (persistInFlight) return;
+      const previousMode = getStoredMode();
+      const nextMode = previousMode === 'dark' ? 'light' : 'dark';
+
+      setStoredMode(nextMode);
+      setLabels();
+      persistInFlight = true;
+      try {
+        await persistMode(nextMode);
+        setLabels();
+      } catch (_err) {
+        setStoredMode(previousMode);
+        setLabels();
+        if (!button.hasAttribute('data-theme-toggle-compact')) {
+          button.textContent = 'Theme unavailable';
+        }
+      } finally {
+        persistInFlight = false;
+      }
+    });
+  });
+
+  setLabels();
+})();
+</script>
+"#;
+
     format!(
-        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\" /><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\" /><title>{title}</title><link rel=\"stylesheet\" href=\"/assets/tailwind.css\" /></head><body class=\"stripe theme\" data-theme-mode=\"{theme_mode}\">{body}</body></html>"
+        "<!doctype html><html lang=\"en\" data-theme-mode=\"{theme_mode}\"><head><meta charset=\"utf-8\" /><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\" /><title>{title}</title><link rel=\"stylesheet\" href=\"/assets/tailwind.css\" /></head><body class=\"stripe theme\" data-theme-mode=\"{theme_mode}\">{body}{THEME_TOGGLE_SCRIPT}</body></html>"
     )
 }
 
@@ -423,9 +494,9 @@ fn theme_mode_from_headers(config: &AppConfig, headers: &HeaderMap) -> String {
         .get(header::COOKIE)
         .and_then(|value| value.to_str().ok())
     else {
-        return "system".to_string();
+        return "light".to_string();
     };
-    let mut selected = "system".to_string();
+    let mut selected = "light".to_string();
     for pair in raw_cookie.split(';') {
         let mut parts = pair.trim().splitn(2, '=');
         let Some(key) = parts.next() else {
@@ -436,7 +507,7 @@ fn theme_mode_from_headers(config: &AppConfig, headers: &HeaderMap) -> String {
         };
         if key == config.ui_theme_cookie_name {
             let value = value.trim().to_ascii_lowercase();
-            if matches!(value.as_str(), "light" | "dark" | "system") {
+            if matches!(value.as_str(), "light" | "dark") {
                 selected = value;
             }
         }

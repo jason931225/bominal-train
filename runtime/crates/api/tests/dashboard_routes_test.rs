@@ -125,6 +125,32 @@ async fn dashboard_api_requires_authenticated_session() {
 }
 
 #[tokio::test]
+async fn password_change_api_requires_authenticated_session() {
+    let app = build_test_app().await;
+    let request = match Request::builder()
+        .method("POST")
+        .uri("/api/auth/password/change")
+        .header(header::CONTENT_TYPE, "application/json")
+        .header(header::ACCEPT, "application/json")
+        .body(axum::body::Body::from(
+            r#"{"current_password":"old","new_password":"StrongPass#2026"}"#,
+        )) {
+        Ok(request) => request,
+        Err(err) => panic!("failed to build request: {err}"),
+    };
+
+    let response = match app.oneshot(request).await {
+        Ok(response) => response,
+        Err(err) => panic!("request failed: {err}"),
+    };
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    let body = response_json(response).await;
+    assert_eq!(body["code"], "unauthorized");
+    assert!(body["request_id"].is_string());
+}
+
+#[tokio::test]
 async fn dashboard_sse_route_requires_authenticated_session() {
     let app = build_test_app().await;
     let request = match Request::builder()
@@ -170,5 +196,5 @@ async fn root_landing_has_passkey_first_primary_cta() {
     };
 
     assert!(html.contains("Authenticate with passkey"));
-    assert!(html.contains("Sign in with email/password"));
+    assert!(html.contains("Sign in with email"));
 }

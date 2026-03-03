@@ -17,6 +17,10 @@ POSTGRES_PORT="${BOMINAL_POSTGRES_PORT:-55432}"
 REDIS_PORT="${BOMINAL_REDIS_PORT:-6379}"
 RUN_TESTS="${BOMINAL_RUN_TESTS:-1}"
 RUN_MIGRATIONS="${BOMINAL_RUN_MIGRATIONS:-1}"
+SEED_DEV_AUTH_USER="${BOMINAL_SEED_DEV_AUTH_USER:-1}"
+DEV_AUTH_SEED_PORT="${BOMINAL_DEV_AUTH_SEED_PORT:-18080}"
+SEEDED_AUTH_EMAIL=""
+SEEDED_AUTH_PASSWORD=""
 
 log() {
   printf '[bootstrap-local] %s\n' "$*"
@@ -28,6 +32,39 @@ require_cmd() {
     echo "missing required command: ${cmd}" >&2
     exit 1
   fi
+}
+
+trim_whitespace() {
+  local raw="${1:-}"
+  # shellcheck disable=SC2001
+  printf '%s' "${raw}" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
+}
+
+sha256_hex() {
+  local raw="${1:-}"
+
+  if command -v shasum >/dev/null 2>&1; then
+    printf '%s' "${raw}" | shasum -a 256 | awk '{print $1}'
+    return
+  fi
+
+  if command -v sha256sum >/dev/null 2>&1; then
+    printf '%s' "${raw}" | sha256sum | awk '{print $1}'
+    return
+  fi
+
+  echo "missing hash utility: shasum or sha256sum is required" >&2
+  exit 1
+}
+
+json_escape() {
+  local raw="${1:-}"
+  local escaped="${raw//\\/\\\\}"
+  escaped="${escaped//\"/\\\"}"
+  escaped="${escaped//$'\n'/\\n}"
+  escaped="${escaped//$'\r'/\\r}"
+  escaped="${escaped//$'\t'/\\t}"
+  printf '%s' "${escaped}"
 }
 
 container_exists() {
@@ -188,6 +225,133 @@ set_env_key() {
   fi
 }
 
+wait_for_local_api_health() {
+  local port="$1"
+  local attempts=40
+  local try=1
+
+  while [ "${try}" -le "${attempts}" ]; do
+    if curl -fsS "http://127.0.0.1:${port}/health" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 0.5
+    try=$((try + 1))
+  done
+
+  return 1
+}
+
+seed_dev_auth_user_if_missing() {
+  if [ "${SEED_DEV_AUTH_USER}" != "1" ]; then
+    log "skipping dev auth seed because BOMINAL_SEED_DEV_AUTH_USER=${SEED_DEV_AUTH_USER}"
+    return
+  fi
+
+  local configured_email="${BOMINAL_DEV_AUTH_EMAIL:-}"
+  configured_email="$(trim_whitespace "${configured_email}")"
+  if [ -z "${configured_email}" ] && [ -n "${ADMIN_EMAILS:-}" ]; then
+    configured_email="$(trim_whitespace "${ADMIN_EMAILS%%,*}")"
+  fi
+  if [ -z "${configured_email}" ]; then
+    configured_email="admin@bominal.local"
+  fi
+
+  local existing_count
+  existing_count="$(docker exec -i "${POSTGRES_CONTAINER}" psql \
+    -At \
+    -U "${POSTGRES_USER}" \
+    -d "${POSTGRES_DB}" \
+    -c "select count(*) from auth_users where lower(email) = lower('$(escape_sql_literal "${configured_email}")') and status = 'active';")"
+  existing_count="$(trim_whitespace "${existing_count}")"
+  if [ "${existing_count}" != "0" ]; then
+    log "dev auth user already exists: ${configured_email}"
+    return
+  fi
+
+  local configured_password="${BOMINAL_DEV_AUTH_PASSWORD:-}"
+  configured_password="$(trim_whitespace "${configured_password}")"
+  if [ -z "${configured_password}" ]; then
+    configured_password="dev-$(uuidgen | tr '[:upper:]' '[:lower:]' | tr -d '-' | cut -c1-16)"
+  fi
+  if [[ "${configured_password}" == *\"* ]] || [[ "${configured_password}" == *\\* ]]; then
+    echo "BOMINAL_DEV_AUTH_PASSWORD cannot contain backslash or double quote" >&2
+    exit 1
+  fi
+
+  local session_secret="${SESSION_SECRET:-dev-session-secret-change-me}"
+  local invite_token
+  invite_token="$(uuidgen | tr '[:upper:]' '[:lower:]' | tr -d '-')$(uuidgen | tr '[:upper:]' '[:lower:]' | tr -d '-')"
+  local invite_token_hash
+  invite_token_hash="$(sha256_hex "${session_secret}:${invite_token}")"
+  local invite_id
+  invite_id="$(uuidgen | tr '[:upper:]' '[:lower:]')"
+
+  docker exec -i "${POSTGRES_CONTAINER}" psql \
+    -v ON_ERROR_STOP=1 \
+    -U "${POSTGRES_USER}" \
+    -d "${POSTGRES_DB}" <<SQL >/dev/null
+delete from auth_invites where lower(email) = lower('$(escape_sql_literal "${configured_email}")') and accepted_at is null;
+insert into auth_invites (id, email, token_hash, expires_at, accepted_at, created_at)
+values (
+  '$(escape_sql_literal "${invite_id}")',
+  '$(escape_sql_literal "${configured_email}")',
+  '$(escape_sql_literal "${invite_token_hash}")',
+  now() + interval '1 day',
+  null,
+  now()
+);
+SQL
+
+  local seed_api_log="/tmp/bominal-bootstrap-auth-seed-api.log"
+  (
+    cd "${RUNTIME_DIR}"
+    APP_PORT="${DEV_AUTH_SEED_PORT}" cargo run -p bominal-api >"${seed_api_log}" 2>&1
+  ) &
+  local seed_api_pid=$!
+
+  if ! wait_for_local_api_health "${DEV_AUTH_SEED_PORT}"; then
+    kill "${seed_api_pid}" >/dev/null 2>&1 || true
+    wait "${seed_api_pid}" >/dev/null 2>&1 || true
+    echo "temporary API health check failed on :${DEV_AUTH_SEED_PORT}" >&2
+    echo "see log: ${seed_api_log}" >&2
+    exit 1
+  fi
+
+  local accept_body
+  local accept_status
+  accept_body="$(mktemp)"
+  if ! accept_status="$(curl -sS \
+    -o "${accept_body}" \
+    -w "%{http_code}" \
+    -X POST "http://127.0.0.1:${DEV_AUTH_SEED_PORT}/api/auth/invite/accept" \
+    -H "content-type: application/json" \
+    -d "{\"invite_token\":\"$(json_escape "${invite_token}")\",\"email\":\"$(json_escape "${configured_email}")\",\"password\":\"$(json_escape "${configured_password}")\"}")"; then
+    kill "${seed_api_pid}" >/dev/null 2>&1 || true
+    wait "${seed_api_pid}" >/dev/null 2>&1 || true
+    rm -f "${accept_body}"
+    echo "failed to call invite-accept endpoint for dev auth seed" >&2
+    exit 1
+  fi
+
+  kill "${seed_api_pid}" >/dev/null 2>&1 || true
+  wait "${seed_api_pid}" >/dev/null 2>&1 || true
+
+  if [ "${accept_status}" != "200" ]; then
+    echo "failed to seed dev auth user (${configured_email}); status=${accept_status}" >&2
+    cat "${accept_body}" >&2 || true
+    rm -f "${accept_body}"
+    exit 1
+  fi
+  rm -f "${accept_body}"
+
+  set_env_key "${LOCAL_ENV_FILE}" "BOMINAL_DEV_AUTH_EMAIL" "${configured_email}"
+  set_env_key "${LOCAL_ENV_FILE}" "BOMINAL_DEV_AUTH_PASSWORD" "${configured_password}"
+
+  SEEDED_AUTH_EMAIL="${configured_email}"
+  SEEDED_AUTH_PASSWORD="${configured_password}"
+  log "seeded dev auth user: ${SEEDED_AUTH_EMAIL}"
+}
+
 load_postgres_env() {
   if [ ! -f "${POSTGRES_ENV_FILE}" ]; then
     echo "missing postgres env file: ${POSTGRES_ENV_FILE}" >&2
@@ -330,6 +494,7 @@ main() {
   load_postgres_env
   ensure_local_env
   load_runtime_env_for_checks
+  require_cmd curl
   start_postgres
   start_redis
   wait_for_postgres
@@ -342,6 +507,8 @@ main() {
   else
     log "skipping migrations because BOMINAL_RUN_MIGRATIONS=${RUN_MIGRATIONS}"
   fi
+
+  seed_dev_auth_user_if_missing
 
   if [ "${RUN_TESTS}" = "1" ]; then
     run_runtime_tests
@@ -369,6 +536,15 @@ To run worker:
   set +a
   cargo run -p bominal-worker
 EOF
+
+  if [ -n "${SEEDED_AUTH_EMAIL}" ]; then
+    cat <<EOF
+
+Seeded local auth user:
+  email: ${SEEDED_AUTH_EMAIL}
+  password: ${SEEDED_AUTH_PASSWORD}
+EOF
+  fi
 }
 
 main "$@"

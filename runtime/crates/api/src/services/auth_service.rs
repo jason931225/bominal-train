@@ -62,6 +62,12 @@ pub(crate) struct PasswordSigninRequest {
 }
 
 #[derive(Debug, serde::Deserialize)]
+pub(crate) struct ChangePasswordRequest {
+    pub(crate) current_password: String,
+    pub(crate) new_password: String,
+}
+
+#[derive(Debug, serde::Deserialize)]
 pub(crate) struct AcceptInviteRequest {
     pub(crate) invite_token: String,
     pub(crate) email: String,
@@ -250,6 +256,73 @@ pub(crate) async fn accept_invite(
         user_id: user_id.to_string(),
         email,
     })
+}
+
+pub(crate) async fn change_session_password(
+    state: &AppState,
+    headers: &HeaderMap,
+    request: ChangePasswordRequest,
+) -> Result<(), AuthServiceError> {
+    let current_password = request.current_password;
+    let new_password = request.new_password;
+
+    if current_password.is_empty() || new_password.is_empty() {
+        return Err(AuthServiceError::InvalidRequest(
+            "current_password and new_password are required",
+        ));
+    }
+    if current_password == new_password {
+        return Err(AuthServiceError::InvalidRequest(
+            "new password must differ from current password",
+        ));
+    }
+    validate_new_password_policy(&new_password)?;
+
+    let session = require_session_state(state, headers).await?;
+    let user_uuid = Uuid::parse_str(&session.user_id)
+        .map_err(|_| AuthServiceError::InvalidRequest("invalid user id"))?;
+    let pool = state
+        .db_pool
+        .as_ref()
+        .ok_or(AuthServiceError::ServiceUnavailable("database unavailable"))?;
+
+    let stored_hash = sqlx::query_scalar::<_, String>(
+        "select password_hash from auth_users where id = $1 and status = 'active' limit 1",
+    )
+    .bind(user_uuid)
+    .fetch_optional(pool)
+    .await
+    .map_err(|_| AuthServiceError::Internal)?;
+    let Some(stored_hash) = stored_hash else {
+        return Err(AuthServiceError::NotFound("user not found"));
+    };
+
+    match verify_password_hash(current_password, stored_hash).await {
+        Ok(()) => {}
+        Err(AuthServiceError::Unauthorized(_)) => {
+            return Err(AuthServiceError::Unauthorized(
+                "current password is incorrect",
+            ));
+        }
+        Err(err) => return Err(err),
+    }
+
+    let new_hash = hash_password(new_password).await?;
+    let result = sqlx::query(
+        "update auth_users
+         set password_hash = $2, updated_at = now()
+         where id = $1 and status = 'active'",
+    )
+    .bind(user_uuid)
+    .bind(&new_hash)
+    .execute(pool)
+    .await
+    .map_err(|_| AuthServiceError::Internal)?;
+    if result.rows_affected() != 1 {
+        return Err(AuthServiceError::NotFound("user not found"));
+    }
+
+    Ok(())
 }
 
 pub(crate) async fn create_invite(
@@ -1165,6 +1238,36 @@ fn looks_like_email(value: &str) -> bool {
         && value.rsplit('.').next().is_some_and(|v| !v.is_empty())
 }
 
+fn validate_new_password_policy(password: &str) -> Result<(), AuthServiceError> {
+    if password.len() < 10 {
+        return Err(AuthServiceError::InvalidRequest(
+            "new password must be at least 10 characters",
+        ));
+    }
+    if !password.chars().any(|ch| ch.is_ascii_lowercase()) {
+        return Err(AuthServiceError::InvalidRequest(
+            "new password must include a lowercase letter",
+        ));
+    }
+    if !password.chars().any(|ch| ch.is_ascii_uppercase()) {
+        return Err(AuthServiceError::InvalidRequest(
+            "new password must include an uppercase letter",
+        ));
+    }
+    if !password.chars().any(|ch| ch.is_ascii_digit()) {
+        return Err(AuthServiceError::InvalidRequest(
+            "new password must include a number",
+        ));
+    }
+    if !password.chars().any(|ch| !ch.is_ascii_alphanumeric()) {
+        return Err(AuthServiceError::InvalidRequest(
+            "new password must include a symbol",
+        ));
+    }
+
+    Ok(())
+}
+
 fn extract_session_cookie<'a>(headers: &'a HeaderMap, cookie_name: &str) -> Option<&'a str> {
     let raw_cookie = headers.get(axum::http::header::COOKIE)?.to_str().ok()?;
 
@@ -1200,7 +1303,7 @@ mod tests {
         ARGON2_MEMORY_KIB, ARGON2_PARALLELISM, ARGON2_TIME_COST, SIGNIN_MAX_FAILS_PER_EMAIL,
         SIGNIN_MAX_FAILS_PER_IP, clear_signin_failure_state, ensure_signin_not_locked,
         hash_password_blocking, record_signin_failure, session_clear_cookie, session_set_cookie,
-        verify_password_hash_blocking,
+        validate_new_password_policy, verify_password_hash_blocking,
     };
 
     #[test]
@@ -1260,6 +1363,34 @@ mod tests {
             "user@bominal.com",
         ));
         assert!(!super::is_admin_email_with_list("", "admin@bominal.com"));
+    }
+
+    #[test]
+    fn validate_new_password_policy_accepts_strong_password() {
+        let result = validate_new_password_policy("StrongPass#2026");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn validate_new_password_policy_rejects_short_password() {
+        let result = validate_new_password_policy("S1#short");
+        assert!(matches!(
+            result,
+            Err(super::AuthServiceError::InvalidRequest(
+                "new password must be at least 10 characters"
+            ))
+        ));
+    }
+
+    #[test]
+    fn validate_new_password_policy_rejects_missing_symbol() {
+        let result = validate_new_password_policy("StrongPass2026");
+        assert!(matches!(
+            result,
+            Err(super::AuthServiceError::InvalidRequest(
+                "new password must include a symbol"
+            ))
+        ));
     }
 
     struct RedisTestServer {

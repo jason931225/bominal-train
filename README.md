@@ -102,6 +102,13 @@ kill <pid>
 ./scripts/dev-up.sh
 ```
 
+If no `dev-up` process is actually running, clear a stale lock and retry:
+
+```bash
+rm -rf /tmp/bominal-dev-up.lock
+./scripts/dev-up.sh
+```
+
 - `error: stale cargo-watch supervisor(s) detected for this repo`:
 
 ```bash

@@ -9,10 +9,7 @@ use axum::{
 };
 use bominal_shared::error::{ApiError, ApiErrorCode, ApiErrorStatus};
 
-use super::{
-    super::{AppState, request_id_from_headers},
-    provider_jobs_service,
-};
+use super::super::{AppState, request_id_from_headers, services::provider_jobs_service};
 
 #[derive(Debug, serde::Serialize)]
 struct ProviderJobEventsResponse {

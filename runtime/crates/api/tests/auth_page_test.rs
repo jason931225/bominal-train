@@ -146,10 +146,9 @@ async fn auth_landing_shows_passkey_first_controls() {
     };
 
     assert!(html.contains("Authenticate with passkey"));
-    assert!(html.contains("Sign in with email/password"));
+    assert!(html.contains("Sign in with email"));
     assert!(html.contains("bominal authentication"));
-    assert!(html.contains("Theme"));
-    assert!(html.contains("data-theme=\"system\""));
+    assert!(html.contains("data-theme-toggle"));
 }
 
 #[tokio::test]

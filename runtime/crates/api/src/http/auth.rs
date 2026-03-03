@@ -23,6 +23,7 @@ struct SessionEnvelope {
 pub(super) fn register(router: Router<Arc<AppState>>) -> Router<Arc<AppState>> {
     router
         .route("/api/auth/password/signin", post(password_signin))
+        .route("/api/auth/password/change", post(password_change))
         .route("/api/auth/session/logout", post(session_logout))
         .route("/api/auth/session/me", get(session_me))
         .route("/api/auth/passkeys", get(passkeys_list))
@@ -89,6 +90,17 @@ async fn password_signin(
             }
             Err(err) => map_auth_error(err, &headers).into_response(),
         },
+        Err(err) => map_auth_error(err, &headers).into_response(),
+    }
+}
+
+async fn password_change(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(payload): Json<auth_service::ChangePasswordRequest>,
+) -> impl IntoResponse {
+    match auth_service::change_session_password(state.as_ref(), &headers, payload).await {
+        Ok(()) => (StatusCode::OK, Json(serde_json::json!({ "updated": true }))).into_response(),
         Err(err) => map_auth_error(err, &headers).into_response(),
     }
 }
@@ -333,11 +345,11 @@ async fn set_theme_preference(
     Json(payload): Json<SetThemePreferenceRequest>,
 ) -> impl IntoResponse {
     let mode = payload.mode.trim().to_ascii_lowercase();
-    if !matches!(mode.as_str(), "system" | "light" | "dark") {
+    if !matches!(mode.as_str(), "light" | "dark") {
         return ApiError::new(
             ApiErrorStatus::BadRequest,
             ApiErrorCode::InvalidRequest,
-            "mode must be one of: system, light, dark",
+            "mode must be one of: light, dark",
             request_id_from_headers(&headers),
         )
         .into_response();

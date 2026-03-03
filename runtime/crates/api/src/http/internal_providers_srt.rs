@@ -9,9 +9,9 @@ use axum::{
 };
 use bominal_shared::error::{ApiError, ApiErrorCode, ApiErrorStatus};
 
-use super::{
-    super::{AppState, request_id_from_headers},
-    payment_method_service, provider_credentials_service,
+use super::super::{
+    AppState, request_id_from_headers,
+    services::{payment_method_service, provider_credentials_service},
 };
 
 pub(super) fn register(

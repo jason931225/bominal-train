@@ -36,12 +36,6 @@ mod internal_auth_invites;
 mod internal_provider_jobs;
 mod internal_providers_srt;
 mod modules;
-#[path = "../services/payment_method_service.rs"]
-mod payment_method_service;
-#[path = "../services/provider_credentials_service.rs"]
-mod provider_credentials_service;
-#[path = "../services/provider_jobs_service.rs"]
-mod provider_jobs_service;
 mod runtime_queue;
 
 const DEFAULT_HTTP_REQUEST_TIMEOUT_SECONDS: u64 = 30;
