@@ -86,3 +86,91 @@ pub fn plan_failure(
         action: FailureAction::DeadLetter { failure_kind },
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::TimeZone;
+
+    #[test]
+    fn classify_error_maps_execution_kinds_to_retry_class() {
+        assert_eq!(
+            classify_error(&ExecutionErrorKind::Transient),
+            RetryClass::Retryable
+        );
+        assert_eq!(
+            classify_error(&ExecutionErrorKind::RateLimited),
+            RetryClass::Retryable
+        );
+        assert_eq!(
+            classify_error(&ExecutionErrorKind::Fatal),
+            RetryClass::NonRetryable
+        );
+        assert_eq!(
+            classify_error(&ExecutionErrorKind::PaymentBlocked),
+            RetryClass::NonRetryable
+        );
+        assert_eq!(
+            classify_error(&ExecutionErrorKind::UnsupportedProvider),
+            RetryClass::NonRetryable
+        );
+    }
+
+    #[test]
+    fn compute_backoff_delay_is_deterministic_and_capped() {
+        let policy = RetryPolicy::default();
+
+        assert_eq!(compute_backoff_delay(&policy, -3), Duration::seconds(5));
+        assert_eq!(compute_backoff_delay(&policy, 1), Duration::seconds(5));
+        assert_eq!(compute_backoff_delay(&policy, 2), Duration::seconds(10));
+        assert_eq!(compute_backoff_delay(&policy, 3), Duration::seconds(20));
+        assert_eq!(compute_backoff_delay(&policy, 8), Duration::seconds(300));
+        assert_eq!(compute_backoff_delay(&policy, 40), Duration::seconds(300));
+        assert_eq!(compute_backoff_delay(&policy, 40), Duration::seconds(300));
+    }
+
+    #[test]
+    fn plan_failure_schedules_retry_with_expected_next_run_at() {
+        let policy = RetryPolicy::default();
+        let now = Utc
+            .with_ymd_and_hms(2026, 1, 15, 10, 0, 0)
+            .single()
+            .expect("valid timestamp");
+
+        let plan = plan_failure(now, 2, 5, &ExecutionErrorKind::Transient, &policy);
+        assert_eq!(plan.class, RetryClass::Retryable);
+        assert_eq!(
+            plan.action,
+            FailureAction::ScheduleRetry {
+                next_run_at: now + Duration::seconds(10),
+            }
+        );
+    }
+
+    #[test]
+    fn plan_failure_dead_letters_exhausted_or_non_retryable_failures() {
+        let policy = RetryPolicy::default();
+        let now = Utc
+            .with_ymd_and_hms(2026, 1, 15, 10, 0, 0)
+            .single()
+            .expect("valid timestamp");
+
+        let exhausted = plan_failure(now, 3, 3, &ExecutionErrorKind::RateLimited, &policy);
+        assert_eq!(exhausted.class, RetryClass::Retryable);
+        assert_eq!(
+            exhausted.action,
+            FailureAction::DeadLetter {
+                failure_kind: "retry_exhausted"
+            }
+        );
+
+        let non_retryable = plan_failure(now, 1, 5, &ExecutionErrorKind::Fatal, &policy);
+        assert_eq!(non_retryable.class, RetryClass::NonRetryable);
+        assert_eq!(
+            non_retryable.action,
+            FailureAction::DeadLetter {
+                failure_kind: "non_retryable_error"
+            }
+        );
+    }
+}

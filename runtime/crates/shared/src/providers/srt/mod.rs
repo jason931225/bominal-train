@@ -401,3 +401,64 @@ fn operation_name(operation: ProviderOperation) -> &'static str {
         ProviderOperation::Clear => "clear",
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn provider_operation_names_match_srtgo_contract() {
+        let observed = [
+            ProviderOperation::Login,
+            ProviderOperation::Logout,
+            ProviderOperation::SearchTrain,
+            ProviderOperation::Reserve,
+            ProviderOperation::ReserveStandby,
+            ProviderOperation::ReserveStandbyOptionSettings,
+            ProviderOperation::GetReservations,
+            ProviderOperation::TicketInfo,
+            ProviderOperation::Cancel,
+            ProviderOperation::PayWithCard,
+            ProviderOperation::ReserveInfo,
+            ProviderOperation::Refund,
+            ProviderOperation::Clear,
+        ]
+        .into_iter()
+        .map(operation_name)
+        .collect::<Vec<_>>();
+
+        assert_eq!(
+            observed,
+            vec![
+                "login",
+                "logout",
+                "search_train",
+                "reserve",
+                "reserve_standby",
+                "reserve_standby_option_settings",
+                "get_reservations",
+                "ticket_info",
+                "cancel",
+                "pay_with_card",
+                "reserve_info",
+                "refund",
+                "clear",
+            ]
+        );
+    }
+
+    #[test]
+    fn requires_authentication_is_fail_closed() {
+        let login = SrtOperationRequest::Login(LoginRequest {
+            account_type: LoginAccountType::MembershipNumber,
+            account_identifier: "member-1".to_string(),
+            password: SecretString::new("password".to_string().into_boxed_str()),
+        });
+        let clear = SrtOperationRequest::Clear(ClearRequest);
+        let logout = SrtOperationRequest::Logout(LogoutRequest);
+
+        assert!(!login.requires_authentication());
+        assert!(!clear.requires_authentication());
+        assert!(logout.requires_authentication());
+    }
+}

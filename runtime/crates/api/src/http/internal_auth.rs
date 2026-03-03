@@ -406,3 +406,273 @@ fn sha256(input: &[u8]) -> [u8; 32] {
 
     digest
 }
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use bominal_shared::config::{
+        AppConfig, EvervaultConfig, RedisConfig, RuntimeSchedule, SupabaseConfig,
+    };
+    use serde_json::json;
+
+    use super::*;
+
+    fn test_state(app_env: &str) -> AppState {
+        AppState {
+            config: AppConfig {
+                app_env: app_env.to_string(),
+                app_host: "127.0.0.1".to_string(),
+                app_port: 8080,
+                log_json: false,
+                database_url: String::new(),
+                supabase: SupabaseConfig {
+                    url: "https://example.supabase.co".to_string(),
+                    jwt_issuer: "https://example.supabase.co/auth/v1".to_string(),
+                    jwt_audience: None,
+                    jwks_url: "https://example.supabase.co/auth/v1/.well-known/jwks.json".to_string(),
+                    jwks_cache_seconds: 300,
+                    auth_webhook_secret: None,
+                },
+                redis: RedisConfig {
+                    url: "redis://127.0.0.1:6379".to_string(),
+                    queue_key: "queue".to_string(),
+                    queue_dlq_key: "queue:dlq".to_string(),
+                    lease_prefix: "lease".to_string(),
+                    rate_limit_prefix: "rate".to_string(),
+                },
+                evervault: EvervaultConfig {
+                    relay_base_url: "https://relay.evervault.com".to_string(),
+                    app_id: None,
+                },
+                resend: None,
+                runtime: RuntimeSchedule {
+                    poll_interval: Duration::from_secs(1),
+                    reconcile_interval: Duration::from_secs(1),
+                    watch_interval: Duration::from_secs(1),
+                    key_rotation_interval: Duration::from_secs(1),
+                },
+            },
+            db_pool: None,
+            redis_client: None,
+            http_client: reqwest::Client::new(),
+            jwks_cache: tokio::sync::RwLock::new(None),
+        }
+    }
+
+    fn expected_issuer() -> String {
+        std::env::var("INTERNAL_IDENTITY_ISSUER")
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| DEFAULT_INTERNAL_ISSUER.to_string())
+    }
+
+    fn build_claims(now: i64) -> InternalServiceTokenClaims {
+        InternalServiceTokenClaims {
+            iss: expected_issuer(),
+            sub: "svc-auth".to_string(),
+            aud: INTERNAL_SERVICE_AUDIENCE.to_string(),
+            iat: now - 10,
+            exp: now + 300,
+            jti: "jti-1".to_string(),
+            role: Some("service-internal".to_string()),
+            scope: Some("read:internal".to_string()),
+        }
+    }
+
+    fn encode_base64url(bytes: &[u8]) -> String {
+        const ALPHABET: &[u8; 64] =
+            b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+
+        let mut out = String::new();
+        let mut index = 0;
+        while index + 3 <= bytes.len() {
+            let chunk = ((bytes[index] as u32) << 16)
+                | ((bytes[index + 1] as u32) << 8)
+                | (bytes[index + 2] as u32);
+            out.push(ALPHABET[((chunk >> 18) & 0x3f) as usize] as char);
+            out.push(ALPHABET[((chunk >> 12) & 0x3f) as usize] as char);
+            out.push(ALPHABET[((chunk >> 6) & 0x3f) as usize] as char);
+            out.push(ALPHABET[(chunk & 0x3f) as usize] as char);
+            index += 3;
+        }
+
+        let rem = bytes.len() - index;
+        if rem == 1 {
+            let chunk = (bytes[index] as u32) << 16;
+            out.push(ALPHABET[((chunk >> 18) & 0x3f) as usize] as char);
+            out.push(ALPHABET[((chunk >> 12) & 0x3f) as usize] as char);
+        } else if rem == 2 {
+            let chunk = ((bytes[index] as u32) << 16) | ((bytes[index + 1] as u32) << 8);
+            out.push(ALPHABET[((chunk >> 18) & 0x3f) as usize] as char);
+            out.push(ALPHABET[((chunk >> 12) & 0x3f) as usize] as char);
+            out.push(ALPHABET[((chunk >> 6) & 0x3f) as usize] as char);
+        }
+
+        out
+    }
+
+    fn build_token(header_alg: &str, payload: serde_json::Value, secret: &str) -> String {
+        let header = json!({ "alg": header_alg });
+        let header_segment =
+            encode_base64url(&serde_json::to_vec(&header).expect("header serialization"));
+        let payload_segment =
+            encode_base64url(&serde_json::to_vec(&payload).expect("payload serialization"));
+
+        let signing_input = format!("{header_segment}.{payload_segment}");
+        let signature = hmac_sha256(secret.as_bytes(), signing_input.as_bytes());
+        let signature_segment = encode_base64url(&signature);
+
+        format!("{header_segment}.{payload_segment}.{signature_segment}")
+    }
+
+    #[test]
+    fn parse_bool_matrix() {
+        let truthy_cases = ["1", "true", "TRUE", " yes ", "On"];
+        for raw in truthy_cases {
+            assert_eq!(parse_bool(raw), Some(true), "expected truthy parse for {raw:?}");
+        }
+
+        let falsy_cases = ["0", "false", "FALSE", " no ", "OFF"];
+        for raw in falsy_cases {
+            assert_eq!(parse_bool(raw), Some(false), "expected falsy parse for {raw:?}");
+        }
+
+        let invalid_cases = ["", "2", "maybe", "enable", "  "];
+        for raw in invalid_cases {
+            assert_eq!(parse_bool(raw), None, "expected None parse for {raw:?}");
+        }
+    }
+
+    #[test]
+    fn decode_base64url_rejects_invalid_characters() {
+        let invalid_inputs = ["Zm9v=", "Zm9v.", "Zm9v+", "abc$"];
+        for input in invalid_inputs {
+            assert!(
+                matches!(
+                    decode_base64url(input),
+                    Err(InternalAuthError::InvalidServiceToken)
+                ),
+                "expected invalid token for input {input:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn token_validation_rejects_wrong_alg() {
+        let state = test_state("test");
+        let now = chrono::Utc::now().timestamp();
+        let claims = build_claims(now);
+        let payload = json!({
+            "iss": claims.iss,
+            "sub": claims.sub,
+            "aud": claims.aud,
+            "iat": claims.iat,
+            "exp": claims.exp,
+            "jti": claims.jti,
+            "role": claims.role,
+            "scope": claims.scope,
+        });
+
+        let token = build_token("HS512", payload, TEST_INTERNAL_IDENTITY_SECRET_FALLBACK);
+        assert!(matches!(
+            parse_and_verify_claims(&state, &token),
+            Err(InternalAuthError::InvalidServiceToken)
+        ));
+    }
+
+    #[test]
+    fn token_validation_rejects_bad_signature() {
+        let state = test_state("test");
+        let now = chrono::Utc::now().timestamp();
+        let claims = build_claims(now);
+        let payload = json!({
+            "iss": claims.iss,
+            "sub": claims.sub,
+            "aud": claims.aud,
+            "iat": claims.iat,
+            "exp": claims.exp,
+            "jti": claims.jti,
+            "role": claims.role,
+            "scope": claims.scope,
+        });
+
+        let token = build_token("HS256", payload, "wrong-secret");
+        assert!(matches!(
+            parse_and_verify_claims(&state, &token),
+            Err(InternalAuthError::InvalidServiceToken)
+        ));
+    }
+
+    #[test]
+    fn role_scope_internal_checks_fail_closed() {
+        let now = chrono::Utc::now().timestamp();
+        let state = test_state("test");
+
+        let mut claims = build_claims(now);
+        assert!(role_is_internal(&claims));
+        assert!(validate_claims(&state, &claims).is_ok());
+
+        claims.role = Some("customer-facing".to_string());
+        assert!(!role_is_internal(&claims));
+        assert!(matches!(
+            validate_claims(&state, &claims),
+            Err(InternalAuthError::InvalidServiceToken)
+        ));
+
+        claims = build_claims(now);
+        claims.scope = Some("read:public".to_string());
+        assert!(!role_is_internal(&claims));
+        assert!(matches!(
+            validate_claims(&state, &claims),
+            Err(InternalAuthError::InvalidServiceToken)
+        ));
+    }
+
+    #[test]
+    fn iat_exp_skew_handling() {
+        let now = chrono::Utc::now().timestamp();
+        let state = test_state("test");
+
+        let mut expired = build_claims(now);
+        expired.exp = now;
+        assert!(matches!(
+            validate_claims(&state, &expired),
+            Err(InternalAuthError::InvalidServiceToken)
+        ));
+
+        let mut exp_before_iat = build_claims(now);
+        exp_before_iat.iat = now + 10;
+        exp_before_iat.exp = now + 10;
+        assert!(matches!(
+            validate_claims(&state, &exp_before_iat),
+            Err(InternalAuthError::InvalidServiceToken)
+        ));
+
+        let mut future_iat_beyond_skew = build_claims(now);
+        future_iat_beyond_skew.iat = now + MAX_FUTURE_IAT_SKEW_SECONDS + 1;
+        future_iat_beyond_skew.exp = future_iat_beyond_skew.iat + 10;
+        assert!(matches!(
+            validate_claims(&state, &future_iat_beyond_skew),
+            Err(InternalAuthError::InvalidServiceToken)
+        ));
+
+        let mut future_iat_at_skew_boundary = build_claims(now);
+        future_iat_at_skew_boundary.iat = now + MAX_FUTURE_IAT_SKEW_SECONDS;
+        future_iat_at_skew_boundary.exp = future_iat_at_skew_boundary.iat + 10;
+        assert!(validate_claims(&state, &future_iat_at_skew_boundary).is_ok());
+    }
+
+    #[test]
+    fn compatibility_aliases_enabled_requires_non_prod_and_debug() {
+        let production_debug = test_state("production-debug");
+        assert!(!compatibility_aliases_enabled(&production_debug));
+
+        let dev_debug = test_state("dev-debug");
+        assert!(compatibility_aliases_enabled(&dev_debug));
+
+        let prod = test_state("prod");
+        assert!(!compatibility_aliases_enabled(&prod));
+    }
+}

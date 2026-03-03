@@ -236,7 +236,8 @@ async fn error_envelope_queue_connect_failure() {
     assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
     let body = response_json(response).await;
     assert_envelope_fields(&body, "service_unavailable");
-    assert_eq!(body["details"]["stage"], "connect");
+    assert_eq!(body["message"], "runtime persistence unavailable");
+    assert_eq!(body["details"]["stage"], "persist");
 }
 
 #[tokio::test]
@@ -267,9 +268,9 @@ async fn error_envelope_queue_redis_unavailable_branch() {
     assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
     let body = response_json(response).await;
     assert_envelope_fields(&body, "service_unavailable");
-    assert_eq!(body["message"], "redis unavailable");
+    assert_eq!(body["message"], "runtime persistence unavailable");
     assert_eq!(body["request_id"], "redis-unavailable-request-id");
-    assert!(body.get("details").is_none());
+    assert_eq!(body["details"]["stage"], "persist");
 }
 
 #[tokio::test]

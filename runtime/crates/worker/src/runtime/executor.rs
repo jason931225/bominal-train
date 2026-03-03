@@ -805,3 +805,182 @@ fn parse_simulated_failure(payload: &Value) -> Option<SrtClientFailureKind> {
             _ => SrtClientFailureKind::Fatal,
         })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn job_with_payload(kind: &str, payload: Value) -> ClaimedRuntimeJob {
+        ClaimedRuntimeJob {
+            job_id: "job-1".to_string(),
+            kind: kind.to_string(),
+            user_id: None,
+            payload,
+            persisted_payload: json!({}),
+            attempt_count: 1,
+            max_attempts: 3,
+            idempotency_scope: None,
+            idempotency_key: None,
+        }
+    }
+
+    #[test]
+    fn canonical_operation_name_maps_aliases_and_fuzzy_tokens() {
+        assert_eq!(canonical_operation_name("search"), Some("search_train"));
+        assert_eq!(canonical_operation_name("TRAIN-PAY"), Some("pay_with_card"));
+        assert_eq!(
+            canonical_operation_name("reserve standby option"),
+            Some("reserve_standby_option_settings")
+        );
+        assert_eq!(
+            canonical_operation_name("reservation list"),
+            Some("get_reservations")
+        );
+        assert_eq!(canonical_operation_name("custom_unknown_operation"), None);
+    }
+
+    #[test]
+    fn canonical_operation_name_supports_full_srtgo_operation_set() {
+        let srtgo_operations = [
+            "login",
+            "logout",
+            "search_train",
+            "reserve",
+            "reserve_standby",
+            "reserve_standby_option_settings",
+            "get_reservations",
+            "ticket_info",
+            "cancel",
+            "pay_with_card",
+            "reserve_info",
+            "refund",
+            "clear",
+        ];
+
+        for operation in srtgo_operations {
+            assert_eq!(
+                canonical_operation_name(operation),
+                Some(operation),
+                "expected canonical mapping for {operation}"
+            );
+        }
+    }
+
+    #[test]
+    fn parse_srt_execution_uses_aliases_from_payload_or_kind() {
+        let search_job = job_with_payload(
+            "runtime.search",
+            json!({
+                "operation": "train-search",
+                "dep_station_code": "0551",
+                "arr_station_code": "0020",
+            }),
+        );
+        let parsed_search = parse_srt_execution(&search_job).expect("search alias should parse");
+        assert_eq!(parsed_search.request.operation_name(), "search_train");
+
+        let clear_job = job_with_payload("runtime.clear", json!({}));
+        let parsed_clear = parse_srt_execution(&clear_job).expect("kind fallback should parse");
+        assert_eq!(parsed_clear.request.operation_name(), "clear");
+    }
+
+    #[test]
+    fn payment_policy_blocks_only_payment_jobs_in_testing_context() {
+        let policy = PaymentExecutionPolicy {
+            app_env: "test".to_string(),
+            ci_detected: false,
+            allow_auto_payment_in_testing: false,
+        };
+
+        assert!(policy.should_block_auto_payment("runtime.pay_with_card", &json!({})));
+        assert!(policy.should_block_auto_payment("runtime.reserve", &json!({"operation": "payment"})));
+        assert!(policy.should_block_auto_payment("runtime.reserve", &json!({"auto_pay": true})));
+        assert!(!policy.should_block_auto_payment("runtime.reserve", &json!({"operation": "reserve"})));
+    }
+
+    #[test]
+    fn payment_policy_allows_when_overridden_or_outside_testing() {
+        let allow_testing = PaymentExecutionPolicy {
+            app_env: "testing".to_string(),
+            ci_detected: false,
+            allow_auto_payment_in_testing: true,
+        };
+        assert!(!allow_testing.should_block_auto_payment("runtime.payment", &json!({})));
+
+        let production = PaymentExecutionPolicy {
+            app_env: "production".to_string(),
+            ci_detected: false,
+            allow_auto_payment_in_testing: false,
+        };
+        assert!(!production.should_block_auto_payment("runtime.payment", &json!({})));
+
+        let ci = PaymentExecutionPolicy {
+            app_env: "production".to_string(),
+            ci_detected: true,
+            allow_auto_payment_in_testing: false,
+        };
+        assert!(ci.should_block_auto_payment("runtime.payment", &json!({})));
+    }
+
+    #[test]
+    fn map_srt_error_maps_operation_failed_to_rate_limited_or_fatal() {
+        let rate_limited = map_srt_error(
+            SrtProviderError::OperationFailed {
+                message: "RATE_LIMITED by provider".to_string(),
+            },
+            "reserve",
+        );
+        assert_eq!(rate_limited.kind, ExecutionErrorKind::RateLimited);
+        assert_eq!(rate_limited.safe_message(), "provider rate limited");
+        assert_eq!(rate_limited.context["class"], json!("rate_limited"));
+
+        let fatal = map_srt_error(
+            SrtProviderError::OperationFailed {
+                message: "seat unavailable".to_string(),
+            },
+            "reserve",
+        );
+        assert_eq!(fatal.kind, ExecutionErrorKind::Fatal);
+        assert_eq!(fatal.safe_message(), "non-retryable execution failure");
+        assert_eq!(fatal.context["class"], json!("operation_failed"));
+    }
+
+    #[test]
+    fn map_srt_error_maps_auth_and_missing_session_failures() {
+        let auth = map_srt_error(SrtProviderError::SessionExpired, "search_train");
+        assert_eq!(auth.kind, ExecutionErrorKind::Transient);
+        assert_eq!(auth.message, "provider authentication failed");
+        assert_eq!(auth.context["class"], json!("auth"));
+
+        let missing_session = map_srt_error(SrtProviderError::NotLoggedIn, "pay_with_card");
+        assert_eq!(missing_session.kind, ExecutionErrorKind::Fatal);
+        assert_eq!(
+            missing_session.message,
+            "provider login/session material missing"
+        );
+        assert_eq!(missing_session.context["class"], json!("missing_session"));
+    }
+
+    #[test]
+    fn map_srt_error_maps_transport_and_unsupported_operation_failures() {
+        let transport = map_srt_error(
+            SrtProviderError::Transport {
+                message: "network timeout".to_string(),
+            },
+            "search_train",
+        );
+        assert_eq!(transport.kind, ExecutionErrorKind::Transient);
+        assert_eq!(transport.context["class"], json!("transport"));
+
+        let unsupported = map_srt_error(
+            SrtProviderError::UnsupportedOperation {
+                operation: "mystery_op",
+            },
+            "clear",
+        );
+        assert_eq!(unsupported.kind, ExecutionErrorKind::Fatal);
+        assert_eq!(unsupported.context["class"], json!("unsupported_operation"));
+        assert!(unsupported.message.contains("mystery_op"));
+    }
+}

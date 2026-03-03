@@ -1,3 +1,5 @@
+use std::{future::Future, pin::Pin};
+
 use bominal_shared::{
     queue::RuntimeQueueJob,
     repo::{RepoError, insert_runtime_job},
@@ -39,9 +41,120 @@ enum PersistRuntimeJobOutcome {
     DuplicateIdempotent,
 }
 
+type PersistRuntimeJobFuture<'a> = Pin<
+    Box<dyn Future<Output = Result<PersistRuntimeJobOutcome, EnqueueRuntimeJobError>> + Send + 'a>,
+>;
+type PersistRuntimeJobHook =
+    for<'a> fn(&'a AppState, &'a RuntimeQueueJob) -> PersistRuntimeJobFuture<'a>;
+
+type PushRuntimeQueueJobFuture<'a> =
+    Pin<Box<dyn Future<Output = Result<(), EnqueueRuntimeJobError>> + Send + 'a>>;
+type PushRuntimeQueueJobHook =
+    for<'a> fn(&'a AppState, &'a RuntimeQueueJob) -> PushRuntimeQueueJobFuture<'a>;
+
+type CompensateRuntimeJobFuture<'a> = Pin<Box<dyn Future<Output = ()> + Send + 'a>>;
+type CompensateRuntimeJobHook = for<'a> fn(&'a AppState, &'a str) -> CompensateRuntimeJobFuture<'a>;
+
+#[derive(Clone, Copy)]
+struct RuntimeQueueHooks {
+    persist_runtime_job: PersistRuntimeJobHook,
+    push_runtime_queue_job: PushRuntimeQueueJobHook,
+    compensate_persisted_runtime_job: CompensateRuntimeJobHook,
+}
+
+impl RuntimeQueueHooks {
+    fn live() -> Self {
+        Self {
+            persist_runtime_job: persist_runtime_job_hook,
+            push_runtime_queue_job: push_runtime_queue_job_hook,
+            compensate_persisted_runtime_job: compensate_persisted_runtime_job_on_push_failure_hook,
+        }
+    }
+}
+
+fn persist_runtime_job_hook<'a>(
+    state: &'a AppState,
+    job: &'a RuntimeQueueJob,
+) -> PersistRuntimeJobFuture<'a> {
+    Box::pin(persist_runtime_job(state, job))
+}
+
+fn push_runtime_queue_job_hook<'a>(
+    state: &'a AppState,
+    job: &'a RuntimeQueueJob,
+) -> PushRuntimeQueueJobFuture<'a> {
+    Box::pin(push_runtime_queue_job(state, job))
+}
+
+fn compensate_persisted_runtime_job_on_push_failure_hook<'a>(
+    state: &'a AppState,
+    job_id: &'a str,
+) -> CompensateRuntimeJobFuture<'a> {
+    Box::pin(compensate_persisted_runtime_job_on_push_failure(
+        state, job_id,
+    ))
+}
+
+type RedisConnectAndPushFuture<'a> =
+    Pin<Box<dyn Future<Output = Result<(), RedisPushTransportError>> + Send + 'a>>;
+type RedisConnectAndPushHook = for<'a> fn(&'a AppState, String) -> RedisConnectAndPushFuture<'a>;
+
+#[derive(Debug)]
+enum RedisPushTransportError {
+    Connection(redis::RedisError),
+    Push(redis::RedisError),
+}
+
+#[derive(Clone, Copy)]
+struct RuntimeQueueRedisPushHooks {
+    connect_and_push: RedisConnectAndPushHook,
+}
+
+impl RuntimeQueueRedisPushHooks {
+    fn live() -> Self {
+        Self {
+            connect_and_push: connect_and_push_runtime_queue_live,
+        }
+    }
+}
+
+fn connect_and_push_runtime_queue_live<'a>(
+    state: &'a AppState,
+    encoded: String,
+) -> RedisConnectAndPushFuture<'a> {
+    Box::pin(async move {
+        let Some(redis_client) = state.redis_client.as_ref() else {
+            return Err(RedisPushTransportError::Connection(
+                redis::RedisError::from((
+                    redis::ErrorKind::InvalidClientConfig,
+                    "redis client unavailable",
+                )),
+            ));
+        };
+
+        let mut conn = redis_client
+            .get_multiplexed_async_connection()
+            .await
+            .map_err(RedisPushTransportError::Connection)?;
+
+        conn.rpush(state.config.redis.queue_key.clone(), encoded)
+            .await
+            .map(|_: usize| ())
+            .map_err(RedisPushTransportError::Push)
+    })
+}
+
 pub(crate) async fn enqueue_runtime_job(
     state: &AppState,
     payload: EnqueueRuntimeJobRequest,
+) -> Result<EnqueueRuntimeJobResult, EnqueueRuntimeJobError> {
+    enqueue_runtime_job_with_hooks(state, payload, RuntimeQueueHooks::live()).await
+}
+
+async fn enqueue_runtime_job_with_hooks(
+    state: &AppState,
+    payload: EnqueueRuntimeJobRequest,
+    hooks: RuntimeQueueHooks,
 ) -> Result<EnqueueRuntimeJobResult, EnqueueRuntimeJobError> {
     validate_enqueue_request(&payload)?;
 
@@ -53,10 +166,10 @@ pub(crate) async fn enqueue_runtime_job(
         enqueued_at: chrono::Utc::now(),
     };
 
-    let persist_outcome = persist_runtime_job(state, &job).await?;
+    let persist_outcome = (hooks.persist_runtime_job)(state, &job).await?;
     if matches!(persist_outcome, PersistRuntimeJobOutcome::Inserted) {
-        if let Err(err) = push_runtime_queue_job(state, &job).await {
-            compensate_persisted_runtime_job_on_push_failure(state, &job.job_id).await;
+        if let Err(err) = (hooks.push_runtime_queue_job)(state, &job).await {
+            (hooks.compensate_persisted_runtime_job)(state, &job.job_id).await;
             return Err(err);
         }
     }
@@ -165,33 +278,34 @@ async fn push_runtime_queue_job(
     state: &AppState,
     job: &RuntimeQueueJob,
 ) -> Result<(), EnqueueRuntimeJobError> {
-    let Some(redis_client) = state.redis_client.as_ref() else {
+    push_runtime_queue_job_with_hooks(state, job, RuntimeQueueRedisPushHooks::live()).await
+}
+
+async fn push_runtime_queue_job_with_hooks(
+    state: &AppState,
+    job: &RuntimeQueueJob,
+    hooks: RuntimeQueueRedisPushHooks,
+) -> Result<(), EnqueueRuntimeJobError> {
+    if state.redis_client.is_none() {
         return Err(EnqueueRuntimeJobError::RedisUnavailable);
-    };
+    }
 
     let encoded = serde_json::to_string(job).map_err(|err| {
         error!(error = %err, "failed to encode runtime queue payload");
         EnqueueRuntimeJobError::EncodeFailed
     })?;
 
-    let mut conn = redis_client
-        .get_multiplexed_async_connection()
-        .await
-        .map_err(|err| {
+    match (hooks.connect_and_push)(state, encoded).await {
+        Ok(()) => Ok(()),
+        Err(RedisPushTransportError::Connection(err)) => {
             error!(error = %err, "failed to connect to redis");
-            EnqueueRuntimeJobError::RedisConnectionFailed
-        })?;
-
-    let result: redis::RedisResult<usize> = conn
-        .rpush(state.config.redis.queue_key.clone(), encoded)
-        .await;
-
-    if let Err(err) = result {
-        error!(error = %err, "failed to enqueue queue payload");
-        return Err(EnqueueRuntimeJobError::QueuePushFailed);
+            Err(EnqueueRuntimeJobError::RedisConnectionFailed)
+        }
+        Err(RedisPushTransportError::Push(err)) => {
+            error!(error = %err, "failed to enqueue queue payload");
+            Err(EnqueueRuntimeJobError::QueuePushFailed)
+        }
     }
-
-    Ok(())
 }
 
 async fn compensate_persisted_runtime_job_on_push_failure(state: &AppState, job_id: &str) {
@@ -209,5 +323,260 @@ async fn compensate_persisted_runtime_job_on_push_failure(state: &AppState, job_
             job_id = %job_id,
             "failed to compensate persisted runtime job row after queue push failure"
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use bominal_shared::config::{
+        AppConfig, EvervaultConfig, RedisConfig, RuntimeSchedule, SupabaseConfig,
+    };
+    use tokio::sync::RwLock;
+
+    use super::*;
+
+    fn test_state(redis_client: Option<redis::Client>) -> AppState {
+        AppState {
+            config: AppConfig {
+                app_env: "test".to_string(),
+                app_host: "127.0.0.1".to_string(),
+                app_port: 8080,
+                log_json: false,
+                database_url: String::new(),
+                supabase: SupabaseConfig {
+                    url: String::new(),
+                    jwt_issuer: String::new(),
+                    jwt_audience: None,
+                    jwks_url: String::new(),
+                    jwks_cache_seconds: 300,
+                    auth_webhook_secret: None,
+                },
+                redis: RedisConfig {
+                    url: "redis://127.0.0.1:6379".to_string(),
+                    queue_key: "runtime:test:queue".to_string(),
+                    queue_dlq_key: "runtime:test:queue:dlq".to_string(),
+                    lease_prefix: "runtime:test:lease".to_string(),
+                    rate_limit_prefix: "runtime:test:rate".to_string(),
+                },
+                evervault: EvervaultConfig {
+                    relay_base_url: "https://relay.example.test".to_string(),
+                    app_id: None,
+                },
+                resend: None,
+                runtime: RuntimeSchedule {
+                    poll_interval: Duration::from_secs(1),
+                    reconcile_interval: Duration::from_secs(1),
+                    watch_interval: Duration::from_secs(1),
+                    key_rotation_interval: Duration::from_secs(1),
+                },
+            },
+            db_pool: None,
+            redis_client,
+            http_client: reqwest::Client::new(),
+            jwks_cache: RwLock::new(None),
+        }
+    }
+
+    fn runtime_job_fixture() -> RuntimeQueueJob {
+        RuntimeQueueJob {
+            job_id: "job-1".to_string(),
+            user_id: "user-1".to_string(),
+            kind: "train.refresh".to_string(),
+            payload: serde_json::json!({"provider": "srt"}),
+            enqueued_at: chrono::Utc::now(),
+        }
+    }
+
+    fn redis_client_fixture() -> redis::Client {
+        match redis::Client::open("redis://127.0.0.1:6379") {
+            Ok(client) => client,
+            Err(err) => panic!("test redis url must parse: {err}"),
+        }
+    }
+
+    fn enqueue_request_fixture() -> EnqueueRuntimeJobRequest {
+        EnqueueRuntimeJobRequest {
+            job_id: Some("job-1".to_string()),
+            user_id: "user-1".to_string(),
+            kind: "train.refresh".to_string(),
+            payload: serde_json::json!({"provider": "srt"}),
+        }
+    }
+
+    fn should_not_persist<'a>(
+        _: &'a AppState,
+        _: &'a RuntimeQueueJob,
+    ) -> PersistRuntimeJobFuture<'a> {
+        panic!("persist hook must not be called");
+    }
+
+    fn persist_duplicate_conflict<'a>(
+        _: &'a AppState,
+        _: &'a RuntimeQueueJob,
+    ) -> PersistRuntimeJobFuture<'a> {
+        Box::pin(async { Err(EnqueueRuntimeJobError::DuplicateJobConflict) })
+    }
+
+    fn should_not_push<'a>(
+        _: &'a AppState,
+        _: &'a RuntimeQueueJob,
+    ) -> PushRuntimeQueueJobFuture<'a> {
+        panic!("push hook must not be called");
+    }
+
+    fn noop_compensate<'a>(_: &'a AppState, _: &'a str) -> CompensateRuntimeJobFuture<'a> {
+        Box::pin(async {})
+    }
+
+    fn should_not_connect_and_push<'a>(
+        _: &'a AppState,
+        _: String,
+    ) -> RedisConnectAndPushFuture<'a> {
+        panic!("connect_and_push hook must not be called");
+    }
+
+    fn connection_failure<'a>(_: &'a AppState, _: String) -> RedisConnectAndPushFuture<'a> {
+        Box::pin(async {
+            Err(RedisPushTransportError::Connection(
+                redis::RedisError::from((redis::ErrorKind::Io, "deterministic connection failure")),
+            ))
+        })
+    }
+
+    fn push_failure<'a>(_: &'a AppState, _: String) -> RedisConnectAndPushFuture<'a> {
+        Box::pin(async {
+            Err(RedisPushTransportError::Push(redis::RedisError::from((
+                redis::ErrorKind::Io,
+                "deterministic push failure",
+            ))))
+        })
+    }
+
+    #[tokio::test]
+    async fn enqueue_runtime_job_rejects_blank_user_id() {
+        let state = test_state(None);
+        let payload = EnqueueRuntimeJobRequest {
+            user_id: "   ".to_string(),
+            ..enqueue_request_fixture()
+        };
+
+        let result = enqueue_runtime_job_with_hooks(
+            &state,
+            payload,
+            RuntimeQueueHooks {
+                persist_runtime_job: should_not_persist,
+                push_runtime_queue_job: should_not_push,
+                compensate_persisted_runtime_job: noop_compensate,
+            },
+        )
+        .await;
+
+        assert!(matches!(
+            result,
+            Err(EnqueueRuntimeJobError::ValidationFailed)
+        ));
+    }
+
+    #[tokio::test]
+    async fn enqueue_runtime_job_rejects_blank_kind() {
+        let state = test_state(None);
+        let payload = EnqueueRuntimeJobRequest {
+            kind: "\n\t".to_string(),
+            ..enqueue_request_fixture()
+        };
+
+        let result = enqueue_runtime_job_with_hooks(
+            &state,
+            payload,
+            RuntimeQueueHooks {
+                persist_runtime_job: should_not_persist,
+                push_runtime_queue_job: should_not_push,
+                compensate_persisted_runtime_job: noop_compensate,
+            },
+        )
+        .await;
+
+        assert!(matches!(
+            result,
+            Err(EnqueueRuntimeJobError::ValidationFailed)
+        ));
+    }
+
+    #[tokio::test]
+    async fn push_runtime_queue_job_returns_redis_unavailable_without_client() {
+        let state = test_state(None);
+        let result = push_runtime_queue_job_with_hooks(
+            &state,
+            &runtime_job_fixture(),
+            RuntimeQueueRedisPushHooks {
+                connect_and_push: should_not_connect_and_push,
+            },
+        )
+        .await;
+
+        assert!(matches!(
+            result,
+            Err(EnqueueRuntimeJobError::RedisUnavailable)
+        ));
+    }
+
+    #[tokio::test]
+    async fn push_runtime_queue_job_maps_connection_failure_deterministically() {
+        let state = test_state(Some(redis_client_fixture()));
+
+        let result = push_runtime_queue_job_with_hooks(
+            &state,
+            &runtime_job_fixture(),
+            RuntimeQueueRedisPushHooks {
+                connect_and_push: connection_failure,
+            },
+        )
+        .await;
+
+        assert!(matches!(
+            result,
+            Err(EnqueueRuntimeJobError::RedisConnectionFailed)
+        ));
+    }
+
+    #[tokio::test]
+    async fn push_runtime_queue_job_maps_push_failure_deterministically() {
+        let state = test_state(Some(redis_client_fixture()));
+
+        let result = push_runtime_queue_job_with_hooks(
+            &state,
+            &runtime_job_fixture(),
+            RuntimeQueueRedisPushHooks {
+                connect_and_push: push_failure,
+            },
+        )
+        .await;
+
+        assert!(matches!(
+            result,
+            Err(EnqueueRuntimeJobError::QueuePushFailed)
+        ));
+    }
+
+    #[tokio::test]
+    async fn enqueue_runtime_job_propagates_duplicate_job_conflict() {
+        let state = test_state(None);
+        let result = enqueue_runtime_job_with_hooks(
+            &state,
+            enqueue_request_fixture(),
+            RuntimeQueueHooks {
+                persist_runtime_job: persist_duplicate_conflict,
+                push_runtime_queue_job: should_not_push,
+                compensate_persisted_runtime_job: noop_compensate,
+            },
+        )
+        .await;
+
+        assert!(matches!(
+            result,
+            Err(EnqueueRuntimeJobError::DuplicateJobConflict)
+        ));
     }
 }
