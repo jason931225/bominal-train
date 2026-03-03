@@ -58,7 +58,7 @@ psql_exec_file() {
   fi
 }
 
-mapfile -t migration_files < <(find "${BOMINAL_MIGRATIONS_DIR}" -maxdepth 1 -type f -name '*.sql' | sort)
+mapfile -t migration_files < <(find "${BOMINAL_MIGRATIONS_DIR}" -maxdepth 1 -type f -name '[0-9]*.sql' | sort)
 if [ "${#migration_files[@]}" -eq 0 ]; then
   fail "no migration files found in ${BOMINAL_MIGRATIONS_DIR}"
 fi
