@@ -154,6 +154,7 @@ Generate production env files from templates with either prompts (operator mode)
   --set VM_SECRET_ENV_FILE=/opt/bominal/env/prod/vm-secrets.env \
   --set DEPLOY_RUNTIME_ENV_FILE=/opt/bominal/repo/env/prod/runtime.env \
   --set DEPLOY_COMPOSE_FILE=/opt/bominal/repo/runtime/compose.prod.yml \
+  --set DEPLOY_MIGRATIONS_DIR=/opt/bominal/repo/runtime/migrations \
   --set DEPLOY_API_SERVICE=api \
   --set DEPLOY_WORKER_SERVICE=worker \
   --set DEPLOY_HEALTHCHECK_LIVE_URL=http://127.0.0.1:8000/health/live \
@@ -168,6 +169,7 @@ Outputs (from `env/prod/*.example` templates; depends on `--only` selection):
 - `env/prod/runtime.env`
 - `env/prod/caddy.env`
 - `env/prod/deploy.env`
+- `env/prod/vm-secrets.env` (auto-created if missing; seeded from runtime `DATABASE_URL` or placeholder)
 
 ## Security and Safety Baseline
 

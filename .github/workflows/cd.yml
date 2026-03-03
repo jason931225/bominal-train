@@ -178,6 +178,7 @@ jobs:
           VM_SECRET_ENV_FILE: ${{ vars.VM_SECRET_ENV_FILE }}
           DEPLOY_RUNTIME_ENV_FILE: ${{ vars.DEPLOY_RUNTIME_ENV_FILE }}
           DEPLOY_COMPOSE_FILE: ${{ vars.DEPLOY_COMPOSE_FILE }}
+          DEPLOY_MIGRATIONS_DIR: ${{ vars.DEPLOY_MIGRATIONS_DIR }}
           DEPLOY_COMPOSE_PROJECT_NAME: ${{ vars.DEPLOY_COMPOSE_PROJECT_NAME }}
           DEPLOY_ROLLBACK_STATE_PATH: ${{ vars.DEPLOY_ROLLBACK_STATE_PATH }}
           DEPLOY_VM_BASELINE_SCRIPT: ${{ vars.DEPLOY_VM_BASELINE_SCRIPT }}
@@ -207,6 +208,7 @@ jobs:
             VM_SECRET_ENV_FILE \
             DEPLOY_RUNTIME_ENV_FILE \
             DEPLOY_COMPOSE_FILE \
+            DEPLOY_MIGRATIONS_DIR \
             DEPLOY_API_SERVICE \
             DEPLOY_WORKER_SERVICE \
             DEPLOY_HEALTHCHECK_LIVE_URL \
@@ -230,7 +232,8 @@ jobs:
             DEPLOY_ROLLBACK_SCRIPT_PATH \
             VM_SECRET_ENV_FILE \
             DEPLOY_RUNTIME_ENV_FILE \
-            DEPLOY_COMPOSE_FILE; do
+            DEPLOY_COMPOSE_FILE \
+            DEPLOY_MIGRATIONS_DIR; do
             value="${!path_like}"
             if ! [[ "${value}" =~ ^/[A-Za-z0-9._/-]+$ ]]; then
               echo "::error::${path_like} must be an absolute safe path (no spaces)"
@@ -293,6 +296,7 @@ jobs:
           VM_SECRET_ENV_FILE: ${{ vars.VM_SECRET_ENV_FILE }}
           DEPLOY_RUNTIME_ENV_FILE: ${{ vars.DEPLOY_RUNTIME_ENV_FILE }}
           DEPLOY_COMPOSE_FILE: ${{ vars.DEPLOY_COMPOSE_FILE }}
+          DEPLOY_MIGRATIONS_DIR: ${{ vars.DEPLOY_MIGRATIONS_DIR }}
           DEPLOY_COMPOSE_PROJECT_NAME: ${{ vars.DEPLOY_COMPOSE_PROJECT_NAME }}
           DEPLOY_ROLLBACK_STATE_PATH: ${{ vars.DEPLOY_ROLLBACK_STATE_PATH }}
           DEPLOY_VM_BASELINE_SCRIPT: ${{ vars.DEPLOY_VM_BASELINE_SCRIPT }}
@@ -307,7 +311,7 @@ jobs:
         run: |
           set -euo pipefail
           printf -v remote_command \
-            'set -euo pipefail; cd %q; export BOMINAL_API_IMAGE=%q; export BOMINAL_WORKER_IMAGE=%q; export BOMINAL_POSTGRES_HOST=%q; export BOMINAL_POSTGRES_PORT=%q; export BOMINAL_POSTGRES_DB=%q; export BOMINAL_POSTGRES_USER=%q; export BOMINAL_VM_SECRET_ENV_FILE=%q; export BOMINAL_RUNTIME_ENV_PATH=%q; export BOMINAL_COMPOSE_FILE=%q; export BOMINAL_COMPOSE_PROJECT_NAME=%q; export BOMINAL_ROLLBACK_STATE_PATH=%q; export BOMINAL_VM_BASELINE_SCRIPT=%q; export BOMINAL_API_SERVICE=%q; export BOMINAL_WORKER_SERVICE=%q; %q' \
+            'set -euo pipefail; cd %q; export BOMINAL_API_IMAGE=%q; export BOMINAL_WORKER_IMAGE=%q; export BOMINAL_POSTGRES_HOST=%q; export BOMINAL_POSTGRES_PORT=%q; export BOMINAL_POSTGRES_DB=%q; export BOMINAL_POSTGRES_USER=%q; export BOMINAL_VM_SECRET_ENV_FILE=%q; export BOMINAL_RUNTIME_ENV_PATH=%q; export BOMINAL_COMPOSE_FILE=%q; export BOMINAL_MIGRATIONS_DIR=%q; export BOMINAL_COMPOSE_PROJECT_NAME=%q; export BOMINAL_ROLLBACK_STATE_PATH=%q; export BOMINAL_VM_BASELINE_SCRIPT=%q; export BOMINAL_API_SERVICE=%q; export BOMINAL_WORKER_SERVICE=%q; %q' \
             "${DEPLOY_WORKDIR}" \
             "${API_IMAGE}" \
             "${WORKER_IMAGE}" \
@@ -318,6 +322,7 @@ jobs:
             "${VM_SECRET_ENV_FILE}" \
             "${DEPLOY_RUNTIME_ENV_FILE}" \
             "${DEPLOY_COMPOSE_FILE}" \
+            "${DEPLOY_MIGRATIONS_DIR}" \
             "${DEPLOY_COMPOSE_PROJECT_NAME}" \
             "${DEPLOY_ROLLBACK_STATE_PATH}" \
             "${DEPLOY_VM_BASELINE_SCRIPT}" \

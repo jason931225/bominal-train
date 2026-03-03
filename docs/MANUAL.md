@@ -182,7 +182,7 @@ Current repository state:
 - Runtime source is present and buildable.
 - Env templates are present under `env/**`.
 - Baseline GitHub Actions workflows are present as `.github/workflows/ci.yml` and `.github/workflows/cd.yml`.
-- VM deploy contract is fail-closed and environment-defined: CD requires protected deploy script-path variables, executes remote scripts over IAP SSH, deploys immutable image digests, and triggers rollback when post-deploy health checks fail.
+- VM deploy contract is fail-closed and environment-defined: CD requires protected deploy script-path variables, executes remote scripts over IAP SSH, runs SQL migrations before service restart, deploys immutable image digests, and triggers rollback when post-deploy health checks fail.
 - Full infra validation suites and richer rollback automation are not yet fully restored.
 
 Mandatory backfill targets:

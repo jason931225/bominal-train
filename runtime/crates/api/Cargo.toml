@@ -8,6 +8,7 @@ default = []
 curl-transport = ["bominal-shared/curl-transport"]
 
 [dependencies]
+argon2.workspace = true
 anyhow.workspace = true
 axum.workspace = true
 bominal-shared = { path = "../shared" }
@@ -16,16 +17,21 @@ leptos.workspace = true
 leptos_axum.workspace = true
 leptos_meta.workspace = true
 leptos_router.workspace = true
+metrics.workspace = true
+metrics-exporter-prometheus.workspace = true
 redis.workspace = true
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 sqlx.workspace = true
 tokio.workspace = true
 tower.workspace = true
 tower-http.workspace = true
 tracing.workspace = true
+url.workspace = true
 uuid.workspace = true
+webauthn-rs.workspace = true
 
 [lints]
 workspace = true

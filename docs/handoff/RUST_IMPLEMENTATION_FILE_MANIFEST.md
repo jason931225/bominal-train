@@ -1,47 +1,45 @@
 # Rust Implementation File Manifest
 
-Purpose: authoritative inventory of files introduced for the Rust migration.
+Purpose: current inventory of files used by the active Rust runtime path.
 
 Rules:
-- Every new Rust migration file must be listed here in the same commit where it is created.
-- Paths must be repo-relative and unique.
-- `status` tracks migration lifecycle for each file:
-  - `active`: used by current Rust implementation.
-  - `draft`: temporary/in-progress artifact.
-  - `remove_candidate`: expected deletion after consolidation.
-- Legacy files are not listed here; this manifest is Rust-cutover scope only.
+- Paths are repo-relative and must exist in the current tree.
+- `status` tracks current lifecycle:
+  - `active`: required by the current runtime path.
+  - `supporting`: optional but operationally relevant.
+- Legacy or removed paths must not be listed.
 
 | path | status | notes |
 |---|---|---|
-| docs/plans/active/2026-03-01-rust-leptos-ssr-cutover.md | active | executable migration plan |
+| docs/plans/2026-03-02-runtime-test-backfill-srt-parity.md | supporting | current runtime test/backfill execution plan |
 | docs/handoff/RUST_IMPLEMENTATION_FILE_MANIFEST.md | active | this manifest |
-| rust/Cargo.toml | active | Rust workspace root with pinned dependency contract |
-| rust/Cargo.lock | active | resolved dependency lock for reproducible builds |
-| rust/README.md | active | workspace usage and build commands |
-| rust/env.example | active | env contract baseline for Rust API/worker |
-| rust/migrations/202603010001_bootstrap.sql | draft | initial sqlx migration scaffold |
-| rust/crates/shared/Cargo.toml | active | shared crate manifest |
-| rust/crates/shared/src/lib.rs | active | shared module export root |
-| rust/crates/shared/src/config.rs | active | Supabase/Redis/Evervault/Resend/runtime schedule config model |
-| rust/crates/shared/src/http_client.rs | active | reqwest builder with `curl-transport` feature gate |
-| rust/crates/shared/src/queue.rs | active | shared Redis queue payload contract (`RuntimeQueueJob`) |
-| rust/crates/shared/src/supabase.rs | active | Supabase JWKS fetch + JWT verification helpers |
-| rust/crates/shared/src/telemetry.rs | active | JSON/plain tracing bootstrap |
-| rust/crates/api/Cargo.toml | active | axum + leptos SSR API binary manifest |
-| rust/crates/api/src/main.rs | active | API routes, health checks, Supabase webhook endpoint, static serving |
-| rust/crates/api/src/web.rs | active | Leptos SSR homepage component/render function |
-| rust/crates/worker/Cargo.toml | active | worker binary manifest |
-| rust/crates/worker/src/main.rs | active | poll/reconcile/watch/rotation loops with graceful shutdown |
-| rust/frontend/package.json | active | Tailwind CSS build scripts |
-| rust/frontend/package-lock.json | active | locked npm dependency graph for Tailwind tooling |
-| rust/frontend/tailwind.config.js | active | Tailwind content/theme config for Rust sources |
-| rust/frontend/styles/tailwind.css | active | Tailwind source stylesheet |
-| rust/frontend/dist/tailwind.css | active | generated stylesheet served by Rust API |
-| rust/.dockerignore | active | docker build ignore rules for Rust images |
-| rust/Dockerfile.api | active | production Rust API image definition |
-| rust/Dockerfile.worker | active | production Rust worker image definition |
-| rust/migrations/202603010002_supabase_auth_user_sync.sql | active | auth webhook sync persistence table |
-| infra/env/dev/rust.env | active | Rust runtime env contract for local compose |
-| infra/env/prod/rust.env.example | active | Rust runtime env template for production |
-| infra/docker-compose.yml | active | development runtime switched to Rust-only services |
-| infra/docker-compose.prod.yml | active | production runtime switched to Rust-only service images |
+| runtime/Cargo.toml | active | Rust workspace root |
+| runtime/Cargo.lock | active | reproducible dependency lock |
+| runtime/README.md | active | runtime workspace usage |
+| runtime/crates/api/Cargo.toml | active | API crate manifest |
+| runtime/crates/api/src/main.rs | active | API entrypoint and routes |
+| runtime/crates/api/src/http/mod.rs | active | HTTP route composition |
+| runtime/crates/api/src/services/mod.rs | active | API service wiring |
+| runtime/crates/api/tests/internal_api_auth_contract_test.rs | supporting | API auth contract coverage |
+| runtime/crates/shared/Cargo.toml | active | shared crate manifest |
+| runtime/crates/shared/src/lib.rs | active | shared exports |
+| runtime/crates/shared/src/config.rs | active | runtime configuration contracts |
+| runtime/crates/shared/src/queue.rs | active | runtime queue contract |
+| runtime/crates/shared/src/providers/mod.rs | active | provider modules |
+| runtime/crates/shared/src/repo/mod.rs | active | persistence modules |
+| runtime/crates/worker/Cargo.toml | active | worker crate manifest |
+| runtime/crates/worker/src/main.rs | active | worker entrypoint |
+| runtime/crates/worker/src/runtime/mod.rs | active | worker runtime module wiring |
+| runtime/frontend/package.json | active | frontend build scripts |
+| runtime/frontend/tailwind.config.js | active | Tailwind config |
+| runtime/frontend/styles/tailwind.css | active | CSS source |
+| runtime/frontend/dist/tailwind.css | active | built CSS artifact served by runtime API |
+| runtime/migrations/202603010001_bootstrap.sql | active | baseline schema migration |
+| runtime/migrations/202603010002_supabase_auth_user_sync.sql | active | auth sync migration |
+| runtime/migrations/202603020001_runtime_jobs.sql | active | runtime jobs migration |
+| runtime/migrations/202603030001_provider_runtime_v2.sql | active | provider runtime v2 migration |
+| runtime/.dockerignore | active | runtime Docker build ignores |
+| runtime/Dockerfile.api | active | API image build |
+| runtime/Dockerfile.worker | active | worker image build |
+| .github/workflows/ci.yml | active | CI workflow |
+| .github/workflows/cd.yml | active | CD workflow |

@@ -1,0 +1,184 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths-ignore:
+      - docs/**
+      - "**/*.md"
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - docs/**
+      - "**/*.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  changes:
+    name: Detect Changed Paths
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      frontend_css: ${{ steps.filter.outputs.frontend_css }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Detect file changes
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            frontend_css:
+              - 'runtime/frontend/**'
+
+  secret-scan:
+    name: Secret Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Scan for leaked secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  dependency-review:
+    name: Dependency Review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Review dependency changes
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+          fail-on-scopes: runtime
+
+  rust-quality:
+    name: Rust Quality Gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs:
+      - secret-scan
+    defaults:
+      run:
+        working-directory: runtime
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy, llvm-tools-preview
+
+      - name: Cache cargo and build outputs
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: runtime
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Compile with locked dependencies
+        run: cargo check --workspace --locked
+
+      - name: Lint
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Run tests
+        run: cargo test --workspace --locked
+
+  rust-coverage:
+    name: Rust Coverage Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs:
+      - rust-quality
+    defaults:
+      run:
+        working-directory: runtime
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+
+      - name: Cache cargo and build outputs
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: runtime
+          prefix-key: cov
+
+      - name: Install coverage tooling
+        uses: taiki-e/install-action@cargo-llvm-cov
+
+      - name: Enforce line coverage floor
+        env:
+          RUST_COVERAGE_MIN: ${{ vars.RUST_COVERAGE_MIN }}
+        run: |
+          mkdir -p target/coverage
+          coverage_min="${RUST_COVERAGE_MIN:-35}"
+          cargo llvm-cov --workspace --fail-under-lines "${coverage_min}" --lcov --output-path target/coverage/lcov.info
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: rust-lcov
+          path: runtime/target/coverage/lcov.info
+
+  frontend-assets:
+    name: Frontend Asset Gate
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.frontend_css == 'true'
+    timeout-minutes: 15
+    needs:
+      - changes
+      - secret-scan
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: runtime/frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci --prefix runtime/frontend
+
+      - name: Build frontend CSS bundle
+        run: npm --prefix runtime/frontend run build:css

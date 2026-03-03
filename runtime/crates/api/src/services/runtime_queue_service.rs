@@ -376,6 +376,8 @@ mod tests {
             },
             db_pool: None,
             redis_client,
+            metrics_handle: super::super::super::init_metrics_recorder()
+                .expect("metrics recorder should initialize for tests"),
             http_client: reqwest::Client::new(),
             webauthn: None,
         }

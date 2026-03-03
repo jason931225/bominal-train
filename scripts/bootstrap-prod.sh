@@ -44,7 +44,8 @@ Examples:
     --set GCP_PROJECT_ID=my-project \\
     --set DEPLOY_VM_NAME=bominal-deploy \\
     --set DEPLOY_VM_ZONE=us-central1-a \\
-    --set DEPLOY_WORKDIR=/opt/bominal/repo
+    --set DEPLOY_WORKDIR=/opt/bominal/repo \\
+    --set DEPLOY_MIGRATIONS_DIR=/opt/bominal/repo/runtime/migrations
 EOF
 }
 
@@ -229,6 +230,45 @@ process_template() {
   log "wrote ${output_path}"
 }
 
+bootstrap_vm_secret_env() {
+  local runtime_env_path="${PROD_ENV_DIR}/runtime.env"
+  local vm_secret_path="${PROD_ENV_DIR}/vm-secrets.env"
+  local database_url=""
+  local secret_line=""
+
+  if [ -f "${vm_secret_path}" ]; then
+    log "vm secret env already exists: ${vm_secret_path}"
+    return
+  fi
+
+  if [ -f "${runtime_env_path}" ]; then
+    database_url="$(grep -m1 '^DATABASE_URL=' "${runtime_env_path}" | sed -E 's/^DATABASE_URL=//' || true)"
+  fi
+
+  if [ -n "${database_url}" ] && ! is_placeholder_value "${database_url}"; then
+    secret_line="BOMINAL_DATABASE_URL=${database_url}"
+  else
+    secret_line="BOMINAL_DATABASE_URL=CHANGE_ME_DATABASE_URL"
+  fi
+
+  if [ "${DRY_RUN}" = "1" ]; then
+    log "dry-run: would write ${vm_secret_path}"
+    if [[ "${secret_line}" == *"CHANGE_ME"* ]]; then
+      log "dry-run: vm secret env would contain placeholder; set BOMINAL_DATABASE_URL before deploy."
+    fi
+    return
+  fi
+
+  umask 077
+  printf '%s\n' "${secret_line}" > "${vm_secret_path}"
+  chmod 600 "${vm_secret_path}"
+  if [[ "${secret_line}" == *"CHANGE_ME"* ]]; then
+    log "wrote ${vm_secret_path} with placeholder BOMINAL_DATABASE_URL; update before deploy"
+  else
+    log "wrote ${vm_secret_path} from runtime.env DATABASE_URL"
+  fi
+}
+
 select_target() {
   local target="$1"
   case "${target}" in
@@ -345,9 +385,10 @@ main() {
       "deploy" \
       "${PROD_ENV_DIR}/deploy.env.example" \
       "${PROD_ENV_DIR}/deploy.env"
+    bootstrap_vm_secret_env
 
     log "reminder: configure GitHub production variables used by .github/workflows/cd.yml."
-    log "reminder: ensure VM secret env file exists and contains BOMINAL_DATABASE_URL or BOMINAL_POSTGRES_PASSWORD."
+    log "reminder: deploy bootstrap will create VM secret env file if missing and persist BOMINAL_DATABASE_URL."
     log "reminder: deploy script enforces VM baseline swap/sysctl guard by default."
   fi
 

@@ -3,7 +3,7 @@
 This folder is the discoverability layer for external provider-rewrite handoff artifacts.
 - Canonical handoff package lives directly in `docs/handoff`.
 - This folder stores pointers, runbook guidance, and non-portable artifact locations.
-- Raw payload bundles are not copied into `docs/` by policy.
+- Capture bundles under `docs/handoff/output` must be redacted and treated as reference-only artifacts.
 
 ## Start Here
 

@@ -16,6 +16,8 @@ leptos = { version = "0.8.17", features = ["ssr"] }
 leptos_axum = "0.8.8"
 leptos_meta = "0.8.5"
 leptos_router = "0.8.9"
+metrics = "0.24.2"
+metrics-exporter-prometheus = "0.17.2"
 redis = { version = "1.0.4", features = ["tokio-comp", "connection-manager", "tokio-rustls-comp"] }
 reqwest = { version = "0.13.2", default-features = false, features = ["json", "rustls"] }
 secrecy = { version = "0.10.3", features = ["serde"] }
@@ -25,7 +27,7 @@ sha2 = "0.10.9"
 sqlx = { version = "0.8.6", default-features = false, features = ["runtime-tokio-rustls", "postgres", "migrate", "chrono", "uuid"] }
 thiserror = "2.0.17"
 tokio = { version = "1.48.0", features = ["full"] }
-tower = { version = "0.5.2", features = ["timeout", "util"] }
+tower = { version = "0.5.2", features = ["limit", "timeout", "util"] }
 tower-http = { version = "0.6.6", features = ["trace", "cors", "compression-full", "limit", "fs", "request-id", "timeout", "catch-panic"] }
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.20", features = ["env-filter", "json"] }

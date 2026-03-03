@@ -21,7 +21,7 @@ runtime/target/
 # Env
 .env
 .env.local
-infra/env/prod/*.env
+env/prod/*.env
 
 # Docker
 *.log
@@ -40,7 +40,7 @@ crash.*.log
 gcp_resources*.tf
 
 # Local-only runtime envs
-infra/env/local/
+env/local/
 
 # Local editor/agent state
 .claude/

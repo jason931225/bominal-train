@@ -24,6 +24,12 @@ This document defines the production-safe environment-variable contract using ke
 | `APP_ENV` | `required` | core production runtime setting |
 | `LOG_JSON` | `optional` | defaults internally when unset; explicit value recommended for operability |
 | `FRONTEND_ASSETS_DIR` | `optional` | defaults internally when unset; explicit value recommended for deploy consistency |
+| `HTTP_REQUEST_TIMEOUT_SECONDS` | `optional` | API request timeout guardrail tuning (defaults to 30s) |
+| `HTTP_REQUEST_BODY_LIMIT_BYTES` | `optional` | API max request body guardrail tuning (defaults to 2 MiB) |
+| `HTTP_CONCURRENCY_LIMIT` | `optional` | API request concurrency guardrail tuning (defaults to 32) |
+| `ADMIN_EMAILS` | `optional` | comma-separated admin allowlist for maintenance dashboard and metrics access |
+| `INVITE_BASE_URL` | `required` | required for invite and auth-link generation |
+| `SESSION_SECRET` | `secret-manager-only` | session signing secret; must never use default in production |
 | `DATABASE_URL` | `secret-manager-only` | contains secret-bearing value or connection credential |
 | `REDIS_URL` | `secret-manager-only` | contains secret-bearing value or connection credential |
 | `RUNTIME_QUEUE_KEY` | `required` | core runtime queue contract |
@@ -32,6 +38,11 @@ This document defines the production-safe environment-variable contract using ke
 | `RUNTIME_RATE_LIMIT_PREFIX` | `required` | core runtime rate-limit key contract |
 | `INTERNAL_IDENTITY_SECRET` | `secret-manager-only` | signing/verification secret for internal service identity token |
 | `INTERNAL_IDENTITY_ISSUER` | `required` | core production runtime setting |
+| `PASSKEY_PROVIDER` | `required` | passkey strategy selector; production must be explicit |
+| `WEBAUTHN_RP_ID` | `required` | passkey relying-party ID |
+| `WEBAUTHN_RP_ORIGIN` | `required` | passkey relying-party origin |
+| `WEBAUTHN_RP_NAME` | `required` | passkey relying-party display name |
+| `WEBAUTHN_CHALLENGE_TTL_SECONDS` | `optional` | passkey challenge TTL tuning |
 | `KEK_VERSION` | `required` | core production runtime setting |
 | `MASTER_KEY` | `secret-manager-only` | contains secret-bearing value or connection credential |
 | `MASTER_KEY_OVERRIDE` | `secret-manager-only` | optional override channel for envelope key injection |
@@ -57,7 +68,8 @@ VM baseline expectation (performed by deploy script or one-time host prep):
 
 VM secret file expectation:
 - `VM_SECRET_ENV_FILE` points to an on-host `0600` env file.
-- File must include one of:
+- Deploy script creates this file when missing and persists `BOMINAL_DATABASE_URL`.
+- File should include one of:
   - `BOMINAL_DATABASE_URL=...`
   - `BOMINAL_POSTGRES_PASSWORD=...`
 
@@ -76,6 +88,7 @@ VM secret file expectation:
 | `VM_SECRET_ENV_FILE` | `required` | on-host secret env path for database credential material |
 | `DEPLOY_RUNTIME_ENV_FILE` | `required` | runtime env file updated by deploy script |
 | `DEPLOY_COMPOSE_FILE` | `required` | compose file used for pull/up and health verification |
+| `DEPLOY_MIGRATIONS_DIR` | `required` | migration directory consumed during deploy before service restart |
 | `DEPLOY_API_SERVICE` | `required` | compose service identifier for API |
 | `DEPLOY_WORKER_SERVICE` | `required` | compose service identifier for worker |
 | `DEPLOY_HEALTHCHECK_LIVE_URL` | `required` | live endpoint checked after deploy |
@@ -115,6 +128,7 @@ VM secret file expectation:
 | `VM_SECRET_ENV_FILE` | `required` | on-host secret env path for database credential material |
 | `DEPLOY_RUNTIME_ENV_FILE` | `required` | runtime env file updated by deploy script |
 | `DEPLOY_COMPOSE_FILE` | `required` | compose file used for pull/up and health verification |
+| `DEPLOY_MIGRATIONS_DIR` | `required` | migration directory consumed during deploy before service restart |
 | `DEPLOY_API_SERVICE` | `required` | compose service identifier for API |
 | `DEPLOY_WORKER_SERVICE` | `required` | compose service identifier for worker |
 | `DEPLOY_HEALTHCHECK_LIVE_URL` | `required` | live endpoint checked after deploy |

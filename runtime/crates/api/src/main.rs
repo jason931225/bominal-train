@@ -6,20 +6,29 @@ pub(crate) mod services {
 }
 mod web;
 
-use std::{net::SocketAddr, sync::Arc, time::Duration};
+use std::{
+    net::SocketAddr,
+    sync::{Arc, Mutex, OnceLock},
+    time::{Duration, Instant},
+};
 
 use anyhow::{Context, Result};
 use axum::{
     Json, Router,
     extract::State,
-    http::{HeaderMap, StatusCode},
+    http::{
+        HeaderMap, StatusCode,
+        header::{self, HeaderValue},
+    },
     response::{Html, IntoResponse},
 };
 use bominal_shared::{
     config::{AppConfig, PasskeyProvider},
+    error::{ApiError, ApiErrorCode, ApiErrorStatus},
     http_client::build_http_client,
     telemetry::init_tracing,
 };
+use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 use redis::{Client as RedisClient, RedisResult};
 use serde::Serialize;
 use sqlx::{PgPool, postgres::PgPoolOptions};
@@ -32,6 +41,7 @@ pub(crate) struct AppState {
     config: AppConfig,
     db_pool: Option<PgPool>,
     redis_client: Option<RedisClient>,
+    metrics_handle: PrometheusHandle,
     http_client: reqwest::Client,
     webauthn: Option<Webauthn>,
 }
@@ -70,6 +80,23 @@ fn request_id_from_headers(headers: &HeaderMap) -> String {
         .filter(|value| !value.is_empty())
         .map(ToOwned::to_owned)
         .unwrap_or_else(|| Uuid::new_v4().to_string())
+}
+
+fn init_metrics_recorder() -> Result<PrometheusHandle> {
+    static PROMETHEUS_HANDLE: OnceLock<Mutex<Option<PrometheusHandle>>> = OnceLock::new();
+    let slot = PROMETHEUS_HANDLE.get_or_init(|| Mutex::new(None));
+    let mut guard = slot
+        .lock()
+        .map_err(|_| anyhow::anyhow!("metrics handle lock poisoned"))?;
+    if let Some(handle) = guard.as_ref() {
+        return Ok(handle.clone());
+    }
+
+    let handle = PrometheusBuilder::new()
+        .install_recorder()
+        .context("failed to install prometheus metrics recorder")?;
+    *guard = Some(handle.clone());
+    Ok(handle)
 }
 
 #[tokio::main]
@@ -112,11 +139,13 @@ pub(crate) async fn build_state(config: AppConfig) -> Result<AppState> {
 
     let http_client = build_http_client(Duration::from_secs(10))?;
     let webauthn = build_webauthn(&config)?;
+    let metrics_handle = init_metrics_recorder()?;
 
     Ok(AppState {
         config,
         db_pool,
         redis_client,
+        metrics_handle,
         http_client,
         webauthn,
     })
@@ -142,14 +171,24 @@ pub(crate) fn build_router(state: Arc<AppState>) -> Router {
     http::build_router(state)
 }
 
-async fn ssr_home() -> impl IntoResponse {
+async fn ssr_home(headers: HeaderMap) -> impl IntoResponse {
+    let request_id = request_id_from_headers(&headers);
+    let render_started_at = Instant::now();
     let body = web::render_home();
+    info!(
+        request_id = %request_id,
+        route = "/",
+        render_ms = render_started_at.elapsed().as_millis(),
+        "ssr render complete",
+    );
     Html(format!(
         "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\" /><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\" /><title>bominal | Rust SSR</title><link rel=\"stylesheet\" href=\"/assets/tailwind.css\" /></head><body class=\"min-h-screen bg-slate-50\">{body}</body></html>"
     ))
 }
 
-async fn ssr_auth(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+async fn ssr_auth(State(state): State<Arc<AppState>>, headers: HeaderMap) -> impl IntoResponse {
+    let request_id = request_id_from_headers(&headers);
+    let render_started_at = Instant::now();
     let preflight = web::AuthPreflight {
         database_configured: !state.config.database_url.trim().is_empty(),
         redis_configured: !state.config.redis.url.trim().is_empty(),
@@ -161,10 +200,107 @@ async fn ssr_auth(State(state): State<Arc<AppState>>) -> impl IntoResponse {
         webauthn_rp_origin_configured: !state.config.passkey.webauthn_rp_origin.trim().is_empty(),
     };
     let body = web::render_auth(&preflight);
+    info!(
+        request_id = %request_id,
+        route = "/auth",
+        render_ms = render_started_at.elapsed().as_millis(),
+        "ssr render complete",
+    );
 
     Html(format!(
         "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\" /><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\" /><title>bominal | Auth</title><link rel=\"stylesheet\" href=\"/assets/tailwind.css\" /></head><body class=\"min-h-screen bg-slate-50\">{body}</body></html>"
     ))
+}
+
+async fn ssr_admin_maintenance(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> axum::response::Response {
+    let request_id = request_id_from_headers(&headers);
+    let admin_user =
+        match services::auth_service::require_admin_session_user(state.as_ref(), &headers).await {
+            Ok(user) => user,
+            Err(err) => return map_auth_service_error(err, &request_id).into_response(),
+        };
+
+    let render_started_at = Instant::now();
+    let db_ok = db_ready(state.db_pool.as_ref()).await;
+    let redis_ok = redis_ready(state.redis_client.as_ref()).await;
+    let ready_ok = db_ok && redis_ok;
+    let body = web::render_admin_maintenance(&web::AdminMaintenanceView {
+        admin_email: admin_user.email,
+        db_ok,
+        redis_ok,
+        ready_ok,
+        health_path: "/health",
+        ready_path: "/ready",
+        metrics_path: "/admin/maintenance/metrics",
+        metrics_snapshot: state.metrics_handle.render(),
+    });
+    info!(
+        request_id = %request_id,
+        route = "/admin/maintenance",
+        render_ms = render_started_at.elapsed().as_millis(),
+        "ssr render complete",
+    );
+
+    Html(format!(
+        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\" /><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\" /><title>bominal | Admin Maintenance</title><link rel=\"stylesheet\" href=\"/assets/tailwind.css\" /></head><body class=\"min-h-screen bg-slate-50\">{body}</body></html>"
+    ))
+    .into_response()
+}
+
+async fn admin_maintenance_metrics(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> axum::response::Response {
+    let request_id = request_id_from_headers(&headers);
+    if let Err(err) =
+        services::auth_service::require_admin_session_user(state.as_ref(), &headers).await
+    {
+        return map_auth_service_error(err, &request_id).into_response();
+    }
+
+    let mut response = state.metrics_handle.render().into_response();
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("text/plain; version=0.0.4; charset=utf-8"),
+    );
+    response
+}
+
+fn map_auth_service_error(
+    error: services::auth_service::AuthServiceError,
+    request_id: &str,
+) -> ApiError {
+    match error {
+        services::auth_service::AuthServiceError::InvalidRequest(message)
+        | services::auth_service::AuthServiceError::Conflict(message) => ApiError::new(
+            ApiErrorStatus::BadRequest,
+            ApiErrorCode::InvalidRequest,
+            message,
+            request_id.to_string(),
+        ),
+        services::auth_service::AuthServiceError::Unauthorized(message)
+        | services::auth_service::AuthServiceError::NotFound(message) => ApiError::new(
+            ApiErrorStatus::Unauthorized,
+            ApiErrorCode::Unauthorized,
+            message,
+            request_id.to_string(),
+        ),
+        services::auth_service::AuthServiceError::ServiceUnavailable(message) => ApiError::new(
+            ApiErrorStatus::ServiceUnavailable,
+            ApiErrorCode::ServiceUnavailable,
+            message,
+            request_id.to_string(),
+        ),
+        services::auth_service::AuthServiceError::Internal => ApiError::new(
+            ApiErrorStatus::InternalServerError,
+            ApiErrorCode::InternalError,
+            "internal error",
+            request_id.to_string(),
+        ),
+    }
 }
 
 async fn health_live() -> impl IntoResponse {

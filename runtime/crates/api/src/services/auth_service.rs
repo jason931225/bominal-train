@@ -34,6 +34,7 @@ const SIGNIN_FAIL_EMAIL_PREFIX: &str = "auth:signin:fail:email:";
 const SIGNIN_FAIL_IP_PREFIX: &str = "auth:signin:fail:ip:";
 const SIGNIN_LOCK_EMAIL_PREFIX: &str = "auth:signin:lock:email:";
 const SIGNIN_LOCK_IP_PREFIX: &str = "auth:signin:lock:ip:";
+const ADMIN_EMAILS_ENV: &str = "ADMIN_EMAILS";
 
 fn password_hash_concurrency_limit() -> usize {
     static PASSWORD_HASH_CONCURRENCY: OnceLock<usize> = OnceLock::new();
@@ -347,6 +348,17 @@ pub(crate) async fn require_session_user(
         .ok_or(AuthServiceError::Unauthorized("active session required"))
 }
 
+pub(crate) async fn require_admin_session_user(
+    state: &AppState,
+    headers: &HeaderMap,
+) -> Result<SessionUser, AuthServiceError> {
+    let user = require_session_user(state, headers).await?;
+    if !is_admin_email(&user.email) {
+        return Err(AuthServiceError::Unauthorized("admin access required"));
+    }
+    Ok(user)
+}
+
 pub(crate) async fn current_session_user(
     state: &AppState,
     headers: &HeaderMap,
@@ -584,6 +596,25 @@ fn signin_rate_keys(state: &AppState, email: &str, client_ip: &str) -> SigninRat
     }
 }
 
+fn is_admin_email(email: &str) -> bool {
+    let configured = env::var(ADMIN_EMAILS_ENV).unwrap_or_default();
+    is_admin_email_with_list(&configured, email)
+}
+
+fn is_admin_email_with_list(admin_emails: &str, email: &str) -> bool {
+    let normalized_email = email.trim().to_ascii_lowercase();
+    if normalized_email.is_empty() {
+        return false;
+    }
+
+    admin_emails
+        .split(',')
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_ascii_lowercase)
+        .any(|value| value == normalized_email)
+}
+
 async fn verify_password_hash(
     password: String,
     password_hash: String,
@@ -773,6 +804,19 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn admin_email_matching_uses_case_insensitive_list() {
+        assert!(super::is_admin_email_with_list(
+            "admin@bominal.com,ops@bominal.com",
+            "ADMIN@BOMINAL.COM",
+        ));
+        assert!(!super::is_admin_email_with_list(
+            "admin@bominal.com,ops@bominal.com",
+            "user@bominal.com",
+        ));
+        assert!(!super::is_admin_email_with_list("", "admin@bominal.com"));
+    }
+
     struct RedisTestServer {
         child: Child,
         url: String,
@@ -887,6 +931,8 @@ mod tests {
             redis_client: Some(
                 redis::Client::open(redis_url).expect("redis url should be valid for test state"),
             ),
+            metrics_handle: super::super::super::init_metrics_recorder()
+                .expect("metrics recorder should initialize for tests"),
             http_client: reqwest::Client::new(),
             webauthn: None,
         }

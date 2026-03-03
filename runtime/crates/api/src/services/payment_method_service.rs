@@ -191,7 +191,11 @@ async fn store_via_payment_crypto_service(
     payment_method_ref: &str,
     base_url: &str,
 ) -> Result<PutSrtPaymentMethodResult, PutSrtPaymentMethodError> {
-    let url = format!("{}{}", trim_trailing_slash(base_url), PAYMENT_CRYPTO_SERVICE_STORE_PATH);
+    let url = format!(
+        "{}{}",
+        trim_trailing_slash(base_url),
+        PAYMENT_CRYPTO_SERVICE_STORE_PATH
+    );
     let request_body = CloudRunStoreRequest {
         provider: "srt",
         owner_ref,

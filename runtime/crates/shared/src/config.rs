@@ -113,9 +113,18 @@ impl AppConfig {
 }
 
 fn normalize_database_url(raw: &str) -> String {
-    raw.replace("postgresql+asyncpg://", "postgresql://")
+    let normalized = raw
+        .replace("postgresql+asyncpg://", "postgresql://")
         .replace("postgresql+psycopg://", "postgresql://")
-        .replace("postgresql+psycopg2://", "postgresql://")
+        .replace("postgresql+psycopg2://", "postgresql://");
+
+    normalized
+        .replace("?ssl=true", "?sslmode=require")
+        .replace("&ssl=true", "&sslmode=require")
+        .replace("?ssl=false", "?sslmode=disable")
+        .replace("&ssl=false", "&sslmode=disable")
+        .replace("?ssl=", "?sslmode=")
+        .replace("&ssl=", "&sslmode=")
 }
 
 fn env_or(key: &str, default: &str) -> Result<String> {
@@ -198,5 +207,31 @@ fn parse_passkey_provider(raw: &str) -> Result<PasskeyProvider> {
     match raw.trim().to_ascii_lowercase().as_str() {
         "server_webauthn" => Ok(PasskeyProvider::ServerWebauthn),
         _ => Err(anyhow::anyhow!("PASSKEY_PROVIDER must be: server_webauthn")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_database_url;
+
+    #[test]
+    fn normalize_database_url_rewrites_driver_and_ssl_true() {
+        let input = "postgresql+asyncpg://user:pw@db:5432/bominal?ssl=true&application_name=api";
+        let expected = "postgresql://user:pw@db:5432/bominal?sslmode=require&application_name=api";
+        assert_eq!(normalize_database_url(input), expected);
+    }
+
+    #[test]
+    fn normalize_database_url_rewrites_ssl_false() {
+        let input = "postgresql://user:pw@db:5432/bominal?pool=5&ssl=false";
+        let expected = "postgresql://user:pw@db:5432/bominal?pool=5&sslmode=disable";
+        assert_eq!(normalize_database_url(input), expected);
+    }
+
+    #[test]
+    fn normalize_database_url_rewrites_generic_ssl_param() {
+        let input = "postgresql+psycopg2://user:pw@db:5432/bominal?ssl=verify-full&x=1";
+        let expected = "postgresql://user:pw@db:5432/bominal?sslmode=verify-full&x=1";
+        assert_eq!(normalize_database_url(input), expected);
     }
 }

@@ -894,9 +894,13 @@ mod tests {
         };
 
         assert!(policy.should_block_auto_payment("runtime.pay_with_card", &json!({})));
-        assert!(policy.should_block_auto_payment("runtime.reserve", &json!({"operation": "payment"})));
+        assert!(
+            policy.should_block_auto_payment("runtime.reserve", &json!({"operation": "payment"}))
+        );
         assert!(policy.should_block_auto_payment("runtime.reserve", &json!({"auto_pay": true})));
-        assert!(!policy.should_block_auto_payment("runtime.reserve", &json!({"operation": "reserve"})));
+        assert!(
+            !policy.should_block_auto_payment("runtime.reserve", &json!({"operation": "reserve"}))
+        );
     }
 
     #[test]

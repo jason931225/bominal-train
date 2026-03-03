@@ -1,0 +1,76 @@
+name: bominal
+
+x-runtime-common-env: &runtime-common-env
+  APP_ENV: ${APP_ENV:-production}
+  LOG_JSON: ${LOG_JSON:-true}
+  DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+  REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+  RUNTIME_QUEUE_KEY: ${RUNTIME_QUEUE_KEY:-train:queue}
+  RUNTIME_QUEUE_DLQ_KEY: ${RUNTIME_QUEUE_DLQ_KEY:-train:queue:dlq}
+  RUNTIME_LEASE_PREFIX: ${RUNTIME_LEASE_PREFIX:-train:lease}
+  RUNTIME_RATE_LIMIT_PREFIX: ${RUNTIME_RATE_LIMIT_PREFIX:-rate_limit}
+  INTERNAL_IDENTITY_SECRET: ${INTERNAL_IDENTITY_SECRET:?INTERNAL_IDENTITY_SECRET is required}
+  INTERNAL_IDENTITY_ISSUER: ${INTERNAL_IDENTITY_ISSUER:-bominal-internal}
+  KEK_VERSION: ${KEK_VERSION:-1}
+  MASTER_KEY: ${MASTER_KEY:?MASTER_KEY is required}
+  MASTER_KEY_OVERRIDE: ${MASTER_KEY_OVERRIDE:-}
+  EMAIL_FROM_ADDRESS: ${EMAIL_FROM_ADDRESS:?EMAIL_FROM_ADDRESS is required}
+  RESEND_API_KEY: ${RESEND_API_KEY:?RESEND_API_KEY is required}
+  RESEND_BASE_URL: ${RESEND_BASE_URL:-https://api.resend.com}
+  EVERVAULT_RELAY_BASE_URL: ${EVERVAULT_RELAY_BASE_URL:-https://relay.evervault.com}
+  EVERVAULT_APP_ID: ${EVERVAULT_APP_ID:-}
+  WORKER_POLL_SECONDS: ${WORKER_POLL_SECONDS:-3}
+  WORKER_RECONCILE_SECONDS: ${WORKER_RECONCILE_SECONDS:-30}
+  WORKER_WATCH_SECONDS: ${WORKER_WATCH_SECONDS:-5}
+  KEY_ROTATION_SECONDS: ${KEY_ROTATION_SECONDS:-3600}
+  PASSWORD_HASH_CONCURRENCY: ${PASSWORD_HASH_CONCURRENCY:-1}
+  PASSKEY_PROVIDER: ${PASSKEY_PROVIDER:-server_webauthn}
+  WEBAUTHN_RP_ID: ${WEBAUTHN_RP_ID:?WEBAUTHN_RP_ID is required}
+  WEBAUTHN_RP_ORIGIN: ${WEBAUTHN_RP_ORIGIN:?WEBAUTHN_RP_ORIGIN is required}
+  WEBAUTHN_RP_NAME: ${WEBAUTHN_RP_NAME:-bominal}
+  WEBAUTHN_CHALLENGE_TTL_SECONDS: ${WEBAUTHN_CHALLENGE_TTL_SECONDS:-300}
+  SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET is required}
+  INVITE_BASE_URL: ${INVITE_BASE_URL:?INVITE_BASE_URL is required}
+
+services:
+  api:
+    image: ${BOMINAL_API_IMAGE:?BOMINAL_API_IMAGE is required}
+    restart: unless-stopped
+    pull_policy: always
+    environment:
+      <<: *runtime-common-env
+      APP_HOST: 0.0.0.0
+      APP_PORT: 8000
+      FRONTEND_ASSETS_DIR: ${FRONTEND_ASSETS_DIR:-/app/frontend/dist}
+    depends_on:
+      redis:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8000:8000"
+
+  worker:
+    image: ${BOMINAL_WORKER_IMAGE:?BOMINAL_WORKER_IMAGE is required}
+    restart: unless-stopped
+    pull_policy: always
+    environment:
+      <<: *runtime-common-env
+      APP_HOST: 0.0.0.0
+      APP_PORT: 8080
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  redis:
+    image: redis:7.2-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "PING"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    volumes:
+      - redis-data:/data
+
+volumes:
+  redis-data:

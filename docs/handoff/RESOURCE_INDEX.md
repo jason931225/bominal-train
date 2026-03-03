@@ -61,4 +61,4 @@ Pointers to resources useful for external rewrite with third-party functional pa
 
 ## External Non-Repo Artifact
 
-- `/Users/jasonlee/Downloads/flows` (user-provided, not portable, do not copy into `docs/`)
+- See `docs/handoff/NON_REPO_ARTIFACTS.md` for non-portable external artifact locations and handling rules.
