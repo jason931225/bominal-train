@@ -12,13 +12,12 @@ This document defines the production-safe environment-variable contract using ke
 
 ## Scope
 
-- `infra/env/prod/runtime.env` and `infra/env/prod/runtime.env.example`
-- `infra/env/prod/deploy.env.example`
-- `infra/env/prod/caddy.env` and `infra/env/prod/caddy.env.example`
-- `runtime/env.example`
+- `env/prod/runtime.env` and `env/prod/runtime.env.example`
+- `env/prod/deploy.env.example`
+- `env/prod/caddy.env` and `env/prod/caddy.env.example`
 - GitHub Actions production environment variables used by `.github/workflows/cd.yml`
 
-## Runtime API/Worker Env (`infra/env/prod/runtime.env*`)
+## Runtime API/Worker Env (`env/prod/runtime.env*`)
 
 | Key | Classification | Rationale |
 |---|---|---|
@@ -27,6 +26,7 @@ This document defines the production-safe environment-variable contract using ke
 | `FRONTEND_ASSETS_DIR` | `optional` | defaults internally when unset; explicit value recommended for deploy consistency |
 | `DATABASE_URL` | `secret-manager-only` | contains secret-bearing value or connection credential |
 | `SUPABASE_URL` | `required` | core production runtime setting |
+| `SUPABASE_PUBLISHABLE_KEY` | `public-safe` | browser-safe key for client auth bootstrap; must not contain secret material |
 | `SUPABASE_JWKS_URL` | `optional` | defaults to `${SUPABASE_URL}/auth/v1/.well-known/jwks.json` when unset |
 | `SUPABASE_JWT_ISSUER` | `required` | core production runtime setting |
 | `SUPABASE_JWT_AUDIENCE` | `required` | core production runtime setting |
@@ -52,10 +52,18 @@ This document defines the production-safe environment-variable contract using ke
 | `WORKER_WATCH_SECONDS` | `required` | core worker cadence setting |
 | `KEY_ROTATION_SECONDS` | `required` | core worker cadence setting |
 
-## Deploy Env (`infra/env/prod/deploy.env.example`)
+## Deploy Env (`env/prod/deploy.env.example`)
 
 Reference-only mirror of the GitHub `production` environment deploy controls.
 Canonical values must be maintained in GitHub environment variables, not committed env files.
+
+Host bootstrap baseline (non-env, mandatory on deploy VM):
+- active `/swapfile` at `2G`,
+- persisted `vm.swappiness=10`,
+- persisted `vm.vfs_cache_pressure=50`.
+
+Operational note:
+- bake an idempotent guard for the above baseline into `DEPLOY_COMMAND` (prefix), and keep the same guard documented in `env/prod/deploy.env.example`.
 
 | Key | Classification | Rationale |
 |---|---|---|
@@ -68,48 +76,12 @@ Canonical values must be maintained in GitHub environment variables, not committ
 | `DEPLOY_COMMAND` | `required` | fail-closed deploy contract |
 | `DEPLOY_HEALTHCHECK_COMMAND` | `required` | fail-closed post-deploy verification contract |
 
-## Caddy Env (`infra/env/prod/caddy.env*`)
+## Caddy Env (`env/prod/caddy.env*`)
 
 | Key | Classification | Rationale |
 |---|---|---|
 | `CADDY_ACME_EMAIL` | `required` | required for TLS site and ACME identity |
 | `CADDY_SITE_ADDRESS` | `required` | required for TLS site and ACME identity |
-
-## Rust Runtime Profile (`runtime/env.example`)
-
-| Key | Classification | Rationale |
-|---|---|---|
-| `APP_ENV` | `required` | required by baseline Rust API/worker runtime |
-| `APP_HOST` | `required` | required by baseline Rust API/worker runtime |
-| `APP_PORT` | `required` | required by baseline Rust API/worker runtime |
-| `DATABASE_URL` | `secret-manager-only` | secret-bearing runtime value |
-| `EMAIL_FROM_ADDRESS` | `required` | required by baseline Rust API/worker runtime |
-| `EVERVAULT_APP_ID` | `optional` | non-secret provider identifier used by runtime features |
-| `EVERVAULT_RELAY_BASE_URL` | `optional` | optional runtime tuning/override |
-| `FRONTEND_ASSETS_DIR` | `required` | required by baseline Rust API/worker runtime |
-| `INTERNAL_IDENTITY_ISSUER` | `required` | required by baseline Rust API/worker runtime |
-| `INTERNAL_IDENTITY_SECRET` | `secret-manager-only` | secret-bearing runtime value |
-| `KEK_VERSION` | `required` | required by baseline Rust API/worker runtime |
-| `KEY_ROTATION_SECONDS` | `required` | required by baseline Rust API/worker runtime |
-| `LOG_JSON` | `required` | required by baseline Rust API/worker runtime |
-| `MASTER_KEY` | `secret-manager-only` | secret-bearing runtime value |
-| `MASTER_KEY_OVERRIDE` | `secret-manager-only` | optional override channel for envelope key injection |
-| `REDIS_URL` | `secret-manager-only` | secret-bearing runtime value |
-| `RESEND_API_KEY` | `secret-manager-only` | secret-bearing runtime value |
-| `RESEND_BASE_URL` | `optional` | optional runtime tuning/override |
-| `RUNTIME_LEASE_PREFIX` | `required` | required by baseline Rust API/worker runtime |
-| `RUNTIME_QUEUE_DLQ_KEY` | `required` | required by baseline Rust API/worker runtime |
-| `RUNTIME_QUEUE_KEY` | `required` | required by baseline Rust API/worker runtime |
-| `RUNTIME_RATE_LIMIT_PREFIX` | `required` | required by baseline Rust API/worker runtime |
-| `SUPABASE_AUTH_WEBHOOK_SECRET` | `secret-manager-only` | secret-bearing runtime value |
-| `SUPABASE_JWKS_CACHE_SECONDS` | `optional` | optional runtime tuning/override |
-| `SUPABASE_JWKS_URL` | `required` | required by baseline Rust API/worker runtime |
-| `SUPABASE_JWT_AUDIENCE` | `required` | required by baseline Rust API/worker runtime |
-| `SUPABASE_JWT_ISSUER` | `required` | required by baseline Rust API/worker runtime |
-| `SUPABASE_URL` | `required` | required by baseline Rust API/worker runtime |
-| `WORKER_POLL_SECONDS` | `required` | required by baseline Rust API/worker runtime |
-| `WORKER_RECONCILE_SECONDS` | `required` | required by baseline Rust API/worker runtime |
-| `WORKER_WATCH_SECONDS` | `required` | required by baseline Rust API/worker runtime |
 
 ## GitHub Actions Production Environment Vars (`.github/workflows/cd.yml`)
 

@@ -130,6 +130,10 @@ Minimum deployment checks:
 - API liveness and readiness endpoints return expected states.
 - Worker startup and queue connectivity validated.
 - SSR/web asset availability confirmed.
+- VM memory baseline is enforced before rollout:
+  - `/swapfile` active at 2G,
+  - `vm.swappiness=10`,
+  - `vm.vfs_cache_pressure=50`.
 
 Rollback policy:
 - Immediate rollback on sustained health failure, data integrity risk, or security regression.
@@ -170,13 +174,16 @@ Pointer discipline:
 - Keep `docs/README.md` as a compact pointer index.
 - Keep `docs/START_HERE.md` as orientation entrypoint.
 - Keep `docs/INTENT_ROUTING.md` as keyword router into manual sections.
+- Keep `docs/PROD_ENV_CONTRACT.md` aligned with production env key contracts and secret-handling posture.
 
 ## Current Gap Register And Backfill Targets
 
 Current repository state:
 - Runtime source is present and buildable.
-- Env templates are present under `infra/env/**`.
-- Large portions of CI/CD scripts, infra test harnesses, and deployment automation are absent from the tracked tree.
+- Env templates are present under `env/**`.
+- Baseline GitHub Actions workflows are present as `.github/workflows/ci.yml` and `.github/workflows/cd.yml`.
+- VM deploy contract is fail-closed and environment-defined: CD requires protected `DEPLOY_COMMAND` and `DEPLOY_HEALTHCHECK_COMMAND`, then executes over IAP SSH using immutable image refs.
+- Full infra validation suites and richer rollback automation are not yet fully restored.
 
 Mandatory backfill targets:
 1. CI quality pipeline implementation aligned to this manual's gates.
