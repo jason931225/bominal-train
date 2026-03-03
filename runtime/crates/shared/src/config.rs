@@ -86,21 +86,37 @@ impl AppConfig {
         dotenvy::dotenv().ok();
 
         let database_url = normalize_database_url(&env_or("DATABASE_URL", "")?);
+        let app_env = env_or("APP_ENV", "dev")?;
+        let app_host = env_or("APP_HOST", "0.0.0.0")?;
+        let app_port = parse_u16("APP_PORT", 8080)?;
+        let session_cookie_name = env_or("SESSION_COOKIE_NAME", "bominal_session")?;
+        let session_cookie_domain = env_opt("SESSION_COOKIE_DOMAIN");
+        let session_ttl_seconds = parse_u64("SESSION_TTL_SECONDS", 86400)?;
+        let step_up_ttl_seconds = parse_u64("STEP_UP_TTL_SECONDS", 600)?;
+        let session_secret = env_or("SESSION_SECRET", "dev-session-secret-change-me")?;
+        let invite_base_url = env_or("INVITE_BASE_URL", "http://127.0.0.1:8000")?;
+        let user_app_host = env_or("USER_APP_HOST", "www.bominal.com")?;
+        let admin_app_host = env_or("ADMIN_APP_HOST", "ops.bominal.com")?;
+        let ui_theme_cookie_name = env_or("UI_THEME_COOKIE_NAME", "bominal_theme")?;
+        let webauthn_rp_id = env_or("WEBAUTHN_RP_ID", "localhost")?;
+        let webauthn_rp_origin_default = format!("http://localhost:{app_port}");
+        let webauthn_rp_origin = env_or("WEBAUTHN_RP_ORIGIN", &webauthn_rp_origin_default)?;
+        let webauthn_rp_name = env_or("WEBAUTHN_RP_NAME", "bominal")?;
 
         Ok(Self {
-            app_env: env_or("APP_ENV", "dev")?,
-            app_host: env_or("APP_HOST", "0.0.0.0")?,
-            app_port: parse_u16("APP_PORT", 8080)?,
+            app_env,
+            app_host,
+            app_port,
             log_json: parse_bool("LOG_JSON", true),
-            session_cookie_name: env_or("SESSION_COOKIE_NAME", "bominal_session")?,
-            session_cookie_domain: env_opt("SESSION_COOKIE_DOMAIN"),
-            session_ttl_seconds: parse_u64("SESSION_TTL_SECONDS", 86400)?,
-            step_up_ttl_seconds: parse_u64("STEP_UP_TTL_SECONDS", 600)?,
-            session_secret: env_or("SESSION_SECRET", "dev-session-secret-change-me")?,
-            invite_base_url: env_or("INVITE_BASE_URL", "http://127.0.0.1:8000")?,
-            user_app_host: env_or("USER_APP_HOST", "www.bominal.com")?,
-            admin_app_host: env_or("ADMIN_APP_HOST", "ops.bominal.com")?,
-            ui_theme_cookie_name: env_or("UI_THEME_COOKIE_NAME", "bominal_theme")?,
+            session_cookie_name,
+            session_cookie_domain,
+            session_ttl_seconds,
+            step_up_ttl_seconds,
+            session_secret,
+            invite_base_url,
+            user_app_host,
+            admin_app_host,
+            ui_theme_cookie_name,
             database_url,
             redis: RedisConfig {
                 url: env_or("REDIS_URL", "redis://127.0.0.1:6379")?,
@@ -116,9 +132,9 @@ impl AppConfig {
             resend: maybe_resend()?,
             passkey: PasskeyConfig {
                 provider: parse_passkey_provider(&env_or("PASSKEY_PROVIDER", "server_webauthn")?)?,
-                webauthn_rp_id: env_or("WEBAUTHN_RP_ID", "localhost")?,
-                webauthn_rp_origin: env_or("WEBAUTHN_RP_ORIGIN", "http://localhost:8000")?,
-                webauthn_rp_name: env_or("WEBAUTHN_RP_NAME", "bominal")?,
+                webauthn_rp_id,
+                webauthn_rp_origin,
+                webauthn_rp_name,
                 webauthn_challenge_ttl_seconds: parse_u64("WEBAUTHN_CHALLENGE_TTL_SECONDS", 300)?,
             },
             runtime: RuntimeSchedule {

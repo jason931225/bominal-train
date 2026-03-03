@@ -108,13 +108,21 @@ pub(crate) fn build_router(state: Arc<AppState>) -> Router {
             },
         );
 
-    router
+    let router = router
         .nest_service("/assets", ServeDir::new(assets_dir))
         .layer(middleware::from_fn(record_http_metrics))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             enforce_canonical_hosts,
-        ))
+        ));
+
+    let router = if state.config.app_env.eq_ignore_ascii_case("production") {
+        router
+    } else {
+        router.layer(middleware::from_fn(normalize_local_auth_hosts))
+    };
+
+    router
         .layer(
             ServiceBuilder::new()
                 .layer(SetRequestIdLayer::new(
@@ -135,37 +143,49 @@ pub(crate) fn build_router(state: Arc<AppState>) -> Router {
         .with_state(state)
 }
 
+async fn normalize_local_auth_hosts(request: Request, next: Next) -> Response {
+    let Some(host_header) = extract_host_header(&request) else {
+        return next.run(request).await;
+    };
+    let host = host_header
+        .split(':')
+        .next()
+        .unwrap_or(host_header.as_str())
+        .to_ascii_lowercase();
+    let port_suffix = host_header
+        .split_once(':')
+        .map(|(_, port)| format!(":{port}"))
+        .unwrap_or_default();
+    let path = request.uri().path();
+    let path_and_query = request
+        .uri()
+        .path_and_query()
+        .map(|value| value.as_str())
+        .unwrap_or(path);
+
+    if matches!(host.as_str(), "127.0.0.1" | "0.0.0.0")
+        && (matches!(path, "/" | "/auth") || path.starts_with("/dashboard"))
+    {
+        return Redirect::temporary(&format!("http://localhost{port_suffix}{path_and_query}"))
+            .into_response();
+    }
+    next.run(request).await
+}
+
 async fn enforce_canonical_hosts(
     State(state): State<Arc<AppState>>,
     request: Request,
     next: Next,
 ) -> Response {
-    let host = request
-        .headers()
-        .get("x-forwarded-host")
-        .and_then(|value| value.to_str().ok())
-        .or_else(|| {
-            request
-                .headers()
-                .get("host")
-                .and_then(|value| value.to_str().ok())
-        })
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(|value| {
-            value
-                .split(':')
-                .next()
-                .unwrap_or(value)
-                .to_ascii_lowercase()
-        });
-
-    let Some(host) = host else {
+    let host_header = extract_host_header(&request);
+    let Some(host_header) = host_header else {
         return next.run(request).await;
     };
-    if is_local_host(&host) {
-        return next.run(request).await;
-    }
+    let host = host_header
+        .split(':')
+        .next()
+        .unwrap_or(host_header.as_str())
+        .to_ascii_lowercase();
 
     let path = request.uri().path();
     let path_and_query = request
@@ -173,6 +193,10 @@ async fn enforce_canonical_hosts(
         .path_and_query()
         .map(|value| value.as_str())
         .unwrap_or(path);
+    if is_local_host(&host) {
+        return next.run(request).await;
+    }
+
     let admin_host = state.config.admin_app_host.to_ascii_lowercase();
     let user_host = state.config.user_app_host.to_ascii_lowercase();
 
@@ -201,6 +225,22 @@ async fn enforce_canonical_hosts(
 
 fn is_local_host(value: &str) -> bool {
     value == "localhost" || value == "127.0.0.1" || value.ends_with(".local") || value == "0.0.0.0"
+}
+
+fn extract_host_header(request: &Request) -> Option<String> {
+    request
+        .headers()
+        .get("x-forwarded-host")
+        .and_then(|value| value.to_str().ok())
+        .or_else(|| {
+            request
+                .headers()
+                .get("host")
+                .and_then(|value| value.to_str().ok())
+        })
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_ascii_lowercase())
 }
 
 fn register_internal_api(

@@ -14,7 +14,7 @@ fn app_shell_topbar(title: &str, subtitle: &str) -> String {
     <div class="flex items-start justify-between gap-3">
       <div>
         <p class="eyebrow">bominal</p>
-        <h1 class="mt-1 text-xl font-semibold text-slate-900 dark:text-slate-100">{title}</h1>
+        <h1 class="mt-1 text-xl font-semibold txt-strong">{title}</h1>
       </div>
       <button
         type="button"
@@ -40,7 +40,7 @@ fn app_shell_topbar(title: &str, subtitle: &str) -> String {
         <span class="theme-mini-thumb" aria-hidden="true"></span>
       </button>
     </div>
-    <p class="mt-1 text-sm text-slate-600 dark:text-slate-300">{subtitle}</p>
+    <p class="mt-1 text-sm txt-supporting">{subtitle}</p>
   </div>
 </header>"#
     )
@@ -111,7 +111,7 @@ pub fn render_auth_landing() -> String {
         </div>
         </div>
 
-        <div id="auth-error" class="mt-3 hidden rounded-2xl border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-700"></div>
+        <div id="auth-error" class="mt-3 hidden error-card"></div>
       </section>
 
       <button
@@ -323,7 +323,7 @@ pub fn render_dashboard_overview(email: &str) -> String {
   <div class="md:grid md:grid-cols-[220px_minmax(0,1fr)] md:items-start md:gap-4">
     {sidebar}
     <section class="glass-card rounded-[22px] p-5">
-      <h2 class="text-lg font-semibold text-slate-900 dark:text-slate-100">Operational summary</h2>
+      <h2 class="text-lg font-semibold txt-strong">Operational summary</h2>
       <div id="dashboard-summary" class="mt-4 space-y-2">
         <div class="summary-row"><span>Total jobs</span><span>--</span></div>
         <div class="summary-row"><span>Queued</span><span>--</span></div>
@@ -375,7 +375,7 @@ pub fn render_dashboard_jobs(email: &str) -> String {
   <div class="md:grid md:grid-cols-[220px_minmax(0,1fr)] md:items-start md:gap-4">
     {sidebar}
     <section class="glass-card rounded-[22px] p-5">
-      <h2 class="text-lg font-semibold text-slate-900 dark:text-slate-100">My runtime jobs</h2>
+      <h2 class="text-lg font-semibold txt-strong">My runtime jobs</h2>
       <div id="jobs-list" class="mt-4 space-y-2"><div class="loading-card">Loading jobs...</div></div>
     </section>
   </div>
@@ -522,39 +522,59 @@ pub fn render_dashboard_security(email: &str) -> String {
 <main class="mx-auto w-full max-w-[480px] px-4 pb-24 pt-4 md:max-w-7xl md:px-6 md:pt-8">
   <div class="md:grid md:grid-cols-[220px_minmax(0,1fr)] md:items-start md:gap-4">
     {sidebar}
-    <div class="space-y-4">
-      <section class="glass-card rounded-[22px] p-5">
-        <div class="flex items-center justify-between gap-2">
-          <h2 class="text-lg font-semibold text-slate-900 dark:text-slate-100">Account settings</h2>
-          <button id="create-passkey" class="btn-primary h-11 px-4">Create passkey</button>
-        </div>
-        <p class="mt-1 text-sm text-slate-600 dark:text-slate-300">Register a passkey for faster and safer sign-in.</p>
-        <div id="passkey-status" class="mt-3 hidden"></div>
-        <div id="passkeys-list" class="mt-4 space-y-2"><div class="loading-card">Loading passkeys...</div></div>
-      </section>
+    <section class="glass-card rounded-[22px] p-5">
+      <h2 class="text-lg font-semibold txt-strong">Account settings</h2>
 
-      <section class="glass-card rounded-[22px] p-5">
-        <h2 class="text-lg font-semibold text-slate-900 dark:text-slate-100">Change password</h2>
-        <p class="mt-1 text-sm text-slate-600 dark:text-slate-300">Use upper/lowercase letters, numbers, and symbols.</p>
-        <form id="password-change-form" class="mt-4 space-y-3">
-          <label class="field-label" for="current-password">Current password</label>
-          <input id="current-password" type="password" autocomplete="current-password" class="field-input h-12 w-full" />
-          <label class="field-label" for="new-password">New password</label>
-          <input id="new-password" type="password" autocomplete="new-password" class="field-input h-12 w-full" />
-          <label class="field-label" for="confirm-password">Confirm new password</label>
-          <input id="confirm-password" type="password" autocomplete="new-password" class="field-input h-12 w-full" />
-          <div class="space-y-1">
-            <div class="password-strength-track">
-              <div id="password-strength-fill" class="password-strength-fill"></div>
-            </div>
-            <p id="password-strength-text" class="text-xs text-slate-600 dark:text-slate-300">Strength: weak</p>
-            <p id="password-match-hint" class="text-xs text-slate-600 dark:text-slate-300">Passwords must match.</p>
+      <div class="mt-4 space-y-4">
+        <section class="summary-card p-4">
+          <div class="flex items-center justify-between gap-2">
+            <h3 class="text-sm font-semibold txt-strong">Passkeys</h3>
           </div>
-          <button type="submit" class="btn-primary h-12 w-full">Update password</button>
-        </form>
-        <div id="password-change-status" class="mt-3 hidden"></div>
-      </section>
-    </div>
+          <p class="mt-1 text-sm txt-supporting">Register a passkey for faster and safer sign-in.</p>
+          <div id="passkey-status" class="mt-3 hidden"></div>
+          <div id="passkeys-list" class="mt-4 space-y-2"><div class="loading-card">Loading passkeys...</div></div>
+          <div class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <button id="create-passkey" class="btn-primary h-11 px-4">Create passkey</button>
+            <button id="delete-passkey" type="button" class="btn-ghost h-11 w-full" disabled>Delete selected passkey</button>
+          </div>
+        </section>
+
+        <section class="summary-card p-4">
+          <h3 class="text-sm font-semibold txt-strong">Change password</h3>
+          <p class="mt-1 text-sm txt-supporting">Use upper/lowercase letters, numbers, and symbols.</p>
+          <form id="password-change-form" class="mt-4 space-y-3">
+            <label class="field-label" for="new-password">New password</label>
+            <input id="new-password" type="password" autocomplete="new-password" class="field-input h-12 w-full" />
+            <label class="field-label" for="confirm-password">Confirm new password</label>
+            <input id="confirm-password" type="password" autocomplete="new-password" class="field-input h-12 w-full" />
+            <div class="space-y-1">
+              <div class="password-strength-track">
+                <div id="password-strength-fill" class="password-strength-fill"></div>
+              </div>
+              <p id="password-strength-text" class="text-xs txt-supporting">Strength: weak</p>
+              <p id="password-match-hint" class="text-xs txt-supporting">Passwords must match.</p>
+            </div>
+            <button type="submit" class="btn-primary h-12 w-full">Update password</button>
+          </form>
+          <div id="password-change-status" class="mt-3 hidden"></div>
+        </section>
+      </div>
+
+      <div id="security-modal" class="app-modal-backdrop hidden" aria-hidden="true">
+        <div class="app-modal-card" role="dialog" aria-modal="true" aria-labelledby="security-modal-title">
+          <h4 id="security-modal-title" class="text-base font-semibold txt-strong"></h4>
+          <p id="security-modal-message" class="mt-2 text-sm txt-supporting"></p>
+          <div id="security-modal-input-wrap" class="mt-3 hidden">
+            <label id="security-modal-input-label" class="field-label" for="security-modal-input">Current password</label>
+            <input id="security-modal-input" type="password" autocomplete="current-password" class="field-input h-12 w-full" />
+          </div>
+          <div class="mt-4 grid grid-cols-2 gap-2">
+            <button id="security-modal-cancel" type="button" class="btn-ghost h-11 w-full">Cancel</button>
+            <button id="security-modal-confirm" type="button" class="btn-primary h-11 w-full">Confirm</button>
+          </div>
+        </div>
+      </div>
+    </section>
   </div>
 </main>
 <nav class="bottom-nav">
@@ -567,14 +587,23 @@ pub fn render_dashboard_security(email: &str) -> String {
   const list = document.getElementById('passkeys-list');
   const passkeyStatus = document.getElementById('passkey-status');
   const createPasskeyButton = document.getElementById('create-passkey');
+  const deletePasskeyButton = document.getElementById('delete-passkey');
   const passwordForm = document.getElementById('password-change-form');
-  const currentPasswordInput = document.getElementById('current-password');
   const newPasswordInput = document.getElementById('new-password');
   const confirmPasswordInput = document.getElementById('confirm-password');
   const strengthFill = document.getElementById('password-strength-fill');
   const strengthText = document.getElementById('password-strength-text');
   const matchHint = document.getElementById('password-match-hint');
   const passwordStatus = document.getElementById('password-change-status');
+  const securityModal = document.getElementById('security-modal');
+  const securityModalTitle = document.getElementById('security-modal-title');
+  const securityModalMessage = document.getElementById('security-modal-message');
+  const securityModalInputWrap = document.getElementById('security-modal-input-wrap');
+  const securityModalInput = document.getElementById('security-modal-input');
+  const securityModalCancel = document.getElementById('security-modal-cancel');
+  const securityModalConfirm = document.getElementById('security-modal-confirm');
+  let selectedCredentialId = null;
+  let modalResolver = null;
 
   const requestJson = (url, method, payload) => fetch(url, {{
     method,
@@ -670,45 +699,134 @@ pub fn render_dashboard_security(email: &str) -> String {
   const renderMatch = () => {{
     const confirmValue = confirmPasswordInput.value;
     const matches = newPasswordInput.value === confirmValue && confirmValue.length > 0;
-    matchHint.classList.remove('text-rose-600', 'text-emerald-600');
+    matchHint.classList.remove('txt-critical', 'txt-positive');
     if (!confirmValue) {{
       matchHint.textContent = 'Passwords must match.';
       return false;
     }}
     if (matches) {{
       matchHint.textContent = 'Passwords match.';
-      matchHint.classList.add('text-emerald-600');
+      matchHint.classList.add('txt-positive');
       return true;
     }}
     matchHint.textContent = 'Passwords do not match.';
-    matchHint.classList.add('text-rose-600');
+    matchHint.classList.add('txt-critical');
     return false;
+  }};
+
+  const closeSecurityModal = (result) => {{
+    if (!modalResolver || !securityModal) {{
+      return;
+    }}
+    const resolve = modalResolver;
+    modalResolver = null;
+    securityModal.classList.add('hidden');
+    securityModal.setAttribute('aria-hidden', 'true');
+    if (securityModalInput) {{
+      securityModalInput.value = '';
+    }}
+    resolve(result);
+  }};
+
+  const openSecurityModal = (options) => new Promise((resolve) => {{
+    if (!securityModal || !securityModalTitle || !securityModalMessage || !securityModalInputWrap || !securityModalInput || !securityModalCancel || !securityModalConfirm) {{
+      resolve({{ confirmed: false, value: '' }});
+      return;
+    }}
+
+    securityModalTitle.textContent = options.title || 'Confirm action';
+    securityModalMessage.textContent = options.message || '';
+    securityModalConfirm.textContent = options.confirmText || 'Confirm';
+    securityModalInputWrap.classList.toggle('hidden', !options.withPassword);
+    securityModalInput.value = '';
+    securityModal.classList.remove('hidden');
+    securityModal.setAttribute('aria-hidden', 'false');
+    modalResolver = resolve;
+
+    requestAnimationFrame(() => {{
+      if (options.withPassword) {{
+        securityModalInput.focus();
+      }} else {{
+        securityModalConfirm.focus();
+      }}
+    }});
+  }});
+
+  const syncPasskeySelection = () => {{
+    let selectedExists = false;
+    list.querySelectorAll('[data-credential-id]').forEach((card) => {{
+      const selected = card.dataset.credentialId === selectedCredentialId;
+      card.classList.toggle('passkey-card-selected', selected);
+      card.setAttribute('aria-pressed', selected ? 'true' : 'false');
+      if (selected) {{
+        selectedExists = true;
+      }}
+    }});
+    if (!selectedExists) {{
+      selectedCredentialId = null;
+    }}
+    deletePasskeyButton.disabled = !selectedCredentialId;
   }};
 
   const load = () => fetch('/api/auth/passkeys', {{ headers: {{ Accept: 'application/json' }} }})
     .then((res) => res.json().then((json) => [res.ok, json]))
     .then(([ok, data]) => {{
       if (!ok) {{
+        selectedCredentialId = null;
+        syncPasskeySelection();
         list.innerHTML = `<div class="error-card">Failed to load passkeys. request_id: ${{data.request_id || 'n/a'}}</div>`;
         return;
       }}
       const passkeys = data.passkeys || [];
       if (!passkeys.length) {{
+        selectedCredentialId = null;
+        syncPasskeySelection();
         list.innerHTML = '<div class="empty-card">No passkeys registered.</div>';
         return;
       }}
+      if (selectedCredentialId && !passkeys.some((item) => item.credential_id === selectedCredentialId)) {{
+        selectedCredentialId = null;
+      }}
       list.innerHTML = passkeys.map((item) => `
-        <div class="summary-card">
+        <button type="button" class="summary-card passkey-card w-full text-left" data-credential-id="${{item.credential_id}}" aria-pressed="false">
           <div class="summary-row"><span>${{item.friendly_name || 'Unnamed passkey'}}</span><span>${{item.credential_id}}</span></div>
-          <button class="btn-ghost h-11 w-full mt-2" data-remove="${{item.credential_id}}">Remove</button>
-        </div>
+        </button>
       `).join('');
-      list.querySelectorAll('[data-remove]').forEach((button) => {{
-        button.addEventListener('click', () => {{
-          fetch(`/api/auth/passkeys/${{button.dataset.remove}}`, {{ method: 'DELETE' }}).then(load);
+      list.querySelectorAll('[data-credential-id]').forEach((card) => {{
+        card.addEventListener('click', () => {{
+          selectedCredentialId = card.dataset.credentialId || null;
+          syncPasskeySelection();
         }});
       }});
+      syncPasskeySelection();
     }});
+
+  const deleteSelectedPasskey = async () => {{
+    if (!selectedCredentialId) {{
+      return;
+    }}
+    const modalResult = await openSecurityModal({{
+      title: 'Delete passkey',
+      message: `Delete selected passkey (${{selectedCredentialId}})? This action cannot be undone.`,
+      confirmText: 'Delete',
+      withPassword: false,
+    }});
+    if (!modalResult.confirmed) {{
+      return;
+    }}
+    clearStatus(passkeyStatus);
+    deletePasskeyButton.disabled = true;
+    const result = await requestJson(`/api/auth/passkeys/${{selectedCredentialId}}`, 'DELETE');
+    if (!result.ok) {{
+      const requestId = result.body && result.body.request_id ? ` (request_id: ${{result.body.request_id}})` : '';
+      showStatus(passkeyStatus, `Passkey deletion failed${{requestId}}`, 'error');
+      syncPasskeySelection();
+      return;
+    }}
+    selectedCredentialId = null;
+    showStatus(passkeyStatus, 'Passkey deleted successfully.', 'success');
+    load();
+  }};
 
   const createPasskey = async () => {{
     clearStatus(passkeyStatus);
@@ -767,6 +885,47 @@ pub fn render_dashboard_security(email: &str) -> String {
   }};
 
   createPasskeyButton.addEventListener('click', createPasskey);
+  deletePasskeyButton.addEventListener('click', deleteSelectedPasskey);
+
+  if (securityModalCancel) {{
+    securityModalCancel.addEventListener('click', () => {{
+      closeSecurityModal({{ confirmed: false, value: '' }});
+    }});
+  }}
+
+  if (securityModalConfirm) {{
+    securityModalConfirm.addEventListener('click', () => {{
+      const requiresPassword = securityModalInputWrap && !securityModalInputWrap.classList.contains('hidden');
+      if (requiresPassword) {{
+        const value = securityModalInput.value;
+        if (!value) {{
+          securityModalInput.focus();
+          return;
+        }}
+        closeSecurityModal({{ confirmed: true, value }});
+        return;
+      }}
+      closeSecurityModal({{ confirmed: true, value: '' }});
+    }});
+  }}
+
+  if (securityModal) {{
+    securityModal.addEventListener('click', (event) => {{
+      if (event.target === securityModal) {{
+        closeSecurityModal({{ confirmed: false, value: '' }});
+      }}
+    }});
+  }}
+
+  document.addEventListener('keydown', (event) => {{
+    if (!securityModal || securityModal.classList.contains('hidden')) {{
+      return;
+    }}
+    if (event.key === 'Escape') {{
+      event.preventDefault();
+      closeSecurityModal({{ confirmed: false, value: '' }});
+    }}
+  }});
 
   newPasswordInput.addEventListener('input', () => {{
     renderStrength();
@@ -789,8 +948,23 @@ pub fn render_dashboard_security(email: &str) -> String {
       return;
     }}
 
+    const modalResult = await openSecurityModal({{
+      title: 'Confirm password update',
+      message: 'Enter your current password to apply this change.',
+      confirmText: 'Update',
+      withPassword: true,
+    }});
+    if (!modalResult.confirmed) {{
+      return;
+    }}
+    const currentPassword = modalResult.value;
+    if (!currentPassword) {{
+      showStatus(passwordStatus, 'Current password is required to update password.', 'error');
+      return;
+    }}
+
     const result = await requestJson('/api/auth/password/change', 'POST', {{
-      current_password: currentPasswordInput.value,
+      current_password: currentPassword,
       new_password: newPasswordInput.value,
     }});
     if (!result.ok) {{
@@ -800,7 +974,6 @@ pub fn render_dashboard_security(email: &str) -> String {
     }}
 
     showStatus(passwordStatus, 'Password updated successfully.', 'success');
-    currentPasswordInput.value = '';
     newPasswordInput.value = '';
     confirmPasswordInput.value = '';
     renderStrength();
@@ -835,8 +1008,8 @@ pub fn render_admin_maintenance(view: &AdminMaintenanceView) -> String {
         r#"<main class="mx-auto w-full max-w-[480px] px-4 pb-24 pt-4 md:max-w-7xl md:px-6 md:pt-8">
   <section class="glass-card rounded-[22px] p-5">
     <p class="eyebrow">ops.bominal.com</p>
-    <h1 class="mt-1 text-2xl font-semibold text-slate-900 dark:text-slate-100">Admin maintenance</h1>
-    <p class="mt-2 text-sm text-slate-600 dark:text-slate-300">Signed in as {admin_email}</p>
+    <h1 class="mt-1 text-2xl font-semibold txt-strong">Admin maintenance</h1>
+    <p class="mt-2 text-sm txt-supporting">Signed in as {admin_email}</p>
     <div class="summary-row mt-4"><span>Readiness</span><span class="badge">{readiness}</span></div>
     <div class="summary-row"><span>Database</span><span class="badge">{}</span></div>
     <div class="summary-row"><span>Redis</span><span class="badge">{}</span></div>
@@ -847,8 +1020,8 @@ pub fn render_admin_maintenance(view: &AdminMaintenanceView) -> String {
     </div>
   </section>
   <section class="glass-card mt-4 rounded-[22px] p-5">
-    <h2 class="text-lg font-semibold text-slate-900 dark:text-slate-100">Metrics snapshot</h2>
-    <pre class="mt-3 max-h-[28rem] overflow-auto rounded-2xl bg-slate-950/90 p-4 text-xs text-slate-100">{metrics_snapshot}</pre>
+    <h2 class="text-lg font-semibold txt-strong">Metrics snapshot</h2>
+    <pre class="mt-3 max-h-[28rem] overflow-auto rounded-2xl bg-slate-950/90 p-4 text-xs txt-inverse">{metrics_snapshot}</pre>
   </section>
 </main>
 {}"#,
@@ -875,8 +1048,8 @@ pub fn render_admin_section(admin_email: &str, section: &str) -> String {
         r#"<main class="mx-auto w-full max-w-[480px] px-4 pb-24 pt-4 md:max-w-7xl md:px-6 md:pt-8">
   <section class="glass-card rounded-[22px] p-5">
     <p class="eyebrow">ops.bominal.com</p>
-    <h1 class="mt-1 text-2xl font-semibold text-slate-900 dark:text-slate-100">{}</h1>
-    <p class="mt-2 text-sm text-slate-600 dark:text-slate-300">Operator: {}</p>
+    <h1 class="mt-1 text-2xl font-semibold txt-strong">{}</h1>
+    <p class="mt-2 text-sm txt-supporting">Operator: {}</p>
     <div id="admin-content" class="mt-4 space-y-2"><div class="loading-card">Loading...</div></div>
   </section>
 </main>
@@ -900,7 +1073,7 @@ pub fn render_admin_section(admin_email: &str, section: &str) -> String {
         content.innerHTML = `<div class="error-card">Request failed. request_id: ${{data.request_id || 'n/a'}}</div>`;
         return;
       }}
-      content.innerHTML = `<pre class="rounded-2xl bg-slate-950/90 p-4 text-xs text-slate-100 overflow-auto">${{JSON.stringify(data, null, 2)}}</pre>`;
+      content.innerHTML = `<pre class="rounded-2xl bg-slate-950/90 p-4 text-xs txt-inverse overflow-auto">${{JSON.stringify(data, null, 2)}}</pre>`;
     }})
     .catch((err) => {{
       content.innerHTML = `<div class="error-card">${{String(err)}}</div>`;
