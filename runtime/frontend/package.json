@@ -1,0 +1,12 @@
+{
+  "name": "bominal-runtime-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "build:css": "tailwindcss -i ./styles/tailwind.css -o ./dist/tailwind.css --minify",
+    "watch:css": "tailwindcss -i ./styles/tailwind.css -o ./dist/tailwind.css --watch"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4.17"
+  }
+}

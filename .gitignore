@@ -41,3 +41,10 @@ gcp_resources*.tf
 
 # Local-only runtime envs
 infra/env/local/
+
+# Local editor/agent state
+.claude/
+.cursor/
+.serena/
+.vscode/
+.idea/

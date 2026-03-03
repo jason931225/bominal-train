@@ -1,0 +1,209 @@
+{
+  "contract_label": {
+    "group_id": "G0020",
+    "signature": "v1:928bbfc0ed8ab40e",
+    "component": "srt",
+    "method": "POST",
+    "host": "app.srail.or.kr:443",
+    "path": "/ata/selectListAta09036_n.do",
+    "occurrence_count": 1,
+    "classification": "unique_exemplar"
+  },
+  "source": {
+    "exemplar_file": "docs/handoff/output/20260228T092916Z_17168665/0024_srt_POST_selectListAta09036_n.do.json",
+    "all_files": [
+      "docs/handoff/output/20260228T092916Z_17168665/0024_srt_POST_selectListAta09036_n.do.json"
+    ]
+  },
+  "signature_basis": {
+    "v": "v1",
+    "component": "srt",
+    "method": "POST",
+    "host": "app.srail.or.kr:443",
+    "path": "/ata/selectListAta09036_n.do",
+    "request": {
+      "params_keys": [],
+      "data_keys": [
+        "arvStnConsOrdr2",
+        "arvTm",
+        "athnDvCd1",
+        "athnVal1",
+        "cgPsId",
+        "chgMcs",
+        "crdInpWayCd1",
+        "crdVlidTrm1",
+        "ctlDvCd",
+        "dptStnConsOrdr2",
+        "dptTm",
+        "inrecmnsGridcnt",
+        "ismtMnthNum1",
+        "jrnyCnt",
+        "mbCrdNo",
+        "mnsStlAmt1",
+        "pageNo",
+        "pageUrl",
+        "pnrNo",
+        "rowCnt",
+        "rsvChgTno",
+        "stlCrCrdNo1",
+        "stlDmnDt",
+        "stlMnsCd1",
+        "stlMnsSqno1",
+        "strJobId",
+        "ststlGridcnt",
+        "totNewStlAmt",
+        "totPrnb",
+        "trnGpCd",
+        "vanPwd1"
+      ],
+      "json_keys": [],
+      "mode_values": {
+        "pageNo": "-"
+      }
+    },
+    "response": {
+      "status_code": 200,
+      "json_schema": {
+        "ERROR_CODE": "str",
+        "ERROR_MSG": "str",
+        "dsResultMap": {
+          "dsOutput0": [
+            {
+              "msgCd": "...",
+              "msgTxt": "...",
+              "strResult": "..."
+            }
+          ]
+        },
+        "outDataSets": {
+          "dsOutput0": [
+            {
+              "msgCd": "...",
+              "msgTxt": "...",
+              "strResult": "..."
+            }
+          ]
+        }
+      },
+      "markers": {
+        "ERROR_CODE": [
+          "0"
+        ],
+        "msgCd": [
+          "WRTV06003"
+        ],
+        "msgTxt": [
+          "비밀번호오류<br><br>사용하신 각 신용카드사의 고객센터로 문의 바랍니다."
+        ],
+        "strResult": [
+          "FAIL"
+        ]
+      }
+    }
+  },
+  "event": {
+    "metadata": {
+      "sequence": 24,
+      "captured_at": "2026-02-28T09:32:26.650600+00:00",
+      "run_id": "20260228T092916Z_17168665",
+      "backend": "curl_cffi",
+      "component": "srt",
+      "operation": "payment",
+      "endpoint": "selectListAta09036_n.do"
+    },
+    "request": {
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/ata/selectListAta09036_n.do",
+      "params": null,
+      "data": {
+        "stlDmnDt": "20260228",
+        "mbCrdNo": "<redacted>",
+        "stlMnsSqno1": "1",
+        "ststlGridcnt": "1",
+        "totNewStlAmt": 19800,
+        "athnDvCd1": "J",
+        "vanPwd1": "<redacted>",
+        "crdVlidTrm1": "2908",
+        "stlMnsCd1": "02",
+        "rsvChgTno": "0",
+        "chgMcs": "0",
+        "ismtMnthNum1": 0,
+        "ctlDvCd": "3102",
+        "cgPsId": "korail",
+        "pnrNo": "<redacted>",
+        "totPrnb": 1,
+        "mnsStlAmt1": 19800,
+        "crdInpWayCd1": "@",
+        "athnVal1": "<redacted>",
+        "stlCrCrdNo1": "<redacted>",
+        "jrnyCnt": "1",
+        "strJobId": "3102",
+        "inrecmnsGridcnt": "1",
+        "dptTm": "133000",
+        "arvTm": "143300",
+        "dptStnConsOrdr2": "000000",
+        "arvStnConsOrdr2": "000000",
+        "trnGpCd": "300",
+        "pageNo": "-",
+        "rowCnt": "-",
+        "pageUrl": ""
+      },
+      "json": null,
+      "headers": {},
+      "cookies": "<redacted>",
+      "session_headers": {
+        "user-agent": "Mozilla/5.0 (Linux; Android 15; SM-S912N Build/AP3A.240905.015.A2; wv) AppleWebKit/537.36(KHTML, like Gecko) Version/4.0 Chrome/136.0.7103.125 Mobile Safari/537.36SRT-APP-Android V.2.0.38",
+        "accept": "application/json"
+      },
+      "session_cookies": "<redacted>",
+      "extra": {}
+    },
+    "effective_request": {
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/ata/selectListAta09036_n.do",
+      "headers": {
+        "user-agent": "Mozilla/5.0 (Linux; Android 15; SM-S912N Build/AP3A.240905.015.A2; wv) AppleWebKit/537.36(KHTML, like Gecko) Version/4.0 Chrome/136.0.7103.125 Mobile Safari/537.36SRT-APP-Android V.2.0.38",
+        "accept": "application/json"
+      },
+      "body": null
+    },
+    "response": {
+      "status_code": 200,
+      "ok": true,
+      "url": "https://app.srail.or.kr:443/ata/selectListAta09036_n.do",
+      "headers": {
+        "content-language": "ko",
+        "date": "Sat, 28 Feb 2026 09:32:27 GMT",
+        "expires": "Thu, 01 Jan 1970 00:00:00 GMT",
+        "content-type": "application/json;charset=UTF-8",
+        "cache-control": "no-cache, no-store, max-age=0",
+        "pragma": "no-cache",
+        "transfer-encoding": "chunked"
+      },
+      "cookies": "<redacted>",
+      "text": "{\"ERROR_MSG\": \"\", \"ERROR_CODE\": \"0\", \"outDataSets\": {\"dsOutput0\": [{\"msgCd\": \"WRTV06003\", \"strResult\": \"FAIL\", \"msgTxt\": \"비밀번호오류<br><br>사용하신 각 신용카드사의 고객센터로 문의 바랍니다.\"}]}, \"dsResultMap\": {\"dsOutput0\": [{\"msgCd\": \"WRTV06003\", \"strResult\": \"FAIL\", \"msgTxt\": \"비밀번호오류<br><br>사용하신 각 신용카드사의 고객센터로 문의 바랍니다.\"}]}}",
+      "json": {
+        "ERROR_MSG": "",
+        "ERROR_CODE": "0",
+        "outDataSets": {
+          "dsOutput0": [
+            {
+              "msgCd": "WRTV06003",
+              "strResult": "FAIL",
+              "msgTxt": "비밀번호오류<br><br>사용하신 각 신용카드사의 고객센터로 문의 바랍니다."
+            }
+          ]
+        },
+        "dsResultMap": {
+          "dsOutput0": [
+            {
+              "msgCd": "WRTV06003",
+              "strResult": "FAIL",
+              "msgTxt": "비밀번호오류<br><br>사용하신 각 신용카드사의 고객센터로 문의 바랍니다."
+            }
+          ]
+        }
+      }
+    }
+  }
+}

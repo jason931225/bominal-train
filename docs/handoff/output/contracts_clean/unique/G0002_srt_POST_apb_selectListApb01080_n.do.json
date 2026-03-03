@@ -1,0 +1,165 @@
+{
+  "contract_label": {
+    "group_id": "G0002",
+    "signature": "v1:712c772661705196",
+    "component": "srt",
+    "method": "POST",
+    "host": "app.srail.or.kr:443",
+    "path": "/apb/selectListApb01080_n.do",
+    "occurrence_count": 1,
+    "classification": "unique_exemplar"
+  },
+  "source": {
+    "exemplar_file": "docs/handoff/output/20260228T092317Z_1eefb481/0001_srt_POST_selectListApb01080_n.do.json",
+    "all_files": [
+      "docs/handoff/output/20260228T092317Z_1eefb481/0001_srt_POST_selectListApb01080_n.do.json"
+    ]
+  },
+  "signature_basis": {
+    "v": "v1",
+    "component": "srt",
+    "method": "POST",
+    "host": "app.srail.or.kr:443",
+    "path": "/apb/selectListApb01080_n.do",
+    "request": {
+      "params_keys": [],
+      "data_keys": [
+        "auto",
+        "check",
+        "customerYn",
+        "deviceKey",
+        "hmpgPwdCphd",
+        "login_referer",
+        "page",
+        "srchDvCd",
+        "srchDvNm"
+      ],
+      "json_keys": [],
+      "mode_values": {
+        "srchDvCd": "1"
+      }
+    },
+    "response": {
+      "status_code": 200,
+      "json_schema": {
+        "MSG": "str",
+        "RTNCD": "str",
+        "commandMap": {
+          "auto": "str",
+          "check": "str",
+          "customerYn": "str",
+          "deviceKey": "str",
+          "hmpgPwdCphd": "str",
+          "login_auto": "str",
+          "login_check": "str",
+          "login_idIdx": "str",
+          "login_idVal": "str",
+          "login_referer": "str",
+          "page": "str",
+          "srchDvCd": "str",
+          "srchDvNm": "str"
+        },
+        "page": "str",
+        "strResult": "str",
+        "userMap": {
+          "USER_DV": "NoneType",
+          "strDeviceInfo": "str",
+          "wctNo": "str"
+        }
+      },
+      "markers": {
+        "strResult": [
+          "FAIL"
+        ]
+      }
+    }
+  },
+  "event": {
+    "metadata": {
+      "sequence": 1,
+      "captured_at": "2026-02-28T09:23:46.715810+00:00",
+      "run_id": "20260228T092317Z_1eefb481",
+      "backend": "curl_cffi",
+      "component": "srt",
+      "operation": "login",
+      "endpoint": "selectListApb01080_n.do"
+    },
+    "request": {
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/apb/selectListApb01080_n.do",
+      "params": null,
+      "data": {
+        "auto": "Y",
+        "check": "Y",
+        "page": "menu",
+        "deviceKey": "<redacted>",
+        "customerYn": "",
+        "login_referer": "https://app.srail.or.kr:443/main/main.do",
+        "srchDvCd": "1",
+        "srchDvNm": "<redacted>",
+        "hmpgPwdCphd": "<redacted>"
+      },
+      "json": null,
+      "headers": {},
+      "cookies": "<redacted>",
+      "session_headers": {
+        "user-agent": "Mozilla/5.0 (Linux; Android 15; SM-S912N Build/AP3A.240905.015.A2; wv) AppleWebKit/537.36(KHTML, like Gecko) Version/4.0 Chrome/136.0.7103.125 Mobile Safari/537.36SRT-APP-Android V.2.0.38",
+        "accept": "application/json"
+      },
+      "session_cookies": "<redacted>",
+      "extra": {}
+    },
+    "effective_request": {
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/apb/selectListApb01080_n.do",
+      "headers": {
+        "user-agent": "Mozilla/5.0 (Linux; Android 15; SM-S912N Build/AP3A.240905.015.A2; wv) AppleWebKit/537.36(KHTML, like Gecko) Version/4.0 Chrome/136.0.7103.125 Mobile Safari/537.36SRT-APP-Android V.2.0.38",
+        "accept": "application/json"
+      },
+      "body": null
+    },
+    "response": {
+      "status_code": 200,
+      "ok": true,
+      "url": "https://app.srail.or.kr:443/apb/selectListApb01080_n.do",
+      "headers": {
+        "content-language": "ko",
+        "date": "Sat, 28 Feb 2026 09:23:47 GMT",
+        "expires": "Thu, 01 Jan 1970 00:00:00 GMT",
+        "set-cookie": "<redacted>",
+        "content-type": "application/json;charset=UTF-8",
+        "cache-control": "no-cache, no-store, max-age=0",
+        "pragma": "no-cache",
+        "transfer-encoding": "chunked"
+      },
+      "cookies": "<redacted>",
+      "text": "{\"strResult\": \"FAIL\", \"MSG\": \"존재하지않는 회원입니다.\", \"page\": \"menu\", \"userMap\": {\"USER_DV\": null, \"wctNo\": \"81301\", \"strDeviceInfo\": \"\"}, \"commandMap\": {\"auto\": \"Y\", \"check\": \"Y\", \"page\": \"menu\", \"deviceKey\": \"<redacted>\", \"customerYn\": \"\", \"login_referer\": \"https://app.srail.or.kr:443/main/main.do\", \"srchDvCd\": \"1\", \"srchDvNm\": \"<redacted>\", \"hmpgPwdCphd\": \"<redacted>\", \"login_idIdx\": \"1\", \"login_idVal\": \"<redacted>\", \"login_check\": \"Y\", \"login_auto\": \"Y\"}, \"RTNCD\": \"N\"}",
+      "json": {
+        "strResult": "FAIL",
+        "MSG": "존재하지않는 회원입니다.",
+        "page": "menu",
+        "userMap": {
+          "USER_DV": null,
+          "wctNo": "81301",
+          "strDeviceInfo": ""
+        },
+        "commandMap": {
+          "auto": "Y",
+          "check": "Y",
+          "page": "menu",
+          "deviceKey": "<redacted>",
+          "customerYn": "",
+          "login_referer": "https://app.srail.or.kr:443/main/main.do",
+          "srchDvCd": "1",
+          "srchDvNm": "<redacted>",
+          "hmpgPwdCphd": "<redacted>",
+          "login_idIdx": "1",
+          "login_idVal": "<redacted>",
+          "login_check": "Y",
+          "login_auto": "Y"
+        },
+        "RTNCD": "N"
+      }
+    }
+  }
+}

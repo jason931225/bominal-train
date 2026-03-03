@@ -1,0 +1,39 @@
+{
+  "run_id": "20260228T093753Z_483869ce",
+  "started_at": "2026-02-28T09:37:53.852950+00:00",
+  "finished_at": "2026-02-28T09:38:16.757870+00:00",
+  "event_count": 1,
+  "summary": {
+    "component_counts": {
+      "srt": 1
+    },
+    "operation_counts": {
+      "login": 1
+    },
+    "status_code_counts": {
+      "200": 1
+    },
+    "error_count": 0
+  },
+  "step_boundaries": [
+    {
+      "operation": "login",
+      "component": "srt",
+      "start_sequence": 1,
+      "end_sequence": 1,
+      "event_count": 1
+    }
+  ],
+  "events": [
+    {
+      "sequence": 1,
+      "file": "0001_srt_POST_selectListApb01080_n.do.json",
+      "component": "srt",
+      "operation": "login",
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/apb/selectListApb01080_n.do",
+      "status_code": 200,
+      "error": null
+    }
+  ]
+}

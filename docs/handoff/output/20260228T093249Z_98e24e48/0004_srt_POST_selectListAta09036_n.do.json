@@ -1,0 +1,275 @@
+{
+  "metadata": {
+    "sequence": 4,
+    "captured_at": "2026-02-28T09:33:59.980349+00:00",
+    "run_id": "20260228T093249Z_98e24e48",
+    "backend": "curl_cffi",
+    "component": "srt",
+    "operation": "payment",
+    "endpoint": "selectListAta09036_n.do"
+  },
+  "request": {
+    "method": "POST",
+    "url": "https://app.srail.or.kr:443/ata/selectListAta09036_n.do",
+    "params": null,
+    "data": {
+      "stlDmnDt": "20260228",
+      "mbCrdNo": "<redacted>",
+      "stlMnsSqno1": "1",
+      "ststlGridcnt": "1",
+      "totNewStlAmt": 19800,
+      "athnDvCd1": "J",
+      "vanPwd1": "<redacted>",
+      "crdVlidTrm1": "2908",
+      "stlMnsCd1": "02",
+      "rsvChgTno": "0",
+      "chgMcs": "0",
+      "ismtMnthNum1": 0,
+      "ctlDvCd": "3102",
+      "cgPsId": "korail",
+      "pnrNo": "<redacted>",
+      "totPrnb": 1,
+      "mnsStlAmt1": 19800,
+      "crdInpWayCd1": "@",
+      "athnVal1": "<redacted>",
+      "stlCrCrdNo1": "<redacted>",
+      "jrnyCnt": "1",
+      "strJobId": "3102",
+      "inrecmnsGridcnt": "1",
+      "dptTm": "133000",
+      "arvTm": "143300",
+      "dptStnConsOrdr2": "000000",
+      "arvStnConsOrdr2": "000000",
+      "trnGpCd": "300",
+      "pageNo": "-",
+      "rowCnt": "-",
+      "pageUrl": ""
+    },
+    "json": null,
+    "headers": {},
+    "cookies": "<redacted>",
+    "session_headers": {
+      "user-agent": "Mozilla/5.0 (Linux; Android 15; SM-S912N Build/AP3A.240905.015.A2; wv) AppleWebKit/537.36(KHTML, like Gecko) Version/4.0 Chrome/136.0.7103.125 Mobile Safari/537.36SRT-APP-Android V.2.0.38",
+      "accept": "application/json"
+    },
+    "session_cookies": "<redacted>",
+    "extra": {}
+  },
+  "effective_request": {
+    "method": "POST",
+    "url": "https://app.srail.or.kr:443/ata/selectListAta09036_n.do",
+    "headers": {
+      "user-agent": "Mozilla/5.0 (Linux; Android 15; SM-S912N Build/AP3A.240905.015.A2; wv) AppleWebKit/537.36(KHTML, like Gecko) Version/4.0 Chrome/136.0.7103.125 Mobile Safari/537.36SRT-APP-Android V.2.0.38",
+      "accept": "application/json"
+    },
+    "body": null
+  },
+  "response": {
+    "status_code": 200,
+    "ok": true,
+    "url": "https://app.srail.or.kr:443/ata/selectListAta09036_n.do",
+    "headers": {
+      "content-language": "ko",
+      "date": "Sat, 28 Feb 2026 09:34:01 GMT",
+      "expires": "Thu, 01 Jan 1970 00:00:00 GMT",
+      "content-type": "application/json;charset=UTF-8",
+      "cache-control": "no-cache, no-store, max-age=0",
+      "pragma": "no-cache",
+      "transfer-encoding": "chunked"
+    },
+    "cookies": "<redacted>",
+    "text": "{\"ERROR_MSG\": \"\", \"ERROR_CODE\": \"0\", \"outDataSets\": {\"dsOutput3\": [{\"TKLIST_KEY\": 0, \"dcntKndNm\": null, \"DCNTLIST_KEY\": 0}], \"dsOutput2\": [{\"trnNo1\": \"\", \"rcvdAmt\": \"00000019800\", \"seatNo1\": \"\", \"arvDt1\": \"\", \"scarNo\": 7, \"crwPwd\": \"<redacted>\", \"jrnyTpCd\": \"11\", \"tkPrc\": 19800, \"dptRsStnNmEn\": \"Suseo\", \"trnGpNm1\": \"\", \"arvTm1\": \"\", \"dptTm\": \"133000\", \"entNm\": \"\", \"dptRsStnNm2\": \"\", \"TKLIST_KEY\": 0, \"dptRsStnNm1\": \"\", \"arvDt\": \"20260304\", \"psrmClCdNm\": \"일반실\", \"trnClsfNm\": \"SRT\", \"trnGpNm\": \"SRT\", \"rmkCont\": \"신용532750\", \"trnGpCd\": \"300\", \"scarNo1\": 0, \"psgTpCdNm\": \"어른\", \"arvTm\": \"143300\", \"dptRsStnNmKo\": \"수서\", \"arvRsStnNm1\": \"\", \"trnClsfNm1\": \"\", \"dcntGroupGridcnt\": 0, \"tkSqno\": 0, \"psrmClCdNm1\": \"\", \"tkKndCdNm\": \"스마트티켓\", \"arvRsStnNmEn\": \"Daejeon\", \"arvRsStnNm2\": \"\", \"dlayDscpFlg\": \"N\", \"saleSqno\": 11681, \"arvRsStnNmKo\": \"대전\", \"stdrPrc\": \"00000020100\", \"dptDt1\": \"\", \"dptDt\": \"20260304\", \"trnNo\": \"00337\", \"seatNo\": \"1D\", \"tkRetNo\": \"8131402281168158\", \"mogoNm\": \"\", \"dcntAmt\": \"00000000300\", \"dptTm1\": \"\", \"saleDt\": \"20260228\"}], \"dsOutput1\": [{\"pontDvCd\": \"\", \"apvDt\": \"20260228\", \"stlSqno\": \"00000000001\", \"stlCrCrdNo\": \"<redacted>\", \"stlApvTm\": \"183400\", \"stlMnsCd\": \"02\", \"mnsStlAmt\": \"19800\", \"apvNo\": \"13308904\"}], \"dsOutput0\": [{\"tkNum\": 1, \"buyPsNm\": \"<redacted>\", \"totPrc\": \"00000019800\", \"acmMlgNum\": 0, \"strResult\": \"SUCC\", \"cgPsId\": \"korail\", \"stlAmt\": \"19800\", \"totNewStlAmt\": \"00000000019800\", \"pnrNo\": \"<redacted>\", \"msgCd\": \"IRT000000\", \"wctNo\": \"81301\", \"totRcvdAmt\": \"0000000000019800\", \"totDcntAmt\": 300, \"rmkCont\": \"\", \"msgTxt\": \"정상발매처리,정상발권처리\", \"stlMnsCd\": \"02\", \"uuid\": \"<redacted>\", \"apvNo\": \"13308904\"}]}, \"dsResultMap\": {\"dsOutput3\": [{\"TKLIST_KEY\": 0, \"dcntKndNm\": null, \"DCNTLIST_KEY\": 0}], \"dsOutput2\": [{\"trnNo1\": \"\", \"rcvdAmt\": \"00000019800\", \"seatNo1\": \"\", \"arvDt1\": \"\", \"scarNo\": 7, \"crwPwd\": \"<redacted>\", \"jrnyTpCd\": \"11\", \"tkPrc\": 19800, \"dptRsStnNmEn\": \"Suseo\", \"trnGpNm1\": \"\", \"arvTm1\": \"\", \"dptTm\": \"133000\", \"entNm\": \"\", \"dptRsStnNm2\": \"\", \"TKLIST_KEY\": 0, \"dptRsStnNm1\": \"\", \"arvDt\": \"20260304\", \"psrmClCdNm\": \"일반실\", \"trnClsfNm\": \"SRT\", \"trnGpNm\": \"SRT\", \"rmkCont\": \"신용532750\", \"trnGpCd\": \"300\", \"scarNo1\": 0, \"psgTpCdNm\": \"어른\", \"arvTm\": \"143300\", \"dptRsStnNmKo\": \"수서\", \"arvRsStnNm1\": \"\", \"trnClsfNm1\": \"\", \"dcntGroupGridcnt\": 0, \"tkSqno\": 0, \"psrmClCdNm1\": \"\", \"tkKndCdNm\": \"스마트티켓\", \"arvRsStnNmEn\": \"Daejeon\", \"arvRsStnNm2\": \"\", \"dlayDscpFlg\": \"N\", \"saleSqno\": 11681, \"arvRsStnNmKo\": \"대전\", \"stdrPrc\": \"00000020100\", \"dptDt1\": \"\", \"dptDt\": \"20260304\", \"trnNo\": \"00337\", \"seatNo\": \"1D\", \"tkRetNo\": \"8131402281168158\", \"mogoNm\": \"\", \"dcntAmt\": \"00000000300\", \"dptTm1\": \"\", \"saleDt\": \"20260228\"}], \"dsOutput1\": [{\"pontDvCd\": \"\", \"apvDt\": \"20260228\", \"stlSqno\": \"00000000001\", \"stlCrCrdNo\": \"<redacted>\", \"stlApvTm\": \"183400\", \"stlMnsCd\": \"02\", \"mnsStlAmt\": \"19800\", \"apvNo\": \"13308904\"}], \"dsOutput0\": [{\"tkNum\": 1, \"buyPsNm\": \"<redacted>\", \"totPrc\": \"00000019800\", \"acmMlgNum\": 0, \"strResult\": \"SUCC\", \"cgPsId\": \"korail\", \"stlAmt\": \"19800\", \"totNewStlAmt\": \"00000000019800\", \"pnrNo\": \"<redacted>\", \"msgCd\": \"IRT000000\", \"wctNo\": \"81301\", \"totRcvdAmt\": \"0000000000019800\", \"totDcntAmt\": 300, \"rmkCont\": \"\", \"msgTxt\": \"정상발매처리,정상발권처리\", \"stlMnsCd\": \"02\", \"uuid\": \"<redacted>\", \"apvNo\": \"13308904\"}]}}",
+    "json": {
+      "ERROR_MSG": "",
+      "ERROR_CODE": "0",
+      "outDataSets": {
+        "dsOutput3": [
+          {
+            "TKLIST_KEY": 0,
+            "dcntKndNm": null,
+            "DCNTLIST_KEY": 0
+          }
+        ],
+        "dsOutput2": [
+          {
+            "trnNo1": "",
+            "rcvdAmt": "00000019800",
+            "seatNo1": "",
+            "arvDt1": "",
+            "scarNo": 7,
+            "crwPwd": "<redacted>",
+            "jrnyTpCd": "11",
+            "tkPrc": 19800,
+            "dptRsStnNmEn": "Suseo",
+            "trnGpNm1": "",
+            "arvTm1": "",
+            "dptTm": "133000",
+            "entNm": "",
+            "dptRsStnNm2": "",
+            "TKLIST_KEY": 0,
+            "dptRsStnNm1": "",
+            "arvDt": "20260304",
+            "psrmClCdNm": "일반실",
+            "trnClsfNm": "SRT",
+            "trnGpNm": "SRT",
+            "rmkCont": "신용532750",
+            "trnGpCd": "300",
+            "scarNo1": 0,
+            "psgTpCdNm": "어른",
+            "arvTm": "143300",
+            "dptRsStnNmKo": "수서",
+            "arvRsStnNm1": "",
+            "trnClsfNm1": "",
+            "dcntGroupGridcnt": 0,
+            "tkSqno": 0,
+            "psrmClCdNm1": "",
+            "tkKndCdNm": "스마트티켓",
+            "arvRsStnNmEn": "Daejeon",
+            "arvRsStnNm2": "",
+            "dlayDscpFlg": "N",
+            "saleSqno": 11681,
+            "arvRsStnNmKo": "대전",
+            "stdrPrc": "00000020100",
+            "dptDt1": "",
+            "dptDt": "20260304",
+            "trnNo": "00337",
+            "seatNo": "1D",
+            "tkRetNo": "8131402281168158",
+            "mogoNm": "",
+            "dcntAmt": "00000000300",
+            "dptTm1": "",
+            "saleDt": "20260228"
+          }
+        ],
+        "dsOutput1": [
+          {
+            "pontDvCd": "",
+            "apvDt": "20260228",
+            "stlSqno": "00000000001",
+            "stlCrCrdNo": "<redacted>",
+            "stlApvTm": "183400",
+            "stlMnsCd": "02",
+            "mnsStlAmt": "19800",
+            "apvNo": "13308904"
+          }
+        ],
+        "dsOutput0": [
+          {
+            "tkNum": 1,
+            "buyPsNm": "<redacted>",
+            "totPrc": "00000019800",
+            "acmMlgNum": 0,
+            "strResult": "SUCC",
+            "cgPsId": "korail",
+            "stlAmt": "19800",
+            "totNewStlAmt": "00000000019800",
+            "pnrNo": "<redacted>",
+            "msgCd": "IRT000000",
+            "wctNo": "81301",
+            "totRcvdAmt": "0000000000019800",
+            "totDcntAmt": 300,
+            "rmkCont": "",
+            "msgTxt": "정상발매처리,정상발권처리",
+            "stlMnsCd": "02",
+            "uuid": "<redacted>",
+            "apvNo": "13308904"
+          }
+        ]
+      },
+      "dsResultMap": {
+        "dsOutput3": [
+          {
+            "TKLIST_KEY": 0,
+            "dcntKndNm": null,
+            "DCNTLIST_KEY": 0
+          }
+        ],
+        "dsOutput2": [
+          {
+            "trnNo1": "",
+            "rcvdAmt": "00000019800",
+            "seatNo1": "",
+            "arvDt1": "",
+            "scarNo": 7,
+            "crwPwd": "<redacted>",
+            "jrnyTpCd": "11",
+            "tkPrc": 19800,
+            "dptRsStnNmEn": "Suseo",
+            "trnGpNm1": "",
+            "arvTm1": "",
+            "dptTm": "133000",
+            "entNm": "",
+            "dptRsStnNm2": "",
+            "TKLIST_KEY": 0,
+            "dptRsStnNm1": "",
+            "arvDt": "20260304",
+            "psrmClCdNm": "일반실",
+            "trnClsfNm": "SRT",
+            "trnGpNm": "SRT",
+            "rmkCont": "신용532750",
+            "trnGpCd": "300",
+            "scarNo1": 0,
+            "psgTpCdNm": "어른",
+            "arvTm": "143300",
+            "dptRsStnNmKo": "수서",
+            "arvRsStnNm1": "",
+            "trnClsfNm1": "",
+            "dcntGroupGridcnt": 0,
+            "tkSqno": 0,
+            "psrmClCdNm1": "",
+            "tkKndCdNm": "스마트티켓",
+            "arvRsStnNmEn": "Daejeon",
+            "arvRsStnNm2": "",
+            "dlayDscpFlg": "N",
+            "saleSqno": 11681,
+            "arvRsStnNmKo": "대전",
+            "stdrPrc": "00000020100",
+            "dptDt1": "",
+            "dptDt": "20260304",
+            "trnNo": "00337",
+            "seatNo": "1D",
+            "tkRetNo": "8131402281168158",
+            "mogoNm": "",
+            "dcntAmt": "00000000300",
+            "dptTm1": "",
+            "saleDt": "20260228"
+          }
+        ],
+        "dsOutput1": [
+          {
+            "pontDvCd": "",
+            "apvDt": "20260228",
+            "stlSqno": "00000000001",
+            "stlCrCrdNo": "<redacted>",
+            "stlApvTm": "183400",
+            "stlMnsCd": "02",
+            "mnsStlAmt": "19800",
+            "apvNo": "13308904"
+          }
+        ],
+        "dsOutput0": [
+          {
+            "tkNum": 1,
+            "buyPsNm": "<redacted>",
+            "totPrc": "00000019800",
+            "acmMlgNum": 0,
+            "strResult": "SUCC",
+            "cgPsId": "korail",
+            "stlAmt": "19800",
+            "totNewStlAmt": "00000000019800",
+            "pnrNo": "<redacted>",
+            "msgCd": "IRT000000",
+            "wctNo": "81301",
+            "totRcvdAmt": "0000000000019800",
+            "totDcntAmt": 300,
+            "rmkCont": "",
+            "msgTxt": "정상발매처리,정상발권처리",
+            "stlMnsCd": "02",
+            "uuid": "<redacted>",
+            "apvNo": "13308904"
+          }
+        ]
+      }
+    }
+  }
+}

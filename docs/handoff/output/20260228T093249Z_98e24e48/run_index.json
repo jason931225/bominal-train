@@ -1,0 +1,214 @@
+{
+  "run_id": "20260228T093249Z_98e24e48",
+  "started_at": "2026-02-28T09:32:49.140022+00:00",
+  "finished_at": "2026-02-28T09:35:22.492949+00:00",
+  "event_count": 11,
+  "summary": {
+    "component_counts": {
+      "srt": 11
+    },
+    "operation_counts": {
+      "login": 3,
+      "tickets": 3,
+      "ticket_info": 2,
+      "payment": 1,
+      "reserve_info": 1,
+      "refund": 1
+    },
+    "status_code_counts": {
+      "200": 11
+    },
+    "error_count": 0
+  },
+  "step_boundaries": [
+    {
+      "operation": "login",
+      "component": "srt",
+      "start_sequence": 1,
+      "end_sequence": 1,
+      "event_count": 1
+    },
+    {
+      "operation": "tickets",
+      "component": "srt",
+      "start_sequence": 2,
+      "end_sequence": 2,
+      "event_count": 1
+    },
+    {
+      "operation": "ticket_info",
+      "component": "srt",
+      "start_sequence": 3,
+      "end_sequence": 3,
+      "event_count": 1
+    },
+    {
+      "operation": "payment",
+      "component": "srt",
+      "start_sequence": 4,
+      "end_sequence": 4,
+      "event_count": 1
+    },
+    {
+      "operation": "login",
+      "component": "srt",
+      "start_sequence": 5,
+      "end_sequence": 5,
+      "event_count": 1
+    },
+    {
+      "operation": "tickets",
+      "component": "srt",
+      "start_sequence": 6,
+      "end_sequence": 6,
+      "event_count": 1
+    },
+    {
+      "operation": "ticket_info",
+      "component": "srt",
+      "start_sequence": 7,
+      "end_sequence": 7,
+      "event_count": 1
+    },
+    {
+      "operation": "reserve_info",
+      "component": "srt",
+      "start_sequence": 8,
+      "end_sequence": 8,
+      "event_count": 1
+    },
+    {
+      "operation": "refund",
+      "component": "srt",
+      "start_sequence": 9,
+      "end_sequence": 9,
+      "event_count": 1
+    },
+    {
+      "operation": "login",
+      "component": "srt",
+      "start_sequence": 10,
+      "end_sequence": 10,
+      "event_count": 1
+    },
+    {
+      "operation": "tickets",
+      "component": "srt",
+      "start_sequence": 11,
+      "end_sequence": 11,
+      "event_count": 1
+    }
+  ],
+  "events": [
+    {
+      "sequence": 1,
+      "file": "0001_srt_POST_selectListApb01080_n.do.json",
+      "component": "srt",
+      "operation": "login",
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/apb/selectListApb01080_n.do",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "sequence": 2,
+      "file": "0002_srt_POST_selectListAtc14016_n.do.json",
+      "component": "srt",
+      "operation": "tickets",
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/atc/selectListAtc14016_n.do",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "sequence": 3,
+      "file": "0003_srt_POST_selectListArd02019_n.do.json",
+      "component": "srt",
+      "operation": "ticket_info",
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/ard/selectListArd02019_n.do",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "sequence": 4,
+      "file": "0004_srt_POST_selectListAta09036_n.do.json",
+      "component": "srt",
+      "operation": "payment",
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/ata/selectListAta09036_n.do",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "sequence": 5,
+      "file": "0005_srt_POST_selectListApb01080_n.do.json",
+      "component": "srt",
+      "operation": "login",
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/apb/selectListApb01080_n.do",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "sequence": 6,
+      "file": "0006_srt_POST_selectListAtc14016_n.do.json",
+      "component": "srt",
+      "operation": "tickets",
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/atc/selectListAtc14016_n.do",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "sequence": 7,
+      "file": "0007_srt_POST_selectListArd02019_n.do.json",
+      "component": "srt",
+      "operation": "ticket_info",
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/ard/selectListArd02019_n.do",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "sequence": 8,
+      "file": "0008_srt_POST_getListAtc14087.do.json",
+      "component": "srt",
+      "operation": "reserve_info",
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/atc/getListAtc14087.do",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "sequence": 9,
+      "file": "0009_srt_POST_selectListAtc02063_n.do.json",
+      "component": "srt",
+      "operation": "refund",
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/atc/selectListAtc02063_n.do",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "sequence": 10,
+      "file": "0010_srt_POST_selectListApb01080_n.do.json",
+      "component": "srt",
+      "operation": "login",
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/apb/selectListApb01080_n.do",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "sequence": 11,
+      "file": "0011_srt_POST_selectListAtc14016_n.do.json",
+      "component": "srt",
+      "operation": "tickets",
+      "method": "POST",
+      "url": "https://app.srail.or.kr:443/atc/selectListAtc14016_n.do",
+      "status_code": 200,
+      "error": null
+    }
+  ]
+}
