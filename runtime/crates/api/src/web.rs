@@ -87,7 +87,7 @@ pub fn render_auth_landing() -> String {
         <div class="mt-3 flex justify-center">
           <div class="auth-hero-icon" role="img" aria-label="Secure account sign-in">
             <svg class="auth-hero-icon-main" viewBox="0 0 512 256" aria-hidden="true">
-              <g transform="scale(10.6666667)" fill="none" stroke="rgb(var(--text-supporting))" stroke-width="1.125" stroke-linecap="round" stroke-linejoin="round">
+              <g transform="scale(10.6666667)" fill="none" stroke="rgb(var(--text-supporting))" stroke-width="0.9" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M7 2.5H4.5C3.4 2.5 2.5 3.4 2.5 4.5V7"></path>
                 <path d="M17 2.5H19.5C20.6 2.5 21.5 3.4 21.5 4.5V7"></path>
                 <path d="M2.5 17V19.5C2.5 20.6 3.4 21.5 4.5 21.5H7"></path>
@@ -98,7 +98,7 @@ pub fn render_auth_landing() -> String {
                 <path d="M8.9 15.2c.8 1.2 1.9 1.8 3.1 1.8s2.3-.6 3.1-1.8"></path>
               </g>
               <g transform="translate(256 0) scale(10.6666667)" fill="rgb(var(--text-supporting))">
-                <g fill="none" stroke="rgb(var(--text-supporting))" stroke-width="1.125" stroke-linecap="round" stroke-linejoin="round">
+                <g fill="none" stroke="rgb(var(--text-supporting))" stroke-width="0.9" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M7 2.5H4.5C3.4 2.5 2.5 3.4 2.5 4.5V7"></path>
                   <path d="M17 2.5H19.5C20.6 2.5 21.5 3.4 21.5 4.5V7"></path>
                   <path d="M2.5 17V19.5C2.5 20.6 3.4 21.5 4.5 21.5H7"></path>
