@@ -1,7 +1,5 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use bominal_shared::station_catalog;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SearchMode {
     Suggest,
@@ -101,7 +99,6 @@ pub(crate) struct StationSearchDocument<'a> {
     pub(crate) station_name_en: Option<&'a str>,
     pub(crate) station_name_ja_katakana: &'a str,
     pub(crate) normalized_name: &'a str,
-    pub(crate) normalized_remark: Option<&'a str>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -257,7 +254,30 @@ pub(crate) fn rank_station_documents(
 }
 
 fn normalize(value: &str) -> String {
-    station_catalog::normalize_search_text(value)
+    let mut out = String::with_capacity(value.len());
+    for ch in value.chars() {
+        if ch.is_ascii_alphanumeric() {
+            out.push(ch.to_ascii_lowercase());
+            continue;
+        }
+
+        if ('\u{3041}'..='\u{3096}').contains(&ch) {
+            if let Some(katakana) = char::from_u32(ch as u32 + 0x60) {
+                out.push(katakana);
+            }
+            continue;
+        }
+
+        if ('\u{30A0}'..='\u{30FF}').contains(&ch) || ch == 'ー' {
+            out.push(ch);
+            continue;
+        }
+
+        if ('\u{AC00}'..='\u{D7A3}').contains(&ch) || ('\u{3131}'..='\u{318E}').contains(&ch) {
+            out.push(ch);
+        }
+    }
+    out
 }
 
 #[derive(Debug, Clone)]
@@ -282,7 +302,6 @@ impl StationForms {
         let initials = extract_hangul_initials(document.station_name_ko);
         let jamo = decompose_hangul_to_compat_jamo(document.station_name_ko);
         let keyseq_two_set = hangul_to_two_set_keyseq(document.station_name_ko);
-        let _remark = document.normalized_remark.unwrap_or_default();
 
         Self {
             code: document.station_code.to_ascii_lowercase(),
@@ -1243,7 +1262,6 @@ mod tests {
                 station_name_en: Some("suseo"),
                 station_name_ja_katakana: "スソ",
                 normalized_name: "수서",
-                normalized_remark: Some("ㅅ"),
             },
             StationSearchDocument {
                 station_code: "0001",
@@ -1251,7 +1269,6 @@ mod tests {
                 station_name_en: Some("seoul"),
                 station_name_ja_katakana: "ソウル",
                 normalized_name: "서울",
-                normalized_remark: Some("ㅅ"),
             },
             StationSearchDocument {
                 station_code: "0002",
@@ -1259,7 +1276,6 @@ mod tests {
                 station_name_en: Some("busan"),
                 station_name_ja_katakana: "プサン",
                 normalized_name: "부산",
-                normalized_remark: Some("ㅂ"),
             },
             StationSearchDocument {
                 station_code: "0003",
@@ -1267,7 +1283,6 @@ mod tests {
                 station_name_en: Some("daegu"),
                 station_name_ja_katakana: "テグ",
                 normalized_name: "대구",
-                normalized_remark: Some("ㄷ"),
             },
             StationSearchDocument {
                 station_code: "0004",
@@ -1275,7 +1290,6 @@ mod tests {
                 station_name_en: Some("changwon"),
                 station_name_ja_katakana: "チャンウォン",
                 normalized_name: "창원",
-                normalized_remark: Some("ㅊ"),
             },
         ]
     }
@@ -1287,6 +1301,48 @@ mod tests {
 
         assert!(!result.matches.is_empty());
         assert_eq!(result.matches[0].station_index, 0);
+    }
+
+    #[test]
+    fn documented_keyboard_examples_map_to_expected_stations() {
+        let docs = fixture_documents();
+        let fixtures = [
+            ("tjdnf", 1usize),
+            ("qntks", 2usize),
+            ("eorn", 3usize),
+            ("ckddnjs", 4usize),
+        ];
+
+        for (query, expected_index) in fixtures {
+            let result = rank_station_documents(&docs, query, SearchOptions::default(), 5);
+            assert!(
+                !result.matches.is_empty(),
+                "expected matches for query: {query}"
+            );
+            assert_eq!(
+                result.matches[0].station_index, expected_index,
+                "unexpected top match for query: {query}"
+            );
+        }
+    }
+
+    #[test]
+    fn keyboard_neighbor_typo_still_resolves_to_target_station() {
+        let docs = fixture_documents();
+        // "tjdnd" is one qwerty-neighbor substitution away from "tjdnf" (서울).
+        let result = rank_station_documents(&docs, "tjdnd", SearchOptions::default(), 5);
+
+        assert!(!result.matches.is_empty());
+        assert_eq!(result.matches[0].station_index, 1);
+    }
+
+    #[test]
+    fn english_alias_query_matches_korean_station() {
+        let docs = fixture_documents();
+        let result = rank_station_documents(&docs, "busan", SearchOptions::default(), 5);
+
+        assert!(!result.matches.is_empty());
+        assert_eq!(result.matches[0].station_index, 2);
     }
 
     #[test]
@@ -1315,7 +1371,6 @@ mod tests {
             station_name_en: Some("search"),
             station_name_ja_katakana: "ケンサク",
             normalized_name: "검색",
-            normalized_remark: None,
         }];
         let result = rank_station_documents(&docs, "ㄱㅓㅁㅅㅐㄱ", SearchOptions::default(), 5);
         assert!(!result.matches.is_empty());

@@ -15,7 +15,9 @@ use tracing::{error, warn};
 use uuid::Uuid;
 
 use super::super::AppState;
-use super::{payment_method_service, provider_credentials_service, provider_jobs_service};
+use super::{
+    payment_method_service, provider_credentials_service, provider_jobs_service, station_search,
+};
 const STATION_CACHE_TTL_SECONDS: u64 = 300;
 
 #[derive(Debug)]
@@ -54,7 +56,50 @@ pub(crate) struct StationCatalogStatus {
 #[derive(Debug, Serialize)]
 pub(crate) struct StationSuggestResponse {
     pub(crate) query: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) corrected_query: Option<String>,
+    pub(crate) autocorrect_applied: bool,
     pub(crate) suggestions: Vec<StationSuggestion>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct StationRegionsResponse {
+    pub(crate) quick: Vec<StationRegionStation>,
+    pub(crate) regions: Vec<StationRegionGroup>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct StationRegionGroup {
+    pub(crate) key: String,
+    pub(crate) label: String,
+    pub(crate) stations: Vec<StationRegionStation>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub(crate) struct StationRegionStation {
+    pub(crate) station_code: String,
+    pub(crate) station_name_ko: String,
+    pub(crate) station_name_en: Option<String>,
+    pub(crate) station_name_ja_katakana: String,
+    pub(crate) supported_providers: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum TrainPassengerKind {
+    Adult,
+    Child,
+    Senior,
+    #[serde(rename = "disability_1_to_3", alias = "disability1_to3")]
+    Disability1To3,
+    #[serde(rename = "disability_4_to_6", alias = "disability4_to6")]
+    Disability4To6,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct TrainPassengerCount {
+    pub(crate) kind: TrainPassengerKind,
+    pub(crate) count: u8,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -67,6 +112,10 @@ pub(crate) struct StationSuggestion {
     pub(crate) line_code: i32,
     pub(crate) selected: bool,
     pub(crate) order_index: i32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) match_source: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) confidence: Option<f32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -77,6 +126,8 @@ pub(crate) struct CreateTrainSearchRequest {
     pub(crate) dep_date: Option<String>,
     #[serde(default)]
     pub(crate) dep_time: Option<String>,
+    #[serde(default)]
+    pub(crate) passengers: Option<Vec<TrainPassengerCount>>,
     #[serde(default)]
     pub(crate) passenger_count: Option<u8>,
     #[serde(default)]
@@ -163,6 +214,7 @@ pub(crate) struct TrainSearchRequestEcho {
     pub(crate) arr_station_code: String,
     pub(crate) dep_date: String,
     pub(crate) dep_time: String,
+    pub(crate) passengers: Vec<TrainPassengerCount>,
     pub(crate) passenger_count: i32,
     pub(crate) available_only: bool,
 }
@@ -220,12 +272,24 @@ pub(crate) struct StationSuggestQuery {
     pub(crate) provider: Option<String>,
     #[serde(default)]
     pub(crate) limit: Option<usize>,
+    #[serde(default)]
+    pub(crate) layout_hint: Option<String>,
+    #[serde(default)]
+    pub(crate) lang_hint: Option<String>,
+    #[serde(default)]
+    pub(crate) apply_mode: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct SearchHistoryQuery {
     #[serde(default)]
     pub(crate) limit: Option<usize>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct StationRegionsQuery {
+    #[serde(default)]
+    pub(crate) provider: Option<String>,
 }
 
 #[derive(Debug)]
@@ -235,6 +299,7 @@ struct SearchSessionRow {
     arr_station_code: String,
     dep_date: String,
     dep_time: String,
+    passengers_json: Value,
     passenger_count: i32,
     available_only: bool,
     created_at: DateTime<Utc>,
@@ -395,13 +460,64 @@ pub(crate) async fn suggest_stations(
     let limit = query.limit.unwrap_or(12).clamp(1, 30);
     let provider_scope = parse_provider_scope(query.provider.as_deref())?;
     let query_norm = station_catalog::normalize_search_text(&query_raw);
+    let search_options = station_search::SearchOptions {
+        mode: station_search::SearchMode::from_query(query.apply_mode.as_deref()),
+        layout_hint: station_search::LayoutHint::from_query(query.layout_hint.as_deref()),
+        lang_hint: station_search::LangHint::from_query(query.lang_hint.as_deref()),
+        ..station_search::SearchOptions::default()
+    };
 
-    let mut scored: Vec<(usize, StationCatalogEntry)> = Vec::new();
+    let mut scored: Vec<(
+        usize,
+        Option<f32>,
+        Option<station_search::MatchSource>,
+        StationCatalogEntry,
+    )> = Vec::new();
+    let mut corrected_candidates: Vec<(usize, f32, String)> = Vec::new();
     for provider in provider_scope {
         let stations = load_station_catalog_for_provider(state, provider).await?;
-        for station in stations {
-            if let Some(score) = station_match_score(&station, &query_raw, &query_norm) {
-                scored.push((score, station));
+        let documents: Vec<station_search::StationSearchDocument<'_>> = stations
+            .iter()
+            .map(|station| station_search::StationSearchDocument {
+                station_code: station.station_code.as_str(),
+                station_name_ko: station.station_name_ko.as_str(),
+                station_name_en: station.station_name_en.as_deref(),
+                station_name_ja_katakana: station.station_name_ja_katakana.as_str(),
+                normalized_name: station.normalized_name.as_str(),
+            })
+            .collect();
+
+        let ranked = station_search::rank_station_documents(
+            &documents,
+            query_raw.as_str(),
+            search_options,
+            (limit * 3).clamp(12, 90),
+        );
+        if ranked.autocorrect_applied
+            && let (Some(top), Some(corrected_query)) =
+                (ranked.matches.first(), ranked.corrected_query.as_ref())
+        {
+            corrected_candidates.push((top.score, top.confidence, corrected_query.clone()));
+        }
+
+        if ranked.matches.is_empty() {
+            // Compatibility fallback while the new ranker rolls out.
+            for station in stations {
+                if let Some(score) = station_match_score(&station, &query_raw, &query_norm) {
+                    scored.push((score, None, None, station));
+                }
+            }
+            continue;
+        }
+
+        for matched in ranked.matches {
+            if let Some(station) = stations.get(matched.station_index) {
+                scored.push((
+                    matched.score,
+                    Some(matched.confidence),
+                    Some(matched.source),
+                    station.clone(),
+                ));
             }
         }
     }
@@ -409,14 +525,15 @@ pub(crate) async fn suggest_stations(
     scored.sort_by(|left, right| {
         left.0
             .cmp(&right.0)
-            .then_with(|| right.1.selected.cmp(&left.1.selected))
-            .then_with(|| left.1.order_index.cmp(&right.1.order_index))
-            .then_with(|| left.1.station_name_ko.cmp(&right.1.station_name_ko))
+            .then_with(|| right.1.unwrap_or(0.0).total_cmp(&left.1.unwrap_or(0.0)))
+            .then_with(|| right.3.selected.cmp(&left.3.selected))
+            .then_with(|| left.3.order_index.cmp(&right.3.order_index))
+            .then_with(|| left.3.station_name_ko.cmp(&right.3.station_name_ko))
     });
 
     let mut seen = HashSet::new();
     let mut suggestions = Vec::with_capacity(limit);
-    for (_, station) in scored {
+    for (_, confidence, source, station) in scored {
         let key = format!("{}:{}", station.provider, station.station_code);
         if !seen.insert(key) {
             continue;
@@ -431,6 +548,8 @@ pub(crate) async fn suggest_stations(
             line_code: station.line_code,
             selected: station.selected,
             order_index: station.order_index,
+            match_source: source.map(|value| value.as_api_str().to_string()),
+            confidence,
         });
 
         if suggestions.len() >= limit {
@@ -438,10 +557,130 @@ pub(crate) async fn suggest_stations(
         }
     }
 
+    corrected_candidates.sort_by(|left, right| {
+        left.0
+            .cmp(&right.0)
+            .then_with(|| right.1.total_cmp(&left.1))
+            .then_with(|| left.2.cmp(&right.2))
+    });
+    let corrected_query = corrected_candidates.first().map(|item| item.2.clone());
+
     Ok(StationSuggestResponse {
         query: query_raw,
+        corrected_query: corrected_query.clone(),
+        autocorrect_applied: corrected_query.is_some(),
         suggestions,
     })
+}
+
+pub(crate) async fn load_station_regions(
+    state: &AppState,
+    query: StationRegionsQuery,
+) -> Result<StationRegionsResponse, TrainServiceError> {
+    ensure_station_catalog_loaded(state).await?;
+    let provider_scope = parse_provider_scope(query.provider.as_deref())?;
+
+    #[derive(Debug, Clone)]
+    struct AggregatedStation {
+        station_code: String,
+        station_name_ko: String,
+        station_name_en: Option<String>,
+        station_name_ja_katakana: String,
+        selected: bool,
+        order_index: i32,
+        supported_providers: Vec<String>,
+    }
+
+    let mut merged: HashMap<String, AggregatedStation> = HashMap::new();
+    for provider in provider_scope {
+        let stations = load_station_catalog_for_provider(state, provider).await?;
+        for station in stations {
+            let provider_name = provider.to_ascii_uppercase();
+            let key = station.station_code.clone();
+            match merged.get_mut(&key) {
+                Some(existing) => {
+                    if !existing
+                        .supported_providers
+                        .iter()
+                        .any(|value| value == &provider_name)
+                    {
+                        existing.supported_providers.push(provider_name.clone());
+                    }
+                    existing.selected = existing.selected || station.selected;
+                    if station.order_index < existing.order_index {
+                        existing.order_index = station.order_index;
+                    }
+                    if existing.station_name_en.is_none() && station.station_name_en.is_some() {
+                        existing.station_name_en = station.station_name_en.clone();
+                    }
+                }
+                None => {
+                    merged.insert(
+                        key,
+                        AggregatedStation {
+                            station_code: station.station_code,
+                            station_name_ko: station.station_name_ko,
+                            station_name_en: station.station_name_en,
+                            station_name_ja_katakana: station.station_name_ja_katakana,
+                            selected: station.selected,
+                            order_index: station.order_index,
+                            supported_providers: vec![provider_name],
+                        },
+                    );
+                }
+            }
+        }
+    }
+
+    let mut values = merged.into_values().collect::<Vec<_>>();
+    values.sort_by(|left, right| {
+        right
+            .selected
+            .cmp(&left.selected)
+            .then_with(|| left.order_index.cmp(&right.order_index))
+            .then_with(|| left.station_name_ko.cmp(&right.station_name_ko))
+    });
+
+    let mut regions_map: HashMap<&'static str, Vec<StationRegionStation>> = HashMap::new();
+    let mut quick = Vec::new();
+    for station in values {
+        let region = curated_region_for_station(station.station_name_ko.as_str());
+        let station_view = StationRegionStation {
+            station_code: station.station_code,
+            station_name_ko: station.station_name_ko,
+            station_name_en: station.station_name_en,
+            station_name_ja_katakana: station.station_name_ja_katakana,
+            supported_providers: ordered_provider_labels(&station.supported_providers),
+        };
+        regions_map
+            .entry(region)
+            .or_default()
+            .push(station_view.clone());
+        if station.selected && quick.len() < 10 {
+            quick.push(station_view);
+        }
+    }
+
+    let mut all = Vec::new();
+    for value in regions_map.values() {
+        all.extend(value.iter().cloned());
+    }
+    all.sort_by(|left, right| left.station_name_ko.cmp(&right.station_name_ko));
+    all.dedup_by(|left, right| left.station_code == right.station_code);
+    regions_map.insert("all", all);
+
+    regions_map.insert("major", quick.clone());
+
+    let regions = curated_region_order()
+        .iter()
+        .map(|(key, label)| StationRegionGroup {
+            key: (*key).to_string(),
+            label: (*label).to_string(),
+            stations: regions_map.remove(*key).unwrap_or_default(),
+        })
+        .collect::<Vec<_>>();
+
+    Ok(StationRegionsResponse { quick, regions })
 }
 
 pub(crate) async fn create_search(
@@ -462,7 +701,11 @@ pub(crate) async fn create_search(
 
     let dep_date = normalize_dep_date(payload.dep_date.as_deref())?;
     let dep_time = normalize_dep_time(payload.dep_time.as_deref())?;
-    let passenger_count = payload.passenger_count.unwrap_or(1).clamp(1, 9);
+    let passengers = normalize_passengers(payload.passengers, payload.passenger_count)?;
+    let passenger_count = passengers
+        .iter()
+        .map(|item| i32::from(item.count))
+        .sum::<i32>();
     let available_only = payload.available_only.unwrap_or(true);
 
     let pool = require_pool(state)?;
@@ -489,9 +732,11 @@ pub(crate) async fn create_search(
 
     let search_id = Uuid::new_v4().to_string();
     let now = Utc::now();
+    let passengers_json =
+        serde_json::to_value(&passengers).map_err(|_| TrainServiceError::Internal)?;
 
     sqlx::query(
-        "insert into train_search_sessions (search_id, user_id, dep_station_code, arr_station_code, dep_date, dep_time, available_only, passenger_count, providers, status, created_at, updated_at) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'queued', $10, $10)",
+        "insert into train_search_sessions (search_id, user_id, dep_station_code, arr_station_code, dep_date, dep_time, available_only, passenger_count, passengers_json, providers, status, created_at, updated_at) values ($1, $2, $3, $4, $5, $6, $7, $8, cast($9 as jsonb), $10, 'queued', $11, $11)",
     )
     .bind(&search_id)
     .bind(user_id)
@@ -500,7 +745,8 @@ pub(crate) async fn create_search(
     .bind(&dep_date)
     .bind(&dep_time)
     .bind(available_only)
-    .bind(i32::from(passenger_count))
+    .bind(passenger_count)
+    .bind(&passengers_json)
     .bind(&selected_providers)
     .bind(now)
     .execute(pool)
@@ -522,7 +768,10 @@ pub(crate) async fn create_search(
                 "dep_date": dep_date,
                 "dep_time": dep_time,
                 "available_only": available_only,
-                "passengers": [{"kind": "adult", "count": passenger_count}],
+                "passengers": passengers.iter().map(|item| json!({
+                    "kind": provider_passenger_kind(item.kind),
+                    "count": item.count,
+                })).collect::<Vec<Value>>(),
             }
         });
 
@@ -605,6 +854,8 @@ pub(crate) async fn get_search(
     let session_row = load_search_session(pool, user_id, search_id)
         .await?
         .ok_or_else(|| TrainServiceError::NotFound("search session not found".to_string()))?;
+    let request_passengers =
+        parse_passengers_from_json(&session_row.passengers_json, session_row.passenger_count);
 
     let mut providers = load_search_jobs(pool, &session_row.search_id).await?;
     let mut results = Vec::new();
@@ -696,6 +947,7 @@ pub(crate) async fn get_search(
             arr_station_code: session_row.arr_station_code,
             dep_date: session_row.dep_date,
             dep_time: session_row.dep_time,
+            passengers: request_passengers,
             passenger_count: session_row.passenger_count,
             available_only: session_row.available_only,
         },
@@ -1272,6 +1524,155 @@ async fn invalidate_station_cache(state: &AppState) {
     }
 }
 
+const TRAIN_PASSENGER_LIMIT: u8 = 9;
+
+fn passenger_kind_order(kind: TrainPassengerKind) -> usize {
+    match kind {
+        TrainPassengerKind::Adult => 0,
+        TrainPassengerKind::Child => 1,
+        TrainPassengerKind::Senior => 2,
+        TrainPassengerKind::Disability1To3 => 3,
+        TrainPassengerKind::Disability4To6 => 4,
+    }
+}
+
+fn provider_passenger_kind(kind: TrainPassengerKind) -> &'static str {
+    match kind {
+        TrainPassengerKind::Adult => "adult",
+        TrainPassengerKind::Child => "child",
+        TrainPassengerKind::Senior => "senior",
+        TrainPassengerKind::Disability1To3 => "disability1_to3",
+        TrainPassengerKind::Disability4To6 => "disability4_to6",
+    }
+}
+
+fn normalize_passengers(
+    passengers: Option<Vec<TrainPassengerCount>>,
+    passenger_count: Option<u8>,
+) -> Result<Vec<TrainPassengerCount>, TrainServiceError> {
+    let mut merged: HashMap<TrainPassengerKind, u16> = HashMap::new();
+    let explicit = passengers.is_some();
+    if let Some(items) = passengers {
+        for item in items {
+            if item.count == 0 {
+                continue;
+            }
+            let next = merged.entry(item.kind).or_insert(0);
+            *next = next.saturating_add(u16::from(item.count));
+        }
+    }
+
+    if merged.is_empty() {
+        if explicit {
+            return Err(TrainServiceError::InvalidRequest(
+                "at least one passenger is required".to_string(),
+            ));
+        }
+        merged.insert(
+            TrainPassengerKind::Adult,
+            u16::from(passenger_count.unwrap_or(1).clamp(1, TRAIN_PASSENGER_LIMIT)),
+        );
+    }
+
+    let total = merged.values().copied().sum::<u16>();
+    if total == 0 {
+        return Err(TrainServiceError::InvalidRequest(
+            "at least one passenger is required".to_string(),
+        ));
+    }
+    if total > u16::from(TRAIN_PASSENGER_LIMIT) {
+        return Err(TrainServiceError::InvalidRequest(format!(
+            "passenger total must be <= {TRAIN_PASSENGER_LIMIT}"
+        )));
+    }
+
+    let mut normalized = merged
+        .into_iter()
+        .map(|(kind, count)| TrainPassengerCount {
+            kind,
+            count: u8::try_from(count).unwrap_or(TRAIN_PASSENGER_LIMIT),
+        })
+        .collect::<Vec<_>>();
+    normalized.sort_by_key(|item| passenger_kind_order(item.kind));
+    Ok(normalized)
+}
+
+fn parse_passengers_from_json(raw: &Value, fallback_count: i32) -> Vec<TrainPassengerCount> {
+    if let Ok(mut parsed) = serde_json::from_value::<Vec<TrainPassengerCount>>(raw.clone()) {
+        parsed.retain(|item| item.count > 0);
+        parsed.sort_by_key(|item| passenger_kind_order(item.kind));
+        if !parsed.is_empty() {
+            return parsed;
+        }
+    }
+
+    vec![TrainPassengerCount {
+        kind: TrainPassengerKind::Adult,
+        count: u8::try_from(fallback_count.clamp(1, i32::from(TRAIN_PASSENGER_LIMIT))).unwrap_or(1),
+    }]
+}
+
+fn ordered_provider_labels(raw: &[String]) -> Vec<String> {
+    let mut labels = raw
+        .iter()
+        .map(|value| value.trim().to_ascii_uppercase())
+        .filter(|value| !value.is_empty())
+        .collect::<Vec<_>>();
+    labels.sort_by(|left, right| {
+        let rank = |value: &str| match value {
+            "KTX" => 0,
+            "SRT" => 1,
+            _ => 2,
+        };
+        rank(left).cmp(&rank(right)).then_with(|| left.cmp(right))
+    });
+    labels.dedup();
+    labels
+}
+
+fn curated_region_order() -> &'static [(&'static str, &'static str)] {
+    &[
+        ("major", "주요역"),
+        ("seoul", "서울"),
+        ("gyeonggi", "경기"),
+        ("gangwon", "강원"),
+        ("chungbuk", "충북"),
+        ("chungnam", "충남"),
+        ("jeonbuk", "전북"),
+        ("jeonnam", "전남"),
+        ("gyeongbuk", "경북"),
+        ("gyeongnam", "경남"),
+        ("metropolitan", "광역시"),
+        ("all", "전체"),
+    ]
+}
+
+fn curated_region_for_station(station_name_ko: &str) -> &'static str {
+    match station_name_ko {
+        "서울" | "용산" | "수서" | "영등포" | "왕십리" | "청량리" | "상봉" | "옥수" => {
+            "seoul"
+        }
+        "광명" | "수원" | "동탄" | "평택" | "서정리" | "오산" | "안양" | "의정부" => {
+            "gyeonggi"
+        }
+        "강릉" | "동해" | "묵호" | "정동진" | "진부" | "둔내" | "만종" | "원주" | "서원주"
+        | "춘천" | "남춘천" => "gangwon",
+        "오송" | "제천" | "주덕" | "증평" | "충주" => "chungbuk",
+        "천안" | "천안아산" | "아산" | "온양온천" | "대천" | "장항" | "서천" => {
+            "chungnam"
+        }
+        "익산" | "전주" | "정읍" | "남원" | "군산" | "김제" => "jeonbuk",
+        "광주송정" | "목포" | "나주" | "순천" | "여수EXPO" | "여천" | "곡성" | "구례구"
+        | "보성" | "벌교" => "jeonnam",
+        "동대구" | "대구" | "경주" | "경주(신경주)" | "포항" | "안동" | "영주" | "김천구미"
+        | "구미" | "점촌" | "상주" | "서경주" | "영천" | "북영천" => "gyeongbuk",
+        "부산" | "구포" | "마산" | "창원" | "창원중앙" | "진주" | "밀양" | "삼랑진" | "물금"
+        | "진영" | "사상" | "부전" | "센텀" => "gyeongnam",
+        "대전" | "광주" | "울산(통도사)" => "metropolitan",
+        _ => "all",
+    }
+}
+
 fn parse_provider_scope(raw: Option<&str>) -> Result<Vec<&'static str>, TrainServiceError> {
     match raw.map(|value| value.trim().to_ascii_lowercase()) {
         None => Ok(vec!["srt", "ktx"]),
@@ -1511,7 +1912,7 @@ async fn load_search_session(
     search_id: &str,
 ) -> Result<Option<SearchSessionRow>, TrainServiceError> {
     let row = sqlx::query(
-        "select search_id, dep_station_code, arr_station_code, dep_date, dep_time, passenger_count, available_only, status, created_at, updated_at, completed_at from train_search_sessions where search_id = $1 and user_id = $2 limit 1",
+        "select search_id, dep_station_code, arr_station_code, dep_date, dep_time, passengers_json, passenger_count, available_only, status, created_at, updated_at, completed_at from train_search_sessions where search_id = $1 and user_id = $2 limit 1",
     )
     .bind(search_id)
     .bind(user_id)
@@ -1538,6 +1939,9 @@ async fn load_search_session(
             .map_err(|_| TrainServiceError::Internal)?,
         dep_time: row
             .try_get("dep_time")
+            .map_err(|_| TrainServiceError::Internal)?,
+        passengers_json: row
+            .try_get("passengers_json")
             .map_err(|_| TrainServiceError::Internal)?,
         passenger_count: row
             .try_get("passenger_count")
@@ -1803,6 +2207,55 @@ mod tests {
     use super::*;
 
     #[test]
+    fn station_suggest_query_supports_extended_hints() {
+        let parsed: StationSuggestQuery = serde_json::from_value(serde_json::json!({
+            "q": "tntj",
+            "provider": "srt",
+            "limit": 8,
+            "layout_hint": "qwerty",
+            "lang_hint": "ko",
+            "apply_mode": "submit"
+        }))
+        .unwrap_or_else(|err| panic!("failed to parse station suggest query: {err}"));
+
+        assert_eq!(parsed.q, "tntj");
+        assert_eq!(parsed.provider.as_deref(), Some("srt"));
+        assert_eq!(parsed.limit, Some(8));
+        assert_eq!(parsed.layout_hint.as_deref(), Some("qwerty"));
+        assert_eq!(parsed.lang_hint.as_deref(), Some("ko"));
+        assert_eq!(parsed.apply_mode.as_deref(), Some("submit"));
+    }
+
+    #[test]
+    fn station_suggest_response_exposes_autocorrect_metadata() {
+        let response = StationSuggestResponse {
+            query: "tjdnf".to_string(),
+            corrected_query: Some("서울".to_string()),
+            autocorrect_applied: true,
+            suggestions: vec![StationSuggestion {
+                provider: "srt".to_string(),
+                station_code: "0551".to_string(),
+                station_name_ko: "수서".to_string(),
+                station_name_en: Some("suseo".to_string()),
+                station_name_ja_katakana: "スソ".to_string(),
+                line_code: 0,
+                selected: true,
+                order_index: 1,
+                match_source: Some("keyboard_layout".to_string()),
+                confidence: Some(0.95),
+            }],
+        };
+
+        assert_eq!(response.corrected_query.as_deref(), Some("서울"));
+        assert!(response.autocorrect_applied);
+        assert_eq!(
+            response.suggestions[0].match_source.as_deref(),
+            Some("keyboard_layout")
+        );
+        assert_eq!(response.suggestions[0].confidence, Some(0.95));
+    }
+
+    #[test]
     fn station_match_score_prefers_exact_code_match() {
         let station = StationCatalogEntry {
             provider: "srt".to_string(),
@@ -1832,5 +2285,39 @@ mod tests {
     fn aggregate_status_prefers_running_when_in_progress() {
         let status = aggregate_status(vec!["queued", "completed"].into_iter());
         assert_eq!(status, "running");
+    }
+
+    #[test]
+    fn normalize_passengers_uses_explicit_categories() {
+        let passengers = normalize_passengers(
+            Some(vec![
+                TrainPassengerCount {
+                    kind: TrainPassengerKind::Adult,
+                    count: 1,
+                },
+                TrainPassengerCount {
+                    kind: TrainPassengerKind::Child,
+                    count: 2,
+                },
+            ]),
+            Some(9),
+        )
+        .unwrap_or_else(|err| panic!("unexpected err: {err:?}"));
+
+        assert_eq!(passengers.len(), 2);
+        assert_eq!(passengers[0].kind, TrainPassengerKind::Adult);
+        assert_eq!(passengers[1].kind, TrainPassengerKind::Child);
+    }
+
+    #[test]
+    fn normalize_passengers_rejects_zero_total() {
+        let result = normalize_passengers(
+            Some(vec![TrainPassengerCount {
+                kind: TrainPassengerKind::Adult,
+                count: 0,
+            }]),
+            None,
+        );
+        assert!(matches!(result, Err(TrainServiceError::InvalidRequest(_))));
     }
 }
