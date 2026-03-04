@@ -2,6 +2,12 @@ use std::{collections::BTreeMap, env};
 
 use bominal_shared::{
     crypto::{EnvelopeAad, EnvelopeCipher, PayloadKind, ServerEnvelopeCipher, StaticKeyring},
+    providers::ProviderAdapter,
+    providers::ktx::{KtxProviderAdapter, ReqwestKtxClient},
+    providers::srt::{
+        LoginAccountType, LoginRequest, ReqwestSrtClient, SecretString, SrtProviderAdapter,
+        SrtProviderError,
+    },
     repo::{UpsertProviderAuthSecretParams, upsert_provider_auth_secret_query},
 };
 use chrono::Utc;
@@ -26,6 +32,8 @@ pub(crate) struct PutProviderCredentialsResult {
     pub(crate) provider: String,
     pub(crate) credential_ref: String,
     pub(crate) contract: &'static str,
+    pub(crate) auth_probe_status: &'static str,
+    pub(crate) auth_probe_message: String,
 }
 
 #[derive(Debug)]
@@ -71,6 +79,14 @@ pub(crate) async fn put_provider_credentials(
     }))
     .map_err(|_| PutProviderCredentialsError::ValidationFailed)?;
 
+    let probe_result = probe_provider_login_once(
+        &state.config.app_env,
+        provider,
+        payload.identity_ciphertext.as_str(),
+        payload.password_ciphertext.as_str(),
+    )
+    .await;
+
     let cipher = build_envelope_cipher_from_env(state)?;
     let encrypted = cipher
         .encrypt(&plaintext, aad.clone())
@@ -83,7 +99,10 @@ pub(crate) async fn put_provider_credentials(
     let redacted_metadata = serde_json::json!({
         "provider": provider,
         "credential_kind": "login",
-        "contract": "ciphertext-only-v1"
+        "contract": "ciphertext-only-v1",
+        "auth_probe_status": probe_result.status,
+        "auth_probe_message": probe_result.message,
+        "auth_probe_checked_at": now,
     });
 
     let params = UpsertProviderAuthSecretParams {
@@ -115,6 +134,8 @@ pub(crate) async fn put_provider_credentials(
         provider: provider.to_string(),
         credential_ref: format!("{provider}_cred_{}", Uuid::new_v4()),
         contract: "ciphertext-only-v1",
+        auth_probe_status: probe_result.status,
+        auth_probe_message: probe_result.message,
     })
 }
 
@@ -226,5 +247,148 @@ fn canonical_provider(raw: &str) -> Option<&'static str> {
         "srt" => Some("srt"),
         "ktx" => Some("ktx"),
         _ => None,
+    }
+}
+
+#[derive(Debug, Clone)]
+struct AuthProbeResult {
+    status: &'static str,
+    message: String,
+}
+
+impl AuthProbeResult {
+    fn success(provider: &str) -> Self {
+        Self {
+            status: "success",
+            message: format!(
+                "{}: Successfully authenticated.",
+                provider.to_ascii_uppercase()
+            ),
+        }
+    }
+
+    fn error(provider: &str, detail: &str) -> Self {
+        let detail = detail.trim();
+        let message = if detail.is_empty() {
+            format!(
+                "{}: Authentication failed. Verify account identifier and password.",
+                provider.to_ascii_uppercase()
+            )
+        } else {
+            format!("{}: {detail}", provider.to_ascii_uppercase())
+        };
+        Self {
+            status: "error",
+            message,
+        }
+    }
+}
+
+async fn probe_provider_login_once(
+    app_env: &str,
+    provider: &str,
+    account_identifier: &str,
+    password: &str,
+) -> AuthProbeResult {
+    let app_env = normalize_env(app_env);
+    if matches!(app_env.as_str(), "test" | "testing" | "ci" | "integration") {
+        return AuthProbeResult::success(provider);
+    }
+
+    let provider_owned = provider.to_string();
+    let account_owned = account_identifier.to_string();
+    let password_owned = password.to_string();
+    match tokio::task::spawn_blocking(move || {
+        probe_provider_login_blocking(
+            provider_owned.as_str(),
+            account_owned.as_str(),
+            password_owned.as_str(),
+        )
+    })
+    .await
+    {
+        Ok(result) => result,
+        Err(_) => AuthProbeResult::error(provider, "Authentication probe failed"),
+    }
+}
+
+fn probe_provider_login_blocking(
+    provider: &str,
+    account_identifier: &str,
+    password: &str,
+) -> AuthProbeResult {
+    let request = LoginRequest {
+        account_type: LoginAccountType::MembershipNumber,
+        account_identifier: account_identifier.to_string(),
+        password: SecretString::new(password.to_string().into_boxed_str()),
+    };
+
+    let outcome = match provider {
+        "srt" => {
+            let mut adapter = SrtProviderAdapter::new(ReqwestSrtClient::live_default());
+            adapter.login(request)
+        }
+        "ktx" => {
+            let mut adapter = KtxProviderAdapter::new(ReqwestKtxClient::live_default());
+            adapter.login(request)
+        }
+        _ => return AuthProbeResult::error(provider, "Authentication probe unsupported"),
+    };
+
+    match outcome {
+        Ok(_) => AuthProbeResult::success(provider),
+        Err(error) => AuthProbeResult::error(provider, probe_error_message(&error).as_str()),
+    }
+}
+
+fn probe_error_message(error: &SrtProviderError) -> String {
+    match error {
+        SrtProviderError::Unauthorized | SrtProviderError::SessionExpired => {
+            "Authentication failed. Verify account identifier and password.".to_string()
+        }
+        SrtProviderError::NotLoggedIn | SrtProviderError::ReloginUnavailable => {
+            "Authentication failed. Provider session could not be created.".to_string()
+        }
+        SrtProviderError::Transport { message } | SrtProviderError::OperationFailed { message } => {
+            let trimmed = message.trim();
+            if trimmed.is_empty() {
+                "Authentication probe failed".to_string()
+            } else {
+                trimmed.to_string()
+            }
+        }
+        SrtProviderError::UnsupportedOperation { .. } => {
+            "Authentication probe is not supported for this provider.".to_string()
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn auth_probe_result_messages_include_provider_prefix() {
+        let success = AuthProbeResult::success("srt");
+        assert_eq!(success.status, "success");
+        assert_eq!(success.message, "SRT: Successfully authenticated.");
+
+        let error = AuthProbeResult::error("ktx", "Authentication failed");
+        assert_eq!(error.status, "error");
+        assert_eq!(error.message, "KTX: Authentication failed");
+    }
+
+    #[test]
+    fn probe_error_message_maps_auth_failures_to_actionable_text() {
+        assert_eq!(
+            probe_error_message(&SrtProviderError::Unauthorized),
+            "Authentication failed. Verify account identifier and password."
+        );
+        assert_eq!(
+            probe_error_message(&SrtProviderError::OperationFailed {
+                message: "rate_limited for login".to_string()
+            }),
+            "rate_limited for login"
+        );
     }
 }

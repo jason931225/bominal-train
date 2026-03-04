@@ -41,6 +41,10 @@ pub(crate) struct TrainProviderPreflight {
     pub(crate) credentials_ready: bool,
     pub(crate) payment_ready: bool,
     pub(crate) payment_method_ref: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) auth_probe_status: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) auth_probe_message: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -2095,7 +2099,8 @@ async fn provider_preflight(
     provider: &str,
     user_id: &str,
 ) -> Result<TrainProviderPreflight, TrainServiceError> {
-    let credentials_ready = credentials_ready(pool, provider, user_id).await?;
+    let auth_probe = provider_auth_probe(pool, provider, user_id).await?;
+    let credentials_ready = auth_probe.is_some();
     let payment_method_ref = latest_payment_method_ref(pool, provider, user_id).await?;
     let payment_ready = payment_method_ref.is_some();
 
@@ -2104,7 +2109,60 @@ async fn provider_preflight(
         credentials_ready,
         payment_ready,
         payment_method_ref,
+        auth_probe_status: auth_probe.as_ref().and_then(|value| value.status.clone()),
+        auth_probe_message: auth_probe.and_then(|value| value.message),
     })
+}
+
+#[derive(Debug)]
+struct ProviderAuthProbe {
+    status: Option<String>,
+    message: Option<String>,
+}
+
+async fn provider_auth_probe(
+    pool: &PgPool,
+    provider: &str,
+    user_id: &str,
+) -> Result<Option<ProviderAuthProbe>, TrainServiceError> {
+    let row = sqlx::query(
+        "select
+            redacted_metadata ->> 'auth_probe_status' as auth_probe_status,
+            redacted_metadata ->> 'auth_probe_message' as auth_probe_message
+         from provider_auth_secrets
+         where provider = $1 and subject_ref = $2 and credential_kind = 'login' and revoked_at is null
+         order by updated_at desc
+         limit 1",
+    )
+    .bind(provider)
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|err| {
+        error!(
+            error = %err,
+            provider = %provider,
+            "train preflight provider_auth_probe query failed"
+        );
+        TrainServiceError::Internal
+    })?;
+
+    let Some(row) = row else {
+        return Ok(None);
+    };
+
+    let status = row
+        .try_get::<Option<String>, _>("auth_probe_status")
+        .map_err(|_| TrainServiceError::Internal)?
+        .map(|value| value.trim().to_ascii_lowercase())
+        .filter(|value| !value.is_empty());
+    let message = row
+        .try_get::<Option<String>, _>("auth_probe_message")
+        .map_err(|_| TrainServiceError::Internal)?
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+
+    Ok(Some(ProviderAuthProbe { status, message }))
 }
 
 async fn credentials_ready(

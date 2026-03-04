@@ -2180,28 +2180,37 @@ pub fn render_dashboard_train(email: &str) -> String {
     }
   };
 
+  const providerAuthProbeStatus = (provider) => {
+    if (!provider || typeof provider !== 'object') return '';
+    const value = typeof provider.auth_probe_status === 'string'
+      ? provider.auth_probe_status.trim().toLowerCase()
+      : '';
+    return value === 'error' || value === 'success' ? value : '';
+  };
+
   const providerHasError = (provider) => {
     if (!provider || typeof provider !== 'object') return false;
-    return (
+    const probeStatus = providerAuthProbeStatus(provider);
+    if (probeStatus === 'error') return true;
+    return Boolean(
       (typeof provider.error === 'string' && provider.error.trim())
       || (typeof provider.debug === 'string' && provider.debug.trim())
-      || (typeof provider.message === 'string' && provider.message.trim())
     );
   };
 
   const statusIcon = (kind, ready, hasError) => {
     const title = kind === 'payment' ? t('provider.payment') : t('provider.credentials');
-    const state = ready ? t('provider.ready') : (hasError ? t('provider.error') : t('provider.missing'));
+    const state = hasError ? t('provider.error') : (ready ? t('provider.ready') : t('provider.missing'));
     const iconPrefix = kind === 'payment' ? 'provider-status-payment' : 'provider-status-credentials';
-    const lightVariant = ready
-      ? `${iconPrefix}-green.svgz`
-      : hasError
-        ? `${iconPrefix}-red.svgz`
+    const lightVariant = hasError
+      ? `${iconPrefix}-red.svgz`
+      : ready
+        ? `${iconPrefix}-green.svgz`
         : `${iconPrefix}-gray-light.svgz`;
-    const darkVariant = ready
-      ? `${iconPrefix}-green.svgz`
-      : hasError
-        ? `${iconPrefix}-red.svgz`
+    const darkVariant = hasError
+      ? `${iconPrefix}-red.svgz`
+      : ready
+        ? `${iconPrefix}-green.svgz`
         : `${iconPrefix}-gray-dark.svgz`;
     const src = currentThemeMode() === 'dark' ? darkVariant : lightVariant;
     return `
@@ -2774,8 +2783,19 @@ pub fn render_dashboard_settings_providers(email: &str) -> String {
     return latestProvidersByName.get(activeProvider) || null;
   };
 
-  const providerDebugMessage = (provider) => {
+  const providerAuthProbeStatus = (provider) => {
     if (!provider || typeof provider !== 'object') return '';
+    const value = typeof provider.auth_probe_status === 'string'
+      ? provider.auth_probe_status.trim().toLowerCase()
+      : '';
+    return value === 'error' || value === 'success' ? value : '';
+  };
+
+  const providerStatusMessage = (provider) => {
+    if (!provider || typeof provider !== 'object') return '';
+    if (typeof provider.auth_probe_message === 'string' && provider.auth_probe_message.trim()) {
+      return provider.auth_probe_message.trim();
+    }
     if (typeof provider.error === 'string' && provider.error.trim()) return provider.error.trim();
     if (typeof provider.debug === 'string' && provider.debug.trim()) return provider.debug.trim();
     if (typeof provider.message === 'string' && provider.message.trim()) return provider.message.trim();
@@ -2784,17 +2804,17 @@ pub fn render_dashboard_settings_providers(email: &str) -> String {
 
   const statusIcon = (kind, ready, hasError) => {
     const title = kind === 'credentials' ? 'Credentials' : 'Payment';
-    const state = ready ? 'ready' : (hasError ? 'error' : 'missing');
+    const state = hasError ? 'error' : (ready ? 'ready' : 'missing');
     const iconPrefix = kind === 'credentials' ? 'provider-status-credentials' : 'provider-status-payment';
-    const lightVariant = ready
-      ? `${iconPrefix}-green.svgz`
-      : hasError
-        ? `${iconPrefix}-red.svgz`
+    const lightVariant = hasError
+      ? `${iconPrefix}-red.svgz`
+      : ready
+        ? `${iconPrefix}-green.svgz`
         : `${iconPrefix}-gray-light.svgz`;
-    const darkVariant = ready
-      ? `${iconPrefix}-green.svgz`
-      : hasError
-        ? `${iconPrefix}-red.svgz`
+    const darkVariant = hasError
+      ? `${iconPrefix}-red.svgz`
+      : ready
+        ? `${iconPrefix}-green.svgz`
         : `${iconPrefix}-gray-dark.svgz`;
     const src = currentThemeMode() === 'dark' ? darkVariant : lightVariant;
     return `
@@ -2826,18 +2846,19 @@ pub fn render_dashboard_settings_providers(email: &str) -> String {
   const deleteProviderCredentials = async () => {
     const selected = activeProviderRecord();
     if (!selected || !activeProvider) return;
-    const prompt = `Delete saved ${activeProvider.toUpperCase()} credentials?`;
+    const deletedProvider = activeProvider;
+    const prompt = `Delete saved ${deletedProvider.toUpperCase()} credentials?`;
     if (!window.confirm(prompt)) return;
-    const response = await requestJson(`/api/train/providers/${activeProvider}/credentials`, 'DELETE');
+    const response = await requestJson(`/api/train/providers/${deletedProvider}/credentials`, 'DELETE');
     if (!response.ok) {
       showStatus(
         'error',
-        apiErrorMessage(response, `Could not delete ${activeProvider.toUpperCase()} credentials.`),
+        apiErrorMessage(response, `Could not delete ${deletedProvider.toUpperCase()} credentials.`),
       );
       return;
     }
     closeAuthModal();
-    showStatus('success', `${activeProvider.toUpperCase()} credentials deleted.`);
+    showStatus('success', `${deletedProvider.toUpperCase()}: Credentials removed.`);
     await loadPreflight();
   };
 
@@ -2859,8 +2880,9 @@ pub fn render_dashboard_settings_providers(email: &str) -> String {
 
     preflightNode.innerHTML = providers.map((provider) => {
       const providerKey = normalizeProvider(provider.provider);
-      const debugMessage = providerDebugMessage(provider);
-      const hasError = Boolean(debugMessage);
+      const statusMessage = providerStatusMessage(provider);
+      const probeStatus = providerAuthProbeStatus(provider);
+      const hasError = Boolean(provider.credentials_ready) && probeStatus === 'error';
       return `
         <button type="button" class="summary-card provider-select-card p-3 w-full text-left" data-provider-open="${providerKey || ''}">
           <span class="flex h-8 items-center justify-between gap-2">
@@ -2869,7 +2891,7 @@ pub fn render_dashboard_settings_providers(email: &str) -> String {
               ${statusIcon('credentials', provider.credentials_ready, hasError)}
             </span>
           </span>
-          ${debugMessage ? `<span class="support-row mt-2 block">${escapeHtml(debugMessage)}</span>` : ''}
+          ${statusMessage ? `<span class="support-row mt-2 block">${escapeHtml(statusMessage)}</span>` : ''}
         </button>
       `;
     }).join('') || '<div class="empty-card col-span-2">No provider data.</div>';
@@ -2900,19 +2922,31 @@ pub fn render_dashboard_settings_providers(email: &str) -> String {
     authForm.addEventListener('submit', async (event) => {
       event.preventDefault();
       if (!activeProvider) return;
+      const submittedProvider = activeProvider;
       const account = String(authAccountInput && authAccountInput.value ? authAccountInput.value : '').trim();
       const password = String(authPasswordInput && authPasswordInput.value ? authPasswordInput.value : '');
-      const response = await requestJson(`/api/train/providers/${activeProvider}/credentials`, 'PUT', {
+      const response = await requestJson(`/api/train/providers/${submittedProvider}/credentials`, 'PUT', {
         account_identifier: account,
         password,
       });
       if (!response.ok) {
-        showStatus('error', apiErrorMessage(response, `Could not save ${activeProvider.toUpperCase()} credentials.`));
+        showStatus('error', apiErrorMessage(response, `Could not save ${submittedProvider.toUpperCase()} credentials.`));
         return;
       }
+      const result = response.body && typeof response.body === 'object' ? response.body : {};
+      const probeStatus = typeof result.auth_probe_status === 'string'
+        ? result.auth_probe_status.trim().toLowerCase()
+        : '';
+      const probeMessage = typeof result.auth_probe_message === 'string' && result.auth_probe_message.trim()
+        ? result.auth_probe_message.trim()
+        : '';
       closeAuthModal();
-      showStatus('success', `${activeProvider.toUpperCase()} credentials saved.`);
       await loadPreflight();
+      if (probeStatus === 'error') {
+        showStatus('error', probeMessage || `${submittedProvider.toUpperCase()}: Authentication failed.`);
+        return;
+      }
+      showStatus('success', probeMessage || `${submittedProvider.toUpperCase()}: Successfully authenticated.`);
     });
   }
 
@@ -3587,7 +3621,8 @@ mod tests {
     #[test]
     fn dashboard_provider_security_page_posts_to_provider_credentials_route() {
         let html = render_dashboard_settings_providers("admin@bominal.local");
-        assert!(html.contains("/api/train/providers/${activeProvider}/credentials"));
+        assert!(html.contains("/api/train/providers/${submittedProvider}/credentials"));
+        assert!(html.contains("/api/train/providers/${deletedProvider}/credentials"));
         assert!(html.contains("data-provider-open"));
         assert!(html.contains("provider-auth-modal"));
         assert!(html.contains("provider-auth-form"));
@@ -3610,6 +3645,26 @@ mod tests {
         assert!(html.contains(">Account</a>"));
         assert!(html.contains(">Providers</a>"));
         assert!(html.contains(">Payment</a>"));
+    }
+
+    #[test]
+    fn dashboard_provider_security_delete_feedback_uses_deleted_provider_snapshot() {
+        let html = render_dashboard_settings_providers("admin@bominal.local");
+        assert!(html.contains("const deletedProvider = activeProvider;"));
+        assert!(html.contains("${deletedProvider.toUpperCase()}: Credentials removed."));
+    }
+
+    #[test]
+    fn dashboard_provider_security_submit_shows_auth_probe_status_feedback() {
+        let html = render_dashboard_settings_providers("admin@bominal.local");
+        assert!(html.contains("const providerAuthProbeStatus = (provider) => {"));
+        assert!(html.contains("const probeStatus = typeof result.auth_probe_status === 'string'"));
+        assert!(html.contains(
+            "showStatus('error', probeMessage || `${submittedProvider.toUpperCase()}: Authentication failed.`);"
+        ));
+        assert!(html.contains(
+            "showStatus('success', probeMessage || `${submittedProvider.toUpperCase()}: Successfully authenticated.`);"
+        ));
     }
 
     #[test]
