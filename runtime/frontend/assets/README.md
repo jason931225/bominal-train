@@ -8,6 +8,7 @@ Structure:
 - `icons/brand` - brand-facing assets such as favicon.
 - `icons/common` - shared utility icons.
 - `icons/theme` - theme switch icons.
+- `logos` - payment and train-provider logos used in runtime UI.
 
 Build sync:
 
@@ -18,3 +19,4 @@ SVGZ generation:
 
 - `./runtime/frontend/assets/generate-svgz.sh` creates `.svgz` files next to every `.svg`.
 - Original `.svg` files remain in place.
+- Keep logo pairs as `*.min.svg` and `*.min.svgz` when optimized assets are available.
