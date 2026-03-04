@@ -87,15 +87,15 @@ pub fn render_auth_landing() -> String {
         <div class="mt-3 flex justify-center">
           <div class="auth-hero-icon" role="img" aria-label="Secure account sign-in">
             <svg class="auth-hero-icon-main" viewBox="0 0 512 256" aria-hidden="true">
-              <g fill="none" stroke="rgb(var(--text-supporting))" stroke-width="12" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M75.7,19.3 C70.5,19.4 50.9,19.6 44.7,20.0 C38.4,20.4 40.4,20.8 38.0,22.0 C35.6,23.2 32.4,24.8 30.0,27.0 C27.6,29.2 25.0,32.3 23.3,35.3 C21.7,38.3 20.6,38.4 20.0,45.0 C19.4,51.6 19.7,69.7 19.7,74.7"></path>
-                <path d="M180.3,19.7 C185.4,19.7 204.7,19.6 211.0,20.0 C217.3,20.4 215.7,21.0 218.0,22.0 C220.3,23.0 222.4,24.1 224.7,26.0 C226.9,27.9 229.6,30.5 231.3,33.3 C233.1,36.2 234.5,36.0 235.3,43.0 C236.2,50.0 236.2,69.9 236.3,75.3"></path>
-                <path d="M133.7,99.7 C133.7,106.2 134.1,131.0 134.0,138.7 C133.9,146.3 133.4,144.0 133.0,145.7 C132.6,147.3 132.3,147.9 131.7,148.7 C131.1,149.4 131.3,149.8 129.3,150.3 C127.4,150.9 121.6,151.7 120.0,152.0"></path>
-                <path d="M176.0,100.0 L175.7,116.0"></path>
-                <path d="M81.3,101.0 L81.7,115.3"></path>
-                <path d="M164.0,178.0 C163.2,178.7 161.6,180.4 159.3,182.0 C157.1,183.6 153.1,186.0 150.3,187.3 C147.6,188.7 145.8,189.3 143.0,190.0 C140.2,190.7 136.8,191.4 133.3,191.7 C129.9,191.9 125.7,191.9 122.3,191.7 C118.9,191.4 116.4,191.1 113.0,190.0 C109.6,188.9 105.2,187.3 101.7,185.3 C98.2,183.4 93.6,179.5 92.0,178.3"></path>
-                <path d="M236.3,180.7 C236.2,186.0 236.1,205.8 235.3,212.7 C234.6,219.5 233.4,218.9 231.7,221.7 C229.9,224.4 227.4,227.3 225.0,229.3 C222.6,231.4 219.5,232.9 217.0,234.0 C214.5,235.1 216.1,235.3 210.0,235.7 C203.9,236.0 185.6,235.9 180.7,236.0"></path>
-                <path d="M19.3,181.3 C19.4,185.7 19.4,202.3 19.7,207.7 C19.9,213.1 19.9,211.3 20.7,213.7 C21.4,216.1 22.8,219.6 24.3,222.0 C25.8,224.4 27.7,226.6 29.7,228.3 C31.6,230.1 33.7,231.5 36.0,232.7 C38.3,233.8 37.0,234.7 43.7,235.3 C50.3,235.9 70.6,236.2 76.0,236.3"></path>
+              <g transform="scale(10.6666667)" fill="none" stroke="rgb(var(--text-supporting))" stroke-width="1.125" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M7 2.5H4.5C3.4 2.5 2.5 3.4 2.5 4.5V7"></path>
+                <path d="M17 2.5H19.5C20.6 2.5 21.5 3.4 21.5 4.5V7"></path>
+                <path d="M2.5 17V19.5C2.5 20.6 3.4 21.5 4.5 21.5H7"></path>
+                <path d="M17 21.5H19.5C20.6 21.5 21.5 20.6 21.5 19.5V17"></path>
+                <path d="M9 8.5V9.5"></path>
+                <path d="M15 8.5V9.5"></path>
+                <path d="M12 8.5V12.3c0 .8-.7 1.5-1.5 1.5"></path>
+                <path d="M8.9 15.2c.8 1.2 1.9 1.8 3.1 1.8s2.3-.6 3.1-1.8"></path>
               </g>
               <g transform="translate(256 0) scale(10.6666667)" fill="rgb(var(--text-supporting))">
                 <g fill="none" stroke="rgb(var(--text-supporting))" stroke-width="1.125" stroke-linecap="round" stroke-linejoin="round">
@@ -1749,6 +1749,15 @@ const ADMIN_SECTION_SCRIPT: &str = r##"
   };
 
   let modalResolver = null;
+  let runtimeJobsStream = null;
+  let runtimeStreamDisabled = false;
+
+  const closeRuntimeJobsStream = () => {
+    if (runtimeJobsStream) {
+      runtimeJobsStream.close();
+      runtimeJobsStream = null;
+    }
+  };
   const closeConfirmModal = (value) => {
     modal.classList.add('hidden');
     if (modalResolver) {
@@ -1913,22 +1922,13 @@ const ADMIN_SECTION_SCRIPT: &str = r##"
     };
   };
 
-  const renderRuntime = async () => {
-    const [jobsResult, flagsResult] = await Promise.all([
-      requestJson('/api/admin/runtime/jobs'),
-      requestJson('/api/admin/runtime/kill-switches'),
-    ]);
-    if (!jobsResult.ok) {
-      content.innerHTML = `<div class="error-card">${escapeHtml(errorMessage(jobsResult))}</div>`;
-      return;
-    }
-    if (!flagsResult.ok) {
-      content.innerHTML = `<div class="error-card">${escapeHtml(errorMessage(flagsResult))}</div>`;
-      return;
-    }
-    const jobs = Array.isArray(jobsResult.body?.jobs) ? jobsResult.body.jobs : [];
-    const flags = Array.isArray(flagsResult.body?.flags) ? flagsResult.body.flags : [];
-    const jobRows = jobs.slice(0, 120).map((job) => `
+  const runtimeState = {
+    jobs: [],
+    flags: [],
+  };
+
+  const renderRuntimeMarkup = () => {
+    const jobRows = runtimeState.jobs.slice(0, 120).map((job) => `
       <article class="admin-row" data-job-id="${escapeHtml(job.job_id)}">
         <div class="min-w-0">
           <p class="truncate text-sm font-semibold txt-strong">${escapeHtml(job.job_id)}</p>
@@ -1941,7 +1941,7 @@ const ADMIN_SECTION_SCRIPT: &str = r##"
         </div>
       </article>
     `).join('');
-    const flagRows = flags.map((flag) => `
+    const flagRows = runtimeState.flags.map((flag) => `
       <article class="summary-row" data-flag="${escapeHtml(flag.flag)}">
         <span>${escapeHtml(flag.flag)}</span>
         <button class="btn-ghost h-10 px-3" data-flag-action="${flag.enabled ? 'disable' : 'enable'}">
@@ -1959,6 +1959,9 @@ const ADMIN_SECTION_SCRIPT: &str = r##"
         ${flagRows || '<div class="empty-card">No kill switches found.</div>'}
       </section>
     `;
+  };
+
+  const attachRuntimeHandlers = () => {
     content.onclick = async (event) => {
       const jobButton = event.target.closest('[data-job-action]');
       if (jobButton) {
@@ -2007,6 +2010,58 @@ const ADMIN_SECTION_SCRIPT: &str = r##"
       setFlash('success', `Kill switch ${flag} updated.`);
       await renderRuntime();
     };
+  };
+
+  const openRuntimeJobsStream = () => {
+    if (runtimeStreamDisabled || !window.EventSource) {
+      return;
+    }
+    closeRuntimeJobsStream();
+    try {
+      runtimeJobsStream = new EventSource('/api/admin/runtime/jobs/stream');
+    } catch (_error) {
+      runtimeStreamDisabled = true;
+      return;
+    }
+
+    runtimeJobsStream.addEventListener('runtime_jobs', (event) => {
+      let payload = null;
+      try {
+        payload = JSON.parse(event.data || '{}');
+      } catch (_error) {
+        return;
+      }
+      const jobs = Array.isArray(payload.jobs) ? payload.jobs : [];
+      runtimeState.jobs = jobs;
+      renderRuntimeMarkup();
+      attachRuntimeHandlers();
+    });
+
+    runtimeJobsStream.addEventListener('error', () => {
+      closeRuntimeJobsStream();
+      // Keep the UI responsive if stream is unavailable; actions still refresh state.
+      runtimeStreamDisabled = true;
+    });
+  };
+
+  const renderRuntime = async () => {
+    const [jobsResult, flagsResult] = await Promise.all([
+      requestJson('/api/admin/runtime/jobs'),
+      requestJson('/api/admin/runtime/kill-switches'),
+    ]);
+    if (!jobsResult.ok) {
+      content.innerHTML = `<div class="error-card">${escapeHtml(errorMessage(jobsResult))}</div>`;
+      return;
+    }
+    if (!flagsResult.ok) {
+      content.innerHTML = `<div class="error-card">${escapeHtml(errorMessage(flagsResult))}</div>`;
+      return;
+    }
+    runtimeState.jobs = Array.isArray(jobsResult.body?.jobs) ? jobsResult.body.jobs : [];
+    runtimeState.flags = Array.isArray(flagsResult.body?.flags) ? flagsResult.body.flags : [];
+    renderRuntimeMarkup();
+    attachRuntimeHandlers();
+    openRuntimeJobsStream();
   };
 
   const ensureLightweightCharts = async () => {
@@ -2262,6 +2317,10 @@ const ADMIN_SECTION_SCRIPT: &str = r##"
     config: renderConfig,
     audit: renderAudit,
   };
+  window.addEventListener('beforeunload', closeRuntimeJobsStream);
+  if (section !== 'runtime') {
+    closeRuntimeJobsStream();
+  }
   const renderer = renderers[section];
   if (!renderer) {
     content.innerHTML = '<div class="error-card">Unsupported admin section.</div>';
@@ -2328,5 +2387,11 @@ mod tests {
         let html = render_admin_section("ops@bominal.com", "observability");
         assert!(html.contains("/assets/lightweight-charts.standalone.production.js"));
         assert!(!html.contains("cdn.jsdelivr.net/npm/lightweight-charts"));
+    }
+
+    #[test]
+    fn admin_runtime_uses_sse_jobs_stream_endpoint() {
+        let html = render_admin_section("ops@bominal.com", "runtime");
+        assert!(html.contains("/api/admin/runtime/jobs/stream"));
     }
 }

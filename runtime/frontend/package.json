@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "scripts": {
     "build:charts": "mkdir -p ./dist && cp ./node_modules/lightweight-charts/dist/lightweight-charts.standalone.production.js ./dist/lightweight-charts.standalone.production.js",
-    "build:css": "npm run build:charts && tailwindcss -i ./styles/tailwind.css -o ./dist/tailwind.css --minify",
-    "watch:css": "npm run build:charts && tailwindcss -i ./styles/tailwind.css -o ./dist/tailwind.css --watch=always"
+    "build:css": "npm run build:charts && BROWSERSLIST_IGNORE_OLD_DATA=1 tailwindcss -i ./styles/tailwind.css -o ./dist/tailwind.css --minify",
+    "watch:css": "npm run build:charts && BROWSERSLIST_IGNORE_OLD_DATA=1 tailwindcss -i ./styles/tailwind.css -o ./dist/tailwind.css --watch=always"
   },
   "devDependencies": {
     "lightweight-charts": "^4.2.3",

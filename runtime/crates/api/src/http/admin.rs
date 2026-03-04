@@ -106,6 +106,7 @@ pub(super) fn register(router: Router<Arc<AppState>>) -> Router<Arc<AppState>> {
             post(revoke_user_sessions),
         )
         .route("/api/admin/runtime/jobs", get(list_runtime_jobs))
+        .route("/api/admin/runtime/jobs/stream", get(stream_runtime_jobs))
         .route("/api/admin/runtime/jobs/{job_id}", get(get_runtime_job))
         .route(
             "/api/admin/runtime/jobs/{job_id}/events",
@@ -436,6 +437,64 @@ async fn get_runtime_job_events(
         Ok(events) => (StatusCode::OK, Json(RuntimeEventsResponse { events })).into_response(),
         Err(err) => map_admin_error(err, &headers).into_response(),
     }
+}
+
+async fn stream_runtime_jobs(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    if let Err(response) = require_admin_read(state.as_ref(), &headers).await {
+        return response;
+    }
+    let events = stream! {
+        let mut last_fingerprint: Option<String> = None;
+        loop {
+            match admin_service::list_runtime_jobs(state.as_ref()).await {
+                Ok(jobs) => {
+                    let jobs = jobs.into_iter().take(120).collect::<Vec<_>>();
+                    let fingerprint = jobs
+                        .iter()
+                        .map(|job| {
+                            format!(
+                                "{}|{}|{}|{}",
+                                job.job_id,
+                                job.status,
+                                job.attempt_count,
+                                job.updated_at
+                                    .map(|value| value.timestamp_millis().to_string())
+                                    .unwrap_or_default()
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                        .join(";");
+                    if last_fingerprint.as_ref() != Some(&fingerprint) {
+                        last_fingerprint = Some(fingerprint);
+                        let payload = serde_json::json!({ "jobs": jobs });
+                        yield Ok::<Event, Infallible>(
+                            Event::default()
+                                .event("runtime_jobs")
+                                .data(payload.to_string()),
+                        );
+                    }
+                }
+                Err(_) => {
+                    yield Ok::<Event, Infallible>(
+                        Event::default()
+                            .event("error")
+                            .data("{\"message\":\"runtime jobs stream temporarily unavailable\"}"),
+                    );
+                }
+            }
+            tokio::time::sleep(Duration::from_secs(3)).await;
+        }
+    };
+    Sse::new(events)
+        .keep_alive(
+            KeepAlive::new()
+                .interval(Duration::from_secs(15))
+                .text("heartbeat"),
+        )
+        .into_response()
 }
 
 async fn stream_runtime_job_events(

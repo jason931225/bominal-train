@@ -237,6 +237,54 @@ async fn admin_api_rejects_non_admin_host() {
 }
 
 #[tokio::test]
+async fn runtime_jobs_stream_requires_admin_session_and_allows_read_roles() {
+    let Some(redis_server) = RedisTestServer::start().await else {
+        eprintln!("redis-server not available; skipping runtime stream auth test");
+        return;
+    };
+
+    let app = build_test_app(&redis_server.url).await;
+    let unauth_request = match Request::builder()
+        .uri("/api/admin/runtime/jobs/stream")
+        .header(header::HOST, "ops.bominal.com")
+        .header(header::ACCEPT, "text/event-stream")
+        .body(axum::body::Body::empty())
+    {
+        Ok(request) => request,
+        Err(err) => panic!("failed to build unauth request: {err}"),
+    };
+    let unauth_response = match app.clone().oneshot(unauth_request).await {
+        Ok(response) => response,
+        Err(err) => panic!("unauth request failed: {err}"),
+    };
+    assert_eq!(unauth_response.status(), StatusCode::UNAUTHORIZED);
+
+    let session_id = "session-runtime-stream-viewer";
+    write_session(
+        &redis_server.url,
+        session_id,
+        admin_session(AdminRole::Viewer, true),
+    )
+    .await;
+
+    let auth_request = match Request::builder()
+        .uri("/api/admin/runtime/jobs/stream")
+        .header(header::HOST, "ops.bominal.com")
+        .header(header::COOKIE, format!("bominal_session={session_id}"))
+        .header(header::ACCEPT, "text/event-stream")
+        .body(axum::body::Body::empty())
+    {
+        Ok(request) => request,
+        Err(err) => panic!("failed to build auth request: {err}"),
+    };
+    let auth_response = match app.oneshot(auth_request).await {
+        Ok(response) => response,
+        Err(err) => panic!("auth request failed: {err}"),
+    };
+    assert_eq!(auth_response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
 async fn admin_mutations_require_recent_step_up() {
     let Some(redis_server) = RedisTestServer::start().await else {
         eprintln!("redis-server not available; skipping admin step-up test");
