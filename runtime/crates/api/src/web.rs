@@ -1462,7 +1462,7 @@ pub fn render_dashboard_train(email: &str) -> String {
         r#"<section class="space-y-4">
       <section class="glass-card rounded-[22px] p-5">
         <h2 class="text-lg font-semibold txt-strong">Train workspace</h2>
-        <p class="mt-1 text-sm txt-supporting">Credential-ready providers are used automatically. Search uses station codes selected from suggestions.</p>
+        <p class="mt-1 text-sm txt-supporting">Korail-inspired hybrid flow with modal selectors and station catalog safety checks.</p>
         <div id="train-preflight" class="mt-4 space-y-2">
           <div class="loading-card">Loading provider readiness...</div>
         </div>
@@ -1471,30 +1471,31 @@ pub fn render_dashboard_train(email: &str) -> String {
       <section class="glass-card rounded-[22px] p-5">
         <h3 class="text-base font-semibold txt-strong">Search trains</h3>
         <form id="train-search-form" class="mt-3 space-y-3">
-          <div>
-            <label class="field-label" for="dep-station-query">Departure station</label>
-            <input id="dep-station-query" type="text" autocomplete="off" class="field-input h-11 w-full" placeholder="Type station name (Korean/English)..." />
-            <p id="dep-station-code" class="mt-1 text-xs txt-supporting">Select a station</p>
-            <div id="dep-station-suggestions" class="mt-2 space-y-1"></div>
-          </div>
-          <div>
-            <label class="field-label" for="arr-station-query">Arrival station</label>
-            <input id="arr-station-query" type="text" autocomplete="off" class="field-input h-11 w-full" placeholder="Type station name (Korean/English)..." />
-            <p id="arr-station-code" class="mt-1 text-xs txt-supporting">Select a station</p>
-            <div id="arr-station-suggestions" class="mt-2 space-y-1"></div>
-          </div>
-          <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <div>
-              <label class="field-label" for="dep-date">Departure date</label>
-              <input id="dep-date" type="date" class="field-input h-11 w-full" />
+          <div class="rounded-[24px] border border-slate-200/80 bg-white/65 p-3">
+            <div class="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_44px_minmax(0,1fr)]">
+              <button id="dep-station-open" type="button" class="summary-card h-14 text-left">
+                <span class="text-[11px] uppercase tracking-[0.08em] txt-supporting">Departure</span>
+                <div id="dep-station-display" class="mt-1 text-sm font-semibold txt-strong">Select station</div>
+              </button>
+              <button id="station-swap" type="button" class="btn-ghost h-14 w-11 p-0" aria-label="Swap stations">↔</button>
+              <button id="arr-station-open" type="button" class="summary-card h-14 text-left">
+                <span class="text-[11px] uppercase tracking-[0.08em] txt-supporting">Arrival</span>
+                <div id="arr-station-display" class="mt-1 text-sm font-semibold txt-strong">Select station</div>
+              </button>
             </div>
-            <div>
-              <label class="field-label" for="dep-time">Departure time</label>
-              <input id="dep-time" type="time" class="field-input h-11 w-full" />
-            </div>
-            <div>
-              <label class="field-label" for="passenger-count">Passengers</label>
-              <input id="passenger-count" type="number" min="1" max="9" value="1" class="field-input h-11 w-full" />
+            <div class="mt-2 grid grid-cols-1 gap-2 md:grid-cols-3">
+              <button id="dep-date-open" type="button" class="summary-card h-14 text-left">
+                <span class="text-[11px] uppercase tracking-[0.08em] txt-supporting">Departure date</span>
+                <div id="dep-date-display" class="mt-1 text-sm font-semibold txt-strong">Select date</div>
+              </button>
+              <button id="dep-time-open" type="button" class="summary-card h-14 text-left">
+                <span class="text-[11px] uppercase tracking-[0.08em] txt-supporting">Departure time</span>
+                <div id="dep-time-display" class="mt-1 text-sm font-semibold txt-strong">Select time</div>
+              </button>
+              <button id="passenger-open" type="button" class="summary-card h-14 text-left">
+                <span class="text-[11px] uppercase tracking-[0.08em] txt-supporting">Passengers</span>
+                <div id="passenger-display" class="mt-1 text-sm font-semibold txt-strong">1</div>
+              </button>
             </div>
           </div>
           <div class="action-group" data-action-group="single">
@@ -1517,6 +1518,86 @@ pub fn render_dashboard_train(email: &str) -> String {
         <h3 class="text-base font-semibold txt-strong">Recent searches</h3>
         <div id="train-search-history" class="mt-3 space-y-2"><div class="loading-card">Loading history...</div></div>
       </section>
+
+      <div id="station-picker-modal" class="app-modal-backdrop hidden" aria-hidden="true">
+        <div class="app-modal-card max-w-[820px]" role="dialog" aria-modal="true" aria-labelledby="station-picker-title">
+          <div class="flex items-center justify-between">
+            <h4 id="station-picker-title" class="text-base font-semibold txt-strong">Station picker</h4>
+            <button id="station-picker-close" type="button" class="btn-ghost h-9 w-9 p-0" aria-label="Close">✕</button>
+          </div>
+          <div class="mt-3">
+            <label class="sr-only" for="station-picker-query">Search station</label>
+            <div class="relative">
+              <input id="station-picker-query" type="text" autocomplete="off" class="field-input h-11 w-full pr-11 leading-none" placeholder="역 이름 또는 초성 검색 (서울, ㅅㅇ)" />
+              <span class="pointer-events-none absolute inset-y-0 right-3 inline-flex items-center txt-supporting" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" class="h-5 w-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="11" cy="11" r="7"></circle>
+                  <path d="M20 20l-3.5-3.5"></path>
+                </svg>
+              </span>
+            </div>
+          </div>
+          <div id="station-picker-suggestions" class="mt-3 max-h-[220px] space-y-1 overflow-y-auto"></div>
+          <div class="mt-3 flex flex-wrap gap-2">
+            <button type="button" id="station-tab-major" class="btn-primary h-9 px-3">주요역</button>
+            <button type="button" id="station-tab-region" class="btn-ghost h-9 px-3">지역별</button>
+          </div>
+          <div id="station-picker-regions" class="mt-3 flex flex-wrap gap-2"></div>
+          <div id="station-picker-list" class="mt-3 max-h-[240px] space-y-1 overflow-y-auto"></div>
+        </div>
+      </div>
+
+      <div id="date-picker-modal" class="app-modal-backdrop hidden" aria-hidden="true">
+        <div class="app-modal-card max-w-[540px]" role="dialog" aria-modal="true" aria-labelledby="date-picker-title">
+          <div class="flex items-center justify-between">
+            <h4 id="date-picker-title" class="text-base font-semibold txt-strong">Departure date</h4>
+            <button id="date-picker-close" type="button" class="btn-ghost h-9 w-9 p-0" aria-label="Close">✕</button>
+          </div>
+          <div class="mt-3">
+            <label class="field-label" for="date-picker-input">Date</label>
+            <input id="date-picker-input" type="date" class="field-input h-11 w-full" />
+          </div>
+          <div class="mt-4 grid grid-cols-2 gap-2">
+            <button id="date-picker-cancel" type="button" class="btn-ghost h-11 w-full">Cancel</button>
+            <button id="date-picker-apply" type="button" class="btn-primary h-11 w-full">Apply</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="time-picker-modal" class="app-modal-backdrop hidden" aria-hidden="true">
+        <div class="app-modal-card max-w-[540px]" role="dialog" aria-modal="true" aria-labelledby="time-picker-title">
+          <div class="flex items-center justify-between">
+            <h4 id="time-picker-title" class="text-base font-semibold txt-strong">Departure time</h4>
+            <button id="time-picker-close" type="button" class="btn-ghost h-9 w-9 p-0" aria-label="Close">✕</button>
+          </div>
+          <div class="mt-3">
+            <label class="field-label">Hour</label>
+            <div id="time-picker-hour-list" class="mt-2 grid grid-cols-4 gap-2 md:grid-cols-6"></div>
+          </div>
+          <div class="mt-3 hidden md:block">
+            <label class="field-label" for="time-picker-desktop-input">Desktop free time input</label>
+            <input id="time-picker-desktop-input" type="time" class="field-input h-11 w-full" />
+          </div>
+          <div class="mt-4 grid grid-cols-2 gap-2">
+            <button id="time-picker-cancel" type="button" class="btn-ghost h-11 w-full">Cancel</button>
+            <button id="time-picker-apply" type="button" class="btn-primary h-11 w-full">Apply</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="passenger-picker-modal" class="app-modal-backdrop hidden" aria-hidden="true">
+        <div class="app-modal-card max-w-[540px]" role="dialog" aria-modal="true" aria-labelledby="passenger-picker-title">
+          <div class="flex items-center justify-between">
+            <h4 id="passenger-picker-title" class="text-base font-semibold txt-strong">Passengers</h4>
+            <button id="passenger-picker-close" type="button" class="btn-ghost h-9 w-9 p-0" aria-label="Close">✕</button>
+          </div>
+          <div id="passenger-picker-rows" class="mt-3 space-y-2"></div>
+          <div class="mt-4 grid grid-cols-2 gap-2">
+            <button id="passenger-picker-cancel" type="button" class="btn-ghost h-11 w-full">Cancel</button>
+            <button id="passenger-picker-apply" type="button" class="btn-primary h-11 w-full">Apply</button>
+          </div>
+        </div>
+      </div>
     </section>
   </div>
 </main>
@@ -1525,39 +1606,64 @@ pub fn render_dashboard_train(email: &str) -> String {
   const preflightNode = document.getElementById('train-preflight');
   const form = document.getElementById('train-search-form');
   const statusNode = document.getElementById('train-search-status');
-  const depInput = document.getElementById('dep-station-query');
-  const arrInput = document.getElementById('arr-station-query');
-  const depCodeNode = document.getElementById('dep-station-code');
-  const arrCodeNode = document.getElementById('arr-station-code');
-  const depSuggestionsNode = document.getElementById('dep-station-suggestions');
-  const arrSuggestionsNode = document.getElementById('arr-station-suggestions');
-  const depDateInput = document.getElementById('dep-date');
-  const depTimeInput = document.getElementById('dep-time');
-  const passengerCountInput = document.getElementById('passenger-count');
+  const depStationOpen = document.getElementById('dep-station-open');
+  const arrStationOpen = document.getElementById('arr-station-open');
+  const swapButton = document.getElementById('station-swap');
+  const depStationDisplay = document.getElementById('dep-station-display');
+  const arrStationDisplay = document.getElementById('arr-station-display');
+  const dateOpen = document.getElementById('dep-date-open');
+  const dateDisplay = document.getElementById('dep-date-display');
+  const timeOpen = document.getElementById('dep-time-open');
+  const timeDisplay = document.getElementById('dep-time-display');
+  const passengerOpen = document.getElementById('passenger-open');
+  const passengerDisplay = document.getElementById('passenger-display');
   const resultsNode = document.getElementById('train-results');
   const jobsNode = document.getElementById('train-provider-jobs');
   const historyNode = document.getElementById('train-search-history');
   const activeSearchIdNode = document.getElementById('active-search-id');
+  const stationModal = document.getElementById('station-picker-modal');
+  const stationModalClose = document.getElementById('station-picker-close');
+  const stationQuery = document.getElementById('station-picker-query');
+  const stationSuggestions = document.getElementById('station-picker-suggestions');
+  const stationTabMajor = document.getElementById('station-tab-major');
+  const stationTabRegion = document.getElementById('station-tab-region');
+  const stationRegionsNode = document.getElementById('station-picker-regions');
+  const stationListNode = document.getElementById('station-picker-list');
+  const dateModal = document.getElementById('date-picker-modal');
+  const dateClose = document.getElementById('date-picker-close');
+  const dateInput = document.getElementById('date-picker-input');
+  const dateCancel = document.getElementById('date-picker-cancel');
+  const dateApply = document.getElementById('date-picker-apply');
+  const timeModal = document.getElementById('time-picker-modal');
+  const timeClose = document.getElementById('time-picker-close');
+  const timeHourList = document.getElementById('time-picker-hour-list');
+  const timeDesktopInput = document.getElementById('time-picker-desktop-input');
+  const timeCancel = document.getElementById('time-picker-cancel');
+  const timeApply = document.getElementById('time-picker-apply');
+  const passengerModal = document.getElementById('passenger-picker-modal');
+  const passengerClose = document.getElementById('passenger-picker-close');
+  const passengerRows = document.getElementById('passenger-picker-rows');
+  const passengerCancel = document.getElementById('passenger-picker-cancel');
+  const passengerApply = document.getElementById('passenger-picker-apply');
 
   const now = new Date();
-  if (depDateInput) {
-    depDateInput.value = now.toISOString().slice(0, 10);
-  }
-  if (depTimeInput) {
-    depTimeInput.value = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
-  }
-
+  let depDate = now.toISOString().slice(0, 10);
+  let depTime = String(now.getHours()).padStart(2, '0') + ':00';
   let depSelection = null;
   let arrSelection = null;
   let pollTimer = null;
+  let modalLayerCounter = 0;
+  const MODAL_BASE = 70;
+  let stationPickerTarget = 'dep';
+  let stationTab = 'major';
+  let stationRegionsData = null;
+  let stationQueryCounter = 0;
+  let activeRegionKey = 'seoul';
+  let passengerDraft = { adult: 1, child: 0, senior: 0, disability_1_to_3: 0, disability_4_to_6: 0 };
+  let passengerCommitted = { ...passengerDraft };
+
   const normalizeLocale = (rawLocale) => {
-    const token = String(rawLocale || '')
-      .trim()
-      .toLowerCase()
-      .replace('_', '-')
-      .split(';')[0]
-      .split(',')[0]
-      .trim();
+    const token = String(rawLocale || '').trim().toLowerCase().replace('_', '-').split(';')[0].split(',')[0].trim();
     const primary = token.split('-')[0];
     if (primary === 'ja' || primary === 'jp') return 'ja';
     if (primary === 'ko' || primary === 'kr') return 'ko';
@@ -1570,6 +1676,31 @@ pub fn render_dashboard_train(email: &str) -> String {
       || navigator.language
       || (Array.isArray(navigator.languages) ? navigator.languages[0] : ''),
   );
+  const passengerKinds = [
+    {
+      key: 'adult',
+      labels: { ko: '어른(13세 이상)', en: 'Adult (13+)', ja: '大人 (13歳以上)' },
+    },
+    {
+      key: 'child',
+      labels: { ko: '어린이(6~12세)', en: 'Child (6-12)', ja: 'こども (6-12歳)' },
+    },
+    {
+      key: 'senior',
+      labels: { ko: '경로(65세 이상)', en: 'Senior (65+)', ja: 'シニア (65歳以上)' },
+    },
+    {
+      key: 'disability_1_to_3',
+      labels: { ko: '중증 장애인', en: 'Disability (level 1-3)', ja: '障害 (1-3級)' },
+    },
+    {
+      key: 'disability_4_to_6',
+      labels: { ko: '경증 장애인', en: 'Disability (level 4-6)', ja: '障害 (4-6級)' },
+    },
+  ].map((item) => ({
+    key: item.key,
+    label: item.labels[activeLocale] || item.labels.en,
+  }));
 
   const escapeHtml = (value) => String(value || '')
     .replaceAll('&', '&amp;')
@@ -1592,9 +1723,7 @@ pub fn render_dashboard_train(email: &str) -> String {
 
   const apiErrorMessage = (response, fallback) => {
     const body = response && response.body && typeof response.body === 'object' ? response.body : {};
-    const message = typeof body.message === 'string' && body.message.trim()
-      ? body.message.trim()
-      : fallback;
+    const message = typeof body.message === 'string' && body.message.trim() ? body.message.trim() : fallback;
     const requestId = typeof body.request_id === 'string' && body.request_id.trim()
       ? ` (request_id: ${body.request_id.trim()})`
       : '';
@@ -1614,10 +1743,73 @@ pub fn render_dashboard_train(email: &str) -> String {
     statusNode.className = 'mt-3 hidden';
   };
 
-  const formatProviderRows = (providers) => {
-    if (!providers || !providers.length) {
-      return '<div class="empty-card">No provider jobs for this search.</div>';
+  const modalOpen = (node) => {
+    if (!node) return;
+    if (node.parentElement !== document.body) document.body.appendChild(node);
+    modalLayerCounter += 1;
+    node.style.zIndex = String(MODAL_BASE + modalLayerCounter);
+    node.classList.remove('hidden');
+    node.setAttribute('aria-hidden', 'false');
+  };
+
+  const modalClose = (node) => {
+    if (!node) return;
+    node.classList.add('hidden');
+    node.setAttribute('aria-hidden', 'true');
+    node.style.removeProperty('z-index');
+    if (!document.querySelector('.app-modal-backdrop:not(.hidden)')) {
+      modalLayerCounter = 0;
     }
+  };
+
+  const totalPassengers = (payload) => Object.values(payload).reduce((acc, value) => acc + Number(value || 0), 0);
+  const formatPassengerCount = (count) => {
+    if (activeLocale === 'ko') return `총 ${count}명`;
+    if (activeLocale === 'ja') return `合計 ${count}名`;
+    return count === 1 ? '1 passenger' : `${count} passengers`;
+  };
+
+  const passengerPayload = () => passengerKinds
+    .map((kind) => ({ kind: kind.key, count: Number(passengerCommitted[kind.key] || 0) }))
+    .filter((item) => item.count > 0);
+
+  const normalizeProvider = (value) => {
+    const token = String(value || '').trim().toLowerCase();
+    if (token === 'ktx') return 'KTX';
+    if (token === 'srt') return 'SRT';
+    return token.toUpperCase();
+  };
+
+  const providerBullets = (station) => {
+    const labels = Array.isArray(station.supported_providers)
+      ? station.supported_providers.map(normalizeProvider)
+      : [];
+    const unique = [...new Set(labels)];
+    unique.sort((left, right) => {
+      const rank = (value) => value === 'KTX' ? 0 : (value === 'SRT' ? 1 : 2);
+      return rank(left) - rank(right) || left.localeCompare(right);
+    });
+    return unique.length ? `• ${unique.join(' • ')}` : '';
+  };
+
+  const stationLabel = (station) => {
+    if (activeLocale === 'ja' && station.station_name_ja_katakana) return station.station_name_ja_katakana;
+    if (activeLocale === 'en' && station.station_name_en) return station.station_name_en;
+    return station.station_name_ko;
+  };
+
+  const updateDisplays = () => {
+    const depLabel = depSelection ? `${stationLabel(depSelection)} (${depSelection.station_code})` : 'Select station';
+    const arrLabel = arrSelection ? `${stationLabel(arrSelection)} (${arrSelection.station_code})` : 'Select station';
+    depStationDisplay.textContent = depLabel;
+    arrStationDisplay.textContent = arrLabel;
+    dateDisplay.textContent = depDate;
+    timeDisplay.textContent = depTime;
+    passengerDisplay.textContent = formatPassengerCount(totalPassengers(passengerCommitted));
+  };
+
+  const formatProviderRows = (providers) => {
+    if (!providers || !providers.length) return '<div class="empty-card">No provider jobs for this search.</div>';
     return providers.map((providerJob) => `
       <div class="summary-row">
         <span>${escapeHtml(providerJob.provider.toUpperCase())} · ${escapeHtml(providerJob.runtime_job_id)}</span>
@@ -1627,9 +1819,7 @@ pub fn render_dashboard_train(email: &str) -> String {
   };
 
   const formatResults = (results) => {
-    if (!results || !results.length) {
-      return '<div class="empty-card">No trains returned yet.</div>';
-    }
+    if (!results || !results.length) return '<div class="empty-card">No trains returned yet.</div>';
     return results.map((item) => `
       <article class="summary-card">
         <div class="summary-row">
@@ -1664,7 +1854,6 @@ pub fn render_dashboard_train(email: &str) -> String {
         <p class="mt-1 text-xs txt-supporting">${escapeHtml(item.dep_date)} ${escapeHtml(item.dep_time)} · providers: ${(item.providers || []).map((value) => escapeHtml(value.toUpperCase())).join(', ')}</p>
       </button>
     `).join('');
-
     Array.from(historyNode.querySelectorAll('[data-search-id]')).forEach((node) => {
       node.addEventListener('click', () => {
         const searchId = node.getAttribute('data-search-id');
@@ -1770,8 +1959,7 @@ pub fn render_dashboard_train(email: &str) -> String {
         </article>
       `;
     };
-    const paymentProvider = providersByName.get('ktx')
-      || (providers.length ? providers[0] : null);
+    const paymentProvider = providersByName.get('ktx') || (providers.length ? providers[0] : null);
     const paymentReady = Boolean(paymentProvider && paymentProvider.payment_ready);
     const paymentHasError = Boolean(paymentProvider) && providerHasError(paymentProvider);
     preflightNode.innerHTML = `
@@ -1787,7 +1975,7 @@ pub fn render_dashboard_train(email: &str) -> String {
       </div>
     `;
   };
-  
+
   const loadPreflight = async () => {
     const response = await requestJson('/api/train/preflight');
     if (!response.ok) {
@@ -1797,183 +1985,271 @@ pub fn render_dashboard_train(email: &str) -> String {
     renderPreflight(response.body || {});
   };
 
-  const renderSuggestions = (node, suggestions, setter) => {
-    if (!suggestions.length) {
-      node.innerHTML = '';
+  const renderStationList = (stations) => {
+    if (!stations || !stations.length) {
+      stationListNode.innerHTML = '<div class="empty-card">No stations in this view.</div>';
       return;
     }
-    const mergedSuggestions = (() => {
-      const merged = new Map();
-      for (const station of suggestions) {
-        const key = String(station.station_code || '').trim()
-          || `${String(station.station_name_ko || '').trim()}::${String(station.station_name_en || '').trim()}`;
-        const provider = String(station.provider || '').trim().toLowerCase();
-        const existing = merged.get(key);
-        if (!existing) {
-          merged.set(key, {
-            ...station,
-            supported_providers: provider ? [provider] : [],
-          });
-          continue;
-        }
-        if (provider && !existing.supported_providers.includes(provider)) {
-          existing.supported_providers.push(provider);
-        }
-        if (!existing.station_name_en && station.station_name_en) {
-          existing.station_name_en = station.station_name_en;
-        }
-        if (!existing.station_name_ja_katakana && station.station_name_ja_katakana) {
-          existing.station_name_ja_katakana = station.station_name_ja_katakana;
-        }
-      }
-      return Array.from(merged.values());
-    })();
-
-    const selectSuggestionLabel = (station) => {
-      if (activeLocale === 'ja' && station.station_name_ja_katakana) {
-        return station.station_name_ja_katakana;
-      }
-      if (activeLocale === 'en' && station.station_name_en) {
-        return station.station_name_en;
-      }
-      return station.station_name_ko;
-    };
-    const orderedProviderLabels = (providersRaw) => {
-      const order = ['ktx', 'srt'];
-      const unique = [];
-      for (const value of providersRaw) {
-        const normalized = String(value || '').trim().toLowerCase();
-        if (normalized && !unique.includes(normalized)) {
-          unique.push(normalized);
-        }
-      }
-      unique.sort((left, right) => {
-        const leftIndex = order.indexOf(left);
-        const rightIndex = order.indexOf(right);
-        const leftRank = leftIndex >= 0 ? leftIndex : order.length;
-        const rightRank = rightIndex >= 0 ? rightIndex : order.length;
-        if (leftRank !== rightRank) return leftRank - rightRank;
-        return left.localeCompare(right);
-      });
-      return unique.map((value) => value.toUpperCase());
-    };
-    const providerBulletText = (station) => {
-      const providers = Array.isArray(station.supported_providers)
-        ? station.supported_providers
-        : [String(station.provider || '').trim().toLowerCase()].filter((value) => value);
-      if (!providers.length) return '';
-      const labels = orderedProviderLabels(providers);
-      return labels.length ? `• ${labels.join(' • ')}` : '';
-    };
-    node.innerHTML = mergedSuggestions.map((station) => `
-      <button
-        type="button"
-        class="summary-row w-full text-left"
-        data-providers="${escapeHtml(JSON.stringify(Array.isArray(station.supported_providers) ? station.supported_providers : []))}"
-        data-code="${escapeHtml(station.station_code)}"
-        data-name-ko="${escapeHtml(station.station_name_ko || '')}"
-        data-name-en="${escapeHtml(station.station_name_en || '')}"
-        data-name-ja="${escapeHtml(station.station_name_ja_katakana || '')}"
-        data-display-name="${escapeHtml(selectSuggestionLabel(station))}"
-      >
-        <span>${escapeHtml(selectSuggestionLabel(station))} (${escapeHtml(station.station_code)})</span>
-        <span class="text-xs txt-supporting">${escapeHtml(providerBulletText(station))}</span>
+    stationListNode.innerHTML = stations.map((station) => `
+      <button type="button" class="summary-row w-full text-left" data-station-code="${escapeHtml(station.station_code)}">
+        <span>${escapeHtml(stationLabel(station))} (${escapeHtml(station.station_code)})</span>
+        <span class="text-xs txt-supporting">${escapeHtml(providerBullets(station))}</span>
       </button>
     `).join('');
-
-    Array.from(node.querySelectorAll('[data-code]')).forEach((button) => {
+    Array.from(stationListNode.querySelectorAll('[data-station-code]')).forEach((button) => {
       button.addEventListener('click', () => {
-        let supportedProviders = [];
-        try {
-          const rawProviders = button.getAttribute('data-providers');
-          const parsed = rawProviders ? JSON.parse(rawProviders) : [];
-          supportedProviders = Array.isArray(parsed)
-            ? parsed.map((value) => String(value || '').trim().toLowerCase()).filter((value) => value)
-            : [];
-        } catch (_err) {}
-        const station = {
-          provider: supportedProviders[0] || '',
-          supported_providers: supportedProviders,
-          station_code: button.getAttribute('data-code'),
-          station_name_ko: button.getAttribute('data-name-ko'),
-          station_name_en: button.getAttribute('data-name-en'),
-          station_name_ja_katakana: button.getAttribute('data-name-ja'),
-          station_display_name:
-            button.getAttribute('data-display-name') || button.getAttribute('data-name-ko'),
-        };
-        setter(station);
-        node.innerHTML = '';
+        const stationCode = button.getAttribute('data-station-code');
+        if (!stationCode || !stationRegionsData) return;
+        const station = stationRegionsData.regions
+          .flatMap((region) => region.stations || [])
+          .find((item) => String(item.station_code) === stationCode);
+        if (!station) return;
+        if (stationPickerTarget === 'dep') {
+          depSelection = station;
+        } else {
+          arrSelection = station;
+        }
+        updateDisplays();
+        modalClose(stationModal);
       });
     });
   };
 
-  const createSuggestionHandler = (inputNode, suggestionsNode, codeNode, assignSelection) => {
-    let requestCounter = 0;
-    return async () => {
-      assignSelection(null);
-      codeNode.textContent = 'Select a station';
-      const query = inputNode.value.trim();
-      if (query.length < 1) {
-        suggestionsNode.innerHTML = '';
-        return;
-      }
-      requestCounter += 1;
-      const requestId = requestCounter;
-      const response = await requestJson(`/api/train/stations/suggest?q=${encodeURIComponent(query)}&limit=8`);
-      if (requestId !== requestCounter) return;
-      if (!response.ok) {
-        suggestionsNode.innerHTML = `<div class="error-card">${escapeHtml(apiErrorMessage(response, 'Suggestion lookup failed.'))}</div>`;
-        return;
-      }
-      const suggestions = response.body && Array.isArray(response.body.suggestions) ? response.body.suggestions : [];
-      renderSuggestions(suggestionsNode, suggestions, (station) => {
-        assignSelection(station);
-        inputNode.value = `${station.station_display_name} (${station.station_code})`;
-        const providerLabels = Array.isArray(station.supported_providers) && station.supported_providers.length
-          ? station.supported_providers
-          : [String(station.provider || '').trim().toLowerCase()].filter((value) => value);
-        const providerLabelText = orderedProviderLabels(providerLabels)
-          .join(' / ');
-        codeNode.textContent = providerLabelText
-          ? `${station.station_code} · ${providerLabelText}`
-          : `${station.station_code}`;
+  const renderRegionChips = () => {
+    if (!stationRegionsData) return;
+    const regions = (stationRegionsData.regions || []).filter((region) => region.key !== 'major' && region.key !== 'all');
+    stationRegionsNode.innerHTML = regions.map((region) => `
+      <button type="button" class="${region.key === activeRegionKey ? 'btn-primary h-9 px-3' : 'btn-ghost h-9 px-3'}" data-region-key="${escapeHtml(region.key)}">${escapeHtml(region.label)}</button>
+    `).join('');
+    Array.from(stationRegionsNode.querySelectorAll('[data-region-key]')).forEach((button) => {
+      button.addEventListener('click', () => {
+        const key = button.getAttribute('data-region-key');
+        if (!key) return;
+        activeRegionKey = key;
+        renderRegionChips();
       });
-    };
+    });
+    const region = regions.find((value) => value.key === activeRegionKey) || regions[0];
+    renderStationList(region ? region.stations : []);
   };
 
-  const onDepInput = createSuggestionHandler(
-    depInput,
-    depSuggestionsNode,
-    depCodeNode,
-    (station) => { depSelection = station; },
-  );
-  const onArrInput = createSuggestionHandler(
-    arrInput,
-    arrSuggestionsNode,
-    arrCodeNode,
-    (station) => { arrSelection = station; },
-  );
-  depInput.addEventListener('input', onDepInput);
-  arrInput.addEventListener('input', onArrInput);
+  const renderStationTab = () => {
+    if (!stationRegionsData) return;
+    stationTabMajor.className = stationTab === 'major' ? 'btn-primary h-9 px-3' : 'btn-ghost h-9 px-3';
+    stationTabRegion.className = stationTab === 'region' ? 'btn-primary h-9 px-3' : 'btn-ghost h-9 px-3';
+    if (stationTab === 'major') {
+      const major = (stationRegionsData.regions || []).find((region) => region.key === 'major');
+      stationRegionsNode.innerHTML = '';
+      renderStationList(major ? major.stations : []);
+      return;
+    }
+    renderRegionChips();
+  };
+
+  const loadStationRegions = async () => {
+    if (stationRegionsData) return stationRegionsData;
+    const response = await requestJson('/api/train/stations/regions');
+    if (!response.ok) {
+      showStatus('error', apiErrorMessage(response, 'Could not load station catalog.'));
+      return null;
+    }
+    stationRegionsData = response.body || { quick: [], regions: [] };
+    return stationRegionsData;
+  };
+
+  const queryStationSuggestions = async (query) => {
+    stationQueryCounter += 1;
+    const requestId = stationQueryCounter;
+    const response = await requestJson(`/api/train/stations/suggest?q=${encodeURIComponent(query)}&limit=10`);
+    if (requestId !== stationQueryCounter) return;
+    if (!response.ok) {
+      stationSuggestions.innerHTML = `<div class="error-card">${escapeHtml(apiErrorMessage(response, 'Station lookup failed.'))}</div>`;
+      return;
+    }
+    const suggestions = Array.isArray(response.body?.suggestions) ? response.body.suggestions : [];
+    const merged = new Map();
+    for (const station of suggestions) {
+      const key = String(station.station_code || '').trim();
+      const provider = normalizeProvider(station.provider);
+      if (!merged.has(key)) {
+        merged.set(key, {
+          station_code: key,
+          station_name_ko: station.station_name_ko || '',
+          station_name_en: station.station_name_en || '',
+          station_name_ja_katakana: station.station_name_ja_katakana || '',
+          supported_providers: provider ? [provider] : [],
+        });
+      } else if (provider) {
+        const existing = merged.get(key);
+        if (!existing.supported_providers.includes(provider)) {
+          existing.supported_providers.push(provider);
+        }
+      }
+    }
+    renderStationList(Array.from(merged.values()));
+  };
+
+  const openStationPicker = async (target) => {
+    stationPickerTarget = target;
+    stationQuery.value = '';
+    stationSuggestions.innerHTML = '';
+    const loaded = await loadStationRegions();
+    if (!loaded) return;
+    renderStationTab();
+    modalOpen(stationModal);
+    stationQuery.focus();
+  };
+
+  const renderHourButtons = () => {
+    timeHourList.innerHTML = Array.from({ length: 24 }).map((_, idx) => {
+      const token = `${String(idx).padStart(2, '0')}:00`;
+      const selected = depTime.slice(0, 2) === token.slice(0, 2);
+      return `<button type="button" class="${selected ? 'btn-primary h-9 w-full' : 'btn-ghost h-9 w-full'}" data-hour="${token}">${token}</button>`;
+    }).join('');
+    Array.from(timeHourList.querySelectorAll('[data-hour]')).forEach((button) => {
+      button.addEventListener('click', () => {
+        const token = button.getAttribute('data-hour');
+        if (!token) return;
+        depTime = token;
+        if (timeDesktopInput) timeDesktopInput.value = token;
+        renderHourButtons();
+      });
+    });
+  };
+
+  const renderPassengerRows = () => {
+    passengerRows.innerHTML = passengerKinds.map((kind) => `
+      <div class="summary-row">
+        <span>${escapeHtml(kind.label)}</span>
+        <span class="inline-flex items-center gap-2">
+          <button type="button" class="btn-ghost h-8 w-8 p-0" data-passenger-op="minus" data-passenger-kind="${escapeHtml(kind.key)}">−</button>
+          <span class="w-6 text-center">${escapeHtml(String(passengerDraft[kind.key] || 0))}</span>
+          <button type="button" class="btn-ghost h-8 w-8 p-0" data-passenger-op="plus" data-passenger-kind="${escapeHtml(kind.key)}">＋</button>
+        </span>
+      </div>
+    `).join('');
+    Array.from(passengerRows.querySelectorAll('[data-passenger-op]')).forEach((button) => {
+      button.addEventListener('click', () => {
+        const kind = button.getAttribute('data-passenger-kind');
+        const op = button.getAttribute('data-passenger-op');
+        if (!kind || !Object.hasOwn(passengerDraft, kind)) return;
+        const total = totalPassengers(passengerDraft);
+        const current = Number(passengerDraft[kind] || 0);
+        if (op === 'plus') {
+          if (total >= 9) return;
+          passengerDraft[kind] = current + 1;
+        } else {
+          passengerDraft[kind] = Math.max(0, current - 1);
+        }
+        renderPassengerRows();
+      });
+    });
+  };
+
+  depStationOpen.addEventListener('click', () => openStationPicker('dep'));
+  arrStationOpen.addEventListener('click', () => openStationPicker('arr'));
+  swapButton.addEventListener('click', () => {
+    const prevDep = depSelection;
+    depSelection = arrSelection;
+    arrSelection = prevDep;
+    updateDisplays();
+  });
+
+  dateOpen.addEventListener('click', () => {
+    dateInput.value = depDate;
+    modalOpen(dateModal);
+  });
+
+  timeOpen.addEventListener('click', () => {
+    if (timeDesktopInput) timeDesktopInput.value = depTime;
+    renderHourButtons();
+    modalOpen(timeModal);
+  });
+
+  passengerOpen.addEventListener('click', () => {
+    passengerDraft = { ...passengerCommitted };
+    renderPassengerRows();
+    modalOpen(passengerModal);
+  });
+
+  stationModalClose.addEventListener('click', () => modalClose(stationModal));
+  dateClose.addEventListener('click', () => modalClose(dateModal));
+  timeClose.addEventListener('click', () => modalClose(timeModal));
+  passengerClose.addEventListener('click', () => modalClose(passengerModal));
+  dateCancel.addEventListener('click', () => modalClose(dateModal));
+  timeCancel.addEventListener('click', () => modalClose(timeModal));
+  passengerCancel.addEventListener('click', () => modalClose(passengerModal));
+
+  stationTabMajor.addEventListener('click', () => {
+    stationTab = 'major';
+    renderStationTab();
+  });
+  stationTabRegion.addEventListener('click', () => {
+    stationTab = 'region';
+    renderStationTab();
+  });
+
+  stationQuery.addEventListener('input', async () => {
+    const value = stationQuery.value.trim();
+    if (!value) {
+      renderStationTab();
+      return;
+    }
+    await queryStationSuggestions(value);
+  });
+
+  dateApply.addEventListener('click', () => {
+    const pickedDate = String(dateInput.value || '').trim();
+    if (!pickedDate) {
+      showStatus('error', 'Departure date is required.');
+      return;
+    }
+    depDate = pickedDate;
+    updateDisplays();
+    modalClose(dateModal);
+  });
+
+  timeApply.addEventListener('click', () => {
+    if (window.matchMedia('(min-width: 768px)').matches && timeDesktopInput && timeDesktopInput.value) {
+      depTime = timeDesktopInput.value;
+    }
+    updateDisplays();
+    modalClose(timeModal);
+  });
+
+  passengerApply.addEventListener('click', () => {
+    if (totalPassengers(passengerDraft) < 1) {
+      showStatus('error', 'At least one passenger is required.');
+      return;
+    }
+    passengerCommitted = { ...passengerDraft };
+    updateDisplays();
+    modalClose(passengerModal);
+  });
+
+  [stationModal, dateModal, timeModal, passengerModal].forEach((modalNode) => {
+    modalNode.addEventListener('click', (event) => {
+      if (event.target === modalNode) modalClose(modalNode);
+    });
+  });
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     clearStatus();
     if (!depSelection || !arrSelection) {
-      showStatus('error', 'Choose departure and arrival stations from suggestions.');
+      showStatus('error', 'Choose departure and arrival stations.');
       return;
     }
-    const depDate = (depDateInput.value || '').replaceAll('-', '');
-    const depTimeRaw = depTimeInput.value || '00:00';
-    const depTime = depTimeRaw.replace(':', '') + '00';
-    const passengerCount = Number(passengerCountInput.value || 1);
-
+    if (totalPassengers(passengerCommitted) < 1) {
+      showStatus('error', 'At least one passenger is required.');
+      return;
+    }
     const response = await requestJson('/api/train/search', 'POST', {
       dep_station_code: depSelection.station_code,
       arr_station_code: arrSelection.station_code,
-      dep_date: depDate,
-      dep_time: depTime,
-      passenger_count: passengerCount,
+      dep_date: String(depDate || '').replaceAll('-', ''),
+      dep_time: `${String(depTime || '00:00').replace(':', '')}00`,
+      passengers: passengerPayload(),
       available_only: true,
     });
     if (!response.ok) {
@@ -1983,12 +2259,11 @@ pub fn render_dashboard_train(email: &str) -> String {
     const created = response.body || {};
     renderSearchSnapshot({ providers: created.jobs || [], results: [], search_id: created.search_id || '' });
     showStatus('success', `Search ${created.search_id} accepted.`);
-    if (created.search_id) {
-      pollSearch(created.search_id);
-    }
+    if (created.search_id) pollSearch(created.search_id);
     loadHistory();
   });
 
+  updateDisplays();
   loadPreflight();
   loadHistory();
 })();
@@ -2878,8 +3153,11 @@ mod tests {
     fn dashboard_train_page_uses_session_train_api_contract() {
         let html = render_dashboard_train("admin@bominal.local");
         assert!(html.contains("/api/train/preflight"));
+        assert!(html.contains("/api/train/stations/regions"));
         assert!(html.contains("/api/train/stations/suggest"));
         assert!(html.contains("/api/train/search"));
+        assert!(html.contains("station-picker-modal"));
+        assert!(html.contains("passenger-picker-modal"));
         assert!(!html.contains("/dashboard/settings/providers"));
         assert!(html.contains("Payment"));
     }

@@ -18,6 +18,7 @@ use super::super::{
 pub(super) fn register(router: Router<Arc<AppState>>) -> Router<Arc<AppState>> {
     router
         .route("/api/train/preflight", get(get_preflight))
+        .route("/api/train/stations/regions", get(get_station_regions))
         .route("/api/train/stations/suggest", get(get_station_suggestions))
         .route(
             "/api/train/search",
@@ -67,6 +68,21 @@ async fn get_station_suggestions(
     }
 
     match train_service::suggest_stations(state.as_ref(), query).await {
+        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
+        Err(err) => map_train_error(err, &headers).into_response(),
+    }
+}
+
+async fn get_station_regions(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Query(query): Query<train_service::StationRegionsQuery>,
+) -> impl IntoResponse {
+    if let Err(err) = auth_service::require_session_state(state.as_ref(), &headers).await {
+        return map_auth_error(err, &headers).into_response();
+    }
+
+    match train_service::load_station_regions(state.as_ref(), query).await {
         Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(err) => map_train_error(err, &headers).into_response(),
     }

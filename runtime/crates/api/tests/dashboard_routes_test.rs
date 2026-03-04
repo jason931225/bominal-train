@@ -212,6 +212,28 @@ async fn train_api_preflight_requires_authenticated_session() {
 }
 
 #[tokio::test]
+async fn train_api_station_regions_requires_authenticated_session() {
+    let app = build_test_app().await;
+    let request = match Request::builder()
+        .uri("/api/train/stations/regions")
+        .header(header::ACCEPT, "application/json")
+        .body(axum::body::Body::empty())
+    {
+        Ok(request) => request,
+        Err(err) => panic!("failed to build request: {err}"),
+    };
+
+    let response = match app.oneshot(request).await {
+        Ok(response) => response,
+        Err(err) => panic!("request failed: {err}"),
+    };
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    let body = response_json(response).await;
+    assert_eq!(body["code"], "unauthorized");
+}
+
+#[tokio::test]
 async fn password_change_api_requires_authenticated_session() {
     let app = build_test_app().await;
     let request = match Request::builder()
