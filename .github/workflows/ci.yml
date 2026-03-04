@@ -71,6 +71,7 @@ jobs:
       pull-requests: read
     outputs:
       frontend_css: ${{ steps.filter.outputs.frontend_css }}
+      station_catalog: ${{ steps.filter.outputs.station_catalog }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -84,6 +85,10 @@ jobs:
           filters: |
             frontend_css:
               - 'runtime/frontend/**'
+            station_catalog:
+              - 'runtime/data/train/**'
+              - 'runtime/crates/shared/src/station_catalog.rs'
+              - 'runtime/crates/api/src/bin/station_catalog_sync.rs'
 
   secret-scan:
     name: Secret Scan
@@ -207,6 +212,33 @@ jobs:
           name: rust-lcov
           path: runtime/target/coverage/lcov.info
 
+  station-catalog-validate:
+    name: Station Catalog Snapshot Validation
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.station_catalog == 'true'
+    timeout-minutes: 15
+    needs:
+      - changes
+      - secret-scan
+    defaults:
+      run:
+        working-directory: runtime
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo and build outputs
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: runtime
+          prefix-key: station-catalog
+
+      - name: Validate station catalog snapshot
+        run: cargo run -p bominal-api --bin station_catalog_sync -- validate --snapshot data/train/station_catalog.v1.json --meta data/train/station_catalog.meta.json
+
   frontend-assets:
     name: Frontend Asset Gate
     runs-on: ubuntu-latest
@@ -231,3 +263,6 @@ jobs:
 
       - name: Build frontend CSS bundle
         run: npm --prefix runtime/frontend run build:css
+
+      - name: Enforce frontend CSS budget
+        run: npm --prefix runtime/frontend run check:css:budget
