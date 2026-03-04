@@ -313,3 +313,45 @@ async fn admin_metrics_endpoints_work_with_admin_session() {
     assert!(summary["error_rate"].is_number());
     assert!(summary["raw_excerpt"].is_array());
 }
+
+#[tokio::test]
+async fn observability_timeseries_and_incident_routes_are_admin_guarded() {
+    let app = build_test_app("").await;
+
+    let timeseries_request = match Request::builder()
+        .uri("/api/admin/observability/timeseries")
+        .header(header::HOST, "ops.bominal.com")
+        .body(axum::body::Body::empty())
+    {
+        Ok(request) => request,
+        Err(err) => panic!("failed to build timeseries request: {err}"),
+    };
+    let timeseries_response = match app.clone().oneshot(timeseries_request).await {
+        Ok(response) => response,
+        Err(err) => panic!("timeseries request failed: {err}"),
+    };
+    assert_eq!(timeseries_response.status(), StatusCode::UNAUTHORIZED);
+
+    let incidents_request = match Request::builder()
+        .method("POST")
+        .uri("/api/admin/incidents")
+        .header(header::HOST, "ops.bominal.com")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(axum::body::Body::from(
+            serde_json::json!({
+                "title": "db saturation",
+                "severity": "sev2",
+                "summary": "database saturation observed",
+                "reason": "investigating elevated error budget burn"
+            })
+            .to_string(),
+        )) {
+        Ok(request) => request,
+        Err(err) => panic!("failed to build incidents request: {err}"),
+    };
+    let incidents_response = match app.oneshot(incidents_request).await {
+        Ok(response) => response,
+        Err(err) => panic!("incidents request failed: {err}"),
+    };
+    assert_eq!(incidents_response.status(), StatusCode::UNAUTHORIZED);
+}

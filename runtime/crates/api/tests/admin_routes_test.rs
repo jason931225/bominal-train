@@ -381,3 +381,41 @@ async fn viewer_role_can_read_but_cannot_mutate_admin_routes() {
     let body = response_json(mutate_response).await;
     assert_eq!(body["message"], "admin mutation role required");
 }
+
+#[tokio::test]
+async fn admin_capabilities_reflect_role_permissions() {
+    let Some(redis_server) = RedisTestServer::start().await else {
+        eprintln!("redis-server not available; skipping admin capabilities test");
+        return;
+    };
+
+    let app = build_test_app(&redis_server.url).await;
+    let session_id = "session-capabilities-viewer";
+    write_session(
+        &redis_server.url,
+        session_id,
+        admin_session(AdminRole::Viewer, true),
+    )
+    .await;
+
+    let request = match Request::builder()
+        .uri("/api/admin/capabilities")
+        .header(header::HOST, "ops.bominal.com")
+        .header(header::COOKIE, format!("bominal_session={session_id}"))
+        .body(axum::body::Body::empty())
+    {
+        Ok(request) => request,
+        Err(err) => panic!("failed to build request: {err}"),
+    };
+
+    let response = match app.oneshot(request).await {
+        Ok(response) => response,
+        Err(err) => panic!("request failed: {err}"),
+    };
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response_json(response).await;
+    assert_eq!(body["role"], "viewer");
+    assert_eq!(body["can_read"], true);
+    assert_eq!(body["can_mutate"], false);
+    assert_eq!(body["step_up_required_for_mutation"], true);
+}

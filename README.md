@@ -64,7 +64,7 @@ http://127.0.0.1:8000/
 `/` includes:
 - passkey-first sign-in action (when an eligible passkey factor/session context is available),
 - password fallback sign-in,
-- light/dark/system theme selector (defaults to device preference via `system` mode).
+- light/dark theme toggle (persisted per session via cookie-backed preference).
 
 Compatibility alias:
 - `/auth` permanently redirects to `/`.
@@ -73,6 +73,7 @@ Runtime route map:
 - User app (`www.bominal.com`): `/`, `/dashboard`, `/dashboard/jobs`, `/dashboard/jobs/{job_id}`, `/dashboard/security`.
 - Admin app (`ops.bominal.com`): `/admin/maintenance`, `/admin/users`, `/admin/runtime`, `/admin/observability`, `/admin/security`, `/admin/config`, `/admin/audit`.
 - Observability contracts: `/health` (liveness), `/ready` (dependency readiness), `/admin/maintenance/metrics` (admin-only Prometheus text).
+- Admin API highlights: `/api/admin/capabilities`, `/api/admin/incidents`, `/api/admin/incidents/{incident_id}/status`, `/api/admin/observability/timeseries`.
 
 `dev-up` defaults to:
 - running bootstrap with `BOMINAL_RUN_TESTS=0` (faster dev loop),

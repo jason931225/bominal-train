@@ -70,6 +70,30 @@ pub(crate) struct AuditRecord {
     pub(crate) created_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct IncidentRecord {
+    pub(crate) id: String,
+    pub(crate) title: String,
+    pub(crate) severity: String,
+    pub(crate) status: String,
+    pub(crate) summary: Option<String>,
+    pub(crate) context: serde_json::Value,
+    pub(crate) opened_at: DateTime<Utc>,
+    pub(crate) resolved_at: Option<DateTime<Utc>>,
+    pub(crate) created_by: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct ObservabilityTimeseriesPoint {
+    pub(crate) bucket: DateTime<Utc>,
+    pub(crate) total_events: i64,
+    pub(crate) error_events: i64,
+    pub(crate) runtime_events: i64,
+    pub(crate) provider_events: i64,
+    pub(crate) auth_events: i64,
+    pub(crate) admin_events: i64,
+}
+
 pub(crate) fn role_allows_admin_read(role: &AdminRole) -> bool {
     matches!(
         role,
@@ -102,6 +126,30 @@ pub(crate) fn validate_sensitive_confirmation(
         ));
     }
     Ok(())
+}
+
+fn clamp_limit(limit: Option<usize>, default_value: usize, max_value: usize) -> i64 {
+    let value = limit.unwrap_or(default_value);
+    value.clamp(1, max_value) as i64
+}
+
+fn normalize_incident_severity(value: &str) -> Option<&'static str> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "sev1" => Some("sev1"),
+        "sev2" => Some("sev2"),
+        "sev3" => Some("sev3"),
+        "sev4" => Some("sev4"),
+        _ => None,
+    }
+}
+
+fn normalize_incident_status(value: &str) -> Option<&'static str> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "open" => Some("open"),
+        "monitoring" => Some("monitoring"),
+        "resolved" => Some("resolved"),
+        _ => None,
+    }
 }
 
 pub(crate) async fn list_users(
@@ -575,6 +623,332 @@ pub(crate) async fn list_observability_events(
             detail: row.4,
         })
         .collect())
+}
+
+pub(crate) async fn list_observability_timeseries(
+    state: &AppState,
+    window_minutes: Option<i64>,
+) -> Result<Vec<ObservabilityTimeseriesPoint>, AdminServiceError> {
+    let pool = state
+        .db_pool
+        .as_ref()
+        .ok_or(AdminServiceError::ServiceUnavailable(
+            "database unavailable",
+        ))?;
+    let minutes = window_minutes.unwrap_or(240).clamp(15, 1440);
+    let rows = sqlx::query_as::<_, (DateTime<Utc>, i64, i64, i64, i64, i64, i64)>(
+        "with bounds as (
+           select now() - ($1::int * interval '1 minute') as since_at
+         ),
+         events as (
+           select date_trunc('minute', e.created_at) as bucket,
+                  1::bigint as total_events,
+                  case
+                    when lower(e.event_type) like '%fail%' then 1::bigint
+                    when lower(e.event_type) like '%error%' then 1::bigint
+                    when lower(e.event_type) in ('cancelled', 'dead_lettered') then 1::bigint
+                    else 0::bigint
+                  end as error_events,
+                  1::bigint as runtime_events,
+                  0::bigint as provider_events,
+                  0::bigint as auth_events,
+                  0::bigint as admin_events
+             from runtime_job_events e, bounds b
+            where e.created_at >= b.since_at
+           union all
+           select date_trunc('minute', l.created_at) as bucket,
+                  1::bigint as total_events,
+                  case
+                    when lower(coalesce(l.outcome, '')) in ('failed', 'error', 'timeout', 'rejected') then 1::bigint
+                    else 0::bigint
+                  end as error_events,
+                  0::bigint as runtime_events,
+                  1::bigint as provider_events,
+                  0::bigint as auth_events,
+                  0::bigint as admin_events
+             from provider_contract_ledger l, bounds b
+            where l.created_at >= b.since_at
+           union all
+           select date_trunc('minute', a.created_at) as bucket,
+                  1::bigint as total_events,
+                  0::bigint as error_events,
+                  0::bigint as runtime_events,
+                  0::bigint as provider_events,
+                  1::bigint as auth_events,
+                  0::bigint as admin_events
+             from auth_audit_log a, bounds b
+            where a.created_at >= b.since_at
+           union all
+           select date_trunc('minute', aa.created_at) as bucket,
+                  1::bigint as total_events,
+                  0::bigint as error_events,
+                  0::bigint as runtime_events,
+                  0::bigint as provider_events,
+                  0::bigint as auth_events,
+                  1::bigint as admin_events
+             from admin_audit_log aa, bounds b
+            where aa.created_at >= b.since_at
+         )
+         select bucket,
+                sum(total_events) as total_events,
+                sum(error_events) as error_events,
+                sum(runtime_events) as runtime_events,
+                sum(provider_events) as provider_events,
+                sum(auth_events) as auth_events,
+                sum(admin_events) as admin_events
+           from events
+       group by bucket
+       order by bucket asc",
+    )
+    .bind(minutes as i32)
+    .fetch_all(pool)
+    .await
+    .map_err(|_| AdminServiceError::Internal)?;
+    Ok(rows
+        .into_iter()
+        .map(|row| ObservabilityTimeseriesPoint {
+            bucket: row.0,
+            total_events: row.1,
+            error_events: row.2,
+            runtime_events: row.3,
+            provider_events: row.4,
+            auth_events: row.5,
+            admin_events: row.6,
+        })
+        .collect())
+}
+
+pub(crate) async fn list_incidents(
+    state: &AppState,
+    status: Option<&str>,
+    severity: Option<&str>,
+    limit: Option<usize>,
+) -> Result<Vec<IncidentRecord>, AdminServiceError> {
+    let pool = state
+        .db_pool
+        .as_ref()
+        .ok_or(AdminServiceError::ServiceUnavailable(
+            "database unavailable",
+        ))?;
+    let status_filter = match status {
+        Some(value) if !value.trim().is_empty() => Some(
+            normalize_incident_status(value)
+                .ok_or(AdminServiceError::InvalidRequest("invalid incident status"))?
+                .to_string(),
+        ),
+        _ => None,
+    };
+    let severity_filter = match severity {
+        Some(value) if !value.trim().is_empty() => Some(
+            normalize_incident_severity(value)
+                .ok_or(AdminServiceError::InvalidRequest(
+                    "invalid incident severity",
+                ))?
+                .to_string(),
+        ),
+        _ => None,
+    };
+    let rows = sqlx::query_as::<
+        _,
+        (
+            Uuid,
+            String,
+            String,
+            String,
+            Option<String>,
+            serde_json::Value,
+            DateTime<Utc>,
+            Option<DateTime<Utc>>,
+            Option<Uuid>,
+        ),
+    >(
+        "select id, title, severity, status, summary, context_json, opened_at, resolved_at, created_by
+           from admin_incidents
+          where ($1::text is null or status = $1::text)
+            and ($2::text is null or severity = $2::text)
+       order by opened_at desc
+          limit $3",
+    )
+    .bind(status_filter)
+    .bind(severity_filter)
+    .bind(clamp_limit(limit, 120, 500))
+    .fetch_all(pool)
+    .await
+    .map_err(|_| AdminServiceError::Internal)?;
+    Ok(rows
+        .into_iter()
+        .map(|row| IncidentRecord {
+            id: row.0.to_string(),
+            title: row.1,
+            severity: row.2,
+            status: row.3,
+            summary: row.4,
+            context: row.5,
+            opened_at: row.6,
+            resolved_at: row.7,
+            created_by: row.8.map(|value| value.to_string()),
+        })
+        .collect())
+}
+
+pub(crate) async fn create_incident(
+    state: &AppState,
+    title: &str,
+    severity: &str,
+    summary: Option<&str>,
+    context: serde_json::Value,
+    created_by: Option<&str>,
+) -> Result<IncidentRecord, AdminServiceError> {
+    let title = title.trim();
+    if title.len() < 3 {
+        return Err(AdminServiceError::InvalidRequest(
+            "incident title must be at least 3 characters",
+        ));
+    }
+    if title.len() > 140 {
+        return Err(AdminServiceError::InvalidRequest("incident title too long"));
+    }
+    let severity = normalize_incident_severity(severity).ok_or(
+        AdminServiceError::InvalidRequest("invalid incident severity"),
+    )?;
+    let summary = summary
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_string());
+    if let Some(value) = summary.as_ref() {
+        if value.len() > 600 {
+            return Err(AdminServiceError::InvalidRequest(
+                "incident summary too long",
+            ));
+        }
+    }
+    let actor_uuid = match created_by {
+        Some(value) => Some(
+            Uuid::parse_str(value)
+                .map_err(|_| AdminServiceError::InvalidRequest("invalid actor user id"))?,
+        ),
+        None => None,
+    };
+
+    let pool = state
+        .db_pool
+        .as_ref()
+        .ok_or(AdminServiceError::ServiceUnavailable(
+            "database unavailable",
+        ))?;
+    let row = sqlx::query_as::<
+        _,
+        (
+            Uuid,
+            String,
+            String,
+            String,
+            Option<String>,
+            serde_json::Value,
+            DateTime<Utc>,
+            Option<DateTime<Utc>>,
+            Option<Uuid>,
+        ),
+    >(
+        "insert into admin_incidents
+         (id, title, severity, status, summary, context_json, opened_at, created_by)
+         values ($1, $2, $3, 'open', $4, cast($5 as jsonb), now(), $6)
+         returning id, title, severity, status, summary, context_json, opened_at, resolved_at, created_by",
+    )
+    .bind(Uuid::new_v4())
+    .bind(title)
+    .bind(severity)
+    .bind(summary)
+    .bind(context)
+    .bind(actor_uuid)
+    .fetch_one(pool)
+    .await
+    .map_err(|_| AdminServiceError::Internal)?;
+
+    Ok(IncidentRecord {
+        id: row.0.to_string(),
+        title: row.1,
+        severity: row.2,
+        status: row.3,
+        summary: row.4,
+        context: row.5,
+        opened_at: row.6,
+        resolved_at: row.7,
+        created_by: row.8.map(|value| value.to_string()),
+    })
+}
+
+pub(crate) async fn update_incident_status(
+    state: &AppState,
+    incident_id: &str,
+    status: &str,
+    summary: Option<&str>,
+) -> Result<IncidentRecord, AdminServiceError> {
+    let incident_uuid = Uuid::parse_str(incident_id.trim())
+        .map_err(|_| AdminServiceError::InvalidRequest("invalid incident id"))?;
+    let status = normalize_incident_status(status)
+        .ok_or(AdminServiceError::InvalidRequest("invalid incident status"))?;
+    let summary = summary
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_string());
+    if let Some(value) = summary.as_ref() {
+        if value.len() > 600 {
+            return Err(AdminServiceError::InvalidRequest(
+                "incident summary too long",
+            ));
+        }
+    }
+    let pool = state
+        .db_pool
+        .as_ref()
+        .ok_or(AdminServiceError::ServiceUnavailable(
+            "database unavailable",
+        ))?;
+    let row = sqlx::query_as::<
+        _,
+        (
+            Uuid,
+            String,
+            String,
+            String,
+            Option<String>,
+            serde_json::Value,
+            DateTime<Utc>,
+            Option<DateTime<Utc>>,
+            Option<Uuid>,
+        ),
+    >(
+        "update admin_incidents
+            set status = $2,
+                summary = coalesce($3, summary),
+                resolved_at = case
+                  when $2 = 'resolved' then coalesce(resolved_at, now())
+                  else null
+                end
+          where id = $1
+      returning id, title, severity, status, summary, context_json, opened_at, resolved_at, created_by",
+    )
+    .bind(incident_uuid)
+    .bind(status)
+    .bind(summary)
+    .fetch_optional(pool)
+    .await
+    .map_err(|_| AdminServiceError::Internal)?;
+    let Some(row) = row else {
+        return Err(AdminServiceError::NotFound("incident not found"));
+    };
+    Ok(IncidentRecord {
+        id: row.0.to_string(),
+        title: row.1,
+        severity: row.2,
+        status: row.3,
+        summary: row.4,
+        context: row.5,
+        opened_at: row.6,
+        resolved_at: row.7,
+        created_by: row.8.map(|value| value.to_string()),
+    })
 }
 
 pub(crate) fn redacted_config_snapshot(state: &AppState) -> BTreeMap<String, serde_json::Value> {

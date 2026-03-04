@@ -51,6 +51,35 @@ struct EventsQuery {
     since_id: Option<i64>,
 }
 
+#[derive(Debug, serde::Deserialize)]
+struct TimeseriesQuery {
+    window_minutes: Option<i64>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct ListIncidentsQuery {
+    status: Option<String>,
+    severity: Option<String>,
+    limit: Option<usize>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct CreateIncidentRequest {
+    title: String,
+    severity: String,
+    summary: Option<String>,
+    context: Option<serde_json::Value>,
+    reason: String,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct UpdateIncidentStatusRequest {
+    status: String,
+    summary: Option<String>,
+    reason: String,
+    confirm_target: String,
+}
+
 #[derive(Debug, serde::Serialize)]
 struct RuntimeEventsResponse {
     events: Vec<super::super::services::dashboard_service::RuntimeJobEventRecord>,
@@ -64,6 +93,7 @@ pub(super) fn register(router: Router<Arc<AppState>>) -> Router<Arc<AppState>> {
             "/api/admin/maintenance/metrics/summary",
             get(metrics_summary),
         )
+        .route("/api/admin/capabilities", get(admin_capabilities))
         .route("/api/admin/users", get(list_users))
         .route("/api/admin/users/{user_id}/role", patch(update_user_role))
         .route(
@@ -105,6 +135,18 @@ pub(super) fn register(router: Router<Arc<AppState>>) -> Router<Arc<AppState>> {
         .route(
             "/api/admin/observability/events",
             get(list_observability_events),
+        )
+        .route(
+            "/api/admin/observability/timeseries",
+            get(observability_timeseries),
+        )
+        .route(
+            "/api/admin/incidents",
+            get(list_incidents).post(create_incident),
+        )
+        .route(
+            "/api/admin/incidents/{incident_id}/status",
+            patch(update_incident_status),
         )
         .route("/api/admin/config/redacted", get(get_redacted_config))
         .route("/api/admin/audit", get(list_admin_audit))
@@ -171,6 +213,39 @@ async fn metrics_summary(
     let metrics =
         metrics_service::summarize_metrics(&state.metrics_handle.render(), true, db_ok && redis_ok);
     (StatusCode::OK, Json(metrics)).into_response()
+}
+
+async fn admin_capabilities(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    let session = match require_admin_read(state.as_ref(), &headers).await {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "role": auth_service::admin_role_as_str(&session.role),
+            "can_read": admin_service::role_allows_admin_read(&session.role),
+            "can_mutate": admin_service::role_allows_admin_mutation(&session.role),
+            "step_up_required_for_mutation": true,
+            "hosts": {
+                "admin_host": state.config.admin_app_host,
+                "user_host": state.config.user_app_host
+            },
+            "available_modules": [
+                "maintenance",
+                "users",
+                "runtime",
+                "observability",
+                "security",
+                "config",
+                "audit"
+            ],
+        })),
+    )
+        .into_response()
 }
 
 async fn list_users(State(state): State<Arc<AppState>>, headers: HeaderMap) -> impl IntoResponse {
@@ -589,6 +664,144 @@ async fn list_observability_events(
             .into_response(),
         Err(err) => map_admin_error(err, &headers).into_response(),
     }
+}
+
+async fn observability_timeseries(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Query(query): Query<TimeseriesQuery>,
+) -> impl IntoResponse {
+    if let Err(response) = require_admin_read(state.as_ref(), &headers).await {
+        return response;
+    }
+    let requested_window = query.window_minutes.unwrap_or(240).clamp(15, 1440);
+    match admin_service::list_observability_timeseries(state.as_ref(), Some(requested_window)).await
+    {
+        Ok(points) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "window_minutes": requested_window,
+                "points": points
+            })),
+        )
+            .into_response(),
+        Err(err) => map_admin_error(err, &headers).into_response(),
+    }
+}
+
+async fn list_incidents(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Query(query): Query<ListIncidentsQuery>,
+) -> impl IntoResponse {
+    if let Err(response) = require_admin_read(state.as_ref(), &headers).await {
+        return response;
+    }
+    match admin_service::list_incidents(
+        state.as_ref(),
+        query.status.as_deref(),
+        query.severity.as_deref(),
+        query.limit,
+    )
+    .await
+    {
+        Ok(incidents) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "incidents": incidents })),
+        )
+            .into_response(),
+        Err(err) => map_admin_error(err, &headers).into_response(),
+    }
+}
+
+async fn create_incident(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(payload): Json<CreateIncidentRequest>,
+) -> impl IntoResponse {
+    let session = match require_admin_mutation(state.as_ref(), &headers).await {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    let reason = payload.reason.trim();
+    if reason.len() < 8 {
+        return map_admin_error(
+            admin_service::AdminServiceError::InvalidRequest(
+                "reason must be at least 8 characters",
+            ),
+            &headers,
+        )
+        .into_response();
+    }
+    let incident = match admin_service::create_incident(
+        state.as_ref(),
+        &payload.title,
+        &payload.severity,
+        payload.summary.as_deref(),
+        payload.context.unwrap_or_else(|| serde_json::json!({})),
+        Some(&session.user_id),
+    )
+    .await
+    {
+        Ok(value) => value,
+        Err(err) => return map_admin_error(err, &headers).into_response(),
+    };
+    let _ = admin_service::append_admin_audit(
+        state.as_ref(),
+        Some(&session.user_id),
+        &session.email,
+        "incident_create",
+        "incident",
+        &incident.id,
+        reason,
+        &request_id_from_headers(&headers),
+        serde_json::json!({"severity": incident.severity, "status": incident.status}),
+    )
+    .await;
+    (StatusCode::CREATED, Json(incident)).into_response()
+}
+
+async fn update_incident_status(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(incident_id): Path<String>,
+    Json(payload): Json<UpdateIncidentStatusRequest>,
+) -> impl IntoResponse {
+    let session = match require_admin_mutation(state.as_ref(), &headers).await {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    if let Err(err) = admin_service::validate_sensitive_confirmation(
+        &payload.reason,
+        &payload.confirm_target,
+        &incident_id,
+    ) {
+        return map_admin_error(err, &headers).into_response();
+    }
+    let updated = match admin_service::update_incident_status(
+        state.as_ref(),
+        &incident_id,
+        &payload.status,
+        payload.summary.as_deref(),
+    )
+    .await
+    {
+        Ok(value) => value,
+        Err(err) => return map_admin_error(err, &headers).into_response(),
+    };
+    let _ = admin_service::append_admin_audit(
+        state.as_ref(),
+        Some(&session.user_id),
+        &session.email,
+        "incident_status_update",
+        "incident",
+        &incident_id,
+        &payload.reason,
+        &request_id_from_headers(&headers),
+        serde_json::json!({"status": updated.status}),
+    )
+    .await;
+    (StatusCode::OK, Json(updated)).into_response()
 }
 
 async fn get_redacted_config(

@@ -271,11 +271,12 @@
   }
 
   .auth-hero-icon {
-    @apply flex h-28 w-28 items-center justify-center rounded-full border border-slate-200/90 bg-white/70 shadow-lg backdrop-blur;
+    @apply flex items-center justify-center;
   }
 
   .auth-hero-icon-main {
-    @apply h-14 w-14;
+    height: 7.5rem;
+    width: 15rem;
     color: rgb(var(--text-supporting));
   }
 
@@ -315,10 +316,6 @@
     .auth-pane {
       transition: none;
     }
-  }
-
-  body[data-theme-mode="dark"] .auth-hero-icon {
-    @apply border-slate-700/80 bg-slate-900/65;
   }
 
   .btn-primary {
@@ -394,6 +391,22 @@
       rgba(255, 255, 255, 0.8);
     box-shadow: 0 10px 30px rgba(99, 91, 255, 0.12);
     color: rgb(var(--text-accent));
+  }
+
+  .admin-shell-grid {
+    @apply grid grid-cols-1 gap-4 md:grid-cols-[260px_minmax(0,1fr)] md:gap-6;
+  }
+
+  .admin-row {
+    @apply flex flex-col gap-3 rounded-2xl border border-slate-200/80 bg-white/65 p-3;
+  }
+
+  body[data-theme-mode="dark"] .admin-row {
+    @apply border-slate-700/70 bg-slate-900/55;
+  }
+
+  .admin-row-actions {
+    @apply grid grid-cols-1 gap-2 md:flex md:flex-wrap md:items-center md:justify-end;
   }
 
   body[data-theme-mode="dark"] .desktop-side-link {
