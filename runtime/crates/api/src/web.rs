@@ -1596,6 +1596,7 @@ pub fn render_dashboard_train(email: &str) -> String {
               </span>
             </div>
           </div>
+          <div id="station-picker-correction" class="mt-2 hidden"></div>
           <div id="station-picker-suggestions" class="mt-3 max-h-[220px] space-y-1 overflow-y-auto"></div>
           <div class="mt-3 flex flex-wrap gap-2">
             <button type="button" id="station-tab-major" class="btn-primary h-9 px-3" data-i18n="station.tab_major">Major stations</button>
@@ -1683,6 +1684,7 @@ pub fn render_dashboard_train(email: &str) -> String {
   const stationModal = document.getElementById('station-picker-modal');
   const stationModalClose = document.getElementById('station-picker-close');
   const stationQuery = document.getElementById('station-picker-query');
+  const stationCorrection = document.getElementById('station-picker-correction');
   const stationSuggestions = document.getElementById('station-picker-suggestions');
   const stationTabMajor = document.getElementById('station-tab-major');
   const stationTabRegion = document.getElementById('station-tab-region');
@@ -1717,6 +1719,7 @@ pub fn render_dashboard_train(email: &str) -> String {
   let stationTab = 'major';
   let stationRegionsData = null;
   let stationQueryCounter = 0;
+  let stationSuggestDebounceTimer = null;
   let activeRegionKey = 'seoul';
   let passengerDraft = { adult: 1, child: 0, senior: 0, disability_1_to_3: 0, disability_4_to_6: 0 };
   let passengerCommitted = { ...passengerDraft };
@@ -1745,6 +1748,7 @@ pub fn render_dashboard_train(email: &str) -> String {
       'station.search_placeholder': 'Search station name or initials (Seoul, ㅅㅇ)',
       'station.tab_major': 'Major stations',
       'station.tab_region': 'By region',
+      'station.correction_prompt': 'Did you mean {query}?',
       'date.modal_title': 'Departure date',
       'date.label': 'Date',
       'time.modal_title': 'Departure time',
@@ -1811,6 +1815,7 @@ pub fn render_dashboard_train(email: &str) -> String {
       'station.search_placeholder': '역 이름 또는 초성 검색 (서울, ㅅㅇ)',
       'station.tab_major': '주요역',
       'station.tab_region': '지역별',
+      'station.correction_prompt': '{query} 역을 찾으셨나요?',
       'date.modal_title': '출발일 선택',
       'date.label': '날짜',
       'time.modal_title': '출발시간 선택',
@@ -1877,6 +1882,7 @@ pub fn render_dashboard_train(email: &str) -> String {
       'station.search_placeholder': '駅名または頭子音で検索 (ソウル, ㅅㅇ)',
       'station.tab_major': '主要駅',
       'station.tab_region': '地域別',
+      'station.correction_prompt': '{query} をお探しですか？',
       'date.modal_title': '出発日',
       'date.label': '日付',
       'time.modal_title': '出発時刻',
@@ -2310,6 +2316,59 @@ pub fn render_dashboard_train(email: &str) -> String {
     renderRegionChips();
   };
 
+  const clearStationCorrection = () => {
+    if (!stationCorrection) return;
+    stationCorrection.innerHTML = '';
+    stationCorrection.classList.add('hidden');
+  };
+
+  const suggestLangHint = () => {
+    if (activeLocale === 'ko') return 'ko';
+    if (activeLocale === 'ja') return 'ja';
+    if (activeLocale === 'en') return 'en';
+    return 'auto';
+  };
+
+  const suggestLayoutHint = (query) => {
+    const compact = String(query || '').replace(/\s+/g, '');
+    if (compact && /^[a-z0-9]+$/i.test(compact)) return 'qwerty';
+    return 'auto';
+  };
+
+  const buildStationSuggestUrl = (query) => {
+    const params = new URLSearchParams();
+    params.set('q', query);
+    params.set('limit', '10');
+    params.set('apply_mode', 'suggest');
+    params.set('lang_hint', suggestLangHint());
+    params.set('layout_hint', suggestLayoutHint(query));
+    return `/api/train/stations/suggest?${params.toString()}`;
+  };
+
+  const renderStationCorrection = (body) => {
+    if (!stationCorrection) return;
+    const correctedQuery = String(body?.corrected_query || '').trim();
+    const autocorrectApplied = Boolean(body?.autocorrect_applied);
+    const currentQuery = String(stationQuery?.value || '').trim();
+    if (!autocorrectApplied || !correctedQuery || correctedQuery === currentQuery) {
+      clearStationCorrection();
+      return;
+    }
+    stationCorrection.classList.remove('hidden');
+    stationCorrection.innerHTML = `
+      <button type="button" class="summary-row w-full text-left" data-station-use-correction="${escapeHtml(correctedQuery)}">
+        <span>${escapeHtml(t('station.correction_prompt', { query: correctedQuery }))}</span>
+      </button>
+    `;
+    const button = stationCorrection.querySelector('[data-station-use-correction]');
+    if (!button) return;
+    button.addEventListener('click', async () => {
+      stationQuery.value = correctedQuery;
+      await queryStationSuggestions(correctedQuery);
+      stationQuery.focus();
+    });
+  };
+
   const loadStationRegions = async () => {
     if (stationRegionsData) return stationRegionsData;
     const response = await requestJson('/api/train/stations/regions');
@@ -2324,12 +2383,14 @@ pub fn render_dashboard_train(email: &str) -> String {
   const queryStationSuggestions = async (query) => {
     stationQueryCounter += 1;
     const requestId = stationQueryCounter;
-    const response = await requestJson(`/api/train/stations/suggest?q=${encodeURIComponent(query)}&limit=10`);
+    const response = await requestJson(buildStationSuggestUrl(query));
     if (requestId !== stationQueryCounter) return;
     if (!response.ok) {
+      clearStationCorrection();
       stationSuggestions.innerHTML = `<div class="error-card">${escapeHtml(apiErrorMessage(response, t('error.station_lookup')))}</div>`;
       return;
     }
+    renderStationCorrection(response.body);
     const suggestions = Array.isArray(response.body?.suggestions) ? response.body.suggestions : [];
     const merged = new Map();
     for (const station of suggestions) {
@@ -2356,7 +2417,13 @@ pub fn render_dashboard_train(email: &str) -> String {
   const openStationPicker = async (target) => {
     stationPickerTarget = target;
     stationQuery.value = '';
+    clearStationCorrection();
     stationSuggestions.innerHTML = '';
+    stationQueryCounter += 1;
+    if (stationSuggestDebounceTimer) {
+      clearTimeout(stationSuggestDebounceTimer);
+      stationSuggestDebounceTimer = null;
+    }
     const loaded = await loadStationRegions();
     if (!loaded) return;
     renderStationTab();
@@ -2456,10 +2523,22 @@ pub fn render_dashboard_train(email: &str) -> String {
   stationQuery.addEventListener('input', async () => {
     const value = stationQuery.value.trim();
     if (!value) {
+      stationQueryCounter += 1;
+      clearStationCorrection();
+      if (stationSuggestDebounceTimer) {
+        clearTimeout(stationSuggestDebounceTimer);
+        stationSuggestDebounceTimer = null;
+      }
       renderStationTab();
       return;
     }
-    await queryStationSuggestions(value);
+    if (stationSuggestDebounceTimer) {
+      clearTimeout(stationSuggestDebounceTimer);
+    }
+    stationSuggestDebounceTimer = setTimeout(() => {
+      stationSuggestDebounceTimer = null;
+      queryStationSuggestions(value).catch(() => {});
+    }, 150);
   });
 
   dateApply.addEventListener('click', () => {
@@ -3421,9 +3500,16 @@ mod tests {
         assert!(html.contains("/api/train/stations/regions"));
         assert!(html.contains("/api/train/stations/suggest"));
         assert!(html.contains("/api/train/search"));
+        assert!(html.contains("id=\"station-picker-correction\""));
         assert!(html.contains("const TRAIN_I18N = {"));
+        assert!(html.contains("'station.correction_prompt'"));
         assert!(html.contains("data-i18n=\"search.title\""));
         assert!(html.contains("data-i18n-placeholder=\"station.search_placeholder\""));
+        assert!(html.contains("params.set('apply_mode', 'suggest')"));
+        assert!(html.contains("params.set('lang_hint', suggestLangHint())"));
+        assert!(html.contains("params.set('layout_hint', suggestLayoutHint(query))"));
+        assert!(html.contains("corrected_query"));
+        assert!(html.contains("autocorrect_applied"));
         assert!(
             html.contains(
                 "document.body?.dataset?.locale || document.documentElement?.lang || 'en'"
