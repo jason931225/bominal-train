@@ -5,10 +5,10 @@ except generated/vendor artifacts emitted by frontend build scripts.
 
 Structure:
 
-- `icons/auth` - auth page and security iconography.
 - `icons/brand` - brand-facing assets such as favicon.
 - `icons/common` - shared utility icons.
 - `icons/theme` - theme switch icons.
+- `icons/runtime-ui` - optimized `.svgz` icon pack used by `runtime/crates/api/src/web.rs` pages.
 - `logos` - payment and train-provider logos used in runtime UI.
 
 Build sync:

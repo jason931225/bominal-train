@@ -1,0 +1,507 @@
+{
+  "repo": "jason931225/bominal",
+  "source_file": "runtime/crates/api/src/web.rs",
+  "source_file_sha256": "91fddb7503482ec4bd0bee74805807ed4e93ea6c70b7a52d0a50a5055f5d882f",
+  "style_reference_file": "runtime/frontend/styles/tailwind.css",
+  "style_reference_sha256": "65b1b59fdb45d321175ef9b8f572f27cb7d91ece8331589d1c4f03464d4c6aba",
+  "generated_at_utc": "2026-03-04T12:20:21Z",
+  "bundle_format_version": 1,
+  "notes": [
+    "All exported SVGs were conservatively optimized by removing non-essential wrapper attributes/classes and minifying whitespace only; no path simplification was applied to avoid visual drift.",
+    "Each SVGZ is the exact SVG payload compressed with gzip -9.",
+    "For plain <img> replacements, prefer the static light/dark or state-specific variants instead of the themed/currentColor variants, because external SVGs do not inherit host-page CSS variables/currentColor in the same way inline SVGs do."
+  ],
+  "validation": {
+    "comparison_method": "CairoSVG raster render diff at 8x scale against original geometry / color-substituted source where needed",
+    "all_checked_variants_zero_diff": true,
+    "checked_variant_count": 29
+  },
+  "groups": {
+    "auth-hero-passkey": {
+      "extraction_method": "direct-inline-svg",
+      "source_occurrences": [
+        {
+          "line_start": 61,
+          "line_end": 71
+        }
+      ],
+      "notes": [
+        "Original inline SVG uses rgb(var(--text-supporting)).",
+        "Use the light/dark static variants for <img> replacement; the themed variant is closest to source but relies on CSS variables.",
+        "If you keep the original .auth-hero-icon-main class on the replacement element, the existing dark-mode brightness filter will still apply."
+      ],
+      "variant_files": [
+        "svg/auth-hero-passkey-themed.svg",
+        "svg/auth-hero-passkey-light.svg",
+        "svg/auth-hero-passkey-dark.svg"
+      ],
+      "recommended_img_variants": {
+        "light_mode": "svg/auth-hero-passkey-light.svg",
+        "dark_mode": "svg/auth-hero-passkey-dark.svg"
+      },
+      "keep_container_css": [
+        ".auth-hero-icon",
+        ".auth-hero-icon-main",
+        ".auth-hero-icon-visible",
+        ".auth-hero-icon-hidden"
+      ]
+    },
+    "auth-hero-password": {
+      "extraction_method": "direct-inline-svg",
+      "source_occurrences": [
+        {
+          "line_start": 72,
+          "line_end": 90
+        }
+      ],
+      "notes": [
+        "Original inline SVG uses rgb(var(--text-supporting)) on inner paths.",
+        "Use the light/dark static variants for <img> replacement; the themed variant is closest to source but relies on CSS variables.",
+        "If you keep the original .auth-hero-icon-main class on the replacement element, the existing dark-mode brightness filter will still apply."
+      ],
+      "variant_files": [
+        "svg/auth-hero-password-themed.svg",
+        "svg/auth-hero-password-light.svg",
+        "svg/auth-hero-password-dark.svg"
+      ],
+      "recommended_img_variants": {
+        "light_mode": "svg/auth-hero-password-light.svg",
+        "dark_mode": "svg/auth-hero-password-dark.svg"
+      },
+      "keep_container_css": [
+        ".auth-hero-icon",
+        ".auth-hero-icon-main",
+        ".auth-hero-icon-visible",
+        ".auth-hero-icon-hidden"
+      ]
+    },
+    "theme-mini-sun": {
+      "extraction_method": "direct-inline-svg",
+      "source_occurrences": [
+        {
+          "line_start": 152,
+          "line_end": 162
+        }
+      ],
+      "notes": [
+        "Original inline SVG relies on currentColor.",
+        "For <img> replacement, use the default/active static variants and swap src when the switch state changes."
+      ],
+      "variant_files": [
+        "svg/theme-mini-sun-currentColor.svg",
+        "svg/theme-mini-sun-default.svg",
+        "svg/theme-mini-sun-active.svg"
+      ],
+      "recommended_img_variants": {
+        "inactive": "svg/theme-mini-sun-default.svg",
+        "active": "svg/theme-mini-sun-active.svg"
+      },
+      "keep_container_css": [
+        ".theme-mini-icon",
+        ".theme-mini-icon-sun"
+      ]
+    },
+    "theme-mini-moon": {
+      "extraction_method": "direct-inline-svg",
+      "source_occurrences": [
+        {
+          "line_start": 163,
+          "line_end": 165
+        }
+      ],
+      "notes": [
+        "Original inline SVG relies on currentColor.",
+        "For <img> replacement, use the default/active static variants and swap src when the switch state changes."
+      ],
+      "variant_files": [
+        "svg/theme-mini-moon-currentColor.svg",
+        "svg/theme-mini-moon-default.svg",
+        "svg/theme-mini-moon-active.svg"
+      ],
+      "recommended_img_variants": {
+        "inactive": "svg/theme-mini-moon-default.svg",
+        "active": "svg/theme-mini-moon-active.svg"
+      },
+      "keep_container_css": [
+        ".theme-mini-icon",
+        ".theme-mini-icon-moon"
+      ]
+    },
+    "icon-plus": {
+      "extraction_method": "deduplicated-direct-inline-svg",
+      "source_occurrences": [
+        {
+          "line_start": 698,
+          "line_end": 701
+        },
+        {
+          "line_start": 2874,
+          "line_end": 2877
+        }
+      ],
+      "notes": [
+        "Original inline SVG relies on currentColor.",
+        "Static light/dark variants match the btn-chip color tokens from tailwind.css."
+      ],
+      "variant_files": [
+        "svg/icon-plus-currentColor.svg",
+        "svg/icon-plus-btn-chip-light.svg",
+        "svg/icon-plus-btn-chip-dark.svg"
+      ],
+      "recommended_img_variants": {
+        "btn_chip_light": "svg/icon-plus-btn-chip-light.svg",
+        "btn_chip_dark": "svg/icon-plus-btn-chip-dark.svg"
+      },
+      "keep_container_css": [
+        ".btn-chip"
+      ]
+    },
+    "icon-trash": {
+      "extraction_method": "deduplicated-direct-inline-svg",
+      "source_occurrences": [
+        {
+          "line_start": 771,
+          "line_end": 777
+        },
+        {
+          "line_start": 2572,
+          "line_end": 2578
+        },
+        {
+          "line_start": 2892,
+          "line_end": 2898
+        }
+      ],
+      "notes": [
+        "Original inline SVG relies on currentColor.",
+        "Static light/dark variants match the btn-destructive color tokens from tailwind.css."
+      ],
+      "variant_files": [
+        "svg/icon-trash-currentColor.svg",
+        "svg/icon-trash-destructive-light.svg",
+        "svg/icon-trash-destructive-dark.svg"
+      ],
+      "recommended_img_variants": {
+        "destructive_light": "svg/icon-trash-destructive-light.svg",
+        "destructive_dark": "svg/icon-trash-destructive-dark.svg"
+      },
+      "keep_container_css": [
+        ".btn-destructive"
+      ]
+    },
+    "icon-search": {
+      "extraction_method": "direct-inline-svg",
+      "source_occurrences": [
+        {
+          "line_start": 1592,
+          "line_end": 1595
+        }
+      ],
+      "notes": [
+        "Original inline SVG relies on currentColor.",
+        "Static light/dark variants match txt-supporting color tokens from tailwind.css."
+      ],
+      "variant_files": [
+        "svg/icon-search-currentColor.svg",
+        "svg/icon-search-supporting-light.svg",
+        "svg/icon-search-supporting-dark.svg"
+      ],
+      "recommended_img_variants": {
+        "supporting_light": "svg/icon-search-supporting-light.svg",
+        "supporting_dark": "svg/icon-search-supporting-dark.svg"
+      },
+      "keep_container_css": [
+        ".txt-supporting"
+      ]
+    },
+    "provider-status-credentials": {
+      "extraction_method": "generated-from-js-template",
+      "source_occurrences": [
+        {
+          "line_start": 2184,
+          "line_end": 2202
+        },
+        {
+          "line_start": 2693,
+          "line_end": 2712
+        }
+      ],
+      "notes": [
+        "The source is a JS template literal, not a standalone literal SVG file.",
+        "The original inline icon gets stroke/currentColor/linecap/linejoin/stroke-width from the .status-icon CSS class.",
+        "These exported files bake the stroke presentation attributes into the SVG so they can stand alone.",
+        "Keep the outer .provider-status-chip shell if you want the original border/background pill."
+      ],
+      "variant_files": [
+        "svg/provider-status-credentials-currentColor.svg",
+        "svg/provider-status-credentials-green.svg",
+        "svg/provider-status-credentials-red.svg",
+        "svg/provider-status-credentials-gray-light.svg",
+        "svg/provider-status-credentials-gray-dark.svg"
+      ],
+      "recommended_img_variants": {
+        "ready": "svg/provider-status-credentials-green.svg",
+        "error": "svg/provider-status-credentials-red.svg",
+        "missing_light": "svg/provider-status-credentials-gray-light.svg",
+        "missing_dark": "svg/provider-status-credentials-gray-dark.svg"
+      },
+      "keep_container_css": [
+        ".provider-status-chip"
+      ]
+    },
+    "provider-status-payment": {
+      "extraction_method": "generated-from-js-template",
+      "source_occurrences": [
+        {
+          "line_start": 2184,
+          "line_end": 2202
+        },
+        {
+          "line_start": 2693,
+          "line_end": 2712
+        }
+      ],
+      "notes": [
+        "The source is a JS template literal, not a standalone literal SVG file.",
+        "The original inline icon gets stroke/currentColor/linecap/linejoin/stroke-width from the .status-icon CSS class.",
+        "These exported files bake the stroke presentation attributes into the SVG so they can stand alone.",
+        "Keep the outer .provider-status-chip shell if you want the original border/background pill."
+      ],
+      "variant_files": [
+        "svg/provider-status-payment-currentColor.svg",
+        "svg/provider-status-payment-green.svg",
+        "svg/provider-status-payment-red.svg",
+        "svg/provider-status-payment-gray-light.svg",
+        "svg/provider-status-payment-gray-dark.svg"
+      ],
+      "recommended_img_variants": {
+        "ready": "svg/provider-status-payment-green.svg",
+        "error": "svg/provider-status-payment-red.svg",
+        "missing_light": "svg/provider-status-payment-gray-light.svg",
+        "missing_dark": "svg/provider-status-payment-gray-dark.svg"
+      },
+      "keep_container_css": [
+        ".provider-status-chip"
+      ]
+    }
+  },
+  "files": [
+    {
+      "path": "svg/auth-hero-passkey-dark.svg",
+      "svg_bytes": 5057,
+      "svgz_path": "svgz/auth-hero-passkey-dark.svgz",
+      "svgz_bytes": 1643,
+      "sha256": "5135c1c0b439c48ef933f6a68da08b7fbaa2ffaf20623d5da7ee9b61f28cb995"
+    },
+    {
+      "path": "svg/auth-hero-passkey-light.svg",
+      "svg_bytes": 5057,
+      "svgz_path": "svgz/auth-hero-passkey-light.svgz",
+      "svgz_bytes": 1641,
+      "sha256": "8d7248a73c8197992a34497fedbf373e0ca59713b03a5af5bf9d0d98cdcadd48"
+    },
+    {
+      "path": "svg/auth-hero-passkey-themed.svg",
+      "svg_bytes": 5117,
+      "svgz_path": "svgz/auth-hero-passkey-themed.svgz",
+      "svgz_bytes": 1663,
+      "sha256": "aef10c80edb3a1441a077b0be5d935396cbb50f2f42cb7a2fc129bdfe8200ea5"
+    },
+    {
+      "path": "svg/auth-hero-password-dark.svg",
+      "svg_bytes": 3516,
+      "svgz_path": "svgz/auth-hero-password-dark.svgz",
+      "svgz_bytes": 752,
+      "sha256": "2fefde38b4aef653ec214dfc3cae0e1ab352de2b7b76f801128ffd8708a8a73d"
+    },
+    {
+      "path": "svg/auth-hero-password-light.svg",
+      "svg_bytes": 3516,
+      "svgz_path": "svgz/auth-hero-password-light.svgz",
+      "svgz_bytes": 751,
+      "sha256": "a4e649049df778f161de97755fc41c0c9a2c6977db2c26f375ca44e54deab383"
+    },
+    {
+      "path": "svg/auth-hero-password-themed.svg",
+      "svg_bytes": 3696,
+      "svgz_path": "svgz/auth-hero-password-themed.svgz",
+      "svgz_bytes": 771,
+      "sha256": "0d01a06572290e47dcbba67a39558076b7a6f313109cfc5b803dcf8c1988c658"
+    },
+    {
+      "path": "svg/icon-plus-btn-chip-dark.svg",
+      "svg_bytes": 224,
+      "svgz_path": "svgz/icon-plus-btn-chip-dark.svgz",
+      "svgz_bytes": 173,
+      "sha256": "0d038b5f45edac10392fe5b47ed6e2a38cc53d5a3cc1af1729f2a2ad54aa442f"
+    },
+    {
+      "path": "svg/icon-plus-btn-chip-light.svg",
+      "svg_bytes": 224,
+      "svgz_path": "svgz/icon-plus-btn-chip-light.svgz",
+      "svgz_bytes": 171,
+      "sha256": "c8f9338a31f381d911480ca716a0e71d555927b0a410cf28a3f57c335a5fb09f"
+    },
+    {
+      "path": "svg/icon-plus-currentColor.svg",
+      "svg_bytes": 229,
+      "svgz_path": "svgz/icon-plus-currentColor.svgz",
+      "svgz_bytes": 173,
+      "sha256": "d4fa0f33887ad425958122f8bdcd712e89173b993c39c7ded5fe1bd444d7e11b"
+    },
+    {
+      "path": "svg/icon-search-currentColor.svg",
+      "svg_bytes": 247,
+      "svgz_path": "svgz/icon-search-currentColor.svgz",
+      "svgz_bytes": 190,
+      "sha256": "c9eaf5239498e6c7d2f2dc8f8759df1d087e18cb538440f5154aa8c434c377d8"
+    },
+    {
+      "path": "svg/icon-search-supporting-dark.svg",
+      "svg_bytes": 242,
+      "svgz_path": "svgz/icon-search-supporting-dark.svgz",
+      "svgz_bytes": 188,
+      "sha256": "7001e1dba72974fc4097e4e395504b8735060020cb784122b46a41e101a0e3d9"
+    },
+    {
+      "path": "svg/icon-search-supporting-light.svg",
+      "svg_bytes": 242,
+      "svgz_path": "svgz/icon-search-supporting-light.svgz",
+      "svgz_bytes": 187,
+      "sha256": "c3f13e24ddd9d6ab4fca42862f66dd3504bf4242dae8f711df837d449a5c4d95"
+    },
+    {
+      "path": "svg/icon-trash-currentColor.svg",
+      "svg_bytes": 299,
+      "svgz_path": "svgz/icon-trash-currentColor.svgz",
+      "svgz_bytes": 199,
+      "sha256": "67eed8d1dcca8448971c46b75cb08b5f45c86fc93a67ba8207836ca38629670d"
+    },
+    {
+      "path": "svg/icon-trash-destructive-dark.svg",
+      "svg_bytes": 294,
+      "svgz_path": "svgz/icon-trash-destructive-dark.svgz",
+      "svgz_bytes": 198,
+      "sha256": "96508e51caad2da9d4afba9b6e05f8367046e096f2237118c599ba023374d476"
+    },
+    {
+      "path": "svg/icon-trash-destructive-light.svg",
+      "svg_bytes": 294,
+      "svgz_path": "svgz/icon-trash-destructive-light.svgz",
+      "svgz_bytes": 197,
+      "sha256": "1ba5a508c249753dc79389019cb5f2d3d9367ffdb099e73076eb1d1424872c23"
+    },
+    {
+      "path": "svg/provider-status-credentials-currentColor.svg",
+      "svg_bytes": 257,
+      "svgz_path": "svgz/provider-status-credentials-currentColor.svgz",
+      "svgz_bytes": 197,
+      "sha256": "50d8c13ce8940b213869ab2e7bed269010411005f8c13556921c7759254e2bf4"
+    },
+    {
+      "path": "svg/provider-status-credentials-gray-dark.svg",
+      "svg_bytes": 252,
+      "svgz_path": "svgz/provider-status-credentials-gray-dark.svgz",
+      "svgz_bytes": 198,
+      "sha256": "6c16a92e47d56a89d7eb42c4010b5884b0a258a57e0e302ab6ac97cf9425f182"
+    },
+    {
+      "path": "svg/provider-status-credentials-gray-light.svg",
+      "svg_bytes": 252,
+      "svgz_path": "svgz/provider-status-credentials-gray-light.svgz",
+      "svgz_bytes": 196,
+      "sha256": "69abadeb69d5bbd2dbc94aef750ab68a31dd0ccdfd4d6254a7a4a6102241403a"
+    },
+    {
+      "path": "svg/provider-status-credentials-green.svg",
+      "svg_bytes": 252,
+      "svgz_path": "svgz/provider-status-credentials-green.svgz",
+      "svgz_bytes": 199,
+      "sha256": "6e6d4105e3fbf5278d91526c71b0345f1dbb81cffacd98bbb46b72f368c69dcc"
+    },
+    {
+      "path": "svg/provider-status-credentials-red.svg",
+      "svg_bytes": 252,
+      "svgz_path": "svgz/provider-status-credentials-red.svgz",
+      "svgz_bytes": 198,
+      "sha256": "7b01ad7073a1520e7f01fa0ee24db5360ad61180f123966addedd1811b20d076"
+    },
+    {
+      "path": "svg/provider-status-payment-currentColor.svg",
+      "svg_bytes": 266,
+      "svgz_path": "svgz/provider-status-payment-currentColor.svgz",
+      "svgz_bytes": 195,
+      "sha256": "83678d54c8fb6e8187dce8412599d7036d4413d4da42102e7358ef839b5141d4"
+    },
+    {
+      "path": "svg/provider-status-payment-gray-dark.svg",
+      "svg_bytes": 261,
+      "svgz_path": "svgz/provider-status-payment-gray-dark.svgz",
+      "svgz_bytes": 193,
+      "sha256": "f7cfc14d9efa45e726cb8f71f4900d394b974a37cbeaf801c654f69d50133073"
+    },
+    {
+      "path": "svg/provider-status-payment-gray-light.svg",
+      "svg_bytes": 261,
+      "svgz_path": "svgz/provider-status-payment-gray-light.svgz",
+      "svgz_bytes": 192,
+      "sha256": "a087e6d30b3d79efe63ba092623ebf87ab50a2f62e76adb4757664f77c28c91f"
+    },
+    {
+      "path": "svg/provider-status-payment-green.svg",
+      "svg_bytes": 261,
+      "svgz_path": "svgz/provider-status-payment-green.svgz",
+      "svgz_bytes": 194,
+      "sha256": "abe3b51e7ae9911e95f37124b9342a7670c97da5bf070395eb64c7cb0f116687"
+    },
+    {
+      "path": "svg/provider-status-payment-red.svg",
+      "svg_bytes": 261,
+      "svgz_path": "svgz/provider-status-payment-red.svgz",
+      "svgz_bytes": 194,
+      "sha256": "ceab716c6927a90aef793096ad0e6ccbe126df25f52b0729d68f8355bab09d23"
+    },
+    {
+      "path": "svg/theme-mini-moon-active.svg",
+      "svg_bytes": 248,
+      "svgz_path": "svgz/theme-mini-moon-active.svgz",
+      "svgz_bytes": 187,
+      "sha256": "b7886a3c889eeb5c4a92459df22c5aab7c7262805a79753337236624abadc4df"
+    },
+    {
+      "path": "svg/theme-mini-moon-currentColor.svg",
+      "svg_bytes": 253,
+      "svgz_path": "svgz/theme-mini-moon-currentColor.svgz",
+      "svgz_bytes": 190,
+      "sha256": "dd4a86a90288e2713f48eaf25da088845164b8d250f1d6f13343d64362932815"
+    },
+    {
+      "path": "svg/theme-mini-moon-default.svg",
+      "svg_bytes": 248,
+      "svgz_path": "svgz/theme-mini-moon-default.svgz",
+      "svgz_bytes": 188,
+      "sha256": "35aa6f337a67d25c5e1fc4504f35b761ee65aafb669c46b7e815347bf120f7f8"
+    },
+    {
+      "path": "svg/theme-mini-sun-active.svg",
+      "svg_bytes": 555,
+      "svgz_path": "svgz/theme-mini-sun-active.svgz",
+      "svgz_bytes": 258,
+      "sha256": "6e45157e290f8b4ef7e3a5cf95c4549596dc1853258f225dd2f9ef1f1b09806c"
+    },
+    {
+      "path": "svg/theme-mini-sun-currentColor.svg",
+      "svg_bytes": 560,
+      "svgz_path": "svgz/theme-mini-sun-currentColor.svgz",
+      "svgz_bytes": 261,
+      "sha256": "645c1f0af936ae1a9a22eaa12cf0d242bf7ab80988884b9714d3c4e9afb6b27d"
+    },
+    {
+      "path": "svg/theme-mini-sun-default.svg",
+      "svg_bytes": 555,
+      "svgz_path": "svgz/theme-mini-sun-default.svgz",
+      "svgz_bytes": 259,
+      "sha256": "f77540825cea6f83cf85924c2bd3f7884fd15ea25f109d62417f4aabea3277ab"
+    }
+  ]
+}

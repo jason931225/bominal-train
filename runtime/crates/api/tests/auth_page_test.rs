@@ -197,7 +197,31 @@ async fn auth_landing_keeps_email_password_fallback() {
     assert!(html.contains("email-continue"));
     assert!(html.contains("data-action-group=\"pair\""));
     assert!(html.contains("id=\"auth-hero-passkey-icon\""));
+    assert!(
+        html.contains("src=\"/assets/icons/runtime-ui/auth-hero-passkey-light.svgz\""),
+        "expected auth hero passkey image src to use svgz asset"
+    );
+    assert!(
+        html.contains("data-svgz-dark=\"/assets/icons/runtime-ui/auth-hero-passkey-dark.svgz\""),
+        "expected auth hero passkey dark-mode svgz source"
+    );
+    assert!(
+        !html.contains("<svg id=\"auth-hero-passkey-icon\""),
+        "auth hero passkey icon should not be inline svg"
+    );
     assert!(html.contains("id=\"auth-hero-password-icon\""));
+    assert!(
+        html.contains("src=\"/assets/icons/runtime-ui/auth-hero-password-light.svgz\""),
+        "expected auth hero password image src to use svgz asset"
+    );
+    assert!(
+        html.contains("data-svgz-dark=\"/assets/icons/runtime-ui/auth-hero-password-dark.svgz\""),
+        "expected auth hero password dark-mode svgz source"
+    );
+    assert!(
+        !html.contains("<svg id=\"auth-hero-password-icon\""),
+        "auth hero password icon should not be inline svg"
+    );
     assert!(html.contains("const setHeroIcon = (mode) =>"));
     assert!(html.contains("setHeroIcon('email')"));
     assert!(html.contains("setHeroIcon('passkey')"));

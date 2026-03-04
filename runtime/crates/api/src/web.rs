@@ -58,36 +58,8 @@ pub fn render_auth_landing() -> String {
         <h1 class="sr-only" aria-label="Sign in securely"></h1>
         <div class="mt-3 flex justify-center">
           <div class="auth-hero-icon" role="img" aria-label="Secure account sign-in">
-            <svg id="auth-hero-passkey-icon" class="auth-hero-icon-main auth-hero-icon-visible" viewBox="0 0 48 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="rgb(var(--text-supporting))">
-              <g transform="translate(2.4 2.4) scale(0.8)">
-                <path d="M7.5,3 C7.77614237,3 8,3.22385763 8,3.5 C8,3.77614237 7.77614237,4 7.5,4 L5.5,4 C4.67157288,4 4,4.67157288 4,5.5 L4,7.53112887 C4,7.80727125 3.77614237,8.03112887 3.5,8.03112887 C3.22385763,8.03112887 3,7.80727125 3,7.53112887 L3,5.5 C3,4.11928813 4.11928813,3 5.5,3 L7.5,3 Z M16.5,4 C16.2238576,4 16,3.77614237 16,3.5 C16,3.22385763 16.2238576,3 16.5,3 L18.5,3 C19.8807119,3 21,4.11928813 21,5.5 L21,7.5 C21,7.77614237 20.7761424,8 20.5,8 C20.2238576,8 20,7.77614237 20,7.5 L20,5.5 C20,4.67157288 19.3284271,4 18.5,4 L16.5,4 Z M20,16.5 C20,16.2238576 20.2238576,16 20.5,16 C20.7761424,16 21,16.2238576 21,16.5 L21,18.5 C21,19.8807119 19.8807119,21 18.5,21 L16.5,21 C16.2238576,21 16,20.7761424 16,20.5 C16,20.2238576 16.2238576,20 16.5,20 L18.5,20 C19.3284271,20 20,19.3284271 20,18.5 L20,16.5 Z M3,16.5 C3,16.2238576 3.22385763,16 3.5,16 C3.77614237,16 4,16.2238576 4,16.5 L4,18.5 C4,19.3284271 4.67157288,20 5.5,20 L7.5,20 C7.77614237,20 8,20.2238576 8,20.5 C8,20.7761424 7.77614237,21 7.5,21 L5.5,21 C4.11928813,21 3,19.8807119 3,18.5 L3,16.5 Z M8,8.5 C8,8.22385763 8.22385763,8 8.5,8 C8.77614237,8 9,8.22385763 9,8.5 L9,9.5 C9,9.77614237 8.77614237,10 8.5,10 C8.22385763,10 8,9.77614237 8,9.5 L8,8.5 Z M16,8.5 C16,8.22385763 16.2238576,8 16.5,8 C16.7761424,8 17,8.22385763 17,8.5 L17,9.5 C17,9.77614237 16.7761424,10 16.5,10 C16.2238576,10 16,9.77614237 16,9.5 L16,8.5 Z M12,8.5 C12,8.22385763 12.2238576,8 12.5,8 C12.7761424,8 13,8.22385763 13,8.5 L13,12.5 C13,13.3284271 12.3284271,14 11.5,14 C11.2238576,14 11,13.7761424 11,13.5 C11,13.2238576 11.2238576,13 11.5,13 C11.7761424,13 12,12.7761424 12,12.5 L12,8.5 Z M8.1,15.8 C7.93431458,15.5790861 7.9790861,15.2656854 8.2,15.1 C8.4209139,14.9343146 8.73431458,14.9790861 8.9,15.2 C9.81096778,16.4146237 10.8353763,17 12,17 C13.1646237,17 14.1890322,16.4146237 15.1,15.2 C15.2656854,14.9790861 15.5790861,14.9343146 15.8,15.1 C16.0209139,15.2656854 16.0656854,15.5790861 15.9,15.8 C14.8109678,17.252043 13.502043,18 12,18 C10.497957,18 9.18903222,17.252043 8.1,15.8 Z" />
-              </g>
-              <g transform="translate(24 0) translate(2.4 2.4) scale(0.8)">
-                <path fill="rgb(var(--text-supporting))" d="M7.5,3 C7.77614237,3 8,3.22385763 8,3.5 C8,3.77614237 7.77614237,4 7.5,4 L5.5,4 C4.67157288,4 4,4.67157288 4,5.5 L4,7.53112887 C4,7.80727125 3.77614237,8.03112887 3.5,8.03112887 C3.22385763,8.03112887 3,7.80727125 3,7.53112887 L3,5.5 C3,4.11928813 4.11928813,3 5.5,3 L7.5,3 Z M16.5,4 C16.2238576,4 16,3.77614237 16,3.5 C16,3.22385763 16.2238576,3 16.5,3 L18.5,3 C19.8807119,3 21,4.11928813 21,5.5 L21,7.5 C21,7.77614237 20.7761424,8 20.5,8 C20.2238576,8 20,7.77614237 20,7.5 L20,5.5 C20,4.67157288 19.3284271,4 18.5,4 L16.5,4 Z M20,16.5 C20,16.2238576 20.2238576,16 20.5,16 C20.7761424,16 21,16.2238576 21,16.5 L21,18.5 C21,19.8807119 19.8807119,21 18.5,21 L16.5,21 C16.2238576,21 16,20.7761424 16,20.5 C16,20.2238576 16.2238576,20 16.5,20 L18.5,20 C19.3284271,20 20,19.3284271 20,18.5 L20,16.5 Z M3,16.5 C3,16.2238576 3.22385763,16 3.5,16 C3.77614237,16 4,16.2238576 4,16.5 L4,18.5 C4,19.3284271 4.67157288,20 5.5,20 L7.5,20 C7.77614237,20 8,20.2238576 8,20.5 C8,20.7761424 7.77614237,21 7.5,21 L5.5,21 C4.11928813,21 3,19.8807119 3,18.5 L3,16.5 Z" />
-              </g>
-              <g transform="translate(24 0) translate(6 6) scale(0.5)">
-                <path fill="rgb(var(--text-supporting))" d="M17.81 4.47c-.08 0-.16-.02-.23-.06C15.66 3.42 14 3 12.01 3c-1.98 0-3.86.47-5.57 1.41-.24.13-.54.04-.68-.2-.13-.24-.04-.55.2-.68C7.82 2.52 9.86 2 12.01 2c2.13 0 3.99.47 6.03 1.52.25.13.34.43.21.67-.09.18-.26.28-.44.28zM3.5 9.72c-.1 0-.2-.03-.29-.09-.23-.16-.28-.47-.12-.7.99-1.4 2.25-2.5 3.75-3.27C9.98 4.04 14 4.03 17.15 5.65c1.5.77 2.76 1.86 3.75 3.25.16.22.11.54-.12.7-.23.16-.54.11-.7-.12-.9-1.26-2.04-2.25-3.39-2.94-2.87-1.47-6.54-1.47-9.4.01-1.36.7-2.5 1.7-3.4 2.96-.08.14-.23.21-.39.21zm6.25 12.07c-.13 0-.26-.05-.35-.15-.87-.87-1.34-1.43-2.01-2.64-.69-1.23-1.05-2.73-1.05-4.34 0-2.97 2.54-5.39 5.66-5.39s5.66 2.42 5.66 5.39c0 .28-.22.5-.5.5s-.5-.22-.5-.5c0-2.42-2.09-4.39-4.66-4.39-2.57 0-4.66 1.97-4.66 4.39 0 1.44.32 2.77.93 3.85.64 1.15 1.08 1.64 1.85 2.42.19.2.19.51 0 .71-.11.1-.24.15-.37.15zm7.17-1.85c-1.19 0-2.24-.3-3.1-.89-1.49-1.01-2.38-2.65-2.38-4.39 0-.28.22-.5.5-.5s.5.22.5.5c0 1.41.72 2.74 1.94 3.56.71.48 1.54.71 2.54.71.24 0 .64-.03 1.04-.1.27-.05.53.13.58.41.05.27-.13.53-.41.58-.57.11-1.07.12-1.21.12zM14.91 22c-.04 0-.09-.01-.13-.02-1.59-.44-2.63-1.03-3.72-2.1-1.4-1.39-2.17-3.24-2.17-5.22 0-1.62 1.38-2.94 3.08-2.94 1.7 0 3.08 1.32 3.08 2.94 0 1.07.93 1.94 2.08 1.94s2.08-.87 2.08-1.94c0-3.77-3.25-6.83-7.25-6.83-2.84 0-5.44 1.58-6.61 4.03-.39.81-.59 1.76-.59 2.8 0 .78.07 2.01.67 3.61.1.26-.03.55-.29.64-.26.1-.55-.04-.64-.29-.49-1.31-.73-2.61-.73-3.96 0-1.2.23-2.29.68-3.24 1.33-2.79 4.28-4.6 7.51-4.6 4.55 0 8.25 3.51 8.25 7.83 0 1.62-1.38 2.94-3.08 2.94s-3.08-1.32-3.08-2.94c0-1.07-.93-1.94-2.08-1.94s-2.08.87-2.08 1.94c0 1.71.66 3.31 1.87 4.51.95.94 1.86 1.46 3.27 1.85.27.07.42.35.35.61-.05.23-.26.38-.47.38z"/>
-              </g>
-            </svg>
-            <svg id="auth-hero-password-icon" class="auth-hero-icon-main auth-hero-icon-hidden" viewBox="0 0 48 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
-              <g transform="translate(2.4 2.4) scale(0.8)">
-                <path fill="rgb(var(--text-supporting))" d="M7.5,3 C7.77614237,3 8,3.22385763 8,3.5 C8,3.77614237 7.77614237,4 7.5,4 L5.5,4 C4.67157288,4 4,4.67157288 4,5.5 L4,7.53112887 C4,7.80727125 3.77614237,8.03112887 3.5,8.03112887 C3.22385763,8.03112887 3,7.80727125 3,7.53112887 L3,5.5 C3,4.11928813 4.11928813,3 5.5,3 L7.5,3 Z M16.5,4 C16.2238576,4 16,3.77614237 16,3.5 C16,3.22385763 16.2238576,3 16.5,3 L18.5,3 C19.8807119,3 21,4.11928813 21,5.5 L21,7.5 C21,7.77614237 20.7761424,8 20.5,8 C20.2238576,8 20,7.77614237 20,7.5 L20,5.5 C20,4.67157288 19.3284271,4 18.5,4 L16.5,4 Z M20,16.5 C20,16.2238576 20.2238576,16 20.5,16 C20.7761424,16 21,16.2238576 21,16.5 L21,18.5 C21,19.8807119 19.8807119,21 18.5,21 L16.5,21 C16.2238576,21 16,20.7761424 16,20.5 C16,20.2238576 16.2238576,20 16.5,20 L18.5,20 C19.3284271,20 20,19.3284271 20,18.5 L20,16.5 Z M3,16.5 C3,16.2238576 3.22385763,16 3.5,16 C3.77614237,16 4,16.2238576 4,16.5 L4,18.5 C4,19.3284271 4.67157288,20 5.5,20 L7.5,20 C7.77614237,20 8,20.2238576 8,20.5 C8,20.7761424 7.77614237,21 7.5,21 L5.5,21 C4.11928813,21 3,19.8807119 3,18.5 L3,16.5 Z" />
-                <g transform="translate(6 6) scale(0.5)">
-                  <path d="M16 12C16 14.2091 14.2091 16 12 16C9.79086 16 8 14.2091 8 12C8 9.79086 9.79086 8 12 8C14.2091 8 16 9.79086 16 12Z" fill="none" stroke="rgb(var(--text-supporting))" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-                  <path d="M17 19.4845C15.5699 20.4417 13.8501 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12C21 16 16 16 16 12" fill="none" stroke="rgb(var(--text-supporting))" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-                </g>
-              </g>
-              <g transform="translate(24 0) translate(2.4 2.4) scale(0.8)">
-                <path fill="rgb(var(--text-supporting))" d="M7.5,3 C7.77614237,3 8,3.22385763 8,3.5 C8,3.77614237 7.77614237,4 7.5,4 L5.5,4 C4.67157288,4 4,4.67157288 4,5.5 L4,7.53112887 C4,7.80727125 3.77614237,8.03112887 3.5,8.03112887 C3.22385763,8.03112887 3,7.80727125 3,7.53112887 L3,5.5 C3,4.11928813 4.11928813,3 5.5,3 L7.5,3 Z M16.5,4 C16.2238576,4 16,3.77614237 16,3.5 C16,3.22385763 16.2238576,3 16.5,3 L18.5,3 C19.8807119,3 21,4.11928813 21,5.5 L21,7.5 C21,7.77614237 20.7761424,8 20.5,8 C20.2238576,8 20,7.77614237 20,7.5 L20,5.5 C20,4.67157288 19.3284271,4 18.5,4 L16.5,4 Z M20,16.5 C20,16.2238576 20.2238576,16 20.5,16 C20.7761424,16 21,16.2238576 21,16.5 L21,18.5 C21,19.8807119 19.8807119,21 18.5,21 L16.5,21 C16.2238576,21 16,20.7761424 16,20.5 C16,20.2238576 16.2238576,20 16.5,20 L18.5,20 C19.3284271,20 20,19.3284271 20,18.5 L20,16.5 Z M3,16.5 C3,16.2238576 3.22385763,16 3.5,16 C3.77614237,16 4,16.2238576 4,16.5 L4,18.5 C4,19.3284271 4.67157288,20 5.5,20 L7.5,20 C7.77614237,20 8,20.2238576 8,20.5 C8,20.7761424 7.77614237,21 7.5,21 L5.5,21 C4.11928813,21 3,19.8807119 3,18.5 L3,16.5 Z" />
-                <g transform="translate(4.8 4.8) scale(0.6)">
-                  <path d="M12 12L12 5.5" fill="none" stroke="rgb(var(--text-supporting))" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-                  <path d="M12 12L18.18 9.99" fill="none" stroke="rgb(var(--text-supporting))" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-                  <path d="M12 12L15.82 16.85" fill="none" stroke="rgb(var(--text-supporting))" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-                  <path d="M12 12L8.18 16.85" fill="none" stroke="rgb(var(--text-supporting))" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-                  <path d="M12 12L5.82 9.99" fill="none" stroke="rgb(var(--text-supporting))" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-                </g>
-              </g>
-            </svg>
+            <img id="auth-hero-passkey-icon" class="auth-hero-icon-main auth-hero-icon-visible" src="/assets/icons/runtime-ui/auth-hero-passkey-light.svgz" data-svgz-light="/assets/icons/runtime-ui/auth-hero-passkey-light.svgz" data-svgz-dark="/assets/icons/runtime-ui/auth-hero-passkey-dark.svgz" alt="" aria-hidden="true" />
+            <img id="auth-hero-password-icon" class="auth-hero-icon-main auth-hero-icon-hidden" src="/assets/icons/runtime-ui/auth-hero-password-light.svgz" data-svgz-light="/assets/icons/runtime-ui/auth-hero-password-light.svgz" data-svgz-dark="/assets/icons/runtime-ui/auth-hero-password-dark.svgz" alt="" aria-hidden="true" />
           </div>
         </div>
 
@@ -149,20 +121,8 @@ pub fn render_auth_landing() -> String {
         data-theme-toggle-compact
         aria-label="Theme toggle"
       >
-        <svg class="theme-mini-icon theme-mini-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <circle cx="12" cy="12" r="4"></circle>
-          <line x1="12" y1="2" x2="12" y2="4.5"></line>
-          <line x1="12" y1="19.5" x2="12" y2="22"></line>
-          <line x1="4.9" y1="4.9" x2="6.7" y2="6.7"></line>
-          <line x1="17.3" y1="17.3" x2="19.1" y2="19.1"></line>
-          <line x1="2" y1="12" x2="4.5" y2="12"></line>
-          <line x1="19.5" y1="12" x2="22" y2="12"></line>
-          <line x1="4.9" y1="19.1" x2="6.7" y2="17.3"></line>
-          <line x1="17.3" y1="6.7" x2="19.1" y2="4.9"></line>
-        </svg>
-        <svg class="theme-mini-icon theme-mini-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.8 6.8 0 0 0 9.8 9.8z"></path>
-        </svg>
+        <img class="theme-mini-icon theme-mini-icon-sun" src="/assets/icons/runtime-ui/theme-mini-sun-active.svgz" data-svgz-light="/assets/icons/runtime-ui/theme-mini-sun-active.svgz" data-svgz-dark="/assets/icons/runtime-ui/theme-mini-sun-default.svgz" alt="" aria-hidden="true" />
+        <img class="theme-mini-icon theme-mini-icon-moon" src="/assets/icons/runtime-ui/theme-mini-moon-default.svgz" data-svgz-light="/assets/icons/runtime-ui/theme-mini-moon-default.svgz" data-svgz-dark="/assets/icons/runtime-ui/theme-mini-moon-active.svgz" alt="" aria-hidden="true" />
         <span class="theme-mini-thumb" aria-hidden="true"></span>
       </button>
     </div>
@@ -185,6 +145,18 @@ pub fn render_auth_landing() -> String {
   const PASSKEY_PROMPT_TIMEOUT_MS = 12000;
   const passkeyDefaultLabel = passkeyBtn ? passkeyBtn.textContent : 'Authenticate with passkey';
   let swapInProgress = false;
+  const themedSvgzIcons = Array.from(document.querySelectorAll('img[data-svgz-light][data-svgz-dark]'));
+
+  const currentThemeMode = () => document.body?.dataset?.themeMode === 'dark' ? 'dark' : 'light';
+
+  const syncThemedSvgzIcons = (mode) => {
+    const normalized = mode === 'dark' ? 'dark' : 'light';
+    themedSvgzIcons.forEach((icon) => {
+      const nextSrc = normalized === 'dark' ? icon.dataset.svgzDark : icon.dataset.svgzLight;
+      if (!nextSrc || icon.getAttribute('src') === nextSrc) return;
+      icon.setAttribute('src', nextSrc);
+    });
+  };
 
   const showError = (message) => {
     authError.textContent = message;
@@ -393,6 +365,14 @@ pub fn render_auth_landing() -> String {
     }
     window.location.href = '/dashboard';
   });
+
+  syncThemedSvgzIcons(currentThemeMode());
+  if (document.body && typeof MutationObserver === 'function') {
+    const themeObserver = new MutationObserver(() => {
+      syncThemedSvgzIcons(currentThemeMode());
+    });
+    themeObserver.observe(document.body, { attributes: true, attributeFilter: ['data-theme-mode'] });
+  }
 
 })();
 </script>
@@ -695,10 +675,7 @@ pub fn render_dashboard_settings(email: &str) -> String {
               aria-label="Create passkey"
               title="Create passkey"
             >
-              <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M12 5v14"></path>
-                <path d="M5 12h14"></path>
-              </svg>
+              <img class="h-4 w-4 icon-muted" src="/assets/icons/runtime-ui/icon-plus-btn-chip-light.svgz" data-svgz-light="/assets/icons/runtime-ui/icon-plus-btn-chip-light.svgz" data-svgz-dark="/assets/icons/runtime-ui/icon-plus-btn-chip-dark.svgz" alt="" aria-hidden="true" />
             </button>
           </div>
           <div id="passkey-status" class="mt-3 hidden"></div>
@@ -768,13 +745,7 @@ pub fn render_dashboard_settings(email: &str) -> String {
           <div class="flex items-center justify-between gap-2">
             <h4 id="passkey-modal-title" class="text-base font-semibold txt-strong">Edit passkey</h4>
             <button id="passkey-modal-delete" type="button" class="btn-destructive h-9 w-9 p-0" aria-label="Delete passkey">
-              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" class="h-4 w-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M3 6h18"></path>
-                <path d="M8 6V4h8v2"></path>
-                <path d="M19 6l-1 14H6L5 6"></path>
-                <path d="M10 11v6"></path>
-                <path d="M14 11v6"></path>
-              </svg>
+              <img class="h-4 w-4" src="/assets/icons/runtime-ui/icon-trash-destructive-light.svgz" data-svgz-light="/assets/icons/runtime-ui/icon-trash-destructive-light.svgz" data-svgz-dark="/assets/icons/runtime-ui/icon-trash-destructive-dark.svgz" alt="" aria-hidden="true" />
             </button>
           </div>
           <div class="mt-3 space-y-3">
@@ -880,6 +851,16 @@ pub fn render_dashboard_settings(email: &str) -> String {
       return new Map();
     }}
   }})();
+  const currentThemeMode = () => document.body?.dataset?.themeMode === 'dark' ? 'dark' : 'light';
+  const syncThemedSvgzIcons = () => {{
+    const mode = currentThemeMode();
+    const icons = document.querySelectorAll('img[data-svgz-light][data-svgz-dark]');
+    icons.forEach((icon) => {{
+      const nextSrc = mode === 'dark' ? icon.dataset.svgzDark : icon.dataset.svgzLight;
+      if (!nextSrc || icon.getAttribute('src') === nextSrc) return;
+      icon.setAttribute('src', nextSrc);
+    }});
+  }};
 
   const requestJson = (url, method, payload) => fetch(url, {{
     method,
@@ -1499,6 +1480,11 @@ pub fn render_dashboard_settings(email: &str) -> String {
 
   renderStrength();
   renderMatch();
+  syncThemedSvgzIcons();
+  if (document.body && typeof MutationObserver === 'function') {{
+    const themeObserver = new MutationObserver(() => syncThemedSvgzIcons());
+    themeObserver.observe(document.body, {{ attributes: true, attributeFilter: ['data-theme-mode'] }});
+  }}
   load();
 }})();
 </script>"#
@@ -1589,10 +1575,7 @@ pub fn render_dashboard_train(email: &str) -> String {
             <div class="relative">
               <input id="station-picker-query" type="text" autocomplete="off" class="field-input h-11 w-full pr-11 leading-none" placeholder="Search station name or initials (Seoul, ㅅㅇ)" data-i18n-placeholder="station.search_placeholder" />
               <span class="pointer-events-none absolute inset-y-0 right-3 inline-flex items-center txt-supporting" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" class="h-5 w-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                  <circle cx="11" cy="11" r="7"></circle>
-                  <path d="M20 20l-3.5-3.5"></path>
-                </svg>
+                <img class="h-5 w-5 icon-muted" src="/assets/icons/runtime-ui/icon-search-supporting-light.svgz" data-svgz-light="/assets/icons/runtime-ui/icon-search-supporting-light.svgz" data-svgz-dark="/assets/icons/runtime-ui/icon-search-supporting-dark.svgz" alt="" aria-hidden="true" />
               </span>
             </div>
           </div>
@@ -1706,6 +1689,17 @@ pub fn render_dashboard_train(email: &str) -> String {
   const passengerRows = document.getElementById('passenger-picker-rows');
   const passengerCancel = document.getElementById('passenger-picker-cancel');
   const passengerApply = document.getElementById('passenger-picker-apply');
+  const currentThemeMode = () => document.body?.dataset?.themeMode === 'dark' ? 'dark' : 'light';
+  const syncThemedSvgzIcons = (rootNode) => {
+    const mode = currentThemeMode();
+    const root = rootNode && typeof rootNode.querySelectorAll === 'function' ? rootNode : document;
+    const icons = root.querySelectorAll('img[data-svgz-light][data-svgz-dark]');
+    icons.forEach((icon) => {
+      const nextSrc = mode === 'dark' ? icon.dataset.svgzDark : icon.dataset.svgzLight;
+      if (!nextSrc || icon.getAttribute('src') === nextSrc) return;
+      icon.setAttribute('src', nextSrc);
+    });
+  };
 
   const now = new Date();
   let depDate = now.toISOString().slice(0, 10);
@@ -2187,24 +2181,24 @@ pub fn render_dashboard_train(email: &str) -> String {
     );
   };
 
-  const providerStatusToneClass = (ready, hasError) => {
-    if (ready) return 'status-icon status-icon-green';
-    if (hasError) return 'status-icon status-icon-red';
-    return 'status-icon status-icon-gray';
-  };
-
   const statusIcon = (kind, ready, hasError) => {
     const title = kind === 'payment' ? t('provider.payment') : t('provider.credentials');
     const state = ready ? t('provider.ready') : (hasError ? t('provider.error') : t('provider.missing'));
-    const toneClass = providerStatusToneClass(ready, hasError);
-    const path = kind === 'payment'
-      ? '<rect x="3.5" y="6.5" width="17" height="11" rx="2"></rect><path d="M3.5 10.5h17"></path>'
-      : '<circle cx="12" cy="8" r="3"></circle><path d="M5.5 19a6.5 6.5 0 0 1 13 0"></path>';
+    const iconPrefix = kind === 'payment' ? 'provider-status-payment' : 'provider-status-credentials';
+    const lightVariant = ready
+      ? `${iconPrefix}-green.svgz`
+      : hasError
+        ? `${iconPrefix}-red.svgz`
+        : `${iconPrefix}-gray-light.svgz`;
+    const darkVariant = ready
+      ? `${iconPrefix}-green.svgz`
+      : hasError
+        ? `${iconPrefix}-red.svgz`
+        : `${iconPrefix}-gray-dark.svgz`;
+    const src = currentThemeMode() === 'dark' ? darkVariant : lightVariant;
     return `
       <span class="provider-status-chip" title="${title}: ${state}" aria-label="${title}: ${state}">
-        <svg class="${toneClass}" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          ${path}
-        </svg>
+        <img class="status-icon" src="/assets/icons/runtime-ui/${src}" data-svgz-light="/assets/icons/runtime-ui/${lightVariant}" data-svgz-dark="/assets/icons/runtime-ui/${darkVariant}" alt="" aria-hidden="true" />
       </span>
     `;
   };
@@ -2244,6 +2238,7 @@ pub fn render_dashboard_train(email: &str) -> String {
         </article>
       </div>
     `;
+    syncThemedSvgzIcons(preflightNode);
   };
 
   const loadPreflight = async () => {
@@ -2608,6 +2603,11 @@ pub fn render_dashboard_train(email: &str) -> String {
 
   applyStaticTranslations();
   updateDisplays();
+  syncThemedSvgzIcons();
+  if (document.body && typeof MutationObserver === 'function') {
+    const themeObserver = new MutationObserver(() => syncThemedSvgzIcons());
+    themeObserver.observe(document.body, { attributes: true, attributeFilter: ['data-theme-mode'] });
+  }
   loadPreflight();
   loadHistory();
 })();
@@ -2648,13 +2648,7 @@ pub fn render_dashboard_settings_providers(email: &str) -> String {
     <div class="flex items-center justify-between gap-2">
       <h3 id="provider-auth-modal-title" class="text-base font-semibold txt-strong">Provider Authentication</h3>
       <button id="provider-auth-modal-delete" type="button" class="btn-destructive h-9 w-9 p-0" aria-label="Delete credentials">
-        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" class="h-4 w-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M3 6h18"></path>
-          <path d="M8 6V4h8v2"></path>
-          <path d="M19 6l-1 14H6L5 6"></path>
-          <path d="M10 11v6"></path>
-          <path d="M14 11v6"></path>
-        </svg>
+        <img class="h-4 w-4" src="/assets/icons/runtime-ui/icon-trash-destructive-light.svgz" data-svgz-light="/assets/icons/runtime-ui/icon-trash-destructive-light.svgz" data-svgz-dark="/assets/icons/runtime-ui/icon-trash-destructive-dark.svgz" alt="" aria-hidden="true" />
       </button>
     </div>
     <p class="mt-1 text-xs txt-supporting"><span id="provider-auth-modal-provider">Provider</span> credentials are encrypted server-side.</p>
@@ -2718,6 +2712,17 @@ pub fn render_dashboard_settings_providers(email: &str) -> String {
   let modalLayerCounter = 0;
   let activeProvider = null;
   let latestProvidersByName = new Map();
+  const currentThemeMode = () => document.body?.dataset?.themeMode === 'dark' ? 'dark' : 'light';
+  const syncThemedSvgzIcons = (rootNode) => {
+    const mode = currentThemeMode();
+    const root = rootNode && typeof rootNode.querySelectorAll === 'function' ? rootNode : document;
+    const icons = root.querySelectorAll('img[data-svgz-light][data-svgz-dark]');
+    icons.forEach((icon) => {
+      const nextSrc = mode === 'dark' ? icon.dataset.svgzDark : icon.dataset.svgzLight;
+      if (!nextSrc || icon.getAttribute('src') === nextSrc) return;
+      icon.setAttribute('src', nextSrc);
+    });
+  };
 
   const showStatus = (kind, message) => {
     statusNode.classList.remove('hidden');
@@ -2769,24 +2774,24 @@ pub fn render_dashboard_settings_providers(email: &str) -> String {
     return '';
   };
 
-  const providerStatusToneClass = (ready, hasError) => {
-    if (ready) return 'status-icon status-icon-green';
-    if (hasError) return 'status-icon status-icon-red';
-    return 'status-icon status-icon-gray';
-  };
-
   const statusIcon = (kind, ready, hasError) => {
     const title = kind === 'credentials' ? 'Credentials' : 'Payment';
     const state = ready ? 'ready' : (hasError ? 'error' : 'missing');
-    const toneClass = providerStatusToneClass(ready, hasError);
-    const path = kind === 'credentials'
-      ? '<circle cx="12" cy="8" r="3"></circle><path d="M5.5 19a6.5 6.5 0 0 1 13 0"></path>'
-      : '<rect x="3.5" y="6.5" width="17" height="11" rx="2"></rect><path d="M3.5 10.5h17"></path>';
+    const iconPrefix = kind === 'credentials' ? 'provider-status-credentials' : 'provider-status-payment';
+    const lightVariant = ready
+      ? `${iconPrefix}-green.svgz`
+      : hasError
+        ? `${iconPrefix}-red.svgz`
+        : `${iconPrefix}-gray-light.svgz`;
+    const darkVariant = ready
+      ? `${iconPrefix}-green.svgz`
+      : hasError
+        ? `${iconPrefix}-red.svgz`
+        : `${iconPrefix}-gray-dark.svgz`;
+    const src = currentThemeMode() === 'dark' ? darkVariant : lightVariant;
     return `
       <span class="provider-status-chip" title="${title}: ${state}" aria-label="${title}: ${state}">
-        <svg class="${toneClass}" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          ${path}
-        </svg>
+        <img class="status-icon" src="/assets/icons/runtime-ui/${src}" data-svgz-light="/assets/icons/runtime-ui/${lightVariant}" data-svgz-dark="/assets/icons/runtime-ui/${darkVariant}" alt="" aria-hidden="true" />
       </span>
     `;
   };
@@ -2868,6 +2873,7 @@ pub fn render_dashboard_settings_providers(email: &str) -> String {
         openAuthModal(provider);
       });
     });
+    syncThemedSvgzIcons(preflightNode);
   };
 
   if (authModalCancel) {
@@ -2916,6 +2922,11 @@ pub fn render_dashboard_settings_providers(email: &str) -> String {
     closeAuthModal();
   });
 
+  syncThemedSvgzIcons();
+  if (document.body && typeof MutationObserver === 'function') {
+    const themeObserver = new MutationObserver(() => syncThemedSvgzIcons());
+    themeObserver.observe(document.body, { attributes: true, attributeFilter: ['data-theme-mode'] });
+  }
   loadPreflight();
 })();
 </script>"#,
@@ -2950,10 +2961,7 @@ pub fn render_dashboard_payment(email: &str) -> String {
             aria-label="Add payment card"
             title="Add payment card"
           >
-            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M12 5v14"></path>
-              <path d="M5 12h14"></path>
-            </svg>
+            <img class="h-4 w-4 icon-muted" src="/assets/icons/runtime-ui/icon-plus-btn-chip-light.svgz" data-svgz-light="/assets/icons/runtime-ui/icon-plus-btn-chip-light.svgz" data-svgz-dark="/assets/icons/runtime-ui/icon-plus-btn-chip-dark.svgz" alt="" aria-hidden="true" />
           </button>
         </div>
         <div id="payment-card-list" class="mt-3 space-y-2"><div class="loading-card">Loading saved cards...</div></div>
@@ -2968,13 +2976,7 @@ pub fn render_dashboard_payment(email: &str) -> String {
     <div class="flex items-center justify-between gap-2">
       <h4 id="payment-modal-title" class="text-base font-semibold txt-strong">Payment information</h4>
       <button id="payment-modal-delete" type="button" class="btn-destructive h-9 w-9 p-0" aria-label="Delete card">
-        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" class="h-4 w-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M3 6h18"></path>
-          <path d="M8 6V4h8v2"></path>
-          <path d="M19 6l-1 14H6L5 6"></path>
-          <path d="M10 11v6"></path>
-          <path d="M14 11v6"></path>
-        </svg>
+        <img class="h-4 w-4" src="/assets/icons/runtime-ui/icon-trash-destructive-light.svgz" data-svgz-light="/assets/icons/runtime-ui/icon-trash-destructive-light.svgz" data-svgz-dark="/assets/icons/runtime-ui/icon-trash-destructive-dark.svgz" alt="" aria-hidden="true" />
       </button>
     </div>
     <p id="payment-modal-selected-card" class="mt-1 text-xs txt-supporting">Adding a new card</p>
@@ -3028,6 +3030,16 @@ pub fn render_dashboard_payment(email: &str) -> String {
   let modalLayerCounter = 0;
   let selectedPaymentMethodRef = null;
   let selectedPaymentLast4 = null;
+  const currentThemeMode = () => document.body?.dataset?.themeMode === 'dark' ? 'dark' : 'light';
+  const syncThemedSvgzIcons = () => {
+    const mode = currentThemeMode();
+    const icons = document.querySelectorAll('img[data-svgz-light][data-svgz-dark]');
+    icons.forEach((icon) => {
+      const nextSrc = mode === 'dark' ? icon.dataset.svgzDark : icon.dataset.svgzLight;
+      if (!nextSrc || icon.getAttribute('src') === nextSrc) return;
+      icon.setAttribute('src', nextSrc);
+    });
+  };
 
   const requestJson = async (url, method, payload) => {
     const response = await fetch(url, {
@@ -3226,6 +3238,11 @@ pub fn render_dashboard_payment(email: &str) -> String {
     loadCards();
   });
 
+  syncThemedSvgzIcons();
+  if (document.body && typeof MutationObserver === 'function') {
+    const themeObserver = new MutationObserver(() => syncThemedSvgzIcons());
+    themeObserver.observe(document.body, { attributes: true, attributeFilter: ['data-theme-mode'] });
+  }
   loadCards();
 })();
 </script>"#,
@@ -3449,6 +3466,44 @@ mod tests {
         let back_index = index_of(&html, "id=\"back-passkey\"");
         let continue_index = index_of(&html, "id=\"email-continue\"");
         assert!(back_index < continue_index);
+    }
+
+    #[test]
+    fn dashboard_pages_use_svgz_icon_assets() {
+        let auth_html = render_auth_landing();
+        assert!(auth_html.contains("/assets/icons/runtime-ui/auth-hero-passkey-light.svgz"));
+        assert!(auth_html.contains("/assets/icons/runtime-ui/auth-hero-password-light.svgz"));
+        assert!(auth_html.contains("/assets/icons/runtime-ui/theme-mini-sun-active.svgz"));
+        assert!(auth_html.contains("/assets/icons/runtime-ui/theme-mini-moon-active.svgz"));
+        assert!(!auth_html.contains("<svg id=\"auth-hero-passkey-icon\""));
+        assert!(!auth_html.contains("<svg id=\"auth-hero-password-icon\""));
+
+        let settings_html = render_dashboard_settings("admin@bominal.local");
+        assert!(settings_html.contains("/assets/icons/runtime-ui/icon-plus-btn-chip-light.svgz"));
+        assert!(
+            settings_html.contains("/assets/icons/runtime-ui/icon-trash-destructive-light.svgz")
+        );
+        assert!(!settings_html.contains("<svg class=\"h-4 w-4\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\">"));
+
+        let providers_html = render_dashboard_settings_providers("admin@bominal.local");
+        assert!(
+            providers_html.contains("/assets/icons/runtime-ui/icon-trash-destructive-light.svgz")
+        );
+        assert!(providers_html.contains("provider-status-credentials"));
+        assert!(providers_html.contains("provider-status-payment"));
+        assert!(providers_html.contains("${iconPrefix}-green.svgz"));
+
+        let payment_html = render_dashboard_payment("admin@bominal.local");
+        assert!(payment_html.contains("/assets/icons/runtime-ui/icon-plus-btn-chip-light.svgz"));
+        assert!(
+            payment_html.contains("/assets/icons/runtime-ui/icon-trash-destructive-light.svgz")
+        );
+
+        let train_html = render_dashboard_train("admin@bominal.local");
+        assert!(train_html.contains("/assets/icons/runtime-ui/icon-search-supporting-light.svgz"));
+        assert!(train_html.contains("provider-status-payment"));
+        assert!(train_html.contains("provider-status-credentials"));
+        assert!(train_html.contains("${iconPrefix}-gray-dark.svgz"));
     }
 
     #[test]
