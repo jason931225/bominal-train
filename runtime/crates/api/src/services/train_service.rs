@@ -1647,30 +1647,353 @@ fn curated_region_order() -> &'static [(&'static str, &'static str)] {
     ]
 }
 
+const CURATED_REGION_STATIONS_SEOUL: &[&str] = &[
+    "서울",
+    "상봉",
+    "수서",
+    "영등포",
+    "옥수",
+    "왕십리",
+    "용산",
+    "청량리",
+];
+
+const CURATED_REGION_STATIONS_GYEONGGI: &[&str] = &[
+    "가평",
+    "광명",
+    "대곡",
+    "덕소",
+    "도라산",
+    "동탄",
+    "마석",
+    "매곡",
+    "문산",
+    "사릉",
+    "삼산",
+    "서정리",
+    "서화성",
+    "석불",
+    "송추",
+    "수원",
+    "안양",
+    "안중",
+    "양동",
+    "양평",
+    "오산",
+    "용문",
+    "운천",
+    "원릉",
+    "의정부",
+    "일신",
+    "일영",
+    "임진강",
+    "장흥",
+    "지평",
+    "청평",
+    "퇴계원",
+    "판교(경기)",
+    "평내호평",
+    "평택",
+    "평택지제",
+    "평해",
+    "행신",
+    "화성시청",
+];
+
+const CURATED_REGION_STATIONS_GANGWON: &[&str] = &[
+    "강릉",
+    "강촌",
+    "고한",
+    "근덕",
+    "나전",
+    "남창",
+    "도계",
+    "동백산",
+    "동해",
+    "둔내",
+    "만종",
+    "묵호",
+    "민둥산",
+    "백양리",
+    "별어곡",
+    "사북",
+    "삼척",
+    "삼척해변",
+    "서원주",
+    "선평",
+    "신기",
+    "쌍룡",
+    "아우라지",
+    "영월",
+    "예미",
+    "옥원",
+    "원주",
+    "임원",
+    "정동진",
+    "정선",
+    "진부(오대산)",
+    "철암",
+    "추암",
+    "춘천",
+    "태백",
+    "평창",
+    "횡성",
+];
+
+const CURATED_REGION_STATIONS_CHUNGBUK: &[&str] = &[
+    "각계",
+    "단양",
+    "봉양",
+    "부강",
+    "삼탄",
+    "심천",
+    "앙성온천",
+    "영동",
+    "오근장",
+    "오송",
+    "옥천",
+    "음성",
+    "이원",
+    "제천",
+    "주덕",
+    "증평",
+    "지탄",
+    "청주",
+    "청주공항",
+    "추풍령",
+    "충주",
+    "황간",
+];
+
+const CURATED_REGION_STATIONS_CHUNGNAM: &[&str] = &[
+    "강경",
+    "계룡",
+    "공주",
+    "광천",
+    "논산",
+    "대천",
+    "도고온천",
+    "삽교",
+    "서천",
+    "성환",
+    "신례원",
+    "신창",
+    "아산",
+    "연산",
+    "연풍",
+    "예산",
+    "온양온천",
+    "웅천",
+    "인주",
+    "장항",
+    "전의",
+    "조치원",
+    "천안",
+    "천안아산",
+    "청소",
+    "판교(충남)",
+    "합덕",
+    "홍성",
+];
+
+const CURATED_REGION_STATIONS_JEONBUK: &[&str] = &[
+    "군산",
+    "김제",
+    "남원",
+    "대야",
+    "삼례",
+    "신태인",
+    "오수",
+    "익산",
+    "임실",
+    "전주",
+    "정읍",
+    "함열",
+];
+
+const CURATED_REGION_STATIONS_JEONNAM: &[&str] = &[
+    "강진",
+    "곡성",
+    "광양",
+    "구례구",
+    "나주",
+    "능주",
+    "다시",
+    "득량",
+    "명봉",
+    "목포",
+    "몽탄",
+    "무안",
+    "백양사",
+    "벌교",
+    "보성",
+    "신보성",
+    "순천",
+    "여수EXPO",
+    "여천",
+    "영암",
+    "예당",
+    "이양",
+    "일로",
+    "임성리",
+    "장성",
+    "장동",
+    "전남장흥",
+    "조성",
+    "진상",
+    "함평",
+    "해남",
+    "화순",
+];
+
+const CURATED_REGION_STATIONS_GYEONGBUK: &[&str] = &[
+    "강구",
+    "개포",
+    "경산",
+    "경주",
+    "고래불",
+    "구미",
+    "군위",
+    "기성",
+    "김천",
+    "김천구미",
+    "남성현",
+    "매화",
+    "봉화",
+    "북영천",
+    "분천",
+    "비동",
+    "상주",
+    "서경주",
+    "석포",
+    "승부",
+    "신동",
+    "아화",
+    "안강",
+    "안동",
+    "약목",
+    "양원",
+    "영덕",
+    "영주",
+    "영천",
+    "영해",
+    "예천",
+    "옥산",
+    "왜관",
+    "용궁",
+    "울진",
+    "월포",
+    "의성",
+    "임기",
+    "장사",
+    "점촌",
+    "죽변",
+    "청도",
+    "청리",
+    "춘양",
+    "포항",
+    "풍기",
+    "하양",
+    "함창",
+    "현동",
+    "후포",
+    "흥부",
+];
+
+const CURATED_REGION_STATIONS_GYEONGNAM: &[&str] = &[
+    "군북",
+    "마산",
+    "물금",
+    "밀양",
+    "반성",
+    "북천",
+    "삼랑진",
+    "상동",
+    "완사",
+    "원동",
+    "중리",
+    "진례",
+    "진영",
+    "진주",
+    "창원",
+    "창원중앙",
+    "하동",
+    "한림정",
+    "함안",
+    "횡천",
+];
+
+const CURATED_REGION_STATIONS_METROPOLITAN: &[&str] = &[
+    "광주",
+    "광주송정",
+    "구포",
+    "극락강",
+    "기장",
+    "대구",
+    "대전",
+    "동대구",
+    "부산",
+    "부전",
+    "사상",
+    "서광주",
+    "서대구",
+    "서대전",
+    "센텀",
+    "신탄진",
+    "신해운대",
+    "울산(통도사)",
+    "인천공항T1",
+    "인천공항T2",
+    "태화강",
+    "화명",
+    "효천",
+];
+
+const CURATED_REGION_STATION_TABLE: &[(&str, &[&str])] = &[
+    ("seoul", CURATED_REGION_STATIONS_SEOUL),
+    ("gyeonggi", CURATED_REGION_STATIONS_GYEONGGI),
+    ("gangwon", CURATED_REGION_STATIONS_GANGWON),
+    ("chungbuk", CURATED_REGION_STATIONS_CHUNGBUK),
+    ("chungnam", CURATED_REGION_STATIONS_CHUNGNAM),
+    ("jeonbuk", CURATED_REGION_STATIONS_JEONBUK),
+    ("jeonnam", CURATED_REGION_STATIONS_JEONNAM),
+    ("gyeongbuk", CURATED_REGION_STATIONS_GYEONGBUK),
+    ("gyeongnam", CURATED_REGION_STATIONS_GYEONGNAM),
+    ("metropolitan", CURATED_REGION_STATIONS_METROPOLITAN),
+];
+
+static CURATED_REGION_STATION_LOOKUP: OnceLock<HashMap<&'static str, &'static str>> =
+    OnceLock::new();
+
+fn curated_region_station_lookup() -> &'static HashMap<&'static str, &'static str> {
+    CURATED_REGION_STATION_LOOKUP.get_or_init(|| {
+        let mut lookup: HashMap<&'static str, &'static str> = HashMap::new();
+        for &(region_key, stations) in CURATED_REGION_STATION_TABLE {
+            for &station_name in stations {
+                if let Some(existing_region) = lookup.insert(station_name, region_key) {
+                    warn!(
+                        station_name = station_name,
+                        existing_region = existing_region,
+                        next_region = region_key,
+                        "duplicate station in curated region table"
+                    );
+                }
+            }
+        }
+        lookup
+    })
+}
+
 fn curated_region_for_station(station_name_ko: &str) -> &'static str {
-    match station_name_ko {
-        "서울" | "용산" | "수서" | "영등포" | "왕십리" | "청량리" | "상봉" | "옥수" => {
-            "seoul"
-        }
-        "광명" | "수원" | "동탄" | "평택" | "서정리" | "오산" | "안양" | "의정부" => {
-            "gyeonggi"
-        }
-        "강릉" | "동해" | "묵호" | "정동진" | "진부" | "둔내" | "만종" | "원주" | "서원주"
-        | "춘천" | "남춘천" => "gangwon",
-        "오송" | "제천" | "주덕" | "증평" | "충주" => "chungbuk",
-        "천안" | "천안아산" | "아산" | "온양온천" | "대천" | "장항" | "서천" => {
-            "chungnam"
-        }
-        "익산" | "전주" | "정읍" | "남원" | "군산" | "김제" => "jeonbuk",
-        "광주송정" | "목포" | "나주" | "순천" | "여수EXPO" | "여천" | "곡성" | "구례구"
-        | "보성" | "벌교" => "jeonnam",
-        "동대구" | "대구" | "경주" | "경주(신경주)" | "포항" | "안동" | "영주" | "김천구미"
-        | "구미" | "점촌" | "상주" | "서경주" | "영천" | "북영천" => "gyeongbuk",
-        "부산" | "구포" | "마산" | "창원" | "창원중앙" | "진주" | "밀양" | "삼랑진" | "물금"
-        | "진영" | "사상" | "부전" | "센텀" => "gyeongnam",
-        "대전" | "광주" | "울산(통도사)" => "metropolitan",
-        _ => "all",
-    }
+    let normalized = station_name_ko
+        .trim()
+        .strip_suffix('역')
+        .unwrap_or(station_name_ko.trim())
+        .trim();
+    curated_region_station_lookup()
+        .get(normalized)
+        .copied()
+        .unwrap_or("all")
 }
 
 fn parse_provider_scope(raw: Option<&str>) -> Result<Vec<&'static str>, TrainServiceError> {
@@ -2253,6 +2576,36 @@ mod tests {
             Some("keyboard_layout")
         );
         assert_eq!(response.suggestions[0].confidence, Some(0.95));
+    }
+
+    #[test]
+    fn curated_region_table_maps_expected_stations() {
+        assert_eq!(curated_region_for_station("서울"), "seoul");
+        assert_eq!(curated_region_for_station("평택지제"), "gyeonggi");
+        assert_eq!(curated_region_for_station("동탄역"), "gyeonggi");
+        assert_eq!(curated_region_for_station("평택지제역"), "gyeonggi");
+        assert_eq!(curated_region_for_station("진부(오대산)"), "gangwon");
+        assert_eq!(curated_region_for_station("청주공항"), "chungbuk");
+        assert_eq!(curated_region_for_station("천안아산"), "chungnam");
+        assert_eq!(curated_region_for_station("함열"), "jeonbuk");
+        assert_eq!(curated_region_for_station("전남장흥"), "jeonnam");
+        assert_eq!(curated_region_for_station("김천구미"), "gyeongbuk");
+        assert_eq!(curated_region_for_station("창원중앙"), "gyeongnam");
+        assert_eq!(curated_region_for_station("인천공항T2"), "metropolitan");
+        assert_eq!(curated_region_for_station("없는역"), "all");
+    }
+
+    #[test]
+    fn curated_region_table_has_no_duplicate_station_names() {
+        let mut seen = std::collections::HashSet::new();
+        for &(_, stations) in CURATED_REGION_STATION_TABLE {
+            for &station_name in stations {
+                assert!(
+                    seen.insert(station_name),
+                    "station appears in multiple regions: {station_name}"
+                );
+            }
+        }
     }
 
     #[test]
