@@ -263,6 +263,56 @@ async fn ssr_dashboard_security(
     Html(render_document("bominal | Security", &body, &theme_mode)).into_response()
 }
 
+async fn ssr_dashboard_train(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> axum::response::Response {
+    let request_id = request_id_from_headers(&headers);
+    let session =
+        match services::auth_service::require_session_state(state.as_ref(), &headers).await {
+            Ok(value) => value,
+            Err(err) => return map_auth_service_error(err, &request_id).into_response(),
+        };
+    let body = web::render_dashboard_train(&session.email);
+    let theme_mode = theme_mode_from_headers(&state.config, &headers);
+    Html(render_document("bominal | Train", &body, &theme_mode)).into_response()
+}
+
+async fn ssr_dashboard_security_providers(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> axum::response::Response {
+    let request_id = request_id_from_headers(&headers);
+    let session =
+        match services::auth_service::require_session_state(state.as_ref(), &headers).await {
+            Ok(value) => value,
+            Err(err) => return map_auth_service_error(err, &request_id).into_response(),
+        };
+    let body = web::render_dashboard_security_providers(&session.email);
+    let theme_mode = theme_mode_from_headers(&state.config, &headers);
+    Html(render_document(
+        "bominal | Provider Credentials",
+        &body,
+        &theme_mode,
+    ))
+    .into_response()
+}
+
+async fn ssr_dashboard_payment(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> axum::response::Response {
+    let request_id = request_id_from_headers(&headers);
+    let session =
+        match services::auth_service::require_session_state(state.as_ref(), &headers).await {
+            Ok(value) => value,
+            Err(err) => return map_auth_service_error(err, &request_id).into_response(),
+        };
+    let body = web::render_dashboard_payment(&session.email);
+    let theme_mode = theme_mode_from_headers(&state.config, &headers);
+    Html(render_document("bominal | Payment", &body, &theme_mode)).into_response()
+}
+
 async fn ssr_admin_maintenance(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,

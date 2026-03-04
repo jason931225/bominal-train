@@ -10,6 +10,7 @@ pub(super) fn register(router: Router<Arc<AppState>>) -> Router<Arc<AppState>> {
         .route("/", get(super::super::ssr_auth_landing))
         .route("/auth", get(super::super::ssr_auth_alias))
         .route("/dashboard", get(super::super::ssr_dashboard))
+        .route("/dashboard/train", get(super::super::ssr_dashboard_train))
         .route("/dashboard/jobs", get(super::super::ssr_dashboard_jobs))
         .route(
             "/dashboard/jobs/{job_id}",
@@ -18,6 +19,14 @@ pub(super) fn register(router: Router<Arc<AppState>>) -> Router<Arc<AppState>> {
         .route(
             "/dashboard/security",
             get(super::super::ssr_dashboard_security),
+        )
+        .route(
+            "/dashboard/security/providers",
+            get(super::super::ssr_dashboard_security_providers),
+        )
+        .route(
+            "/dashboard/payment",
+            get(super::super::ssr_dashboard_payment),
         )
         .route(
             "/admin/maintenance",

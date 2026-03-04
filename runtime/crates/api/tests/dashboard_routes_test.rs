@@ -102,6 +102,69 @@ async fn dashboard_page_requires_authenticated_session() {
 }
 
 #[tokio::test]
+async fn dashboard_train_page_requires_authenticated_session() {
+    let app = build_test_app().await;
+    let request = match Request::builder()
+        .uri("/dashboard/train")
+        .body(axum::body::Body::empty())
+    {
+        Ok(request) => request,
+        Err(err) => panic!("failed to build request: {err}"),
+    };
+
+    let response = match app.oneshot(request).await {
+        Ok(response) => response,
+        Err(err) => panic!("request failed: {err}"),
+    };
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    let body = response_json(response).await;
+    assert_eq!(body["code"], "unauthorized");
+}
+
+#[tokio::test]
+async fn dashboard_provider_security_page_requires_authenticated_session() {
+    let app = build_test_app().await;
+    let request = match Request::builder()
+        .uri("/dashboard/security/providers")
+        .body(axum::body::Body::empty())
+    {
+        Ok(request) => request,
+        Err(err) => panic!("failed to build request: {err}"),
+    };
+
+    let response = match app.oneshot(request).await {
+        Ok(response) => response,
+        Err(err) => panic!("request failed: {err}"),
+    };
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    let body = response_json(response).await;
+    assert_eq!(body["code"], "unauthorized");
+}
+
+#[tokio::test]
+async fn dashboard_payment_page_requires_authenticated_session() {
+    let app = build_test_app().await;
+    let request = match Request::builder()
+        .uri("/dashboard/payment")
+        .body(axum::body::Body::empty())
+    {
+        Ok(request) => request,
+        Err(err) => panic!("failed to build request: {err}"),
+    };
+
+    let response = match app.oneshot(request).await {
+        Ok(response) => response,
+        Err(err) => panic!("request failed: {err}"),
+    };
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    let body = response_json(response).await;
+    assert_eq!(body["code"], "unauthorized");
+}
+
+#[tokio::test]
 async fn dashboard_api_requires_authenticated_session() {
     let app = build_test_app().await;
     let request = match Request::builder()
@@ -122,6 +185,28 @@ async fn dashboard_api_requires_authenticated_session() {
     let body = response_json(response).await;
     assert_eq!(body["code"], "unauthorized");
     assert!(body["request_id"].is_string());
+}
+
+#[tokio::test]
+async fn train_api_preflight_requires_authenticated_session() {
+    let app = build_test_app().await;
+    let request = match Request::builder()
+        .uri("/api/train/preflight")
+        .header(header::ACCEPT, "application/json")
+        .body(axum::body::Body::empty())
+    {
+        Ok(request) => request,
+        Err(err) => panic!("failed to build request: {err}"),
+    };
+
+    let response = match app.oneshot(request).await {
+        Ok(response) => response,
+        Err(err) => panic!("request failed: {err}"),
+    };
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    let body = response_json(response).await;
+    assert_eq!(body["code"], "unauthorized");
 }
 
 #[tokio::test]

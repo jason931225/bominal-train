@@ -6,6 +6,7 @@ use bominal_shared::repo::{
     mark_runtime_job_v2_terminal_query, schedule_runtime_job_v2_retry_query,
 };
 use chrono::{DateTime, Duration, Utc};
+use serde_json::json;
 use sqlx::PgPool;
 use tracing::{info, warn};
 
@@ -88,6 +89,31 @@ pub async fn process_next_job(
         config.heartbeat_interval,
         config.lease_ttl,
     );
+    let inferred_provider = job.inferred_provider();
+    let operation_name = job
+        .payload
+        .get("operation")
+        .and_then(serde_json::Value::as_str)
+        .or_else(|| {
+            job.persisted_payload
+                .get("operation")
+                .and_then(serde_json::Value::as_str)
+        })
+        .unwrap_or(job.kind.as_str())
+        .to_string();
+    insert_runtime_job_event_best_effort(
+        pool,
+        job.job_id.as_str(),
+        "running",
+        json!({
+            "provider": inferred_provider,
+            "operation": operation_name,
+            "attempt_count": job.attempt_count,
+            "state": "running",
+        }),
+    )
+    .await;
+
     let execution = executor::ProviderExecutor
         .execute(pool, &job, &config.payment_policy)
         .await;
@@ -119,6 +145,18 @@ pub async fn process_next_job(
                     result = %success.result_redacted,
                     "runtime job completed"
                 );
+                insert_runtime_job_event_best_effort(
+                    pool,
+                    job.job_id.as_str(),
+                    "completed",
+                    json!({
+                        "provider": success.provider,
+                        "operation": success.operation,
+                        "state": "completed",
+                        "result": success.result_redacted,
+                    }),
+                )
+                .await;
             }
             Ok(())
         }
@@ -156,6 +194,20 @@ pub async fn process_next_job(
                             next_run_at = %next_run_at,
                             "runtime job scheduled for retry"
                         );
+                        insert_runtime_job_event_best_effort(
+                            pool,
+                            job.job_id.as_str(),
+                            "retry_scheduled",
+                            json!({
+                                "provider": job.inferred_provider(),
+                                "operation": operation_name_for_event(&job),
+                                "state": "retry_scheduled",
+                                "next_run_at": next_run_at,
+                                "error_class": error.kind.as_str(),
+                                "message": error.safe_message(),
+                            }),
+                        )
+                        .await;
                     }
                 }
                 retry::FailureAction::DeadLetter { failure_kind } => {
@@ -180,6 +232,20 @@ pub async fn process_next_job(
                             failure_kind,
                             "runtime job transitioned to dead-letter"
                         );
+                        insert_runtime_job_event_best_effort(
+                            pool,
+                            job.job_id.as_str(),
+                            "dead_lettered",
+                            json!({
+                                "provider": job.inferred_provider(),
+                                "operation": operation_name_for_event(&job),
+                                "state": "dead_lettered",
+                                "failure_kind": failure_kind,
+                                "error_class": error.kind.as_str(),
+                                "message": error.safe_message(),
+                            }),
+                        )
+                        .await;
                     } else {
                         info!(
                             job_id = %job.job_id,
@@ -232,4 +298,41 @@ fn default_lease_owner() -> String {
         .filter(|value| !value.trim().is_empty())
         .unwrap_or_else(|| "worker".to_string());
     format!("{}:{}", host, process::id())
+}
+
+fn operation_name_for_event(job: &executor::ClaimedRuntimeJob) -> String {
+    job.payload
+        .get("operation")
+        .and_then(serde_json::Value::as_str)
+        .or_else(|| {
+            job.persisted_payload
+                .get("operation")
+                .and_then(serde_json::Value::as_str)
+        })
+        .unwrap_or(job.kind.as_str())
+        .to_string()
+}
+
+async fn insert_runtime_job_event_best_effort(
+    pool: &PgPool,
+    job_id: &str,
+    event_type: &str,
+    event_payload: serde_json::Value,
+) {
+    if let Err(err) = sqlx::query(
+        "insert into runtime_job_events (job_id, event_type, event_payload, created_at) values ($1, $2, cast($3 as jsonb), now())",
+    )
+    .bind(job_id)
+    .bind(event_type)
+    .bind(event_payload)
+    .execute(pool)
+    .await
+    {
+        warn!(
+            job_id = %job_id,
+            event_type = %event_type,
+            error = %err,
+            "failed to persist runtime job event",
+        );
+    }
 }

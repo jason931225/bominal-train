@@ -77,11 +77,24 @@ pub(crate) async fn create_provider_job(
         .as_ref()
         .map(|_| format!("provider:{}:{}", provider, operation));
     let now = Utc::now();
-    let runtime_payload = serde_json::json!({
-        "provider": provider,
-        "operation": operation,
-        "payload": payload.payload
-    });
+    let mut runtime_payload = serde_json::Map::new();
+    runtime_payload.insert(
+        "provider".to_string(),
+        serde_json::Value::String(provider.to_string()),
+    );
+    runtime_payload.insert(
+        "operation".to_string(),
+        serde_json::Value::String(operation.to_string()),
+    );
+    runtime_payload.insert("payload".to_string(), payload.payload.clone());
+    if let Some(user_id) = payload_user_id(&payload.payload) {
+        runtime_payload.insert(
+            "user_id".to_string(),
+            serde_json::Value::String(user_id.to_string()),
+        );
+    }
+
+    let runtime_payload = serde_json::Value::Object(runtime_payload);
 
     let params = InsertRuntimeJobV2Params {
         job_id: job_id.as_str(),
@@ -336,6 +349,15 @@ fn ref_field<'a>(payload: &'a Value, key: &str) -> Option<&'a str> {
         .filter(|value| !value.is_empty())
 }
 
+fn payload_user_id(payload: &Value) -> Option<&str> {
+    payload
+        .get("user_id")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .or_else(|| ref_field(payload, "subject_ref"))
+}
+
 fn contains_inline_secret_material(value: &Value) -> bool {
     match value {
         Value::Object(map) => map.iter().any(|(key, nested)| {
@@ -530,5 +552,19 @@ mod tests {
             validate_runtime_payload_contract("search_train", &nested_secret_payload),
             Err(ProviderJobsError::ValidationFailed)
         ));
+    }
+
+    #[test]
+    fn payload_user_id_prefers_explicit_user_id_then_subject_ref() {
+        let with_user_id = json!({
+            "user_id": "user-123",
+            "subject_ref": "subject-456"
+        });
+        assert_eq!(payload_user_id(&with_user_id), Some("user-123"));
+
+        let with_subject_ref_only = json!({
+            "subject_ref": "subject-456"
+        });
+        assert_eq!(payload_user_id(&with_subject_ref_only), Some("subject-456"));
     }
 }

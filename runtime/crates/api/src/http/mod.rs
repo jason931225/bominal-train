@@ -37,6 +37,7 @@ mod internal_provider_jobs;
 mod internal_providers;
 mod modules;
 mod runtime_queue;
+mod train;
 
 const DEFAULT_HTTP_REQUEST_TIMEOUT_SECONDS: u64 = 30;
 const DEFAULT_HTTP_REQUEST_BODY_LIMIT_BYTES: usize = 2 * 1024 * 1024;
@@ -67,6 +68,7 @@ pub(crate) fn build_router(state: Arc<AppState>) -> Router {
     let router = modules::register(router);
     let router = auth::register(router);
     let router = dashboard::register(router);
+    let router = train::register(router);
     let router = admin::register(router);
     let router = runtime_queue::register(router);
     let request_id_header = HeaderName::from_static("x-request-id");
