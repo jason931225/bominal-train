@@ -1520,45 +1520,45 @@ pub fn render_dashboard_train(email: &str) -> String {
     html.push_str(
         r#"<section class="space-y-4">
       <section class="glass-card rounded-[22px] p-5">
-        <h2 class="text-lg font-semibold txt-strong">Train workspace</h2>
-        <p class="mt-1 text-sm txt-supporting">Korail-inspired hybrid flow with modal selectors and station catalog safety checks.</p>
+        <h2 class="text-lg font-semibold txt-strong" data-i18n="workspace.title">Train workspace</h2>
+        <p class="mt-1 text-sm txt-supporting" data-i18n="workspace.subtitle">Korail-inspired hybrid flow with modal selectors and station catalog safety checks.</p>
         <div id="train-preflight" class="mt-4 space-y-2">
-          <div class="loading-card">Loading provider readiness...</div>
+          <div class="loading-card" data-i18n="preflight.loading">Loading provider readiness...</div>
         </div>
       </section>
 
       <section class="glass-card rounded-[22px] p-5">
-        <h3 class="text-base font-semibold txt-strong">Search trains</h3>
+        <h3 class="text-base font-semibold txt-strong" data-i18n="search.title">Search trains</h3>
         <form id="train-search-form" class="mt-3 space-y-3">
           <div class="rounded-[24px] border border-slate-200/80 bg-white/65 p-3">
             <div class="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_44px_minmax(0,1fr)]">
               <button id="dep-station-open" type="button" class="summary-card h-14 text-left">
-                <span class="text-[11px] uppercase tracking-[0.08em] txt-supporting">Departure</span>
-                <div id="dep-station-display" class="mt-1 text-sm font-semibold txt-strong">Select station</div>
+                <span class="text-[11px] uppercase tracking-[0.08em] txt-supporting" data-i18n="search.departure">Departure</span>
+                <div id="dep-station-display" class="mt-1 text-sm font-semibold txt-strong" data-i18n="search.select_station">Select station</div>
               </button>
-              <button id="station-swap" type="button" class="btn-ghost h-14 w-11 p-0" aria-label="Swap stations">↔</button>
+              <button id="station-swap" type="button" class="btn-ghost h-14 w-11 p-0" aria-label="Swap stations" data-i18n-aria-label="search.swap_stations">↔</button>
               <button id="arr-station-open" type="button" class="summary-card h-14 text-left">
-                <span class="text-[11px] uppercase tracking-[0.08em] txt-supporting">Arrival</span>
-                <div id="arr-station-display" class="mt-1 text-sm font-semibold txt-strong">Select station</div>
+                <span class="text-[11px] uppercase tracking-[0.08em] txt-supporting" data-i18n="search.arrival">Arrival</span>
+                <div id="arr-station-display" class="mt-1 text-sm font-semibold txt-strong" data-i18n="search.select_station">Select station</div>
               </button>
             </div>
             <div class="mt-2 grid grid-cols-1 gap-2 md:grid-cols-3">
               <button id="dep-date-open" type="button" class="summary-card h-14 text-left">
-                <span class="text-[11px] uppercase tracking-[0.08em] txt-supporting">Departure date</span>
-                <div id="dep-date-display" class="mt-1 text-sm font-semibold txt-strong">Select date</div>
+                <span class="text-[11px] uppercase tracking-[0.08em] txt-supporting" data-i18n="search.departure_date">Departure date</span>
+                <div id="dep-date-display" class="mt-1 text-sm font-semibold txt-strong" data-i18n="search.select_date">Select date</div>
               </button>
               <button id="dep-time-open" type="button" class="summary-card h-14 text-left">
-                <span class="text-[11px] uppercase tracking-[0.08em] txt-supporting">Departure time</span>
-                <div id="dep-time-display" class="mt-1 text-sm font-semibold txt-strong">Select time</div>
+                <span class="text-[11px] uppercase tracking-[0.08em] txt-supporting" data-i18n="search.departure_time">Departure time</span>
+                <div id="dep-time-display" class="mt-1 text-sm font-semibold txt-strong" data-i18n="search.select_time">Select time</div>
               </button>
               <button id="passenger-open" type="button" class="summary-card h-14 text-left">
-                <span class="text-[11px] uppercase tracking-[0.08em] txt-supporting">Passengers</span>
+                <span class="text-[11px] uppercase tracking-[0.08em] txt-supporting" data-i18n="search.passengers">Passengers</span>
                 <div id="passenger-display" class="mt-1 text-sm font-semibold txt-strong">1</div>
               </button>
             </div>
           </div>
           <div class="action-group" data-action-group="single">
-            <button id="train-search-submit" type="submit" class="btn-primary h-11 w-full" data-action-role="primary">Start search</button>
+            <button id="train-search-submit" type="submit" class="btn-primary h-11 w-full" data-action-role="primary" data-i18n="search.start">Start search</button>
           </div>
         </form>
         <div id="train-search-status" class="mt-3 hidden"></div>
@@ -1566,28 +1566,28 @@ pub fn render_dashboard_train(email: &str) -> String {
 
       <section class="glass-card rounded-[22px] p-5">
         <div class="summary-row">
-          <h3 class="text-base font-semibold txt-strong">Latest search result</h3>
-          <span id="active-search-id" class="text-xs txt-supporting">none</span>
+          <h3 class="text-base font-semibold txt-strong" data-i18n="search.latest_result">Latest search result</h3>
+          <span id="active-search-id" class="text-xs txt-supporting" data-i18n="search.none">none</span>
         </div>
         <div id="train-provider-jobs" class="mt-3 space-y-2"></div>
         <div id="train-results" class="mt-3 space-y-2"></div>
       </section>
 
       <section class="glass-card rounded-[22px] p-5">
-        <h3 class="text-base font-semibold txt-strong">Recent searches</h3>
-        <div id="train-search-history" class="mt-3 space-y-2"><div class="loading-card">Loading history...</div></div>
+        <h3 class="text-base font-semibold txt-strong" data-i18n="search.recent">Recent searches</h3>
+        <div id="train-search-history" class="mt-3 space-y-2"><div class="loading-card" data-i18n="search.loading_history">Loading history...</div></div>
       </section>
 
       <div id="station-picker-modal" class="app-modal-backdrop hidden" aria-hidden="true">
         <div class="app-modal-card max-w-[820px]" role="dialog" aria-modal="true" aria-labelledby="station-picker-title">
           <div class="flex items-center justify-between">
-            <h4 id="station-picker-title" class="text-base font-semibold txt-strong">Station picker</h4>
-            <button id="station-picker-close" type="button" class="btn-ghost h-9 w-9 p-0" aria-label="Close">✕</button>
+            <h4 id="station-picker-title" class="text-base font-semibold txt-strong" data-i18n="station.modal_title">Station picker</h4>
+            <button id="station-picker-close" type="button" class="btn-ghost h-9 w-9 p-0" aria-label="Close" data-i18n-aria-label="common.close">✕</button>
           </div>
           <div class="mt-3">
-            <label class="sr-only" for="station-picker-query">Search station</label>
+            <label class="sr-only" for="station-picker-query" data-i18n="station.search_label">Search station</label>
             <div class="relative">
-              <input id="station-picker-query" type="text" autocomplete="off" class="field-input h-11 w-full pr-11 leading-none" placeholder="역 이름 또는 초성 검색 (서울, ㅅㅇ)" />
+              <input id="station-picker-query" type="text" autocomplete="off" class="field-input h-11 w-full pr-11 leading-none" placeholder="Search station name or initials (Seoul, ㅅㅇ)" data-i18n-placeholder="station.search_placeholder" />
               <span class="pointer-events-none absolute inset-y-0 right-3 inline-flex items-center txt-supporting" aria-hidden="true">
                 <svg viewBox="0 0 24 24" fill="none" class="h-5 w-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                   <circle cx="11" cy="11" r="7"></circle>
@@ -1598,8 +1598,8 @@ pub fn render_dashboard_train(email: &str) -> String {
           </div>
           <div id="station-picker-suggestions" class="mt-3 max-h-[220px] space-y-1 overflow-y-auto"></div>
           <div class="mt-3 flex flex-wrap gap-2">
-            <button type="button" id="station-tab-major" class="btn-primary h-9 px-3">주요역</button>
-            <button type="button" id="station-tab-region" class="btn-ghost h-9 px-3">지역별</button>
+            <button type="button" id="station-tab-major" class="btn-primary h-9 px-3" data-i18n="station.tab_major">Major stations</button>
+            <button type="button" id="station-tab-region" class="btn-ghost h-9 px-3" data-i18n="station.tab_region">By region</button>
           </div>
           <div id="station-picker-regions" class="mt-3 flex flex-wrap gap-2"></div>
           <div id="station-picker-list" class="mt-3 max-h-[240px] space-y-1 overflow-y-auto"></div>
@@ -1609,16 +1609,16 @@ pub fn render_dashboard_train(email: &str) -> String {
       <div id="date-picker-modal" class="app-modal-backdrop hidden" aria-hidden="true">
         <div class="app-modal-card max-w-[540px]" role="dialog" aria-modal="true" aria-labelledby="date-picker-title">
           <div class="flex items-center justify-between">
-            <h4 id="date-picker-title" class="text-base font-semibold txt-strong">Departure date</h4>
-            <button id="date-picker-close" type="button" class="btn-ghost h-9 w-9 p-0" aria-label="Close">✕</button>
+            <h4 id="date-picker-title" class="text-base font-semibold txt-strong" data-i18n="date.modal_title">Departure date</h4>
+            <button id="date-picker-close" type="button" class="btn-ghost h-9 w-9 p-0" aria-label="Close" data-i18n-aria-label="common.close">✕</button>
           </div>
           <div class="mt-3">
-            <label class="field-label" for="date-picker-input">Date</label>
+            <label class="field-label" for="date-picker-input" data-i18n="date.label">Date</label>
             <input id="date-picker-input" type="date" class="field-input h-11 w-full" />
           </div>
           <div class="mt-4 grid grid-cols-2 gap-2">
-            <button id="date-picker-cancel" type="button" class="btn-ghost h-11 w-full">Cancel</button>
-            <button id="date-picker-apply" type="button" class="btn-primary h-11 w-full">Apply</button>
+            <button id="date-picker-cancel" type="button" class="btn-ghost h-11 w-full" data-i18n="common.cancel">Cancel</button>
+            <button id="date-picker-apply" type="button" class="btn-primary h-11 w-full" data-i18n="common.apply">Apply</button>
           </div>
         </div>
       </div>
@@ -1626,20 +1626,20 @@ pub fn render_dashboard_train(email: &str) -> String {
       <div id="time-picker-modal" class="app-modal-backdrop hidden" aria-hidden="true">
         <div class="app-modal-card max-w-[540px]" role="dialog" aria-modal="true" aria-labelledby="time-picker-title">
           <div class="flex items-center justify-between">
-            <h4 id="time-picker-title" class="text-base font-semibold txt-strong">Departure time</h4>
-            <button id="time-picker-close" type="button" class="btn-ghost h-9 w-9 p-0" aria-label="Close">✕</button>
+            <h4 id="time-picker-title" class="text-base font-semibold txt-strong" data-i18n="time.modal_title">Departure time</h4>
+            <button id="time-picker-close" type="button" class="btn-ghost h-9 w-9 p-0" aria-label="Close" data-i18n-aria-label="common.close">✕</button>
           </div>
           <div class="mt-3">
-            <label class="field-label">Hour</label>
+            <label class="field-label" data-i18n="time.hour_label">Hour</label>
             <div id="time-picker-hour-list" class="mt-2 grid grid-cols-4 gap-2 md:grid-cols-6"></div>
           </div>
           <div class="mt-3 hidden md:block">
-            <label class="field-label" for="time-picker-desktop-input">Desktop free time input</label>
+            <label class="field-label" for="time-picker-desktop-input" data-i18n="time.desktop_label">Desktop free time input</label>
             <input id="time-picker-desktop-input" type="time" class="field-input h-11 w-full" />
           </div>
           <div class="mt-4 grid grid-cols-2 gap-2">
-            <button id="time-picker-cancel" type="button" class="btn-ghost h-11 w-full">Cancel</button>
-            <button id="time-picker-apply" type="button" class="btn-primary h-11 w-full">Apply</button>
+            <button id="time-picker-cancel" type="button" class="btn-ghost h-11 w-full" data-i18n="common.cancel">Cancel</button>
+            <button id="time-picker-apply" type="button" class="btn-primary h-11 w-full" data-i18n="common.apply">Apply</button>
           </div>
         </div>
       </div>
@@ -1647,13 +1647,13 @@ pub fn render_dashboard_train(email: &str) -> String {
       <div id="passenger-picker-modal" class="app-modal-backdrop hidden" aria-hidden="true">
         <div class="app-modal-card max-w-[540px]" role="dialog" aria-modal="true" aria-labelledby="passenger-picker-title">
           <div class="flex items-center justify-between">
-            <h4 id="passenger-picker-title" class="text-base font-semibold txt-strong">Passengers</h4>
-            <button id="passenger-picker-close" type="button" class="btn-ghost h-9 w-9 p-0" aria-label="Close">✕</button>
+            <h4 id="passenger-picker-title" class="text-base font-semibold txt-strong" data-i18n="passenger.modal_title">Passengers</h4>
+            <button id="passenger-picker-close" type="button" class="btn-ghost h-9 w-9 p-0" aria-label="Close" data-i18n-aria-label="common.close">✕</button>
           </div>
           <div id="passenger-picker-rows" class="mt-3 space-y-2"></div>
           <div class="mt-4 grid grid-cols-2 gap-2">
-            <button id="passenger-picker-cancel" type="button" class="btn-ghost h-11 w-full">Cancel</button>
-            <button id="passenger-picker-apply" type="button" class="btn-primary h-11 w-full">Apply</button>
+            <button id="passenger-picker-cancel" type="button" class="btn-ghost h-11 w-full" data-i18n="common.cancel">Cancel</button>
+            <button id="passenger-picker-apply" type="button" class="btn-primary h-11 w-full" data-i18n="common.apply">Apply</button>
           </div>
         </div>
       </div>
@@ -1720,46 +1720,248 @@ pub fn render_dashboard_train(email: &str) -> String {
   let activeRegionKey = 'seoul';
   let passengerDraft = { adult: 1, child: 0, senior: 0, disability_1_to_3: 0, disability_4_to_6: 0 };
   let passengerCommitted = { ...passengerDraft };
-
-  const normalizeLocale = (rawLocale) => {
-    const token = String(rawLocale || '').trim().toLowerCase().replace('_', '-').split(';')[0].split(',')[0].trim();
-    const primary = token.split('-')[0];
-    if (primary === 'ja' || primary === 'jp') return 'ja';
-    if (primary === 'ko' || primary === 'kr') return 'ko';
-    if (primary === 'en') return 'en';
-    return 'en';
+  const TRAIN_I18N = {
+    en: {
+      'workspace.title': 'Train workspace',
+      'workspace.subtitle': 'Korail-inspired hybrid flow with modal selectors and station catalog safety checks.',
+      'preflight.loading': 'Loading provider readiness...',
+      'search.title': 'Search trains',
+      'search.departure': 'Departure',
+      'search.arrival': 'Arrival',
+      'search.departure_date': 'Departure date',
+      'search.departure_time': 'Departure time',
+      'search.passengers': 'Passengers',
+      'search.start': 'Start search',
+      'search.latest_result': 'Latest search result',
+      'search.recent': 'Recent searches',
+      'search.loading_history': 'Loading history...',
+      'search.select_station': 'Select station',
+      'search.select_date': 'Select date',
+      'search.select_time': 'Select time',
+      'search.swap_stations': 'Swap stations',
+      'search.none': 'none',
+      'station.modal_title': 'Station picker',
+      'station.search_label': 'Search station',
+      'station.search_placeholder': 'Search station name or initials (Seoul, ㅅㅇ)',
+      'station.tab_major': 'Major stations',
+      'station.tab_region': 'By region',
+      'date.modal_title': 'Departure date',
+      'date.label': 'Date',
+      'time.modal_title': 'Departure time',
+      'time.hour_label': 'Hour',
+      'time.desktop_label': 'Desktop free time input',
+      'passenger.modal_title': 'Passengers',
+      'passenger.adult': 'Adult (13+)',
+      'passenger.child': 'Child (6-12)',
+      'passenger.senior': 'Senior (65+)',
+      'passenger.disability_1_to_3': 'Disability (level 1-3)',
+      'passenger.disability_4_to_6': 'Disability (level 4-6)',
+      'passenger.count.one': '{count} passenger',
+      'passenger.count.other': '{count} passengers',
+      'common.close': 'Close',
+      'common.cancel': 'Cancel',
+      'common.apply': 'Apply',
+      'empty.provider_jobs': 'No provider jobs for this search.',
+      'empty.results': 'No trains returned yet.',
+      'empty.history': 'No searches yet.',
+      'empty.stations': 'No stations in this view.',
+      'status.general_available': 'General ✓',
+      'status.general_unavailable': 'General ✕',
+      'status.special_available': 'Special ✓',
+      'status.special_unavailable': 'Special ✕',
+      'history.providers': 'providers',
+      'error.load_history': 'Failed to load search history.',
+      'error.poll_search': 'Search polling failed.',
+      'error.load_snapshot': 'Could not load search snapshot.',
+      'error.load_preflight': 'Failed to load preflight.',
+      'error.load_station_catalog': 'Could not load station catalog.',
+      'error.station_lookup': 'Station lookup failed.',
+      'error.date_required': 'Departure date is required.',
+      'error.passenger_required': 'At least one passenger is required.',
+      'error.station_required': 'Choose departure and arrival stations.',
+      'error.search_failed': 'Search request failed.',
+      'success.search_accepted': 'Search {searchId} accepted.',
+      'provider.payment': 'Payment',
+      'provider.credentials': 'Credentials',
+      'provider.ready': 'ready',
+      'provider.error': 'error',
+      'provider.missing': 'missing',
+    },
+    ko: {
+      'workspace.title': '기차 워크스페이스',
+      'workspace.subtitle': 'Korail 스타일 모달 선택과 역 카탈로그 안전 검증 흐름을 제공합니다.',
+      'preflight.loading': '공급자 준비 상태를 불러오는 중...',
+      'search.title': '열차 조회',
+      'search.departure': '출발',
+      'search.arrival': '도착',
+      'search.departure_date': '출발일',
+      'search.departure_time': '출발시간',
+      'search.passengers': '인원',
+      'search.start': '열차조회',
+      'search.latest_result': '최신 조회 결과',
+      'search.recent': '최근 조회',
+      'search.loading_history': '조회 이력을 불러오는 중...',
+      'search.select_station': '역 선택',
+      'search.select_date': '날짜 선택',
+      'search.select_time': '시간 선택',
+      'search.swap_stations': '출발/도착 교체',
+      'search.none': '없음',
+      'station.modal_title': '역 선택',
+      'station.search_label': '역 검색',
+      'station.search_placeholder': '역 이름 또는 초성 검색 (서울, ㅅㅇ)',
+      'station.tab_major': '주요역',
+      'station.tab_region': '지역별',
+      'date.modal_title': '출발일 선택',
+      'date.label': '날짜',
+      'time.modal_title': '출발시간 선택',
+      'time.hour_label': '시간',
+      'time.desktop_label': '데스크톱 시간 입력',
+      'passenger.modal_title': '인원 선택',
+      'passenger.adult': '어른(13세 이상)',
+      'passenger.child': '어린이(6~12세)',
+      'passenger.senior': '경로(65세 이상)',
+      'passenger.disability_1_to_3': '중증 장애인',
+      'passenger.disability_4_to_6': '경증 장애인',
+      'passenger.count.one': '총 {count}명',
+      'passenger.count.other': '총 {count}명',
+      'common.close': '닫기',
+      'common.cancel': '취소',
+      'common.apply': '적용',
+      'empty.provider_jobs': '공급자 작업이 없습니다.',
+      'empty.results': '조회된 열차가 없습니다.',
+      'empty.history': '조회 이력이 없습니다.',
+      'empty.stations': '표시할 역이 없습니다.',
+      'status.general_available': '일반석 가능',
+      'status.general_unavailable': '일반석 불가',
+      'status.special_available': '특실 가능',
+      'status.special_unavailable': '특실 불가',
+      'history.providers': '공급자',
+      'error.load_history': '조회 이력을 불러오지 못했습니다.',
+      'error.poll_search': '조회 상태 갱신에 실패했습니다.',
+      'error.load_snapshot': '조회 스냅샷을 불러오지 못했습니다.',
+      'error.load_preflight': '준비 상태를 불러오지 못했습니다.',
+      'error.load_station_catalog': '역 목록을 불러오지 못했습니다.',
+      'error.station_lookup': '역 검색에 실패했습니다.',
+      'error.date_required': '출발일이 필요합니다.',
+      'error.passenger_required': '최소 1명의 승객이 필요합니다.',
+      'error.station_required': '출발역과 도착역을 선택하세요.',
+      'error.search_failed': '조회 요청에 실패했습니다.',
+      'success.search_accepted': '조회 {searchId} 요청이 접수되었습니다.',
+      'provider.payment': '결제',
+      'provider.credentials': '자격 증명',
+      'provider.ready': '준비됨',
+      'provider.error': '오류',
+      'provider.missing': '미설정',
+    },
+    ja: {
+      'workspace.title': '列車ワークスペース',
+      'workspace.subtitle': 'Korail 風のモーダル選択と駅カタログ検証フローです。',
+      'preflight.loading': 'プロバイダー準備状態を読み込み中...',
+      'search.title': '列車検索',
+      'search.departure': '出発',
+      'search.arrival': '到着',
+      'search.departure_date': '出発日',
+      'search.departure_time': '出発時刻',
+      'search.passengers': '人数',
+      'search.start': '列車検索',
+      'search.latest_result': '最新検索結果',
+      'search.recent': '最近の検索',
+      'search.loading_history': '検索履歴を読み込み中...',
+      'search.select_station': '駅を選択',
+      'search.select_date': '日付を選択',
+      'search.select_time': '時刻を選択',
+      'search.swap_stations': '出発/到着を入れ替え',
+      'search.none': 'なし',
+      'station.modal_title': '駅選択',
+      'station.search_label': '駅検索',
+      'station.search_placeholder': '駅名または頭子音で検索 (ソウル, ㅅㅇ)',
+      'station.tab_major': '主要駅',
+      'station.tab_region': '地域別',
+      'date.modal_title': '出発日',
+      'date.label': '日付',
+      'time.modal_title': '出発時刻',
+      'time.hour_label': '時',
+      'time.desktop_label': 'デスクトップ時刻入力',
+      'passenger.modal_title': '人数',
+      'passenger.adult': '大人 (13歳以上)',
+      'passenger.child': 'こども (6-12歳)',
+      'passenger.senior': 'シニア (65歳以上)',
+      'passenger.disability_1_to_3': '障害 (1-3級)',
+      'passenger.disability_4_to_6': '障害 (4-6級)',
+      'passenger.count.one': '合計 {count}名',
+      'passenger.count.other': '合計 {count}名',
+      'common.close': '閉じる',
+      'common.cancel': 'キャンセル',
+      'common.apply': '適用',
+      'empty.provider_jobs': 'この検索のプロバイダージョブはありません。',
+      'empty.results': '列車結果がありません。',
+      'empty.history': '検索履歴がありません。',
+      'empty.stations': 'この表示に駅はありません。',
+      'status.general_available': '普通席 ✓',
+      'status.general_unavailable': '普通席 ✕',
+      'status.special_available': '特室 ✓',
+      'status.special_unavailable': '特室 ✕',
+      'history.providers': 'プロバイダー',
+      'error.load_history': '検索履歴を読み込めませんでした。',
+      'error.poll_search': '検索ポーリングに失敗しました。',
+      'error.load_snapshot': '検索スナップショットを読み込めませんでした。',
+      'error.load_preflight': '準備状態を読み込めませんでした。',
+      'error.load_station_catalog': '駅カタログを読み込めませんでした。',
+      'error.station_lookup': '駅検索に失敗しました。',
+      'error.date_required': '出発日が必要です。',
+      'error.passenger_required': '少なくとも1人の乗客が必要です。',
+      'error.station_required': '出発駅と到着駅を選択してください。',
+      'error.search_failed': '検索リクエストに失敗しました。',
+      'success.search_accepted': '検索 {searchId} を受け付けました。',
+      'provider.payment': '支払い',
+      'provider.credentials': '認証情報',
+      'provider.ready': '準備完了',
+      'provider.error': 'エラー',
+      'provider.missing': '未設定',
+    },
   };
-  const activeLocale = normalizeLocale(
-    document.documentElement?.getAttribute('data-locale')
-      || document.body?.getAttribute('data-locale')
-      || navigator.language
-      || (Array.isArray(navigator.languages) ? navigator.languages[0] : ''),
-  );
+  const resolveLocale = () => {
+    const token = String(
+      document.body?.dataset?.locale || document.documentElement?.lang || 'en',
+    ).trim().toLowerCase();
+    const primary = token.split('-')[0];
+    return primary === 'ko' || primary === 'ja' || primary === 'en' ? primary : 'en';
+  };
+  const activeLocale = resolveLocale();
+  const t = (key, vars) => {
+    const table = TRAIN_I18N[activeLocale] || TRAIN_I18N.en;
+    let text = table[key] || TRAIN_I18N.en[key] || key;
+    if (vars && typeof vars === 'object') {
+      for (const [name, value] of Object.entries(vars)) {
+        text = text.replaceAll(`{${name}}`, String(value));
+      }
+    }
+    return text;
+  };
+  const applyStaticTranslations = () => {
+    Array.from(document.querySelectorAll('[data-i18n]')).forEach((node) => {
+      const key = node.getAttribute('data-i18n');
+      if (!key) return;
+      node.textContent = t(key);
+    });
+    Array.from(document.querySelectorAll('[data-i18n-placeholder]')).forEach((node) => {
+      const key = node.getAttribute('data-i18n-placeholder');
+      if (!key || !('placeholder' in node)) return;
+      node.placeholder = t(key);
+    });
+    Array.from(document.querySelectorAll('[data-i18n-aria-label]')).forEach((node) => {
+      const key = node.getAttribute('data-i18n-aria-label');
+      if (!key) return;
+      node.setAttribute('aria-label', t(key));
+    });
+  };
   const passengerKinds = [
-    {
-      key: 'adult',
-      labels: { ko: '어른(13세 이상)', en: 'Adult (13+)', ja: '大人 (13歳以上)' },
-    },
-    {
-      key: 'child',
-      labels: { ko: '어린이(6~12세)', en: 'Child (6-12)', ja: 'こども (6-12歳)' },
-    },
-    {
-      key: 'senior',
-      labels: { ko: '경로(65세 이상)', en: 'Senior (65+)', ja: 'シニア (65歳以上)' },
-    },
-    {
-      key: 'disability_1_to_3',
-      labels: { ko: '중증 장애인', en: 'Disability (level 1-3)', ja: '障害 (1-3級)' },
-    },
-    {
-      key: 'disability_4_to_6',
-      labels: { ko: '경증 장애인', en: 'Disability (level 4-6)', ja: '障害 (4-6級)' },
-    },
-  ].map((item) => ({
-    key: item.key,
-    label: item.labels[activeLocale] || item.labels.en,
-  }));
+    { key: 'adult', label: t('passenger.adult') },
+    { key: 'child', label: t('passenger.child') },
+    { key: 'senior', label: t('passenger.senior') },
+    { key: 'disability_1_to_3', label: t('passenger.disability_1_to_3') },
+    { key: 'disability_4_to_6', label: t('passenger.disability_4_to_6') },
+  ];
 
   const escapeHtml = (value) => String(value || '')
     .replaceAll('&', '&amp;')
@@ -1823,9 +2025,8 @@ pub fn render_dashboard_train(email: &str) -> String {
 
   const totalPassengers = (payload) => Object.values(payload).reduce((acc, value) => acc + Number(value || 0), 0);
   const formatPassengerCount = (count) => {
-    if (activeLocale === 'ko') return `총 ${count}명`;
-    if (activeLocale === 'ja') return `合計 ${count}名`;
-    return count === 1 ? '1 passenger' : `${count} passengers`;
+    const key = count === 1 ? 'passenger.count.one' : 'passenger.count.other';
+    return t(key, { count });
   };
 
   const passengerPayload = () => passengerKinds
@@ -1858,17 +2059,21 @@ pub fn render_dashboard_train(email: &str) -> String {
   };
 
   const updateDisplays = () => {
-    const depLabel = depSelection ? `${stationLabel(depSelection)} (${depSelection.station_code})` : 'Select station';
-    const arrLabel = arrSelection ? `${stationLabel(arrSelection)} (${arrSelection.station_code})` : 'Select station';
+    const depLabel = depSelection
+      ? `${stationLabel(depSelection)} (${depSelection.station_code})`
+      : t('search.select_station');
+    const arrLabel = arrSelection
+      ? `${stationLabel(arrSelection)} (${arrSelection.station_code})`
+      : t('search.select_station');
     depStationDisplay.textContent = depLabel;
     arrStationDisplay.textContent = arrLabel;
-    dateDisplay.textContent = depDate;
-    timeDisplay.textContent = depTime;
+    dateDisplay.textContent = depDate || t('search.select_date');
+    timeDisplay.textContent = depTime || t('search.select_time');
     passengerDisplay.textContent = formatPassengerCount(totalPassengers(passengerCommitted));
   };
 
   const formatProviderRows = (providers) => {
-    if (!providers || !providers.length) return '<div class="empty-card">No provider jobs for this search.</div>';
+    if (!providers || !providers.length) return `<div class="empty-card">${escapeHtml(t('empty.provider_jobs'))}</div>`;
     return providers.map((providerJob) => `
       <div class="summary-row">
         <span>${escapeHtml(providerJob.provider.toUpperCase())} · ${escapeHtml(providerJob.runtime_job_id)}</span>
@@ -1878,30 +2083,30 @@ pub fn render_dashboard_train(email: &str) -> String {
   };
 
   const formatResults = (results) => {
-    if (!results || !results.length) return '<div class="empty-card">No trains returned yet.</div>';
+    if (!results || !results.length) return `<div class="empty-card">${escapeHtml(t('empty.results'))}</div>`;
     return results.map((item) => `
       <article class="summary-card">
         <div class="summary-row">
           <span>${escapeHtml(item.provider.toUpperCase())} · #${escapeHtml(item.train_number)}</span>
-          <span class="badge">${item.general_seat_available ? 'General ✓' : 'General ✕'}</span>
+          <span class="badge">${item.general_seat_available ? escapeHtml(t('status.general_available')) : escapeHtml(t('status.general_unavailable'))}</span>
         </div>
         <div class="summary-row">
           <span>${escapeHtml(item.dep_station_code)} ${escapeHtml(item.dep_time)} → ${escapeHtml(item.arr_station_code)} ${escapeHtml(item.arr_time)}</span>
-          <span class="text-xs txt-supporting">${item.special_seat_available ? 'Special ✓' : 'Special ✕'}</span>
+          <span class="text-xs txt-supporting">${item.special_seat_available ? escapeHtml(t('status.special_available')) : escapeHtml(t('status.special_unavailable'))}</span>
         </div>
       </article>
     `).join('');
   };
 
   const renderSearchSnapshot = (snapshot) => {
-    activeSearchIdNode.textContent = snapshot.search_id || 'none';
+    activeSearchIdNode.textContent = snapshot.search_id || t('search.none');
     jobsNode.innerHTML = formatProviderRows(snapshot.providers || []);
     resultsNode.innerHTML = formatResults(snapshot.results || []);
   };
 
   const renderHistory = (history) => {
     if (!history || !history.length) {
-      historyNode.innerHTML = '<div class="empty-card">No searches yet.</div>';
+      historyNode.innerHTML = `<div class="empty-card">${escapeHtml(t('empty.history'))}</div>`;
       return;
     }
     historyNode.innerHTML = history.map((item) => `
@@ -1910,7 +2115,7 @@ pub fn render_dashboard_train(email: &str) -> String {
           <span>${escapeHtml(item.dep_station_code)} → ${escapeHtml(item.arr_station_code)}</span>
           <span class="badge">${escapeHtml(item.status)}</span>
         </div>
-        <p class="mt-1 text-xs txt-supporting">${escapeHtml(item.dep_date)} ${escapeHtml(item.dep_time)} · providers: ${(item.providers || []).map((value) => escapeHtml(value.toUpperCase())).join(', ')}</p>
+        <p class="mt-1 text-xs txt-supporting">${escapeHtml(item.dep_date)} ${escapeHtml(item.dep_time)} · ${escapeHtml(t('history.providers'))}: ${(item.providers || []).map((value) => escapeHtml(value.toUpperCase())).join(', ')}</p>
       </button>
     `).join('');
     Array.from(historyNode.querySelectorAll('[data-search-id]')).forEach((node) => {
@@ -1925,7 +2130,7 @@ pub fn render_dashboard_train(email: &str) -> String {
   const loadHistory = async () => {
     const response = await requestJson('/api/train/search?limit=12');
     if (!response.ok) {
-      historyNode.innerHTML = `<div class="error-card">${escapeHtml(apiErrorMessage(response, 'Failed to load search history.'))}</div>`;
+      historyNode.innerHTML = `<div class="error-card">${escapeHtml(apiErrorMessage(response, t('error.load_history')))}</div>`;
       return;
     }
     renderHistory(response.body && Array.isArray(response.body.searches) ? response.body.searches : []);
@@ -1941,7 +2146,7 @@ pub fn render_dashboard_train(email: &str) -> String {
       if (!response.ok) {
         clearInterval(pollTimer);
         pollTimer = null;
-        showStatus('error', apiErrorMessage(response, 'Search polling failed.'));
+        showStatus('error', apiErrorMessage(response, t('error.poll_search')));
         return;
       }
       const snapshot = response.body || {};
@@ -1957,7 +2162,7 @@ pub fn render_dashboard_train(email: &str) -> String {
   const loadSearch = async (searchId) => {
     const response = await requestJson(`/api/train/search/${encodeURIComponent(searchId)}`);
     if (!response.ok) {
-      showStatus('error', apiErrorMessage(response, 'Could not load search snapshot.'));
+      showStatus('error', apiErrorMessage(response, t('error.load_snapshot')));
       return;
     }
     const snapshot = response.body || {};
@@ -1983,8 +2188,8 @@ pub fn render_dashboard_train(email: &str) -> String {
   };
 
   const statusIcon = (kind, ready, hasError) => {
-    const title = kind === 'payment' ? 'Payment' : 'Credentials';
-    const state = ready ? 'ready' : (hasError ? 'error' : 'missing');
+    const title = kind === 'payment' ? t('provider.payment') : t('provider.credentials');
+    const state = ready ? t('provider.ready') : (hasError ? t('provider.error') : t('provider.missing'));
     const toneClass = providerStatusToneClass(ready, hasError);
     const path = kind === 'payment'
       ? '<rect x="3.5" y="6.5" width="17" height="11" rx="2"></rect><path d="M3.5 10.5h17"></path>'
@@ -2026,7 +2231,7 @@ pub fn render_dashboard_train(email: &str) -> String {
         ${toProviderCard('ktx')}
         ${toProviderCard('srt')}
         <article class="train-preflight-card">
-          <span class="train-preflight-label">Payment</span>
+          <span class="train-preflight-label">${escapeHtml(t('provider.payment'))}</span>
           <span class="provider-status-group">
             ${statusIcon('payment', paymentReady, paymentHasError)}
           </span>
@@ -2038,7 +2243,7 @@ pub fn render_dashboard_train(email: &str) -> String {
   const loadPreflight = async () => {
     const response = await requestJson('/api/train/preflight');
     if (!response.ok) {
-      preflightNode.innerHTML = `<div class="error-card">${escapeHtml(apiErrorMessage(response, 'Failed to load preflight.'))}</div>`;
+      preflightNode.innerHTML = `<div class="error-card">${escapeHtml(apiErrorMessage(response, t('error.load_preflight')))}</div>`;
       return;
     }
     renderPreflight(response.body || {});
@@ -2046,7 +2251,7 @@ pub fn render_dashboard_train(email: &str) -> String {
 
   const renderStationList = (stations) => {
     if (!stations || !stations.length) {
-      stationListNode.innerHTML = '<div class="empty-card">No stations in this view.</div>';
+      stationListNode.innerHTML = `<div class="empty-card">${escapeHtml(t('empty.stations'))}</div>`;
       return;
     }
     stationListNode.innerHTML = stations.map((station) => `
@@ -2109,7 +2314,7 @@ pub fn render_dashboard_train(email: &str) -> String {
     if (stationRegionsData) return stationRegionsData;
     const response = await requestJson('/api/train/stations/regions');
     if (!response.ok) {
-      showStatus('error', apiErrorMessage(response, 'Could not load station catalog.'));
+      showStatus('error', apiErrorMessage(response, t('error.load_station_catalog')));
       return null;
     }
     stationRegionsData = response.body || { quick: [], regions: [] };
@@ -2122,7 +2327,7 @@ pub fn render_dashboard_train(email: &str) -> String {
     const response = await requestJson(`/api/train/stations/suggest?q=${encodeURIComponent(query)}&limit=10`);
     if (requestId !== stationQueryCounter) return;
     if (!response.ok) {
-      stationSuggestions.innerHTML = `<div class="error-card">${escapeHtml(apiErrorMessage(response, 'Station lookup failed.'))}</div>`;
+      stationSuggestions.innerHTML = `<div class="error-card">${escapeHtml(apiErrorMessage(response, t('error.station_lookup')))}</div>`;
       return;
     }
     const suggestions = Array.isArray(response.body?.suggestions) ? response.body.suggestions : [];
@@ -2260,7 +2465,7 @@ pub fn render_dashboard_train(email: &str) -> String {
   dateApply.addEventListener('click', () => {
     const pickedDate = String(dateInput.value || '').trim();
     if (!pickedDate) {
-      showStatus('error', 'Departure date is required.');
+      showStatus('error', t('error.date_required'));
       return;
     }
     depDate = pickedDate;
@@ -2278,7 +2483,7 @@ pub fn render_dashboard_train(email: &str) -> String {
 
   passengerApply.addEventListener('click', () => {
     if (totalPassengers(passengerDraft) < 1) {
-      showStatus('error', 'At least one passenger is required.');
+      showStatus('error', t('error.passenger_required'));
       return;
     }
     passengerCommitted = { ...passengerDraft };
@@ -2296,11 +2501,11 @@ pub fn render_dashboard_train(email: &str) -> String {
     event.preventDefault();
     clearStatus();
     if (!depSelection || !arrSelection) {
-      showStatus('error', 'Choose departure and arrival stations.');
+      showStatus('error', t('error.station_required'));
       return;
     }
     if (totalPassengers(passengerCommitted) < 1) {
-      showStatus('error', 'At least one passenger is required.');
+      showStatus('error', t('error.passenger_required'));
       return;
     }
     const response = await requestJson('/api/train/search', 'POST', {
@@ -2312,16 +2517,17 @@ pub fn render_dashboard_train(email: &str) -> String {
       available_only: true,
     });
     if (!response.ok) {
-      showStatus('error', apiErrorMessage(response, 'Search request failed.'));
+      showStatus('error', apiErrorMessage(response, t('error.search_failed')));
       return;
     }
     const created = response.body || {};
     renderSearchSnapshot({ providers: created.jobs || [], results: [], search_id: created.search_id || '' });
-    showStatus('success', `Search ${created.search_id} accepted.`);
+    showStatus('success', t('success.search_accepted', { searchId: created.search_id }));
     if (created.search_id) pollSearch(created.search_id);
     loadHistory();
   });
 
+  applyStaticTranslations();
   updateDisplays();
   loadPreflight();
   loadHistory();
@@ -3215,10 +3421,18 @@ mod tests {
         assert!(html.contains("/api/train/stations/regions"));
         assert!(html.contains("/api/train/stations/suggest"));
         assert!(html.contains("/api/train/search"));
+        assert!(html.contains("const TRAIN_I18N = {"));
+        assert!(html.contains("data-i18n=\"search.title\""));
+        assert!(html.contains("data-i18n-placeholder=\"station.search_placeholder\""));
+        assert!(
+            html.contains(
+                "document.body?.dataset?.locale || document.documentElement?.lang || 'en'"
+            )
+        );
+        assert!(!html.contains("const normalizeLocale ="));
         assert!(html.contains("station-picker-modal"));
         assert!(html.contains("passenger-picker-modal"));
         assert!(!html.contains("/dashboard/settings/providers"));
-        assert!(html.contains("Payment"));
     }
 
     #[test]
