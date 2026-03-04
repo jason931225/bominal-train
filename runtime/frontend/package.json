@@ -4,10 +4,14 @@
   "version": "0.1.0",
   "scripts": {
     "build:charts": "mkdir -p ./dist && cp ./node_modules/lightweight-charts/dist/lightweight-charts.standalone.production.js ./dist/lightweight-charts.standalone.production.js",
-    "build:css": "npm run build:charts && BROWSERSLIST_IGNORE_OLD_DATA=1 tailwindcss -i ./styles/tailwind.css -o ./dist/tailwind.css --minify",
-    "watch:css": "npm run build:charts && BROWSERSLIST_IGNORE_OLD_DATA=1 tailwindcss -i ./styles/tailwind.css -o ./dist/tailwind.css --watch=always"
+    "build:css:tailwind": "BROWSERSLIST_IGNORE_OLD_DATA=1 tailwindcss -i ./styles/tailwind.css -o ./dist/tailwind.raw.css",
+    "build:css:lightning": "node ./scripts/optimize-css.mjs --input ./dist/tailwind.raw.css --output ./dist/tailwind.css --delete-input",
+    "build:css": "npm run build:charts && npm run build:css:tailwind && npm run build:css:lightning",
+    "watch:css": "npm run build:charts && BROWSERSLIST_IGNORE_OLD_DATA=1 tailwindcss -i ./styles/tailwind.css -o ./dist/tailwind.css --watch=always",
+    "check:css:budget": "node ./scripts/check-css-budget.mjs --file ./dist/tailwind.css --max-bytes 70000 --max-gzip-bytes 12000"
   },
   "devDependencies": {
+    "lightningcss": "^1.31.1",
     "lightweight-charts": "^4.2.3",
     "tailwindcss": "^3.4.17"
   }
