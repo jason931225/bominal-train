@@ -1,6 +1,7 @@
 # Frontend Static Assets
 
-All static files copied to `runtime/frontend/dist` are sourced from this directory.
+Static files copied to `runtime/frontend/dist` are sourced from this directory,
+except generated/vendor artifacts emitted by frontend build scripts.
 
 Structure:
 
@@ -14,6 +15,7 @@ Build sync:
 
 - `npm run build:assets` mirrors this tree into `dist/`.
 - `npm run build:css` and `npm run watch:css` run asset sync automatically.
+- `runtime/frontend/dist/` is generated output and is not committed to git.
 
 SVGZ generation:
 

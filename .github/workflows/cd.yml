@@ -45,18 +45,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
-      - name: Setup Node.js
-        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: runtime/frontend/package-lock.json
-
-      - name: Build frontend CSS bundle
-        run: |
-          npm ci --prefix runtime/frontend
-          npm --prefix runtime/frontend run build:css
-
       - name: Log in to GHCR
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:

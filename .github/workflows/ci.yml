@@ -39,6 +39,25 @@ jobs:
         run: |
           docker run --rm -v "$PWD":/repo -w /repo rhysd/actionlint:latest -color -oneline .github/workflows/*.yml
 
+  frontend-artifact-policy:
+    name: Frontend Artifact Policy
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs:
+      - workflow-lint
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Enforce generated-only frontend dist policy
+        run: |
+          tracked="$(git ls-files 'runtime/frontend/dist/**')"
+          if [ -n "${tracked}" ]; then
+            echo "::error::runtime/frontend/dist must be generated-only and untracked."
+            printf '%s\n' "${tracked}"
+            exit 1
+          fi
+
   script-quality:
     name: Script Quality
     runs-on: ubuntu-latest

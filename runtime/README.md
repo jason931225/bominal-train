@@ -47,6 +47,8 @@ npm --prefix frontend run check:css:budget
 
 `build:css` compiles Tailwind into `dist/tailwind.raw.css`, then runs Lightning CSS
 to emit the optimized `dist/tailwind.css` artifact served by the runtime API.
+`frontend/dist/` is generated-only and must not be committed.
+`runtime/Dockerfile.api` generates frontend assets during image build.
 
 ## Images
 

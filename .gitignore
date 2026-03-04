@@ -17,6 +17,7 @@ web/.next_corrupt_*/
 *.tsbuildinfo
 rust/target/
 runtime/target/
+runtime/frontend/dist/
 
 # Env
 .env

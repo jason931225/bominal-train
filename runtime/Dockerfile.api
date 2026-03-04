@@ -1,9 +1,17 @@
-FROM rust:1.93-bookworm AS builder
+FROM node:22-bookworm AS frontend-builder
+WORKDIR /app/frontend
+
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+
+COPY frontend ./
+RUN npm run build:css
+
+FROM rust:1.93-bookworm AS rust-builder
 WORKDIR /app
 
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
-COPY frontend ./frontend
 
 RUN cargo build --release -p bominal-api
 
@@ -13,8 +21,8 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY --from=builder /app/target/release/bominal-api /usr/local/bin/bominal-api
-COPY --from=builder /app/frontend/dist /app/frontend/dist
+COPY --from=rust-builder /app/target/release/bominal-api /usr/local/bin/bominal-api
+COPY --from=frontend-builder /app/frontend/dist /app/frontend/dist
 
 ENV APP_ENV=production \
   APP_HOST=0.0.0.0 \
