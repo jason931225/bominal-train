@@ -2052,18 +2052,26 @@ pub fn render_dashboard_train(email: &str) -> String {
     return unique.length ? `• ${unique.join(' • ')}` : '';
   };
 
+  const stationLocalizedName = (station) => {
+    if (activeLocale === 'ja' && station.station_name_ja_katakana) return String(station.station_name_ja_katakana);
+    if (activeLocale === 'en' && station.station_name_en) return String(station.station_name_en);
+    return String(station.station_name_ko || '');
+  };
+
   const stationLabel = (station) => {
-    if (activeLocale === 'ja' && station.station_name_ja_katakana) return station.station_name_ja_katakana;
-    if (activeLocale === 'en' && station.station_name_en) return station.station_name_en;
-    return station.station_name_ko;
+    const koName = String(station.station_name_ko || '').trim();
+    if (activeLocale === 'ko' || !koName) return koName;
+    const localized = stationLocalizedName(station).trim();
+    if (!localized || localized === koName) return koName;
+    return `${localized} (${koName})`;
   };
 
   const updateDisplays = () => {
     const depLabel = depSelection
-      ? `${stationLabel(depSelection)} (${depSelection.station_code})`
+      ? `${stationLabel(depSelection)} · ${depSelection.station_code}`
       : t('search.select_station');
     const arrLabel = arrSelection
-      ? `${stationLabel(arrSelection)} (${arrSelection.station_code})`
+      ? `${stationLabel(arrSelection)} · ${arrSelection.station_code}`
       : t('search.select_station');
     depStationDisplay.textContent = depLabel;
     arrStationDisplay.textContent = arrLabel;
@@ -2257,7 +2265,7 @@ pub fn render_dashboard_train(email: &str) -> String {
     }
     stationListNode.innerHTML = stations.map((station) => `
       <button type="button" class="summary-row w-full text-left" data-station-code="${escapeHtml(station.station_code)}">
-        <span>${escapeHtml(stationLabel(station))} (${escapeHtml(station.station_code)})</span>
+        <span>${escapeHtml(stationLabel(station))} · ${escapeHtml(station.station_code)}</span>
         <span class="text-xs txt-supporting">${escapeHtml(providerBullets(station))}</span>
       </button>
     `).join('');
