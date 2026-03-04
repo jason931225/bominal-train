@@ -86,15 +86,25 @@ pub fn render_auth_landing() -> String {
         <h1 class="sr-only" aria-label="Sign in securely"></h1>
         <div class="mt-3 flex justify-center">
           <div class="auth-hero-icon" role="img" aria-label="Secure account sign-in">
-            <svg class="auth-hero-icon-main" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M7 4.5H5.5A1.5 1.5 0 0 0 4 6v1.5"></path>
-              <path d="M17 4.5h1.5A1.5 1.5 0 0 1 20 6v1.5"></path>
-              <path d="M20 16.5V18a1.5 1.5 0 0 1-1.5 1.5H17"></path>
-              <path d="M7 19.5H5.5A1.5 1.5 0 0 1 4 18v-1.5"></path>
-              <path d="M12 8a4 4 0 0 0-4 4"></path>
-              <path d="M16 12a4 4 0 0 0-4-4"></path>
-              <path d="M8.75 12.25a3.25 3.25 0 1 0 6.5 0"></path>
-              <path d="M12 10.25v3.5"></path>
+            <svg class="auth-hero-icon-main" viewBox="0 0 48 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <g transform="translate(10 12)">
+                <path d="M-3.4 -1.6V-2.8H-2.2"></path>
+                <path d="M2.2 -2.8H3.4V-1.6"></path>
+                <path d="M3.4 1.6V2.8H2.2"></path>
+                <path d="M-2.2 2.8H-3.4V1.6"></path>
+              </g>
+              <g transform="translate(24 12)">
+                <g transform="scale(1.1)">
+                  <rect x="-2.6" y="-0.4" width="5.2" height="4.5" rx="1"></rect>
+                  <path d="M-1.4 -0.4v-1.4a1.4 1.4 0 1 1 2.8 0v1.4"></path>
+                </g>
+              </g>
+              <g transform="translate(38 12)">
+                <path d="M0 -3a3 3 0 0 0-3 3"></path>
+                <path d="M3 0a3 3 0 0 0-3-3"></path>
+                <path d="M-2.2 0.2a2.2 2.2 0 1 0 4.4 0"></path>
+                <path d="M0 -1.1v2.7"></path>
+              </g>
             </svg>
           </div>
         </div>
