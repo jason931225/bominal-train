@@ -33,12 +33,19 @@ pub(crate) struct ProviderJobResult {
     pub(crate) status: String,
 }
 
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub(crate) struct ProviderJobEvent {
     pub(crate) sequence: i64,
     pub(crate) event_type: String,
     pub(crate) occurred_at: chrono::DateTime<Utc>,
     pub(crate) detail: serde_json::Value,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub(crate) struct ProviderJobEventsPage {
+    pub(crate) items: Vec<ProviderJobEvent>,
+    pub(crate) has_more: bool,
+    pub(crate) next_after_id: Option<i64>,
 }
 
 #[derive(Debug)]
@@ -190,20 +197,33 @@ pub(crate) async fn get_provider_job(
     })
 }
 
-pub(crate) async fn list_provider_job_events(
+pub(crate) async fn list_provider_job_events_page(
     state: &AppState,
     job_id: &str,
-) -> Result<Vec<ProviderJobEvent>, ProviderJobsError> {
+    after_id: i64,
+    limit: usize,
+) -> Result<ProviderJobEventsPage, ProviderJobsError> {
     validate_job_id(job_id)?;
+    if after_id < 0 || limit == 0 {
+        return Err(ProviderJobsError::ValidationFailed);
+    }
 
     let Some(pool) = state.db_pool.as_ref() else {
         return Err(ProviderJobsError::PersistenceUnavailable);
     };
 
+    let limit_plus_one =
+        i64::try_from(limit.saturating_add(1)).map_err(|_| ProviderJobsError::ValidationFailed)?;
     let rows = sqlx::query_as::<_, (i64, String, DateTime<Utc>, String)>(
-        "select id, event_type, created_at, event_payload::text from runtime_job_events where job_id = $1 order by created_at asc, id asc",
+        "select id, event_type, created_at, event_payload::text
+         from runtime_job_events
+         where job_id = $1 and id > $2
+         order by id asc
+         limit $3",
     )
     .bind(job_id)
+    .bind(after_id)
+    .bind(limit_plus_one)
     .fetch_all(pool)
     .await
     .map_err(|err| {
@@ -215,23 +235,29 @@ pub(crate) async fn list_provider_job_events(
         return Err(ProviderJobsError::NotFound);
     }
 
-    let mut events = Vec::with_capacity(rows.len());
-    for row in rows {
+    let has_more = rows.len() > limit;
+    let mut items = Vec::with_capacity(rows.len().min(limit));
+    for row in rows.into_iter().take(limit) {
         let detail_raw = serde_json::from_str::<serde_json::Value>(&row.3).map_err(|err| {
             error!(error = %err, "failed to decode runtime job event payload");
             ProviderJobsError::PersistenceFailure
         })?;
         let detail = redact_json(&detail_raw, RedactionMode::Mask);
 
-        events.push(ProviderJobEvent {
+        items.push(ProviderJobEvent {
             sequence: row.0,
             event_type: row.1,
             occurred_at: row.2,
             detail,
         });
     }
+    let next_after_id = items.last().map(|item| item.sequence);
 
-    Ok(events)
+    Ok(ProviderJobEventsPage {
+        items,
+        has_more,
+        next_after_id,
+    })
 }
 
 fn canonical_provider(raw: &str) -> Option<&'static str> {

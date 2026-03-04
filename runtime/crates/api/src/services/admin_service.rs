@@ -17,6 +17,13 @@ pub(crate) enum AdminServiceError {
     Internal,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct RuntimeJobEventsPage {
+    pub(crate) items: Vec<RuntimeJobEventRecord>,
+    pub(crate) has_more: bool,
+    pub(crate) next_after_id: Option<i64>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub(crate) struct AdminUserRecord {
     pub(crate) user_id: String,
@@ -375,38 +382,69 @@ pub(crate) async fn get_runtime_job(
     })
 }
 
-pub(crate) async fn list_runtime_job_events(
+pub(crate) async fn ensure_runtime_job_exists(
     state: &AppState,
     job_id: &str,
-    since_id: Option<i64>,
-) -> Result<Vec<RuntimeJobEventRecord>, AdminServiceError> {
+) -> Result<(), AdminServiceError> {
     let _ = get_runtime_job(state, job_id).await?;
+    Ok(())
+}
+
+pub(crate) async fn list_runtime_job_events_page(
+    state: &AppState,
+    job_id: &str,
+    after_id: i64,
+    limit: usize,
+) -> Result<RuntimeJobEventsPage, AdminServiceError> {
+    if after_id < 0 {
+        return Err(AdminServiceError::InvalidRequest(
+            "invalid cursor token payload",
+        ));
+    }
+    if limit == 0 {
+        return Err(AdminServiceError::InvalidRequest(
+            "invalid limit query parameter",
+        ));
+    }
     let pool = state
         .db_pool
         .as_ref()
         .ok_or(AdminServiceError::ServiceUnavailable(
             "database unavailable",
         ))?;
+    let limit_plus_one = i64::try_from(limit.saturating_add(1))
+        .map_err(|_| AdminServiceError::InvalidRequest("invalid limit query parameter"))?;
     let rows = sqlx::query_as::<_, (i64, String, serde_json::Value, DateTime<Utc>)>(
         "select id, event_type, event_payload, created_at
          from runtime_job_events
          where job_id = $1 and id > $2
-         order by id asc",
+         order by id asc
+         limit $3",
     )
     .bind(job_id.trim())
-    .bind(since_id.unwrap_or(0))
+    .bind(after_id)
+    .bind(limit_plus_one)
     .fetch_all(pool)
     .await
     .map_err(|_| AdminServiceError::Internal)?;
-    Ok(rows
+    let has_more = rows.len() > limit;
+    let items = rows
         .into_iter()
+        .take(limit)
         .map(|row| RuntimeJobEventRecord {
             id: row.0,
             event_type: row.1,
             event_payload: row.2,
             created_at: row.3,
         })
-        .collect())
+        .collect::<Vec<_>>();
+    let next_after_id = items.last().map(|item| item.id);
+
+    Ok(RuntimeJobEventsPage {
+        items,
+        has_more,
+        next_after_id,
+    })
 }
 
 pub(crate) async fn retry_runtime_job(

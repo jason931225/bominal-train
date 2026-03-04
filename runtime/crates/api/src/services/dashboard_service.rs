@@ -30,6 +30,13 @@ pub(crate) struct RuntimeJobEventRecord {
     pub(crate) created_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct RuntimeJobEventsPage {
+    pub(crate) items: Vec<RuntimeJobEventRecord>,
+    pub(crate) has_more: bool,
+    pub(crate) next_after_id: Option<i64>,
+}
+
 #[derive(Debug)]
 pub(crate) enum DashboardServiceError {
     InvalidRequest(&'static str),
@@ -170,38 +177,68 @@ pub(crate) async fn get_dashboard_job(
     })
 }
 
-pub(crate) async fn list_dashboard_job_events(
+pub(crate) async fn ensure_dashboard_job_access(
     state: &AppState,
     user_id: &str,
     job_id: &str,
-    since_id: Option<i64>,
-) -> Result<Vec<RuntimeJobEventRecord>, DashboardServiceError> {
+) -> Result<(), DashboardServiceError> {
     let _ = get_dashboard_job(state, user_id, job_id).await?;
+    Ok(())
+}
+
+pub(crate) async fn list_dashboard_job_events_page(
+    state: &AppState,
+    job_id: &str,
+    after_id: i64,
+    limit: usize,
+) -> Result<RuntimeJobEventsPage, DashboardServiceError> {
+    if after_id < 0 {
+        return Err(DashboardServiceError::InvalidRequest(
+            "invalid cursor token payload",
+        ));
+    }
+    if limit == 0 {
+        return Err(DashboardServiceError::InvalidRequest(
+            "invalid limit query parameter",
+        ));
+    }
     let pool = state
         .db_pool
         .as_ref()
         .ok_or(DashboardServiceError::ServiceUnavailable(
             "database unavailable",
         ))?;
-    let start_id = since_id.unwrap_or(0);
+    let limit_plus_one = i64::try_from(limit.saturating_add(1))
+        .map_err(|_| DashboardServiceError::InvalidRequest("invalid limit query parameter"))?;
     let rows = sqlx::query_as::<_, (i64, String, serde_json::Value, DateTime<Utc>)>(
         "select id, event_type, event_payload, created_at
          from runtime_job_events
          where job_id = $1 and id > $2
-         order by id asc",
+         order by id asc
+         limit $3",
     )
     .bind(job_id.trim())
-    .bind(start_id)
+    .bind(after_id)
+    .bind(limit_plus_one)
     .fetch_all(pool)
     .await
     .map_err(|_| DashboardServiceError::Internal)?;
-    Ok(rows
+    let has_more = rows.len() > limit;
+    let items = rows
         .into_iter()
+        .take(limit)
         .map(|row| RuntimeJobEventRecord {
             id: row.0,
             event_type: row.1,
             event_payload: row.2,
             created_at: row.3,
         })
-        .collect())
+        .collect::<Vec<_>>();
+    let next_after_id = items.last().map(|item| item.id);
+
+    Ok(RuntimeJobEventsPage {
+        items,
+        has_more,
+        next_after_id,
+    })
 }

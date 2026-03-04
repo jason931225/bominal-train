@@ -467,6 +467,52 @@ async fn valid_internal_service_token_supports_ktx_payment_method_route() {
 }
 
 #[tokio::test]
+async fn provider_job_events_route_rejects_unknown_and_invalid_query_params() {
+    let app = build_test_app().await;
+    let service_token = build_valid_internal_service_token();
+
+    let since_id_request = match axum::http::Request::builder()
+        .method("GET")
+        .uri("/internal/v1/provider-jobs/job-1/events?since_id=10")
+        .header(INTERNAL_SERVICE_TOKEN_HEADER, service_token.clone())
+        .header("x-request-id", "provider-events-since-id")
+        .body(axum::body::Body::empty())
+    {
+        Ok(request) => request,
+        Err(err) => panic!("failed to build since_id request: {err}"),
+    };
+    let since_id_response = match app.clone().oneshot(since_id_request).await {
+        Ok(response) => response,
+        Err(err) => panic!("since_id request failed: {err}"),
+    };
+
+    assert_eq!(since_id_response.status(), StatusCode::BAD_REQUEST);
+    let since_id_body = response_json(since_id_response).await;
+    assert_envelope_fields(&since_id_body, "invalid_request");
+    assert_eq!(since_id_body["request_id"], "provider-events-since-id");
+
+    let limit_request = match axum::http::Request::builder()
+        .method("GET")
+        .uri("/internal/v1/provider-jobs/job-1/events?limit=abc")
+        .header(INTERNAL_SERVICE_TOKEN_HEADER, service_token)
+        .header("x-request-id", "provider-events-invalid-limit")
+        .body(axum::body::Body::empty())
+    {
+        Ok(request) => request,
+        Err(err) => panic!("failed to build invalid limit request: {err}"),
+    };
+    let limit_response = match app.oneshot(limit_request).await {
+        Ok(response) => response,
+        Err(err) => panic!("invalid limit request failed: {err}"),
+    };
+
+    assert_eq!(limit_response.status(), StatusCode::BAD_REQUEST);
+    let limit_body = response_json(limit_response).await;
+    assert_envelope_fields(&limit_body, "invalid_request");
+    assert_eq!(limit_body["request_id"], "provider-events-invalid-limit");
+}
+
+#[tokio::test]
 async fn compatibility_alias_route_is_disabled_without_internal_debug_mode() {
     let app = build_test_app().await;
     let service_token = build_valid_internal_service_token();

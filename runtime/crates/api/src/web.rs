@@ -545,21 +545,46 @@ pub fn render_dashboard_job_detail(email: &str, job_id: &str) -> String {
   const statusEl = document.getElementById('job-status');
   const eventsEl = document.getElementById('events');
   const refreshBtn = document.getElementById('manual-refresh');
-  let lastEventId = 0;
+  const EVENT_PAGE_LIMIT = 100;
+  const MAX_RENDERED_EVENTS = 200;
+  let eventsCursor = null;
   let fallbackInterval = null;
+
+  const encodeCursor = (afterId) => {{
+    try {{
+      const payload = JSON.stringify({{ v: 1, job_id: jobId, after_id: Number(afterId) }});
+      return btoa(payload).replace(/\\+/g, '-').replace(/\\//g, '_').replace(/=+$/g, '');
+    }} catch (_err) {{
+      return null;
+    }}
+  }};
+
+  const trimRenderedEvents = () => {{
+    while (eventsEl.children.length > MAX_RENDERED_EVENTS) {{
+      eventsEl.removeChild(eventsEl.lastElementChild);
+    }}
+  }};
 
   const renderEvents = (events) => {{
     if (!events.length && !eventsEl.innerHTML.trim()) {{
       eventsEl.innerHTML = '<div class="empty-card">No events yet.</div>';
       return;
     }}
+    if (events.length && eventsEl.querySelector('.empty-card')) {{
+      eventsEl.innerHTML = '';
+    }}
     events.forEach((event) => {{
-      lastEventId = Math.max(lastEventId, Number(event.id || 0));
+      const eventId = Number(event.id || 0);
+      if (eventId > 0) {{
+        const encoded = encodeCursor(eventId);
+        if (encoded) eventsCursor = encoded;
+      }}
       const node = document.createElement('div');
       node.className = 'summary-card';
       node.innerHTML = `<div class="summary-row"><span>${{event.event_type}}</span><span>${{event.id}}</span></div>`;
       eventsEl.prepend(node);
     }});
+    trimRenderedEvents();
   }};
 
   const loadJob = () => fetch(`/api/dashboard/jobs/${{jobId}}`, {{ headers: {{ Accept: 'application/json' }} }})
@@ -572,14 +597,43 @@ pub fn render_dashboard_job_detail(email: &str, job_id: &str) -> String {
       statusEl.textContent = data.status;
     }});
 
-  const pollEvents = () => fetch(`/api/dashboard/jobs/${{jobId}}/events?since_id=${{lastEventId}}`, {{ headers: {{ Accept: 'application/json' }} }})
-    .then((res) => res.json())
-    .then((data) => renderEvents(data.events || []))
-    .catch(() => {{}});
+  const fetchEventsPage = () => {{
+    const params = new URLSearchParams();
+    params.set('limit', String(EVENT_PAGE_LIMIT));
+    if (eventsCursor) {{
+      params.set('cursor', eventsCursor);
+    }}
+    return fetch(`/api/dashboard/jobs/${{jobId}}/events?${{params.toString()}}`, {{ headers: {{ Accept: 'application/json' }} }})
+      .then((res) => res.json().then((json) => [res.ok, json]))
+      .then(([ok, data]) => {{
+        if (!ok) throw new Error('failed to load events');
+        return data;
+      }});
+  }};
+
+  const applyEventPage = (data) => {{
+    renderEvents(Array.isArray(data.items) ? data.items : []);
+    const page = data.page || {{}};
+    if (typeof page.next_cursor === 'string' && page.next_cursor.trim()) {{
+      eventsCursor = page.next_cursor;
+    }}
+    return Boolean(page.has_more);
+  }};
+
+  const drainEvents = async () => {{
+    try {{
+      for (;;) {{
+        const page = await fetchEventsPage();
+        if (!applyEventPage(page)) break;
+      }}
+    }} catch (_err) {{}}
+  }};
 
   const startFallback = () => {{
     if (fallbackInterval) return;
-    fallbackInterval = setInterval(pollEvents, 10000);
+    fallbackInterval = setInterval(() => {{
+      void drainEvents();
+    }}, 10000);
   }};
 
   const startSse = () => {{
@@ -587,7 +641,12 @@ pub fn render_dashboard_job_detail(email: &str, job_id: &str) -> String {
       startFallback();
       return;
     }}
-    const source = new EventSource(`/api/dashboard/jobs/${{jobId}}/events/stream?since_id=${{lastEventId}}`);
+    const params = new URLSearchParams();
+    params.set('limit', String(EVENT_PAGE_LIMIT));
+    if (eventsCursor) {{
+      params.set('cursor', eventsCursor);
+    }}
+    const source = new EventSource(`/api/dashboard/jobs/${{jobId}}/events/stream?${{params.toString()}}`);
     source.addEventListener('job_event', (event) => {{
       try {{
         const payload = JSON.parse(event.data);
@@ -602,11 +661,11 @@ pub fn render_dashboard_job_detail(email: &str, job_id: &str) -> String {
 
   refreshBtn.addEventListener('click', () => {{
     loadJob();
-    pollEvents();
+    void drainEvents();
   }});
 
   loadJob();
-  pollEvents();
+  void drainEvents();
   startSse();
 }})();
 </script>"#

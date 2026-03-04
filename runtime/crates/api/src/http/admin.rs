@@ -4,7 +4,7 @@ use async_stream::stream;
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
-    http::{HeaderMap, StatusCode},
+    http::{HeaderMap, StatusCode, Uri},
     response::{
         IntoResponse,
         sse::{Event, KeepAlive, Sse},
@@ -18,6 +18,7 @@ use super::super::{
     AppState, request_id_from_headers,
     services::{admin_service, auth_service, metrics_service},
 };
+use super::runtime_event_cursor;
 
 #[derive(Debug, serde::Deserialize)]
 struct SensitiveMutationRequest {
@@ -44,11 +45,6 @@ struct UpdateKillSwitchRequest {
     enabled: bool,
     reason: String,
     confirm_target: String,
-}
-
-#[derive(Debug, serde::Deserialize)]
-struct EventsQuery {
-    since_id: Option<i64>,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -125,7 +121,8 @@ struct UpdateIncidentStatusRequest {
 
 #[derive(Debug, serde::Serialize)]
 struct RuntimeEventsResponse {
-    events: Vec<super::super::services::dashboard_service::RuntimeJobEventRecord>,
+    items: Vec<super::super::services::dashboard_service::RuntimeJobEventRecord>,
+    page: CursorPage,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -944,13 +941,49 @@ async fn get_runtime_job_events(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     Path(job_id): Path<String>,
-    Query(query): Query<EventsQuery>,
+    uri: Uri,
 ) -> impl IntoResponse {
     if let Err(response) = require_admin_read(state.as_ref(), &headers).await {
         return response;
     }
-    match admin_service::list_runtime_job_events(state.as_ref(), &job_id, query.since_id).await {
-        Ok(events) => (StatusCode::OK, Json(RuntimeEventsResponse { events })).into_response(),
+    let request = match runtime_event_cursor::parse_runtime_event_request(uri.query(), &job_id) {
+        Ok(value) => value,
+        Err(message) => {
+            return map_admin_error(
+                admin_service::AdminServiceError::InvalidRequest(message),
+                &headers,
+            )
+            .into_response();
+        }
+    };
+    if let Err(err) = admin_service::ensure_runtime_job_exists(state.as_ref(), &job_id).await {
+        return map_admin_error(err, &headers).into_response();
+    }
+    match admin_service::list_runtime_job_events_page(
+        state.as_ref(),
+        &job_id,
+        request.after_id,
+        request.limit,
+    )
+    .await
+    {
+        Ok(events_page) => {
+            let next_cursor = events_page.next_after_id.and_then(|after_id| {
+                runtime_event_cursor::encode_runtime_event_cursor(&job_id, after_id).ok()
+            });
+            (
+                StatusCode::OK,
+                Json(RuntimeEventsResponse {
+                    items: events_page.items,
+                    page: CursorPage {
+                        limit: request.limit,
+                        has_more: events_page.has_more,
+                        next_cursor,
+                    },
+                }),
+            )
+                .into_response()
+        }
         Err(err) => map_admin_error(err, &headers).into_response(),
     }
 }
@@ -1032,18 +1065,32 @@ async fn stream_runtime_job_events(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     Path(job_id): Path<String>,
-    Query(query): Query<EventsQuery>,
+    uri: Uri,
 ) -> impl IntoResponse {
     if let Err(response) = require_admin_read(state.as_ref(), &headers).await {
         return response;
     }
-    let mut since_id = query.since_id.unwrap_or(0);
+    let request = match runtime_event_cursor::parse_runtime_event_request(uri.query(), &job_id) {
+        Ok(value) => value,
+        Err(message) => {
+            return map_admin_error(
+                admin_service::AdminServiceError::InvalidRequest(message),
+                &headers,
+            )
+            .into_response();
+        }
+    };
+    if let Err(err) = admin_service::ensure_runtime_job_exists(state.as_ref(), &job_id).await {
+        return map_admin_error(err, &headers).into_response();
+    }
+    let mut after_id = request.after_id;
+    let limit = request.limit;
     let events = stream! {
         loop {
-            match admin_service::list_runtime_job_events(state.as_ref(), &job_id, Some(since_id)).await {
-                Ok(batch) => {
-                    for event in batch {
-                        since_id = event.id;
+            match admin_service::list_runtime_job_events_page(state.as_ref(), &job_id, after_id, limit).await {
+                Ok(page) => {
+                    for event in page.items {
+                        after_id = event.id;
                         let payload = serde_json::json!({
                             "id": event.id,
                             "event_type": event.event_type,
@@ -1052,10 +1099,12 @@ async fn stream_runtime_job_events(
                         });
                         yield Ok::<Event, Infallible>(
                             Event::default()
-                                .id(event.id.to_string())
                                 .event("job_event")
                                 .data(payload.to_string()),
                         );
+                    }
+                    if page.has_more {
+                        continue;
                     }
                 }
                 Err(_) => {

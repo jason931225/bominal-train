@@ -287,6 +287,61 @@ async fn runtime_jobs_stream_requires_admin_session_and_allows_read_roles() {
 }
 
 #[tokio::test]
+async fn admin_runtime_job_events_reject_unknown_or_invalid_query_params() {
+    let Some(redis_server) = RedisTestServer::start().await else {
+        eprintln!("redis-server not available; skipping admin query validation test");
+        return;
+    };
+
+    let app = build_test_app(&redis_server.url).await;
+    let session_id = "session-admin-events-query-validate";
+    write_session(
+        &redis_server.url,
+        session_id,
+        admin_session(AdminRole::Viewer, true),
+    )
+    .await;
+
+    let since_id_request = match Request::builder()
+        .uri("/api/admin/runtime/jobs/job-1/events?since_id=10")
+        .header(header::HOST, "ops.bominal.com")
+        .header(header::COOKIE, format!("bominal_session={session_id}"))
+        .header(header::ACCEPT, "application/json")
+        .body(axum::body::Body::empty())
+    {
+        Ok(request) => request,
+        Err(err) => panic!("failed to build since_id request: {err}"),
+    };
+    let since_id_response = match app.clone().oneshot(since_id_request).await {
+        Ok(response) => response,
+        Err(err) => panic!("since_id request failed: {err}"),
+    };
+    assert_eq!(since_id_response.status(), StatusCode::BAD_REQUEST);
+    let since_id_body = response_json(since_id_response).await;
+    assert_eq!(since_id_body["code"], "invalid_request");
+    assert!(since_id_body["request_id"].is_string());
+
+    let limit_request = match Request::builder()
+        .uri("/api/admin/runtime/jobs/job-1/events?limit=abc")
+        .header(header::HOST, "ops.bominal.com")
+        .header(header::COOKIE, format!("bominal_session={session_id}"))
+        .header(header::ACCEPT, "application/json")
+        .body(axum::body::Body::empty())
+    {
+        Ok(request) => request,
+        Err(err) => panic!("failed to build invalid limit request: {err}"),
+    };
+    let limit_response = match app.oneshot(limit_request).await {
+        Ok(response) => response,
+        Err(err) => panic!("invalid limit request failed: {err}"),
+    };
+    assert_eq!(limit_response.status(), StatusCode::BAD_REQUEST);
+    let limit_body = response_json(limit_response).await;
+    assert_eq!(limit_body["code"], "invalid_request");
+    assert!(limit_body["request_id"].is_string());
+}
+
+#[tokio::test]
 async fn admin_mutations_require_recent_step_up() {
     let Some(redis_server) = RedisTestServer::start().await else {
         eprintln!("redis-server not available; skipping admin step-up test");

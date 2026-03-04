@@ -36,6 +36,7 @@ mod internal_auth_invites;
 mod internal_provider_jobs;
 mod internal_providers;
 mod modules;
+mod runtime_event_cursor;
 mod runtime_queue;
 mod train;
 
