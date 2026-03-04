@@ -87,8 +87,11 @@ pub fn render_auth_landing() -> String {
         <div class="mt-3 flex justify-center">
           <div class="auth-hero-icon" role="img" aria-label="Secure account sign-in">
             <svg class="auth-hero-icon-main" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <rect x="6.5" y="10.25" width="11" height="9" rx="2.25"></rect>
-              <path d="M8.75 10.25V7.9a3.25 3.25 0 1 1 6.5 0v2.35"></path>
+              <path d="M12 3.25a7.25 7.25 0 0 0-7.25 7.25"></path>
+              <path d="M19.25 10.5A7.25 7.25 0 0 0 12 3.25"></path>
+              <path d="M5.5 10.5v.75a6.5 6.5 0 1 0 13 0v-.75"></path>
+              <path d="M8.25 10.5v.75a3.75 3.75 0 0 0 7.5 0v-.75"></path>
+              <path d="M12 8.25v3"></path>
             </svg>
           </div>
         </div>
