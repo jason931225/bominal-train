@@ -49,3 +49,6 @@ env/local/
 .vscode/
 .idea/
 .devtools-local/
+
+# Temporary local scratch artifact
+third_party/Untitled.rtf
