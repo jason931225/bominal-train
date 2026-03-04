@@ -29,6 +29,8 @@ fn test_config() -> AppConfig {
         user_app_host: "www.bominal.com".to_string(),
         admin_app_host: "ops.bominal.com".to_string(),
         ui_theme_cookie_name: "bominal_theme".to_string(),
+        station_catalog_json_path: "data/train/station_catalog.v1.json".to_string(),
+        station_catalog_source_mode: bominal_shared::config::StationCatalogSourceMode::RepoOnly,
         database_url: String::new(),
         redis: RedisConfig {
             url: String::new(),
@@ -126,7 +128,7 @@ async fn dashboard_train_page_requires_authenticated_session() {
 async fn dashboard_provider_security_page_requires_authenticated_session() {
     let app = build_test_app().await;
     let request = match Request::builder()
-        .uri("/dashboard/security/providers")
+        .uri("/dashboard/settings/providers")
         .body(axum::body::Body::empty())
     {
         Ok(request) => request,

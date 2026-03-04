@@ -14,6 +14,8 @@ argon2.workspace = true
 anyhow.workspace = true
 axum.workspace = true
 bominal-shared = { path = "../shared" }
+bominal-ui-patterns = { path = "../ui_patterns" }
+bominal-ui-primitives = { path = "../ui_primitives" }
 chrono.workspace = true
 leptos.workspace = true
 leptos_axum.workspace = true

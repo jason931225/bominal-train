@@ -37,6 +37,8 @@ fn test_config(
         user_app_host: "www.bominal.com".to_string(),
         admin_app_host: "ops.bominal.com".to_string(),
         ui_theme_cookie_name: "bominal_theme".to_string(),
+        station_catalog_json_path: "data/train/station_catalog.v1.json".to_string(),
+        station_catalog_source_mode: bominal_shared::config::StationCatalogSourceMode::RepoOnly,
         database_url: database_url.to_string(),
         redis: RedisConfig {
             url: redis_url.to_string(),
@@ -194,10 +196,126 @@ async fn auth_landing_keeps_email_password_fallback() {
     assert!(html.contains("toggle-email"));
     assert!(html.contains("email-continue"));
     assert!(html.contains("data-action-group=\"pair\""));
+    assert!(html.contains("id=\"auth-hero-passkey-icon\""));
+    assert!(html.contains("id=\"auth-hero-password-icon\""));
+    assert!(html.contains("const setHeroIcon = (mode) =>"));
+    assert!(html.contains("setHeroIcon('email')"));
+    assert!(html.contains("setHeroIcon('passkey')"));
 }
 
 #[tokio::test]
-async fn favicon_is_public_placeholder() {
+async fn ui_locale_endpoint_normalizes_regional_tags() {
+    let app = build_test_app(test_config(
+        "",
+        "",
+        "",
+        "",
+        PasskeyProvider::ServerWebauthn,
+        "localhost",
+        "http://localhost:8000",
+    ))
+    .await;
+
+    let test_cases = [("ja-JP", "ja"), ("ko-KR", "ko"), ("jp", "ja"), ("kr", "ko")];
+
+    for (raw_locale, expected_locale) in test_cases {
+        let request = match axum::http::Request::builder()
+            .method("POST")
+            .uri("/api/ui/locale")
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(axum::body::Body::from(format!(
+                r#"{{"locale":"{raw_locale}"}}"#
+            ))) {
+            Ok(request) => request,
+            Err(err) => panic!("failed to build request: {err}"),
+        };
+
+        let response = match app.clone().oneshot(request).await {
+            Ok(response) => response,
+            Err(err) => panic!("request failed: {err}"),
+        };
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let cookie_header = response
+            .headers()
+            .get(header::SET_COOKIE)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default()
+            .to_string();
+        assert!(
+            cookie_header.contains(&format!("bominal_locale={expected_locale}")),
+            "unexpected Set-Cookie value: {cookie_header}"
+        );
+
+        let body = match to_bytes(response.into_body(), usize::MAX).await {
+            Ok(body) => body,
+            Err(err) => panic!("failed to read response body: {err}"),
+        };
+        let response_text = match String::from_utf8(body.to_vec()) {
+            Ok(text) => text,
+            Err(err) => panic!("response body is not valid utf-8: {err}"),
+        };
+        assert!(
+            response_text.contains(&format!(r#""locale":"{expected_locale}""#)),
+            "unexpected response body: {response_text}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn auth_landing_normalizes_regional_accept_language_tags() {
+    let app = build_test_app(test_config(
+        "",
+        "",
+        "",
+        "",
+        PasskeyProvider::ServerWebauthn,
+        "localhost",
+        "http://localhost:8000",
+    ))
+    .await;
+
+    let test_cases = [("ja-JP,ja;q=0.9", "ja"), ("ko-KR,ko;q=0.9", "ko")];
+
+    for (accept_language, expected_locale) in test_cases {
+        let request = match axum::http::Request::builder()
+            .method("GET")
+            .uri("/")
+            .header(header::ACCEPT_LANGUAGE, accept_language)
+            .body(axum::body::Body::empty())
+        {
+            Ok(request) => request,
+            Err(err) => panic!("failed to build request: {err}"),
+        };
+
+        let response = match app.clone().oneshot(request).await {
+            Ok(response) => response,
+            Err(err) => panic!("request failed: {err}"),
+        };
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = match to_bytes(response.into_body(), usize::MAX).await {
+            Ok(body) => body,
+            Err(err) => panic!("failed to read response body: {err}"),
+        };
+        let html = match String::from_utf8(body.to_vec()) {
+            Ok(html) => html,
+            Err(err) => panic!("response body is not valid utf-8: {err}"),
+        };
+
+        assert!(
+            html.contains(&format!(r#"<html lang="{expected_locale}""#)),
+            "missing normalized html lang for {accept_language}: {html}"
+        );
+        assert!(
+            html.contains(&format!(r#"data-locale="{expected_locale}""#)),
+            "missing normalized locale data attribute for {accept_language}: {html}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn favicon_redirects_to_static_asset() {
     let app = build_test_app(test_config(
         "",
         "",
@@ -222,20 +340,11 @@ async fn favicon_is_public_placeholder() {
         Err(err) => panic!("request failed: {err}"),
     };
 
-    assert_eq!(response.status(), StatusCode::OK);
-    let content_type = response
+    assert_eq!(response.status(), StatusCode::PERMANENT_REDIRECT);
+    let location = response
         .headers()
-        .get(header::CONTENT_TYPE)
+        .get(header::LOCATION)
         .and_then(|value| value.to_str().ok())
         .unwrap_or_default();
-    assert!(content_type.contains("image/svg+xml"));
-    let body = match to_bytes(response.into_body(), usize::MAX).await {
-        Ok(body) => body,
-        Err(err) => panic!("failed to read response body: {err}"),
-    };
-    let body_text = match String::from_utf8(body.to_vec()) {
-        Ok(text) => text,
-        Err(err) => panic!("response body is not valid utf-8: {err}"),
-    };
-    assert!(body_text.contains("<svg"));
+    assert_eq!(location, "/assets/icons/brand/favicon.svg");
 }

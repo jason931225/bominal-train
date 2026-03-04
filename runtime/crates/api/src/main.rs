@@ -1,4 +1,5 @@
 pub(crate) mod http;
+mod i18n;
 pub(crate) mod services;
 mod web;
 
@@ -168,13 +169,7 @@ pub(crate) fn build_router(state: Arc<AppState>) -> Router {
 }
 
 async fn favicon_placeholder() -> impl IntoResponse {
-    (
-        [(
-            header::CONTENT_TYPE,
-            HeaderValue::from_static("image/svg+xml; charset=utf-8"),
-        )],
-        r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="b" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#635bff"/><stop offset="100%" stop-color="#38bdf8"/></linearGradient></defs><rect x="4" y="4" width="56" height="56" rx="16" fill="#f8faff"/><path d="M22 30h20v16a4 4 0 0 1-4 4H26a4 4 0 0 1-4-4V30z" fill="url(#b)"/><path d="M25 30v-4a7 7 0 1 1 14 0v4" fill="none" stroke="#1f2a44" stroke-width="4" stroke-linecap="round"/><circle cx="32" cy="38.5" r="2.6" fill="#f8faff"/></svg>"##,
-    )
+    Redirect::permanent("/assets/icons/brand/favicon.svg")
 }
 
 async fn ssr_auth_landing(
@@ -184,6 +179,7 @@ async fn ssr_auth_landing(
     let request_id = request_id_from_headers(&headers);
     let render_started_at = Instant::now();
     let theme_mode = theme_mode_from_headers(&state.config, &headers);
+    let locale = i18n::locale_from_headers(&headers);
     let body = web::render_auth_landing();
     info!(
         request_id = %request_id,
@@ -195,11 +191,34 @@ async fn ssr_auth_landing(
         "bominal | Authenticate",
         &body,
         &theme_mode,
+        locale,
     ))
 }
 
 async fn ssr_auth_alias() -> impl IntoResponse {
     Redirect::permanent("/")
+}
+
+async fn ssr_dev_ui(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> axum::response::Response {
+    if state.config.app_env.eq_ignore_ascii_case("production") {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+
+    let request_id = request_id_from_headers(&headers);
+    let render_started_at = Instant::now();
+    let theme_mode = theme_mode_from_headers(&state.config, &headers);
+    let locale = i18n::locale_from_headers(&headers);
+    let body = web::render_dev_ui();
+    info!(
+        request_id = %request_id,
+        route = "/dev/ui",
+        render_ms = render_started_at.elapsed().as_millis(),
+        "ssr render complete",
+    );
+    Html(render_document("bominal | UI", &body, &theme_mode, locale)).into_response()
 }
 
 async fn ssr_dashboard(
@@ -214,7 +233,14 @@ async fn ssr_dashboard(
         };
     let body = web::render_dashboard_overview(&session.email);
     let theme_mode = theme_mode_from_headers(&state.config, &headers);
-    Html(render_document("bominal | Dashboard", &body, &theme_mode)).into_response()
+    let locale = i18n::locale_from_headers(&headers);
+    Html(render_document(
+        "bominal | Dashboard",
+        &body,
+        &theme_mode,
+        locale,
+    ))
+    .into_response()
 }
 
 async fn ssr_dashboard_jobs(
@@ -229,7 +255,14 @@ async fn ssr_dashboard_jobs(
         };
     let body = web::render_dashboard_jobs(&session.email);
     let theme_mode = theme_mode_from_headers(&state.config, &headers);
-    Html(render_document("bominal | Jobs", &body, &theme_mode)).into_response()
+    let locale = i18n::locale_from_headers(&headers);
+    Html(render_document(
+        "bominal | Jobs",
+        &body,
+        &theme_mode,
+        locale,
+    ))
+    .into_response()
 }
 
 async fn ssr_dashboard_job_detail(
@@ -245,10 +278,17 @@ async fn ssr_dashboard_job_detail(
         };
     let body = web::render_dashboard_job_detail(&session.email, &job_id);
     let theme_mode = theme_mode_from_headers(&state.config, &headers);
-    Html(render_document("bominal | Job Detail", &body, &theme_mode)).into_response()
+    let locale = i18n::locale_from_headers(&headers);
+    Html(render_document(
+        "bominal | Job Detail",
+        &body,
+        &theme_mode,
+        locale,
+    ))
+    .into_response()
 }
 
-async fn ssr_dashboard_security(
+async fn ssr_dashboard_settings(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
 ) -> axum::response::Response {
@@ -258,9 +298,16 @@ async fn ssr_dashboard_security(
             Ok(value) => value,
             Err(err) => return map_auth_service_error(err, &request_id).into_response(),
         };
-    let body = web::render_dashboard_security(&session.email);
+    let body = web::render_dashboard_settings(&session.email);
     let theme_mode = theme_mode_from_headers(&state.config, &headers);
-    Html(render_document("bominal | Security", &body, &theme_mode)).into_response()
+    let locale = i18n::locale_from_headers(&headers);
+    Html(render_document(
+        "bominal | Settings",
+        &body,
+        &theme_mode,
+        locale,
+    ))
+    .into_response()
 }
 
 async fn ssr_dashboard_train(
@@ -275,10 +322,17 @@ async fn ssr_dashboard_train(
         };
     let body = web::render_dashboard_train(&session.email);
     let theme_mode = theme_mode_from_headers(&state.config, &headers);
-    Html(render_document("bominal | Train", &body, &theme_mode)).into_response()
+    let locale = i18n::locale_from_headers(&headers);
+    Html(render_document(
+        "bominal | Train",
+        &body,
+        &theme_mode,
+        locale,
+    ))
+    .into_response()
 }
 
-async fn ssr_dashboard_security_providers(
+async fn ssr_dashboard_settings_providers(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
 ) -> axum::response::Response {
@@ -288,12 +342,14 @@ async fn ssr_dashboard_security_providers(
             Ok(value) => value,
             Err(err) => return map_auth_service_error(err, &request_id).into_response(),
         };
-    let body = web::render_dashboard_security_providers(&session.email);
+    let body = web::render_dashboard_settings_providers(&session.email);
     let theme_mode = theme_mode_from_headers(&state.config, &headers);
+    let locale = i18n::locale_from_headers(&headers);
     Html(render_document(
-        "bominal | Provider Credentials",
+        "bominal | Settings · Provider",
         &body,
         &theme_mode,
+        locale,
     ))
     .into_response()
 }
@@ -310,7 +366,14 @@ async fn ssr_dashboard_payment(
         };
     let body = web::render_dashboard_payment(&session.email);
     let theme_mode = theme_mode_from_headers(&state.config, &headers);
-    Html(render_document("bominal | Payment", &body, &theme_mode)).into_response()
+    let locale = i18n::locale_from_headers(&headers);
+    Html(render_document(
+        "bominal | Settings · Payment",
+        &body,
+        &theme_mode,
+        locale,
+    ))
+    .into_response()
 }
 
 async fn ssr_admin_maintenance(
@@ -346,10 +409,12 @@ async fn ssr_admin_maintenance(
     );
 
     let theme_mode = theme_mode_from_headers(&state.config, &headers);
+    let locale = i18n::locale_from_headers(&headers);
     Html(render_document(
         "bominal | Admin Maintenance",
         &body,
         &theme_mode,
+        locale,
     ))
     .into_response()
 }
@@ -416,7 +481,8 @@ async fn ssr_admin_shell_page(
         };
     let theme_mode = theme_mode_from_headers(&state.config, &headers);
     let body = web::render_admin_section(&admin_user.email, section);
-    Html(render_document(title, &body, &theme_mode)).into_response()
+    let locale = i18n::locale_from_headers(&headers);
+    Html(render_document(title, &body, &theme_mode, locale)).into_response()
 }
 
 async fn admin_maintenance_metrics(
@@ -472,7 +538,7 @@ fn map_auth_service_error(
     }
 }
 
-fn render_document(title: &str, body: &str, theme_mode: &str) -> String {
+fn render_document(title: &str, body: &str, theme_mode: &str, locale: i18n::UiLocale) -> String {
     const THEME_TOGGLE_SCRIPT: &str = r#"
 <script>
 (() => {
@@ -544,8 +610,10 @@ fn render_document(title: &str, body: &str, theme_mode: &str) -> String {
 </script>
 "#;
 
+    let html_lang = locale.as_html_lang();
+    let locale_code = locale.as_cookie_value();
     format!(
-        "<!doctype html><html lang=\"en\" data-theme-mode=\"{theme_mode}\"><head><meta charset=\"utf-8\" /><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\" /><title>{title}</title><link rel=\"stylesheet\" href=\"/assets/tailwind.css\" /></head><body class=\"stripe theme\" data-theme-mode=\"{theme_mode}\">{body}{THEME_TOGGLE_SCRIPT}</body></html>"
+        "<!doctype html><html lang=\"{html_lang}\" data-theme-mode=\"{theme_mode}\" data-locale=\"{locale_code}\"><head><meta charset=\"utf-8\" /><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\" /><title>{title}</title><link rel=\"preconnect\" href=\"https://fonts.googleapis.com\" /><link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin /><link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;600;700&display=swap\" /><link rel=\"stylesheet\" href=\"/assets/tailwind.css\" /></head><body class=\"stripe theme\" data-theme-mode=\"{theme_mode}\" data-locale=\"{locale_code}\">{body}{THEME_TOGGLE_SCRIPT}</body></html>"
     )
 }
 

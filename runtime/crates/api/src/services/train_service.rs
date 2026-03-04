@@ -1,9 +1,11 @@
 use std::{
     collections::{HashMap, HashSet},
+    path::Path,
     sync::OnceLock,
 };
 
-use chrono::{DateTime, Duration, NaiveDate, Utc};
+use bominal_shared::station_catalog;
+use chrono::{DateTime, NaiveDate, Utc};
 use redis::AsyncCommands;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -14,9 +16,6 @@ use uuid::Uuid;
 
 use super::super::AppState;
 use super::{payment_method_service, provider_credentials_service, provider_jobs_service};
-
-const STATION_SOURCE_URL: &str = "https://app.srail.or.kr/js/stationInfo.js";
-const STATION_REFRESH_MAX_AGE_HOURS: i64 = 24;
 const STATION_CACHE_TTL_SECONDS: u64 = 300;
 
 #[derive(Debug)]
@@ -48,6 +47,8 @@ pub(crate) struct StationCatalogStatus {
     pub(crate) source_url: &'static str,
     pub(crate) counts: HashMap<String, i64>,
     pub(crate) last_refreshed_at: Option<DateTime<Utc>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) error: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -62,6 +63,7 @@ pub(crate) struct StationSuggestion {
     pub(crate) station_code: String,
     pub(crate) station_name_ko: String,
     pub(crate) station_name_en: Option<String>,
+    pub(crate) station_name_ja_katakana: String,
     pub(crate) line_code: i32,
     pub(crate) selected: bool,
     pub(crate) order_index: i32,
@@ -179,7 +181,36 @@ pub(crate) struct PutTrainPaymentMethodRequest {
     pub(crate) birth_or_business_ev: String,
     pub(crate) card_password_two_digits_ev: String,
     #[serde(default)]
+    pub(crate) card_last4: String,
+    #[serde(default)]
+    pub(crate) card_brand: Option<String>,
+    #[serde(default)]
     pub(crate) payment_method_ref: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct TrainPaymentMethodListResponse {
+    pub(crate) cards: Vec<TrainPaymentCardSummary>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct TrainPaymentCardSummary {
+    pub(crate) payment_method_ref: String,
+    pub(crate) card_last4: String,
+    pub(crate) card_brand: Option<String>,
+    pub(crate) updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct TrainPaymentMethodDeleteResponse {
+    pub(crate) deleted: bool,
+    pub(crate) payment_method_ref: String,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct TrainProviderCredentialsDeleteResponse {
+    pub(crate) deleted: bool,
+    pub(crate) provider: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -216,20 +247,7 @@ struct StationCatalogEntry {
     station_code: String,
     station_name_ko: String,
     station_name_en: Option<String>,
-    line_code: i32,
-    selected: bool,
-    remark: Option<String>,
-    order_index: i32,
-    normalized_name: String,
-    normalized_remark: Option<String>,
-}
-
-#[derive(Debug, Clone)]
-struct StationCatalogWriteRow {
-    provider: String,
-    station_code: String,
-    station_name_ko: String,
-    station_name_en: Option<String>,
+    station_name_ja_katakana: String,
     line_code: i32,
     selected: bool,
     remark: Option<String>,
@@ -249,7 +267,6 @@ pub(crate) async fn load_preflight(
     user_id: &str,
 ) -> Result<TrainPreflightResponse, TrainServiceError> {
     ensure_valid_user_id(user_id)?;
-    ensure_station_catalog_loaded(state).await?;
 
     let pool = require_pool(state)?;
     let providers = vec![
@@ -257,23 +274,84 @@ pub(crate) async fn load_preflight(
         provider_preflight(pool, "ktx", user_id).await?,
     ];
 
-    let counts_rows = sqlx::query("select provider, count(*)::bigint as count, max(updated_at) as refreshed_at from train_station_catalog group by provider")
-        .fetch_all(pool)
-        .await
-        .map_err(|_| TrainServiceError::Internal)?;
+    let station_catalog = load_station_catalog_status(state, pool).await;
+    Ok(TrainPreflightResponse {
+        providers,
+        station_catalog,
+    })
+}
+
+async fn load_station_catalog_status(state: &AppState, pool: &PgPool) -> StationCatalogStatus {
+    if let Err(err) = ensure_station_catalog_loaded(state).await {
+        let message = train_service_error_message(&err);
+        warn!(error = ?err, "station catalog preflight degraded");
+        return StationCatalogStatus {
+            loaded: false,
+            source_url: station_catalog::STATION_SOURCE_URL,
+            counts: HashMap::new(),
+            last_refreshed_at: None,
+            error: Some(message),
+        };
+    }
+
+    let counts_rows = match sqlx::query(
+        "select provider, count(*)::bigint as count, max(updated_at) as refreshed_at from train_station_catalog group by provider",
+    )
+    .fetch_all(pool)
+    .await
+    {
+        Ok(rows) => rows,
+        Err(err) => {
+            warn!(error = %err, "station catalog status query failed");
+            return StationCatalogStatus {
+                loaded: false,
+                source_url: station_catalog::STATION_SOURCE_URL,
+                counts: HashMap::new(),
+                last_refreshed_at: None,
+                error: Some("station catalog status query failed".to_string()),
+            };
+        }
+    };
 
     let mut counts = HashMap::new();
     let mut last_refreshed: Option<DateTime<Utc>> = None;
     for row in counts_rows {
-        let provider: String = row
-            .try_get("provider")
-            .map_err(|_| TrainServiceError::Internal)?;
-        let count: i64 = row
-            .try_get("count")
-            .map_err(|_| TrainServiceError::Internal)?;
-        let refreshed_at: Option<DateTime<Utc>> = row
-            .try_get("refreshed_at")
-            .map_err(|_| TrainServiceError::Internal)?;
+        let provider: String = match row.try_get("provider") {
+            Ok(value) => value,
+            Err(_) => {
+                return StationCatalogStatus {
+                    loaded: false,
+                    source_url: station_catalog::STATION_SOURCE_URL,
+                    counts: HashMap::new(),
+                    last_refreshed_at: None,
+                    error: Some("station catalog provider parse failed".to_string()),
+                };
+            }
+        };
+        let count: i64 = match row.try_get("count") {
+            Ok(value) => value,
+            Err(_) => {
+                return StationCatalogStatus {
+                    loaded: false,
+                    source_url: station_catalog::STATION_SOURCE_URL,
+                    counts: HashMap::new(),
+                    last_refreshed_at: None,
+                    error: Some("station catalog count parse failed".to_string()),
+                };
+            }
+        };
+        let refreshed_at: Option<DateTime<Utc>> = match row.try_get("refreshed_at") {
+            Ok(value) => value,
+            Err(_) => {
+                return StationCatalogStatus {
+                    loaded: false,
+                    source_url: station_catalog::STATION_SOURCE_URL,
+                    counts: HashMap::new(),
+                    last_refreshed_at: None,
+                    error: Some("station catalog refreshed_at parse failed".to_string()),
+                };
+            }
+        };
         counts.insert(provider, count);
         if let Some(value) = refreshed_at
             && last_refreshed.is_none_or(|existing| value > existing)
@@ -282,16 +360,23 @@ pub(crate) async fn load_preflight(
         }
     }
 
-    let loaded = counts.values().sum::<i64>() > 0;
-    Ok(TrainPreflightResponse {
-        providers,
-        station_catalog: StationCatalogStatus {
-            loaded,
-            source_url: STATION_SOURCE_URL,
-            counts,
-            last_refreshed_at: last_refreshed,
-        },
-    })
+    StationCatalogStatus {
+        loaded: counts.values().sum::<i64>() > 0,
+        source_url: station_catalog::STATION_SOURCE_URL,
+        counts,
+        last_refreshed_at: last_refreshed,
+        error: None,
+    }
+}
+
+fn train_service_error_message(error: &TrainServiceError) -> String {
+    match error {
+        TrainServiceError::InvalidRequest(message)
+        | TrainServiceError::Unauthorized(message)
+        | TrainServiceError::NotFound(message)
+        | TrainServiceError::ServiceUnavailable(message) => message.clone(),
+        TrainServiceError::Internal => "train service internal failure".to_string(),
+    }
 }
 
 pub(crate) async fn suggest_stations(
@@ -309,7 +394,7 @@ pub(crate) async fn suggest_stations(
 
     let limit = query.limit.unwrap_or(12).clamp(1, 30);
     let provider_scope = parse_provider_scope(query.provider.as_deref())?;
-    let query_norm = normalize_search_text(&query_raw);
+    let query_norm = station_catalog::normalize_search_text(&query_raw);
 
     let mut scored: Vec<(usize, StationCatalogEntry)> = Vec::new();
     for provider in provider_scope {
@@ -342,6 +427,7 @@ pub(crate) async fn suggest_stations(
             station_code: station.station_code,
             station_name_ko: station.station_name_ko,
             station_name_en: station.station_name_en,
+            station_name_ja_katakana: station.station_name_ja_katakana,
             line_code: station.line_code,
             selected: station.selected,
             order_index: station.order_index,
@@ -706,10 +792,41 @@ pub(crate) async fn put_provider_credentials_for_user(
     .map_err(map_provider_credentials_error)
 }
 
-pub(crate) async fn put_payment_method_for_user(
+pub(crate) async fn delete_provider_credentials_for_user(
     state: &AppState,
     user_id: &str,
     provider: &str,
+) -> Result<TrainProviderCredentialsDeleteResponse, TrainServiceError> {
+    ensure_valid_user_id(user_id)?;
+    let provider = normalize_train_provider(provider)?;
+    let pool = require_pool(state)?;
+    let result = sqlx::query(
+        "update provider_auth_secrets
+         set revoked_at = now(), updated_at = now()
+         where provider = $1 and subject_ref = $2 and credential_kind = 'login' and revoked_at is null",
+    )
+    .bind(provider)
+    .bind(user_id)
+    .execute(pool)
+    .await
+    .map_err(|_| TrainServiceError::Internal)?;
+
+    if result.rows_affected() == 0 {
+        return Err(TrainServiceError::InvalidRequest(
+            "provider credentials not found".to_string(),
+        ));
+    }
+
+    Ok(TrainProviderCredentialsDeleteResponse {
+        deleted: true,
+        provider: provider.to_string(),
+    })
+}
+
+pub(crate) async fn put_payment_method_for_user(
+    state: &AppState,
+    user_id: &str,
+    _provider: &str,
     payload: PutTrainPaymentMethodRequest,
 ) -> Result<payment_method_service::PutProviderPaymentMethodResult, TrainServiceError> {
     ensure_valid_user_id(user_id)?;
@@ -718,18 +835,30 @@ pub(crate) async fn put_payment_method_for_user(
         || payload.expiry_year_ev.trim().is_empty()
         || payload.birth_or_business_ev.trim().is_empty()
         || payload.card_password_two_digits_ev.trim().is_empty()
+        || payload.card_last4.trim().is_empty()
     {
         return Err(TrainServiceError::InvalidRequest(
             "all payment fields are required".to_string(),
         ));
     }
+    let card_last4 = payload.card_last4.trim();
+    if card_last4.len() != 4 || !card_last4.chars().all(|value| value.is_ascii_digit()) {
+        return Err(TrainServiceError::InvalidRequest(
+            "card_last4 must be exactly 4 digits".to_string(),
+        ));
+    }
+
+    let pool = require_pool(state)?;
+    enforce_active_card_limit(pool, user_id, payload.payment_method_ref.as_deref()).await?;
 
     payment_method_service::put_provider_payment_method(
         state,
-        provider,
+        payment_method_service::UNIVERSAL_PAYMENT_PROVIDER,
         payment_method_service::PutProviderPaymentMethodRequest {
             owner_ref: Some(user_id.to_string()),
             payment_method_ref: payload.payment_method_ref,
+            card_brand: payload.card_brand,
+            card_last4: payload.card_last4,
             pan_ciphertext: payload.pan_ev,
             expiry_month_ciphertext: payload.expiry_month_ev,
             expiry_year_ciphertext: payload.expiry_year_ev,
@@ -741,22 +870,113 @@ pub(crate) async fn put_payment_method_for_user(
     .map_err(map_payment_method_error)
 }
 
+pub(crate) async fn list_payment_methods_for_user(
+    state: &AppState,
+    user_id: &str,
+) -> Result<TrainPaymentMethodListResponse, TrainServiceError> {
+    ensure_valid_user_id(user_id)?;
+    let pool = require_pool(state)?;
+    let rows = sqlx::query(
+        "select payment_method_ref, card_last4, card_brand, updated_at
+         from (
+            select distinct on (payment_method_ref)
+                payment_method_ref, card_last4, card_brand, updated_at
+            from payment_method_secrets
+            where owner_ref = $1 and revoked_at is null
+            order by payment_method_ref, updated_at desc
+         ) latest
+         order by updated_at desc
+         limit 3",
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await
+    .map_err(|_| TrainServiceError::Internal)?;
+
+    let mut cards = Vec::with_capacity(rows.len());
+    for row in rows {
+        cards.push(TrainPaymentCardSummary {
+            payment_method_ref: row
+                .try_get("payment_method_ref")
+                .map_err(|_| TrainServiceError::Internal)?,
+            card_last4: row
+                .try_get::<Option<String>, _>("card_last4")
+                .map_err(|_| TrainServiceError::Internal)?
+                .unwrap_or_else(|| "0000".to_string()),
+            card_brand: row
+                .try_get("card_brand")
+                .map_err(|_| TrainServiceError::Internal)?,
+            updated_at: row
+                .try_get("updated_at")
+                .map_err(|_| TrainServiceError::Internal)?,
+        });
+    }
+
+    Ok(TrainPaymentMethodListResponse { cards })
+}
+
+pub(crate) async fn delete_payment_method_for_user(
+    state: &AppState,
+    user_id: &str,
+    payment_method_ref: &str,
+) -> Result<TrainPaymentMethodDeleteResponse, TrainServiceError> {
+    ensure_valid_user_id(user_id)?;
+    let payment_method_ref = payment_method_ref.trim();
+    if payment_method_ref.is_empty() {
+        return Err(TrainServiceError::InvalidRequest(
+            "payment_method_ref is required".to_string(),
+        ));
+    }
+
+    let pool = require_pool(state)?;
+    let result = sqlx::query(
+        "update payment_method_secrets
+         set revoked_at = now(), updated_at = now()
+         where owner_ref = $1 and payment_method_ref = $2 and revoked_at is null",
+    )
+    .bind(user_id)
+    .bind(payment_method_ref)
+    .execute(pool)
+    .await
+    .map_err(|_| TrainServiceError::Internal)?;
+
+    if result.rows_affected() == 0 {
+        return Err(TrainServiceError::InvalidRequest(
+            "payment method not found".to_string(),
+        ));
+    }
+
+    Ok(TrainPaymentMethodDeleteResponse {
+        deleted: true,
+        payment_method_ref: payment_method_ref.to_string(),
+    })
+}
+
 async fn ensure_station_catalog_loaded(state: &AppState) -> Result<(), TrainServiceError> {
     let pool = require_pool(state)?;
-    if station_catalog_is_fresh(pool).await? {
+    let snapshot_path =
+        resolve_station_catalog_snapshot_path(&state.config.station_catalog_json_path);
+    let (snapshot, snapshot_sha256) = station_catalog::load_snapshot_with_hash(&snapshot_path)
+        .map_err(|err| {
+            TrainServiceError::ServiceUnavailable(format!(
+                "station catalog snapshot load failed ({}): {}",
+                snapshot_path.display(),
+                err
+            ))
+        })?;
+    if snapshot.stations.is_empty() {
+        return Err(TrainServiceError::ServiceUnavailable(
+            "station catalog snapshot has no entries".to_string(),
+        ));
+    }
+
+    if station_catalog_snapshot_applied(pool, &snapshot_sha256).await? {
         return Ok(());
     }
 
     let _guard = station_refresh_lock().lock().await;
-    if station_catalog_is_fresh(pool).await? {
+    if station_catalog_snapshot_applied(pool, &snapshot_sha256).await? {
         return Ok(());
-    }
-
-    let fetched = fetch_station_source(state).await?;
-    if fetched.is_empty() {
-        return Err(TrainServiceError::ServiceUnavailable(
-            "station catalog source returned no entries".to_string(),
-        ));
     }
 
     let mut tx = pool
@@ -768,7 +988,7 @@ async fn ensure_station_catalog_loaded(state: &AppState) -> Result<(), TrainServ
         .await
         .map_err(|_| TrainServiceError::Internal)?;
 
-    for station in fetched {
+    for station in snapshot.stations {
         sqlx::query(
             "insert into train_station_catalog (provider, station_code, station_name_ko, station_name_en, line_code, order_index, selected, remark, normalized_name, normalized_remark, created_at, updated_at) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now(), now())",
         )
@@ -790,463 +1010,70 @@ async fn ensure_station_catalog_loaded(state: &AppState) -> Result<(), TrainServ
         })?;
     }
 
+    sqlx::query(
+        "insert into train_station_catalog_state (id, snapshot_sha256, snapshot_version, applied_at, updated_at) values (1, $1, $2, now(), now())
+        on conflict (id) do update set snapshot_sha256 = excluded.snapshot_sha256, snapshot_version = excluded.snapshot_version, applied_at = excluded.applied_at, updated_at = excluded.updated_at",
+    )
+    .bind(snapshot_sha256)
+    .bind(station_catalog::STATION_CATALOG_SCHEMA_VERSION)
+    .execute(&mut *tx)
+    .await
+    .map_err(|_| TrainServiceError::Internal)?;
+
     tx.commit().await.map_err(|_| TrainServiceError::Internal)?;
     invalidate_station_cache(state).await;
     Ok(())
 }
 
-async fn station_catalog_is_fresh(pool: &PgPool) -> Result<bool, TrainServiceError> {
+async fn station_catalog_snapshot_applied(
+    pool: &PgPool,
+    snapshot_sha256: &str,
+) -> Result<bool, TrainServiceError> {
     let row = sqlx::query(
-        "select count(*)::bigint as count, max(updated_at) as refreshed_at from train_station_catalog",
+        "select
+            (select count(*)::bigint from train_station_catalog) as station_count,
+            (select snapshot_sha256 from train_station_catalog_state where id = 1) as snapshot_sha256",
     )
     .fetch_one(pool)
     .await
     .map_err(|_| TrainServiceError::Internal)?;
 
-    let count: i64 = row
-        .try_get("count")
+    let station_count: i64 = row
+        .try_get("station_count")
         .map_err(|_| TrainServiceError::Internal)?;
-    if count == 0 {
+    if station_count == 0 {
         return Ok(false);
     }
 
-    let refreshed_at: Option<DateTime<Utc>> = row
-        .try_get("refreshed_at")
+    let applied_hash: Option<String> = row
+        .try_get("snapshot_sha256")
         .map_err(|_| TrainServiceError::Internal)?;
-    let Some(refreshed_at) = refreshed_at else {
-        return Ok(false);
-    };
-
-    Ok(refreshed_at >= Utc::now() - Duration::hours(STATION_REFRESH_MAX_AGE_HOURS))
+    Ok(matches!(applied_hash, Some(value) if value == snapshot_sha256))
 }
 
-async fn fetch_station_source(
-    state: &AppState,
-) -> Result<Vec<StationCatalogWriteRow>, TrainServiceError> {
-    let cache_buster = Utc::now().timestamp_millis();
-    let url = format!("{STATION_SOURCE_URL}?_={cache_buster}");
-
-    let response = state
-        .http_client
-        .get(url)
-        .header("referer", "https://app.srail.or.kr/")
-        .header("user-agent", "bominal-runtime/1.0")
-        .send()
-        .await
-        .map_err(|_| {
-            TrainServiceError::ServiceUnavailable("station source is unavailable".to_string())
-        })?;
-
-    if !response.status().is_success() {
-        return Err(TrainServiceError::ServiceUnavailable(format!(
-            "station source returned {}",
-            response.status()
-        )));
+fn resolve_station_catalog_snapshot_path(configured_path: &str) -> std::path::PathBuf {
+    let direct = Path::new(configured_path);
+    if direct.exists() {
+        return direct.to_path_buf();
     }
 
-    let body = response.text().await.map_err(|_| {
-        TrainServiceError::ServiceUnavailable("station source body could not be read".to_string())
-    })?;
-
-    parse_station_source(&body)
-}
-
-fn parse_station_source(source: &str) -> Result<Vec<StationCatalogWriteRow>, TrainServiceError> {
-    let stripped = strip_js_comments(source);
-    let station_list = extract_station_list_segment(&stripped)?;
-    let blocks = extract_object_blocks(station_list);
-    if blocks.is_empty() {
-        return Err(TrainServiceError::ServiceUnavailable(
-            "station source has no station blocks".to_string(),
-        ));
+    if direct.is_absolute() {
+        return direct.to_path_buf();
     }
 
-    let mut rows = Vec::new();
-    for block in blocks {
-        if let Some(parsed) = parse_station_object(block)? {
-            rows.extend(parsed);
+    let cwd = std::env::current_dir().unwrap_or_else(|_| Path::new(".").to_path_buf());
+    let candidates = [
+        cwd.join(direct),
+        cwd.join("..").join(direct),
+        cwd.join("runtime").join(direct),
+    ];
+    for candidate in candidates {
+        if candidate.exists() {
+            return candidate;
         }
     }
 
-    let mut dedupe = HashMap::new();
-    for row in rows {
-        dedupe.insert(format!("{}:{}", row.provider, row.station_code), row);
-    }
-
-    let mut values = dedupe.into_values().collect::<Vec<_>>();
-    values.sort_by(|left, right| {
-        left.provider
-            .cmp(&right.provider)
-            .then_with(|| left.order_index.cmp(&right.order_index))
-            .then_with(|| left.station_name_ko.cmp(&right.station_name_ko))
-    });
-    Ok(values)
-}
-
-fn strip_js_comments(input: &str) -> String {
-    let mut out = String::with_capacity(input.len());
-    let bytes = input.as_bytes();
-    let mut idx = 0;
-    let mut in_string = false;
-    let mut escaped = false;
-
-    while idx < bytes.len() {
-        let byte = bytes[idx];
-
-        if in_string {
-            out.push(char::from(byte));
-            if escaped {
-                escaped = false;
-            } else if byte == b'\\' {
-                escaped = true;
-            } else if byte == b'"' {
-                in_string = false;
-            }
-            idx += 1;
-            continue;
-        }
-
-        if byte == b'"' {
-            in_string = true;
-            out.push('"');
-            idx += 1;
-            continue;
-        }
-
-        if byte == b'/' && idx + 1 < bytes.len() {
-            let next = bytes[idx + 1];
-            if next == b'/' {
-                idx += 2;
-                while idx < bytes.len() && bytes[idx] != b'\n' {
-                    idx += 1;
-                }
-                continue;
-            }
-            if next == b'*' {
-                idx += 2;
-                while idx + 1 < bytes.len() {
-                    if bytes[idx] == b'*' && bytes[idx + 1] == b'/' {
-                        idx += 2;
-                        break;
-                    }
-                    idx += 1;
-                }
-                continue;
-            }
-        }
-
-        out.push(char::from(byte));
-        idx += 1;
-    }
-
-    out
-}
-
-fn extract_station_list_segment(source: &str) -> Result<&str, TrainServiceError> {
-    let marker = source.find("stationList").ok_or_else(|| {
-        TrainServiceError::ServiceUnavailable("stationList marker missing".to_string())
-    })?;
-    let slice = &source[marker..];
-    let start_relative = slice.find('[').ok_or_else(|| {
-        TrainServiceError::ServiceUnavailable("stationList array start missing".to_string())
-    })?;
-
-    let start = marker + start_relative;
-    let bytes = source.as_bytes();
-    let mut idx = start;
-    let mut depth = 0i32;
-    let mut in_string = false;
-    let mut escaped = false;
-
-    while idx < bytes.len() {
-        let byte = bytes[idx];
-
-        if in_string {
-            if escaped {
-                escaped = false;
-            } else if byte == b'\\' {
-                escaped = true;
-            } else if byte == b'"' {
-                in_string = false;
-            }
-            idx += 1;
-            continue;
-        }
-
-        if byte == b'"' {
-            in_string = true;
-            idx += 1;
-            continue;
-        }
-
-        if byte == b'[' {
-            depth += 1;
-        } else if byte == b']' {
-            depth -= 1;
-            if depth == 0 {
-                return Ok(&source[start + 1..idx]);
-            }
-        }
-
-        idx += 1;
-    }
-
-    Err(TrainServiceError::ServiceUnavailable(
-        "stationList array end missing".to_string(),
-    ))
-}
-
-fn extract_object_blocks(list_segment: &str) -> Vec<&str> {
-    let mut values = Vec::new();
-    let bytes = list_segment.as_bytes();
-    let mut idx = 0usize;
-
-    while idx < bytes.len() {
-        if bytes[idx] != b'{' {
-            idx += 1;
-            continue;
-        }
-
-        let start = idx;
-        let mut depth = 0i32;
-        let mut in_string = false;
-        let mut escaped = false;
-        while idx < bytes.len() {
-            let byte = bytes[idx];
-            if in_string {
-                if escaped {
-                    escaped = false;
-                } else if byte == b'\\' {
-                    escaped = true;
-                } else if byte == b'"' {
-                    in_string = false;
-                }
-                idx += 1;
-                continue;
-            }
-
-            if byte == b'"' {
-                in_string = true;
-                idx += 1;
-                continue;
-            }
-
-            if byte == b'{' {
-                depth += 1;
-            } else if byte == b'}' {
-                depth -= 1;
-                if depth == 0 {
-                    values.push(&list_segment[start + 1..idx]);
-                    idx += 1;
-                    break;
-                }
-            }
-
-            idx += 1;
-        }
-    }
-
-    values
-}
-
-fn parse_station_object(
-    object_body: &str,
-) -> Result<Option<Vec<StationCatalogWriteRow>>, TrainServiceError> {
-    let fields = parse_js_object_fields(object_body);
-
-    let gubun = match fields.get("gubun") {
-        Some(value) => value,
-        None => return Ok(None),
-    };
-
-    let station_code = fields
-        .get("stn_cd")
-        .map(|value| value.trim().to_ascii_uppercase())
-        .filter(|value| !value.is_empty())
-        .ok_or_else(|| {
-            TrainServiceError::ServiceUnavailable("station source missing stn_cd".to_string())
-        })?;
-
-    let station_name_ko = fields
-        .get("stn_nm")
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-        .ok_or_else(|| {
-            TrainServiceError::ServiceUnavailable("station source missing stn_nm".to_string())
-        })?;
-
-    let line_code = fields
-        .get("ln_cd")
-        .and_then(|value| value.parse::<i32>().ok())
-        .unwrap_or(0);
-
-    let selected = fields
-        .get("sel_yn")
-        .map(|value| {
-            let normalized = value.trim().to_ascii_lowercase();
-            matches!(normalized.as_str(), "1" | "y" | "yes" | "true")
-        })
-        .unwrap_or(false);
-
-    let remark = fields
-        .get("rmk")
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty());
-
-    let order_index = fields
-        .get("ordr")
-        .and_then(|value| value.parse::<i32>().ok())
-        .unwrap_or(0);
-
-    let providers = providers_from_gubun(gubun);
-    if providers.is_empty() {
-        return Ok(None);
-    }
-
-    let mut rows = Vec::new();
-    for provider in providers {
-        let station_name_en = station_name_alias(&station_name_ko).map(ToOwned::to_owned);
-        rows.push(StationCatalogWriteRow {
-            provider: provider.to_string(),
-            station_code: station_code.clone(),
-            station_name_ko: station_name_ko.clone(),
-            station_name_en,
-            line_code,
-            selected,
-            remark: remark.clone(),
-            order_index,
-            normalized_name: normalize_search_text(&station_name_ko),
-            normalized_remark: remark.as_ref().map(|value| normalize_search_text(value)),
-        });
-    }
-
-    Ok(Some(rows))
-}
-
-fn parse_js_object_fields(input: &str) -> HashMap<String, String> {
-    let bytes = input.as_bytes();
-    let mut idx = 0usize;
-    let mut out = HashMap::new();
-
-    while idx < bytes.len() {
-        while idx < bytes.len() && (bytes[idx].is_ascii_whitespace() || bytes[idx] == b',') {
-            idx += 1;
-        }
-        if idx >= bytes.len() {
-            break;
-        }
-
-        let key_start = idx;
-        while idx < bytes.len() && (bytes[idx].is_ascii_alphanumeric() || bytes[idx] == b'_') {
-            idx += 1;
-        }
-        if idx == key_start {
-            idx += 1;
-            continue;
-        }
-        let key = String::from_utf8_lossy(&bytes[key_start..idx]).to_string();
-
-        while idx < bytes.len() && bytes[idx].is_ascii_whitespace() {
-            idx += 1;
-        }
-        if idx >= bytes.len() || bytes[idx] != b':' {
-            continue;
-        }
-        idx += 1;
-        while idx < bytes.len() && bytes[idx].is_ascii_whitespace() {
-            idx += 1;
-        }
-        if idx >= bytes.len() {
-            break;
-        }
-
-        let value = if bytes[idx] == b'"' {
-            idx += 1;
-            let mut raw = String::new();
-            let mut escaped = false;
-            while idx < bytes.len() {
-                let byte = bytes[idx];
-                idx += 1;
-                if escaped {
-                    raw.push(char::from(byte));
-                    escaped = false;
-                    continue;
-                }
-                if byte == b'\\' {
-                    escaped = true;
-                    continue;
-                }
-                if byte == b'"' {
-                    break;
-                }
-                raw.push(char::from(byte));
-            }
-            raw
-        } else {
-            let start = idx;
-            while idx < bytes.len() && bytes[idx] != b',' {
-                idx += 1;
-            }
-            String::from_utf8_lossy(&bytes[start..idx])
-                .trim()
-                .to_string()
-        };
-
-        out.insert(key, value);
-    }
-
-    out
-}
-
-fn providers_from_gubun(gubun: &str) -> Vec<&'static str> {
-    let normalized = gubun.trim().to_ascii_lowercase();
-    let mut values = Vec::new();
-    if normalized.contains("srt") {
-        values.push("srt");
-    }
-    if normalized.contains("korail") {
-        values.push("ktx");
-    }
-    values
-}
-
-fn station_name_alias(name_ko: &str) -> Option<&'static str> {
-    match name_ko {
-        "수서" => Some("suseo"),
-        "동탄" => Some("dongtan"),
-        "평택지제" => Some("pyeongtaekjije"),
-        "서울" => Some("seoul"),
-        "광명" => Some("gwangmyeong"),
-        "천안아산" => Some("cheonanasan"),
-        "오송" => Some("osong"),
-        "대전" => Some("daejeon"),
-        "동대구" => Some("dongdaegu"),
-        "경주" => Some("gyeongju"),
-        "울산(통도사)" => Some("ulsan"),
-        "부산" => Some("busan"),
-        "공주" => Some("gongju"),
-        "익산" => Some("iksan"),
-        "정읍" => Some("jeongeup"),
-        "광주송정" => Some("gwangjusongjeong"),
-        "나주" => Some("naju"),
-        "목포" => Some("mokpo"),
-        "전주" => Some("jeonju"),
-        "남원" => Some("namwon"),
-        "곡성" => Some("gokseong"),
-        "구례구" => Some("guryegu"),
-        "순천" => Some("suncheon"),
-        "여천" => Some("yeocheon"),
-        "여수EXPO" => Some("yeosuexpo"),
-        "밀양" => Some("miryang"),
-        "진영" => Some("jinyeong"),
-        "창원중앙" => Some("changwonjungang"),
-        "창원" => Some("changwon"),
-        "마산" => Some("masan"),
-        "진주" => Some("jinju"),
-        "포항" => Some("pohang"),
-        "대구" => Some("daegu"),
-        _ => None,
-    }
+    direct.to_path_buf()
 }
 
 fn station_match_score(
@@ -1265,7 +1092,7 @@ fn station_match_score(
     let en_norm = station
         .station_name_en
         .as_deref()
-        .map(normalize_search_text)
+        .map(station_catalog::normalize_search_text)
         .unwrap_or_default();
 
     let mut score: Option<usize> = None;
@@ -1345,21 +1172,6 @@ fn levenshtein(left: &str, right: &str) -> usize {
     previous[right_chars.len()]
 }
 
-fn normalize_search_text(input: &str) -> String {
-    let mut out = String::with_capacity(input.len());
-    for ch in input.chars() {
-        if ch.is_ascii_alphanumeric() {
-            out.push(ch.to_ascii_lowercase());
-            continue;
-        }
-
-        if ('\u{ac00}'..='\u{d7a3}').contains(&ch) || ('\u{3131}'..='\u{318e}').contains(&ch) {
-            out.push(ch);
-        }
-    }
-    out
-}
-
 async fn load_station_catalog_for_provider(
     state: &AppState,
     provider: &str,
@@ -1378,7 +1190,7 @@ async fn load_station_catalog_for_provider(
 
     let pool = require_pool(state)?;
     let rows = sqlx::query(
-        "select provider, station_code, station_name_ko, station_name_en, line_code, selected, remark, order_index, normalized_name, normalized_remark from train_station_catalog where provider = $1 order by selected desc, order_index asc, station_name_ko asc",
+        "select provider, station_code, station_name_ko, station_name_en, coalesce(nullif(line_code::text, ''), '0')::int as line_code, selected, remark, order_index, normalized_name, normalized_remark from train_station_catalog where provider = $1 order by selected desc, order_index asc, station_name_ko asc",
     )
     .bind(provider)
     .fetch_all(pool)
@@ -1387,6 +1199,17 @@ async fn load_station_catalog_for_provider(
 
     let mut stations = Vec::with_capacity(rows.len());
     for row in rows {
+        let station_name_ko: String = row
+            .try_get("station_name_ko")
+            .map_err(|_| TrainServiceError::Internal)?;
+        let station_name_en: Option<String> = row
+            .try_get("station_name_en")
+            .map_err(|_| TrainServiceError::Internal)?;
+        let station_name_ja_katakana = station_catalog::derive_station_name_ja_katakana(
+            &station_name_ko,
+            station_name_en.as_deref(),
+        );
+
         stations.push(StationCatalogEntry {
             provider: row
                 .try_get("provider")
@@ -1394,12 +1217,9 @@ async fn load_station_catalog_for_provider(
             station_code: row
                 .try_get("station_code")
                 .map_err(|_| TrainServiceError::Internal)?,
-            station_name_ko: row
-                .try_get("station_name_ko")
-                .map_err(|_| TrainServiceError::Internal)?,
-            station_name_en: row
-                .try_get("station_name_en")
-                .map_err(|_| TrainServiceError::Internal)?,
+            station_name_ko,
+            station_name_en,
+            station_name_ja_katakana,
             line_code: row
                 .try_get("line_code")
                 .map_err(|_| TrainServiceError::Internal)?,
@@ -1460,6 +1280,16 @@ fn parse_provider_scope(raw: Option<&str>) -> Result<Vec<&'static str>, TrainSer
         Some(value) if value == "ktx" => Ok(vec!["ktx"]),
         Some(_) => Err(TrainServiceError::InvalidRequest(
             "provider must be one of: srt, ktx, all".to_string(),
+        )),
+    }
+}
+
+fn normalize_train_provider(raw: &str) -> Result<&'static str, TrainServiceError> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "srt" => Ok("srt"),
+        "ktx" => Ok("ktx"),
+        _ => Err(TrainServiceError::InvalidRequest(
+            "provider must be one of: srt, ktx".to_string(),
         )),
     }
 }
@@ -1558,14 +1388,21 @@ async fn credentials_ready(
     provider: &str,
     user_id: &str,
 ) -> Result<bool, TrainServiceError> {
-    let exists = sqlx::query_scalar::<_, i64>(
+    let exists = sqlx::query_scalar::<_, i32>(
         "select 1 from provider_auth_secrets where provider = $1 and subject_ref = $2 and credential_kind = 'login' and revoked_at is null limit 1",
     )
     .bind(provider)
     .bind(user_id)
     .fetch_optional(pool)
     .await
-    .map_err(|_| TrainServiceError::Internal)?
+    .map_err(|err| {
+        error!(
+            error = %err,
+            provider = %provider,
+            "train preflight credentials_ready query failed"
+        );
+        TrainServiceError::Internal
+    })?
     .is_some();
 
     Ok(exists)
@@ -1573,19 +1410,66 @@ async fn credentials_ready(
 
 async fn latest_payment_method_ref(
     pool: &PgPool,
-    provider: &str,
+    _provider: &str,
     user_id: &str,
 ) -> Result<Option<String>, TrainServiceError> {
     let value = sqlx::query_scalar::<_, String>(
-        "select payment_method_ref from payment_method_secrets where provider = $1 and owner_ref = $2 and revoked_at is null order by updated_at desc limit 1",
+        "select payment_method_ref from payment_method_secrets where owner_ref = $1 and revoked_at is null order by updated_at desc limit 1",
     )
-    .bind(provider)
     .bind(user_id)
     .fetch_optional(pool)
     .await
-    .map_err(|_| TrainServiceError::Internal)?;
+    .map_err(|err| {
+        error!(
+            error = %err,
+            "train preflight payment_method_ref query failed"
+        );
+        TrainServiceError::Internal
+    })?;
 
     Ok(value)
+}
+
+async fn enforce_active_card_limit(
+    pool: &PgPool,
+    user_id: &str,
+    payment_method_ref: Option<&str>,
+) -> Result<(), TrainServiceError> {
+    let provided_ref = payment_method_ref
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    if let Some(value) = provided_ref {
+        let exists = sqlx::query_scalar::<_, i32>(
+            "select 1 from payment_method_secrets where owner_ref = $1 and payment_method_ref = $2 and revoked_at is null limit 1",
+        )
+        .bind(user_id)
+        .bind(value)
+        .fetch_optional(pool)
+        .await
+        .map_err(|_| TrainServiceError::Internal)?
+        .is_some();
+        if exists {
+            return Ok(());
+        }
+    }
+
+    let active_count = sqlx::query_scalar::<_, i64>(
+        "select count(distinct payment_method_ref)::bigint
+         from payment_method_secrets
+         where owner_ref = $1 and revoked_at is null",
+    )
+    .bind(user_id)
+    .fetch_one(pool)
+    .await
+    .map_err(|_| TrainServiceError::Internal)?;
+
+    if active_count >= 3 {
+        return Err(TrainServiceError::InvalidRequest(
+            "a maximum of 3 saved cards is allowed".to_string(),
+        ));
+    }
+
+    Ok(())
 }
 
 async fn resolve_ready_providers(
@@ -1919,44 +1803,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parse_station_source_extracts_srt_and_ktx_entries() {
-        let raw = r#"
-            var stationList = [
-                { gubun:"SRT", ln_cd:0, stn_cd:"0551", stn_nm:"수서", sel_yn:"1", rmk:"ㅅ", ordr:-1 },
-                { gubun:"korail", ln_cd:1, stn_cd:"0010", stn_nm:"대전", sel_yn:"0", rmk:"ㄷ", ordr:2 }
-            ];
-        "#;
-
-        let parsed = parse_station_source(raw).unwrap_or_else(|error| {
-            panic!("parse failed: {error:?}");
-        });
-
-        assert_eq!(parsed.len(), 2);
-        assert!(
-            parsed
-                .iter()
-                .any(|row| row.provider == "srt" && row.station_code == "0551")
-        );
-        assert!(
-            parsed
-                .iter()
-                .any(|row| row.provider == "ktx" && row.station_code == "0010")
-        );
-    }
-
-    #[test]
-    fn normalize_search_text_keeps_hangul_and_ascii() {
-        let normalized = normalize_search_text("  수서 Station-01 ");
-        assert_eq!(normalized, "수서station01");
-    }
-
-    #[test]
     fn station_match_score_prefers_exact_code_match() {
         let station = StationCatalogEntry {
             provider: "srt".to_string(),
             station_code: "0551".to_string(),
             station_name_ko: "수서".to_string(),
             station_name_en: Some("suseo".to_string()),
+            station_name_ja_katakana: "スソ".to_string(),
             line_code: 0,
             selected: true,
             remark: Some("ㅅ".to_string()),

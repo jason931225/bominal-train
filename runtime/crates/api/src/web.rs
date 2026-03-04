@@ -1,69 +1,39 @@
+use bominal_ui_patterns::{
+    AdminSection, DashboardSection, SettingsTab, render_admin_bottom_nav, render_admin_sidebar,
+    render_app_topbar, render_dashboard_bottom_nav, render_dashboard_sidebar,
+    render_dev_ui_showcase, render_settings_tabs,
+};
+use bominal_ui_primitives::html_escape as primitive_html_escape;
+
 fn html_escape(value: &str) -> String {
-    value
-        .replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-        .replace('\'', "&#39;")
+    primitive_html_escape(value)
 }
 
 fn app_shell_topbar(title: &str, subtitle: &str) -> String {
-    format!(
-        r#"<header class="mx-auto w-full max-w-[480px] px-4 pt-4 md:max-w-7xl md:px-6">
-  <div class="glass-card rounded-[20px] p-4">
-    <div class="flex items-start justify-between gap-3">
-      <div>
-        <p class="eyebrow">bominal</p>
-        <h1 class="mt-1 text-xl font-semibold txt-strong">{title}</h1>
-      </div>
-      <button
-        type="button"
-        class="theme-mini-switch theme-inline-switch"
-        data-theme-toggle
-        data-theme-toggle-compact
-        aria-label="Theme toggle"
-      >
-        <svg class="theme-mini-icon theme-mini-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <circle cx="12" cy="12" r="4"></circle>
-          <line x1="12" y1="2" x2="12" y2="4.5"></line>
-          <line x1="12" y1="19.5" x2="12" y2="22"></line>
-          <line x1="4.9" y1="4.9" x2="6.7" y2="6.7"></line>
-          <line x1="17.3" y1="17.3" x2="19.1" y2="19.1"></line>
-          <line x1="2" y1="12" x2="4.5" y2="12"></line>
-          <line x1="19.5" y1="12" x2="22" y2="12"></line>
-          <line x1="4.9" y1="19.1" x2="6.7" y2="17.3"></line>
-          <line x1="17.3" y1="6.7" x2="19.1" y2="4.9"></line>
-        </svg>
-        <svg class="theme-mini-icon theme-mini-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.8 6.8 0 0 0 9.8 9.8z"></path>
-        </svg>
-        <span class="theme-mini-thumb" aria-hidden="true"></span>
-      </button>
-    </div>
-    <p class="mt-1 text-sm txt-supporting">{subtitle}</p>
-  </div>
-</header>"#
-    )
+    render_app_topbar(title, subtitle)
 }
 
 fn dashboard_desktop_sidebar(active: &str) -> String {
-    format!(
-        r#"<aside class="hidden md:sticky md:top-6 md:block md:self-start">
-  <div class="glass-card rounded-[22px] p-3">
-    <p class="eyebrow px-3 pt-1">navigation</p>
-    <nav class="mt-2 space-y-1">
-      <a href="/dashboard" class="desktop-side-link {}">Overview</a>
-      <a href="/dashboard/train" class="desktop-side-link {}">Train</a>
-      <a href="/dashboard/jobs" class="desktop-side-link {}">Jobs</a>
-      <a href="/dashboard/security" class="desktop-side-link {}">Security</a>
-    </nav>
-  </div>
-</aside>"#,
-        if active == "home" { "active" } else { "" },
-        if active == "train" { "active" } else { "" },
-        if active == "jobs" { "active" } else { "" },
-        if active == "security" { "active" } else { "" },
-    )
+    let section = match active {
+        "train" => DashboardSection::Train,
+        "jobs" => DashboardSection::Jobs,
+        "security" | "settings" => DashboardSection::Settings,
+        _ => DashboardSection::Home,
+    };
+    render_dashboard_sidebar(section)
+}
+
+fn dashboard_settings_tabs(active: &str) -> String {
+    let tab = match active {
+        "provider" => SettingsTab::Providers,
+        "payment" => SettingsTab::Payment,
+        _ => SettingsTab::Account,
+    };
+    render_settings_tabs(tab)
+}
+
+pub fn render_dev_ui() -> String {
+    render_dev_ui_showcase()
 }
 
 pub fn render_auth_landing() -> String {
@@ -92,30 +62,6 @@ pub fn render_auth_landing() -> String {
               <g transform="translate(2.4 2.4) scale(0.8)">
                 <path d="M7.5,3 C7.77614237,3 8,3.22385763 8,3.5 C8,3.77614237 7.77614237,4 7.5,4 L5.5,4 C4.67157288,4 4,4.67157288 4,5.5 L4,7.53112887 C4,7.80727125 3.77614237,8.03112887 3.5,8.03112887 C3.22385763,8.03112887 3,7.80727125 3,7.53112887 L3,5.5 C3,4.11928813 4.11928813,3 5.5,3 L7.5,3 Z M16.5,4 C16.2238576,4 16,3.77614237 16,3.5 C16,3.22385763 16.2238576,3 16.5,3 L18.5,3 C19.8807119,3 21,4.11928813 21,5.5 L21,7.5 C21,7.77614237 20.7761424,8 20.5,8 C20.2238576,8 20,7.77614237 20,7.5 L20,5.5 C20,4.67157288 19.3284271,4 18.5,4 L16.5,4 Z M20,16.5 C20,16.2238576 20.2238576,16 20.5,16 C20.7761424,16 21,16.2238576 21,16.5 L21,18.5 C21,19.8807119 19.8807119,21 18.5,21 L16.5,21 C16.2238576,21 16,20.7761424 16,20.5 C16,20.2238576 16.2238576,20 16.5,20 L18.5,20 C19.3284271,20 20,19.3284271 20,18.5 L20,16.5 Z M3,16.5 C3,16.2238576 3.22385763,16 3.5,16 C3.77614237,16 4,16.2238576 4,16.5 L4,18.5 C4,19.3284271 4.67157288,20 5.5,20 L7.5,20 C7.77614237,20 8,20.2238576 8,20.5 C8,20.7761424 7.77614237,21 7.5,21 L5.5,21 C4.11928813,21 3,19.8807119 3,18.5 L3,16.5 Z M8,8.5 C8,8.22385763 8.22385763,8 8.5,8 C8.77614237,8 9,8.22385763 9,8.5 L9,9.5 C9,9.77614237 8.77614237,10 8.5,10 C8.22385763,10 8,9.77614237 8,9.5 L8,8.5 Z M16,8.5 C16,8.22385763 16.2238576,8 16.5,8 C16.7761424,8 17,8.22385763 17,8.5 L17,9.5 C17,9.77614237 16.7761424,10 16.5,10 C16.2238576,10 16,9.77614237 16,9.5 L16,8.5 Z M12,8.5 C12,8.22385763 12.2238576,8 12.5,8 C12.7761424,8 13,8.22385763 13,8.5 L13,12.5 C13,13.3284271 12.3284271,14 11.5,14 C11.2238576,14 11,13.7761424 11,13.5 C11,13.2238576 11.2238576,13 11.5,13 C11.7761424,13 12,12.7761424 12,12.5 L12,8.5 Z M8.1,15.8 C7.93431458,15.5790861 7.9790861,15.2656854 8.2,15.1 C8.4209139,14.9343146 8.73431458,14.9790861 8.9,15.2 C9.81096778,16.4146237 10.8353763,17 12,17 C13.1646237,17 14.1890322,16.4146237 15.1,15.2 C15.2656854,14.9790861 15.5790861,14.9343146 15.8,15.1 C16.0209139,15.2656854 16.0656854,15.5790861 15.9,15.8 C14.8109678,17.252043 13.502043,18 12,18 C10.497957,18 9.18903222,17.252043 8.1,15.8 Z" />
               </g>
-              <!-- <g transform="translate(24 0) translate(6 6) scale(0.5)">
-                <path d="M18.4558 14.6734C18.4921 15.5205 18.3742 16.4404 18.2653 17.3604C18.2562 17.4514 18.238 17.5425 18.2108 17.6245C18.1564 17.8613 18.0384 18.0708 17.7571 18.0252C17.4759 17.9706 17.4123 17.7429 17.4577 17.497C17.5484 16.8958 17.5938 16.2947 17.6483 15.6936C17.8025 13.9539 17.6483 12.2325 17.2218 10.5474C16.5322 7.84233 13.801 6.12999 11.0879 6.62183C8.28416 7.13189 6.33331 9.63663 6.58737 12.4419C6.65996 13.2435 6.88681 14.0268 6.83237 14.8374C6.82329 15.0013 6.82329 15.1744 6.787 15.3383C6.74163 15.5569 6.63274 15.7573 6.3696 15.73C6.08832 15.7027 5.98851 15.4841 6.01573 15.2382C6.05202 14.8465 6.07925 14.4548 6.0248 14.0632C5.8887 13.0158 5.68908 11.9683 5.8887 10.9027C6.4422 7.96073 9.00099 5.77477 11.9681 5.75656C14.8898 5.73834 17.5121 7.89698 18.0838 10.8025C18.3288 12.0503 18.483 13.3163 18.4558 14.6734Z" />
-                <path d="M21.0963 11.112C21.1053 11.4399 21.1235 11.7132 20.7877 11.7496C20.4702 11.786 20.3885 11.531 20.3431 11.276C20.1344 9.84601 19.7443 8.47978 18.8913 7.29572C16.7772 4.35379 13.9099 3.19705 10.3802 3.78908C7.16809 4.32646 4.55485 6.95872 3.8471 10.183C3.78359 10.4745 3.79266 10.9208 3.3299 10.8206C2.83992 10.7204 3.03047 10.3014 3.10306 9.99174C3.99228 6.10255 7.24975 3.26992 11.1242 2.88737C15.7337 2.43197 20.1617 5.63804 20.9874 10.5018C21.0327 10.7386 21.069 10.9663 21.0963 11.112Z" />
-                <path d="M12.1405 2.22257C7.19532 2.04952 2.73105 5.82029 2.23199 11.2123C2.14126 12.2051 2.27736 13.1797 2.43161 14.1543C2.58587 15.0924 2.30458 15.9212 1.72386 16.659C1.56054 16.8685 1.35184 17.078 1.07963 16.8503C0.798344 16.6226 0.961671 16.3858 1.13407 16.1763C1.68757 15.5023 1.76016 14.7281 1.61498 13.8992C0.607796 7.85141 4.50042 2.44117 10.5617 1.50303C11.4418 1.3664 12.3401 1.32997 13.2293 1.4757C13.4834 1.52124 13.7375 1.585 13.7193 1.90378C13.6921 2.259 13.4199 2.24989 13.1477 2.24079C12.812 2.21346 12.4762 2.22257 12.1405 2.22257Z" />
-                <path d="M14.1094 14.6278C14.064 17.9432 13.075 20.9398 11.0969 23.6085C10.9335 23.8271 10.7521 24.1003 10.4345 23.8726C10.1351 23.654 10.2802 23.399 10.4526 23.1622C11.9498 21.1402 12.8844 18.8813 13.2111 16.3766C13.4107 14.8373 13.3472 13.3254 13.0477 11.8134C12.9207 11.1667 12.3581 10.8297 11.723 10.9664C11.1876 11.0848 10.8519 11.6221 10.9698 12.2324C11.2511 13.7261 11.2874 15.2108 11.0152 16.7045C10.9608 17.0051 10.9608 17.4423 10.5162 17.3785C10.0625 17.3147 10.1986 16.914 10.253 16.6043C10.4889 15.229 10.498 13.8627 10.2258 12.4965C9.98988 11.3034 10.6069 10.3834 11.7502 10.1739C12.7392 9.99178 13.6466 10.7022 13.8553 11.8316C13.9188 12.1777 13.9823 12.5147 14.0095 12.8609C14.0549 13.4438 14.1457 14.0358 14.1094 14.6278Z" />
-                <path d="M22.8111 14.6825C22.8564 15.484 22.7748 16.3402 22.684 17.1963C22.6568 17.4787 22.6477 17.8885 22.2122 17.8248C21.7948 17.761 21.8765 17.3876 21.9128 17.087C22.2122 14.5732 22.1033 12.0775 21.4863 9.63656C20.6424 6.25743 18.5192 3.98039 15.2799 2.73257C15.2073 2.70525 15.1347 2.68703 15.0621 2.65971C14.8443 2.56863 14.6719 2.432 14.7536 2.17698C14.8443 1.90373 15.0712 1.87641 15.3162 1.94927C15.9423 2.14054 16.5411 2.39557 17.1037 2.72347C20.2704 4.55421 22.0307 7.33219 22.5388 10.939C22.7112 12.1595 22.8473 13.38 22.8111 14.6825Z" />
-                <path d="M11.8227 7.21389C12.0042 7.21389 12.0677 7.20478 12.1221 7.21389C12.3853 7.24121 12.6847 7.28675 12.6938 7.61465C12.7029 7.97897 12.3944 8.02451 12.104 8.02451C10.5796 7.99719 9.41817 8.63476 8.61061 9.91901C8.07526 10.7752 7.90286 11.7133 8.09341 12.7152C8.70135 16.0033 7.81212 18.8359 5.4711 21.204C5.38944 21.286 5.2987 21.3771 5.19889 21.4499C4.99927 21.6139 4.7815 21.6685 4.60002 21.4499C4.42762 21.2496 4.51836 21.0492 4.68169 20.8852C5.17167 20.4116 5.6435 19.9198 6.0246 19.3551C7.28585 17.4697 7.81212 15.4021 7.35844 13.1706C6.7505 10.1103 8.80116 7.3414 11.8227 7.21389Z" />
-                <path d="M17.0128 14.3092C17.0037 17.7065 16.2415 20.6303 14.7171 23.3627C14.6899 23.4173 14.6627 23.472 14.6264 23.5175C14.4812 23.7543 14.2907 23.9001 14.0275 23.7361C13.7825 23.5904 13.8279 23.3536 13.9549 23.135C14.2635 22.5976 14.5357 22.042 14.7897 21.4682C15.7969 19.2003 16.2597 16.823 16.2415 14.3456C16.2324 13.2435 16.1145 12.1323 15.8604 11.0576C15.6517 10.1377 15.1618 9.39078 14.4086 8.81697C14.2544 8.69856 14.082 8.58926 13.9368 8.47086C13.7825 8.34334 13.6918 8.18851 13.8098 7.99723C13.9277 7.79686 14.1092 7.75131 14.3179 7.8515C14.826 8.10653 15.2434 8.46175 15.6154 8.89894C16.3504 9.76422 16.668 10.7934 16.8132 11.8955C16.9221 12.7881 17.04 13.6716 17.0128 14.3092Z" />
-                <path d="M12.0223 0.0183811C13.7554 -0.100025 15.3796 0.309842 16.9493 1.01117C16.9947 1.02939 17.031 1.0476 17.0763 1.06582C17.3395 1.17512 17.5572 1.32996 17.4302 1.64874C17.2941 1.97664 17.0219 1.88555 16.7769 1.76715C15.924 1.36639 15.0348 1.0476 14.1092 0.910981C9.6994 0.218761 6.03362 1.56677 3.16632 5.02787C2.97577 5.26468 2.80337 5.67455 2.42227 5.39219C2.01396 5.09163 2.37691 4.79106 2.56745 4.54514C4.62719 1.96753 7.30394 0.464681 10.5705 0.0274892C11.0423 -0.0362679 11.5323 0.0183811 12.0223 0.0183811Z" />
-                <path d="M19.9166 14.3454C19.9257 16.9595 19.5264 19.2456 18.7461 21.468C18.6916 21.6137 18.6372 21.7504 18.5827 21.8961C18.492 22.1329 18.3378 22.306 18.0655 22.2058C17.8024 22.1056 17.7752 21.887 17.8659 21.6411C17.9839 21.2949 18.1018 20.9579 18.2107 20.6027C18.8822 18.5078 19.2179 16.3492 19.1362 14.145C19.0637 12.287 18.9638 10.4107 18.0565 8.70747C17.9204 8.45244 17.757 8.21563 17.6119 7.9606C17.4939 7.75112 17.4757 7.54163 17.6844 7.3959C17.9113 7.23195 18.0837 7.35946 18.2289 7.54163C18.9003 8.43423 19.2996 9.44523 19.5173 10.52C19.7805 11.8771 19.9438 13.2251 19.9166 14.3454Z" />
-                <path d="M4.61846 14.4365C4.57309 14.136 4.50958 13.6714 4.44606 13.2069C4.06496 10.4471 4.90882 8.12457 6.94133 6.23007C7.01392 6.15721 7.10466 6.09345 7.18632 6.02969C7.35872 5.9204 7.53112 5.92039 7.6763 6.07523C7.83056 6.23007 7.80334 6.41224 7.6763 6.56707C7.55835 6.7037 7.42224 6.83121 7.29521 6.95873C5.48954 8.74392 4.80901 10.8843 5.26269 13.3891C5.64379 15.4931 5.07215 17.3238 3.66572 18.8995C3.48425 19.0999 3.26648 19.273 3.04871 19.4369C2.88538 19.5553 2.70391 19.5644 2.55873 19.4005C2.40447 19.2183 2.44077 19.0361 2.59502 18.8722C2.73113 18.7265 2.87631 18.599 3.01241 18.4532C4.05589 17.3785 4.57309 16.0942 4.61846 14.4365Z" />
-                <path d="M12.6577 14.6552C12.5942 17.8886 11.5688 20.7668 9.50003 23.2715C9.45466 23.3262 9.40929 23.3899 9.35485 23.4446C9.18245 23.6358 8.97376 23.7269 8.76506 23.5448C8.56544 23.3808 8.61081 23.1622 8.75599 22.971C9.00098 22.6431 9.26412 22.3334 9.50003 21.9964C11.0335 19.856 11.7957 17.4514 11.8955 14.8192C11.9227 13.9994 11.8138 13.1888 11.6868 12.3782C11.6687 12.2871 11.6505 12.196 11.6414 12.1049C11.6233 11.8681 11.6868 11.6677 11.9499 11.6313C12.2131 11.5858 12.3401 11.7497 12.3855 11.9865C12.567 12.87 12.6668 13.7626 12.6577 14.6552Z" />
-                <path d="M23.9998 11.5857C23.9998 11.7679 23.9998 11.95 23.9998 12.1322C23.9998 12.369 23.9363 12.5694 23.655 12.5785C23.3737 12.5876 23.2648 12.3872 23.2467 12.1322C23.2285 11.6768 23.2195 11.2214 23.165 10.7751C22.7839 7.55078 21.2868 4.95495 18.7371 2.96937C18.5102 2.78721 18.1382 2.61415 18.3923 2.25894C18.6373 1.92193 18.9367 2.17696 19.1726 2.35913C22.2214 4.6726 23.773 7.77848 23.9998 11.5857Z" />
-                <path d="M15.5522 14.0449C15.5522 14.1815 15.5522 14.3181 15.5522 14.4547C15.5431 14.7007 15.4615 14.9284 15.1711 14.9284C14.8807 14.9284 14.8082 14.7098 14.7991 14.4547C14.7537 13.5348 14.6811 12.6149 14.5178 11.7041C14.1821 9.86423 12.3583 8.92609 10.7794 9.79137C10.2532 10.0828 9.85391 10.52 9.64521 11.1029C9.61799 11.1758 9.59077 11.2487 9.57262 11.3215C9.49096 11.5766 9.39115 11.8498 9.05542 11.7496C8.69247 11.6403 8.76506 11.3306 8.84673 11.0665C9.20967 9.95532 9.9265 9.17201 11.0516 8.84412C12.9662 8.27941 14.8082 9.40883 15.2437 11.3944C15.4342 12.2597 15.5068 13.1523 15.5522 14.0449Z" />
-                <path d="M9.73564 14.6279C9.69934 17.497 8.67401 19.9653 6.70502 22.0511C6.6415 22.1149 6.57799 22.1786 6.51447 22.2424C6.32392 22.4245 6.09708 22.5338 5.87931 22.3152C5.64339 22.0875 5.7795 21.8689 5.97005 21.6868C6.62335 21.0492 7.17685 20.3388 7.63961 19.5464C8.65587 17.7794 9.11863 15.8849 8.93715 13.8355C8.92808 13.6807 8.919 13.535 8.919 13.3801C8.90993 13.1342 8.97345 12.8974 9.25473 12.8792C9.54509 12.8519 9.63583 13.0705 9.67212 13.3164C9.69934 13.4985 9.73564 13.6716 9.74471 13.8538C9.74471 14.1088 9.73564 14.3638 9.73564 14.6279Z" />
-                <path d="M0.00881775 12.0866C-0.0274771 10.1648 0.389914 8.4616 1.15211 6.83124C1.20655 6.70372 1.27007 6.58532 1.35173 6.47602C1.46061 6.33029 1.61487 6.25742 1.78727 6.3485C1.97782 6.43959 2.05041 6.60353 1.97782 6.80391C1.88708 7.05894 1.76912 7.30486 1.66024 7.55989C0.743789 9.72763 0.516946 11.9682 0.997854 14.2817C1.06137 14.5823 1.28821 15.0013 0.798232 15.1197C0.308251 15.2381 0.308251 14.7644 0.244735 14.4639C0.0814075 13.6441 -0.0365509 12.8153 0.00881775 12.0866Z" />
-                <path d="M11.9136 4.29004C13.6648 4.3538 15.171 4.80921 16.5049 5.78378C16.5502 5.82021 16.6047 5.85665 16.65 5.89308C16.8497 6.07524 17.1309 6.25741 16.886 6.56708C16.65 6.87676 16.4051 6.66727 16.1782 6.50333C14.0731 4.95494 11.7956 4.69991 9.36385 5.61073C9.3094 5.62894 9.25496 5.65627 9.19145 5.67448C8.97368 5.75646 8.75591 5.75646 8.64702 5.51965C8.51999 5.25551 8.67424 5.08245 8.90109 4.97316C9.58162 4.65437 10.2894 4.47221 11.0243 4.37202C11.3601 4.33559 11.6867 4.31737 11.9136 4.29004Z" />
-                <path d="M15.4521 16.5042C15.2797 17.9068 14.9531 19.2457 14.454 20.5391C14.0457 21.5865 13.5467 22.5884 12.9206 23.5266C12.8571 23.6268 12.7935 23.7361 12.7119 23.8271C12.5486 24.0184 12.3399 24.0548 12.1493 23.9273C11.9406 23.7907 11.9769 23.5903 12.0858 23.3991C12.2763 23.0712 12.4941 22.7615 12.6847 22.4336C13.71 20.6484 14.3724 18.7448 14.6355 16.6954C14.6446 16.5861 14.6718 16.486 14.699 16.3858C14.7535 16.1672 14.8896 16.0306 15.1255 16.0579C15.3705 16.0943 15.4521 16.2856 15.4521 16.5042Z" />
-                <path d="M21.3501 14.7098C21.3773 16.4676 21.1414 18.1891 20.7331 19.8923C20.7149 19.947 20.7059 20.0107 20.6877 20.0654C20.6061 20.3295 20.5425 20.6574 20.1705 20.5572C19.8166 20.4661 19.8529 20.1655 19.9255 19.8832C20.1161 19.1454 20.2703 18.4077 20.3611 17.6517C20.5425 16.2673 20.6786 14.8828 20.5425 13.4802C20.5153 13.1978 20.5516 12.9246 20.8783 12.879C21.2503 12.8335 21.3229 13.134 21.332 13.4255C21.3592 13.8536 21.3501 14.2817 21.3501 14.7098Z" />
-                <path d="M3.94694 14.5094C3.8925 16.0031 3.3753 17.1872 2.34089 18.1435C2.16849 18.2984 1.97794 18.3894 1.77832 18.2073C1.56963 18.016 1.59685 17.7792 1.7874 17.6061C3.15753 16.3583 3.34808 14.8099 2.96698 13.0976C2.91254 12.8517 2.92161 12.5875 2.92161 12.3325C2.93069 12.1321 3.04864 11.9773 3.25734 11.9773C3.46604 11.9682 3.61122 12.0957 3.63844 12.2961C3.7564 13.0612 3.85621 13.8263 3.94694 14.5094Z" />
-                <path d="M10.3619 18.9908C10.2711 19.2002 10.1532 19.4735 10.0262 19.7467C9.48173 20.9035 8.78305 21.96 7.89382 22.8799C7.70328 23.0712 7.49458 23.2534 7.24052 23.0075C7.0046 22.7798 7.14978 22.5612 7.32218 22.379C8.30214 21.3316 9.05526 20.1384 9.60876 18.8086C9.6995 18.59 9.8356 18.3987 10.1169 18.4807C10.3256 18.5445 10.3891 18.7084 10.3619 18.9908Z" />
-                <path d="M6.33312 17.2874C6.3059 17.3785 6.26054 17.506 6.21517 17.6244C5.75241 18.7174 5.05373 19.6282 4.17358 20.4115C3.96488 20.6028 3.71989 20.7121 3.50212 20.448C3.29343 20.202 3.46583 19.9835 3.65638 19.8286C4.50023 19.1091 5.11725 18.2256 5.54371 17.2055C5.64352 16.9778 5.77055 16.8047 6.05184 16.8594C6.23331 16.914 6.32405 17.0506 6.33312 17.2874Z" />
-                <path d="M17.8026 19.5554C17.7753 19.6647 17.7572 19.7831 17.7209 19.9015C17.4215 20.9216 17.0676 21.9144 16.5957 22.8708C16.4778 23.1167 16.3145 23.3444 16.006 23.1987C15.7156 23.062 15.7882 22.7979 15.8971 22.5702C16.3508 21.5774 16.7409 20.5573 17.0313 19.5099C17.0948 19.2639 17.2218 19.0909 17.5122 19.1455C17.7209 19.1911 17.8026 19.3459 17.8026 19.5554Z" />
-              </g> -->
               <g transform="translate(24 0) translate(2.4 2.4) scale(0.8)">
                 <path fill="rgb(var(--text-supporting))" d="M7.5,3 C7.77614237,3 8,3.22385763 8,3.5 C8,3.77614237 7.77614237,4 7.5,4 L5.5,4 C4.67157288,4 4,4.67157288 4,5.5 L4,7.53112887 C4,7.80727125 3.77614237,8.03112887 3.5,8.03112887 C3.22385763,8.03112887 3,7.80727125 3,7.53112887 L3,5.5 C3,4.11928813 4.11928813,3 5.5,3 L7.5,3 Z M16.5,4 C16.2238576,4 16,3.77614237 16,3.5 C16,3.22385763 16.2238576,3 16.5,3 L18.5,3 C19.8807119,3 21,4.11928813 21,5.5 L21,7.5 C21,7.77614237 20.7761424,8 20.5,8 C20.2238576,8 20,7.77614237 20,7.5 L20,5.5 C20,4.67157288 19.3284271,4 18.5,4 L16.5,4 Z M20,16.5 C20,16.2238576 20.2238576,16 20.5,16 C20.7761424,16 21,16.2238576 21,16.5 L21,18.5 C21,19.8807119 19.8807119,21 18.5,21 L16.5,21 C16.2238576,21 16,20.7761424 16,20.5 C16,20.2238576 16.2238576,20 16.5,20 L18.5,20 C19.3284271,20 20,19.3284271 20,18.5 L20,16.5 Z M3,16.5 C3,16.2238576 3.22385763,16 3.5,16 C3.77614237,16 4,16.2238576 4,16.5 L4,18.5 C4,19.3284271 4.67157288,20 5.5,20 L7.5,20 C7.77614237,20 8,20.2238576 8,20.5 C8,20.7761424 7.77614237,21 7.5,21 L5.5,21 C4.11928813,21 3,19.8807119 3,18.5 L3,16.5 Z" />
               </g>
@@ -123,11 +69,24 @@ pub fn render_auth_landing() -> String {
                 <path fill="rgb(var(--text-supporting))" d="M17.81 4.47c-.08 0-.16-.02-.23-.06C15.66 3.42 14 3 12.01 3c-1.98 0-3.86.47-5.57 1.41-.24.13-.54.04-.68-.2-.13-.24-.04-.55.2-.68C7.82 2.52 9.86 2 12.01 2c2.13 0 3.99.47 6.03 1.52.25.13.34.43.21.67-.09.18-.26.28-.44.28zM3.5 9.72c-.1 0-.2-.03-.29-.09-.23-.16-.28-.47-.12-.7.99-1.4 2.25-2.5 3.75-3.27C9.98 4.04 14 4.03 17.15 5.65c1.5.77 2.76 1.86 3.75 3.25.16.22.11.54-.12.7-.23.16-.54.11-.7-.12-.9-1.26-2.04-2.25-3.39-2.94-2.87-1.47-6.54-1.47-9.4.01-1.36.7-2.5 1.7-3.4 2.96-.08.14-.23.21-.39.21zm6.25 12.07c-.13 0-.26-.05-.35-.15-.87-.87-1.34-1.43-2.01-2.64-.69-1.23-1.05-2.73-1.05-4.34 0-2.97 2.54-5.39 5.66-5.39s5.66 2.42 5.66 5.39c0 .28-.22.5-.5.5s-.5-.22-.5-.5c0-2.42-2.09-4.39-4.66-4.39-2.57 0-4.66 1.97-4.66 4.39 0 1.44.32 2.77.93 3.85.64 1.15 1.08 1.64 1.85 2.42.19.2.19.51 0 .71-.11.1-.24.15-.37.15zm7.17-1.85c-1.19 0-2.24-.3-3.1-.89-1.49-1.01-2.38-2.65-2.38-4.39 0-.28.22-.5.5-.5s.5.22.5.5c0 1.41.72 2.74 1.94 3.56.71.48 1.54.71 2.54.71.24 0 .64-.03 1.04-.1.27-.05.53.13.58.41.05.27-.13.53-.41.58-.57.11-1.07.12-1.21.12zM14.91 22c-.04 0-.09-.01-.13-.02-1.59-.44-2.63-1.03-3.72-2.1-1.4-1.39-2.17-3.24-2.17-5.22 0-1.62 1.38-2.94 3.08-2.94 1.7 0 3.08 1.32 3.08 2.94 0 1.07.93 1.94 2.08 1.94s2.08-.87 2.08-1.94c0-3.77-3.25-6.83-7.25-6.83-2.84 0-5.44 1.58-6.61 4.03-.39.81-.59 1.76-.59 2.8 0 .78.07 2.01.67 3.61.1.26-.03.55-.29.64-.26.1-.55-.04-.64-.29-.49-1.31-.73-2.61-.73-3.96 0-1.2.23-2.29.68-3.24 1.33-2.79 4.28-4.6 7.51-4.6 4.55 0 8.25 3.51 8.25 7.83 0 1.62-1.38 2.94-3.08 2.94s-3.08-1.32-3.08-2.94c0-1.07-.93-1.94-2.08-1.94s-2.08.87-2.08 1.94c0 1.71.66 3.31 1.87 4.51.95.94 1.86 1.46 3.27 1.85.27.07.42.35.35.61-.05.23-.26.38-.47.38z"/>
               </g>
             </svg>
-            <svg id="auth-hero-password-icon" class="auth-hero-icon-main auth-hero-icon-hidden" viewBox="0 0 512 512" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="rgb(var(--text-supporting))">
-              <path d="M464.98,146.286H47.02c-25.927,0-47.02,21.092-47.02,47.02v125.388c0,25.928,21.093,47.02,47.02,47.02H464.98c25.928,0,47.02-21.092,47.02-47.02V193.306C512,167.378,490.908,146.286,464.98,146.286z M480.653,318.694c0,8.643-7.03,15.673-15.673,15.673H47.02c-8.642,0-15.674-7.03-15.674-15.673V193.306c0-8.642,7.031-15.673,15.674-15.673H464.98c8.643,0,15.673,7.031,15.673,15.673V318.694z"/>
-              <polygon points="309.083,243.451 293.409,216.304 271.674,228.854 271.674,203.755 240.328,203.755 240.328,228.854 218.592,216.304 202.918,243.451 224.653,256 202.917,268.549 218.591,295.696 240.328,283.146 240.328,308.245 271.674,308.245 271.674,283.146 293.409,295.696 309.083,268.549 287.347,256"/>
-              <polygon points="448.369,243.451 432.695,216.304 410.961,228.854 410.961,203.755 379.615,203.755 379.615,228.854 357.879,216.304 342.205,243.451 363.941,256 342.204,268.549 357.878,295.696 379.615,283.146 379.615,308.245 410.961,308.245 410.961,283.146 432.695,295.696 448.369,268.549 426.634,256"/>
-              <polygon points="169.796,243.451 154.122,216.304 132.387,228.854 132.387,203.755 101.041,203.755 101.041,228.854 79.305,216.304 63.631,243.451 85.366,256 63.63,268.549 79.304,295.696 101.041,283.146 101.041,308.245 132.387,308.245 132.387,283.146 154.122,295.696 169.796,268.549 148.06,256"/>
+            <svg id="auth-hero-password-icon" class="auth-hero-icon-main auth-hero-icon-hidden" viewBox="0 0 48 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+              <g transform="translate(2.4 2.4) scale(0.8)">
+                <path fill="rgb(var(--text-supporting))" d="M7.5,3 C7.77614237,3 8,3.22385763 8,3.5 C8,3.77614237 7.77614237,4 7.5,4 L5.5,4 C4.67157288,4 4,4.67157288 4,5.5 L4,7.53112887 C4,7.80727125 3.77614237,8.03112887 3.5,8.03112887 C3.22385763,8.03112887 3,7.80727125 3,7.53112887 L3,5.5 C3,4.11928813 4.11928813,3 5.5,3 L7.5,3 Z M16.5,4 C16.2238576,4 16,3.77614237 16,3.5 C16,3.22385763 16.2238576,3 16.5,3 L18.5,3 C19.8807119,3 21,4.11928813 21,5.5 L21,7.5 C21,7.77614237 20.7761424,8 20.5,8 C20.2238576,8 20,7.77614237 20,7.5 L20,5.5 C20,4.67157288 19.3284271,4 18.5,4 L16.5,4 Z M20,16.5 C20,16.2238576 20.2238576,16 20.5,16 C20.7761424,16 21,16.2238576 21,16.5 L21,18.5 C21,19.8807119 19.8807119,21 18.5,21 L16.5,21 C16.2238576,21 16,20.7761424 16,20.5 C16,20.2238576 16.2238576,20 16.5,20 L18.5,20 C19.3284271,20 20,19.3284271 20,18.5 L20,16.5 Z M3,16.5 C3,16.2238576 3.22385763,16 3.5,16 C3.77614237,16 4,16.2238576 4,16.5 L4,18.5 C4,19.3284271 4.67157288,20 5.5,20 L7.5,20 C7.77614237,20 8,20.2238576 8,20.5 C8,20.7761424 7.77614237,21 7.5,21 L5.5,21 C4.11928813,21 3,19.8807119 3,18.5 L3,16.5 Z" />
+                <g transform="translate(6 6) scale(0.5)">
+                  <path d="M16 12C16 14.2091 14.2091 16 12 16C9.79086 16 8 14.2091 8 12C8 9.79086 9.79086 8 12 8C14.2091 8 16 9.79086 16 12Z" fill="none" stroke="rgb(var(--text-supporting))" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                  <path d="M17 19.4845C15.5699 20.4417 13.8501 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12C21 16 16 16 16 12" fill="none" stroke="rgb(var(--text-supporting))" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                </g>
+              </g>
+              <g transform="translate(24 0) translate(2.4 2.4) scale(0.8)">
+                <path fill="rgb(var(--text-supporting))" d="M7.5,3 C7.77614237,3 8,3.22385763 8,3.5 C8,3.77614237 7.77614237,4 7.5,4 L5.5,4 C4.67157288,4 4,4.67157288 4,5.5 L4,7.53112887 C4,7.80727125 3.77614237,8.03112887 3.5,8.03112887 C3.22385763,8.03112887 3,7.80727125 3,7.53112887 L3,5.5 C3,4.11928813 4.11928813,3 5.5,3 L7.5,3 Z M16.5,4 C16.2238576,4 16,3.77614237 16,3.5 C16,3.22385763 16.2238576,3 16.5,3 L18.5,3 C19.8807119,3 21,4.11928813 21,5.5 L21,7.5 C21,7.77614237 20.7761424,8 20.5,8 C20.2238576,8 20,7.77614237 20,7.5 L20,5.5 C20,4.67157288 19.3284271,4 18.5,4 L16.5,4 Z M20,16.5 C20,16.2238576 20.2238576,16 20.5,16 C20.7761424,16 21,16.2238576 21,16.5 L21,18.5 C21,19.8807119 19.8807119,21 18.5,21 L16.5,21 C16.2238576,21 16,20.7761424 16,20.5 C16,20.2238576 16.2238576,20 16.5,20 L18.5,20 C19.3284271,20 20,19.3284271 20,18.5 L20,16.5 Z M3,16.5 C3,16.2238576 3.22385763,16 3.5,16 C3.77614237,16 4,16.2238576 4,16.5 L4,18.5 C4,19.3284271 4.67157288,20 5.5,20 L7.5,20 C7.77614237,20 8,20.2238576 8,20.5 C8,20.7761424 7.77614237,21 7.5,21 L5.5,21 C4.11928813,21 3,19.8807119 3,18.5 L3,16.5 Z" />
+                <g transform="translate(4.8 4.8) scale(0.6)">
+                  <path d="M12 12L12 5.5" fill="none" stroke="rgb(var(--text-supporting))" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                  <path d="M12 12L18.18 9.99" fill="none" stroke="rgb(var(--text-supporting))" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                  <path d="M12 12L15.82 16.85" fill="none" stroke="rgb(var(--text-supporting))" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                  <path d="M12 12L8.18 16.85" fill="none" stroke="rgb(var(--text-supporting))" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                  <path d="M12 12L5.82 9.99" fill="none" stroke="rgb(var(--text-supporting))" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                </g>
+              </g>
             </svg>
           </div>
         </div>
@@ -444,6 +403,7 @@ pub fn render_auth_landing() -> String {
 pub fn render_dashboard_overview(email: &str) -> String {
     let topbar = app_shell_topbar("Dashboard", &format!("Signed in as {}", html_escape(email)));
     let sidebar = dashboard_desktop_sidebar("home");
+    let bottom_nav = render_dashboard_bottom_nav(DashboardSection::Home);
     format!(
         r#"{topbar}
 <main class="mx-auto w-full max-w-[480px] px-4 pb-24 pt-4 md:max-w-7xl md:px-6 md:pt-8">
@@ -469,13 +429,7 @@ pub fn render_dashboard_overview(email: &str) -> String {
     </section>
   </div>
 </main>
-
-<nav class="bottom-nav">
-  <a href="/dashboard" class="active">Home</a>
-  <a href="/dashboard/train">Train</a>
-  <a href="/dashboard/jobs">Jobs</a>
-  <a href="/dashboard/security">Security</a>
-</nav>
+{bottom_nav}
 
 <script>
 (() => {{
@@ -505,6 +459,7 @@ pub fn render_dashboard_overview(email: &str) -> String {
 pub fn render_dashboard_jobs(email: &str) -> String {
     let topbar = app_shell_topbar("Jobs", &format!("Signed in as {}", html_escape(email)));
     let sidebar = dashboard_desktop_sidebar("jobs");
+    let bottom_nav = render_dashboard_bottom_nav(DashboardSection::Jobs);
     format!(
         r#"{topbar}
 <main class="mx-auto w-full max-w-[480px] px-4 pb-24 pt-4 md:max-w-7xl md:px-6 md:pt-8">
@@ -516,12 +471,7 @@ pub fn render_dashboard_jobs(email: &str) -> String {
     </section>
   </div>
 </main>
-<nav class="bottom-nav">
-  <a href="/dashboard">Home</a>
-  <a href="/dashboard/train">Train</a>
-  <a href="/dashboard/jobs" class="active">Jobs</a>
-  <a href="/dashboard/security">Security</a>
-</nav>
+{bottom_nav}
 <script>
 (() => {{
   const list = document.getElementById('jobs-list');
@@ -576,7 +526,7 @@ pub fn render_dashboard_job_detail(email: &str, job_id: &str) -> String {
 <div class="action-sticky" data-action-group="sticky">
   <a
     href="/dashboard/jobs"
-    class="btn-ghost h-12 w-full text-center leading-[3rem]"
+    class="btn-ghost h-12 w-full text-center"
     data-action-role="secondary"
   >
     Back
@@ -663,47 +613,37 @@ pub fn render_dashboard_job_detail(email: &str, job_id: &str) -> String {
     )
 }
 
-pub fn render_dashboard_security(email: &str) -> String {
-    let topbar = app_shell_topbar("Security", &format!("Signed in as {}", html_escape(email)));
+pub fn render_dashboard_settings(email: &str) -> String {
+    let topbar = app_shell_topbar("Settings", &format!("Signed in as {}", html_escape(email)));
     let sidebar = dashboard_desktop_sidebar("security");
+    let settings_tabs = dashboard_settings_tabs("account");
+    let bottom_nav = render_dashboard_bottom_nav(DashboardSection::Settings);
     format!(
         r#"{topbar}
 <main class="mx-auto w-full max-w-[480px] px-4 pb-24 pt-4 md:max-w-7xl md:px-6 md:pt-8">
   <div class="md:grid md:grid-cols-[220px_minmax(0,1fr)] md:items-start md:gap-4">
     {sidebar}
-    <section class="glass-card rounded-[22px] p-5">
-      <h2 class="text-lg font-semibold txt-strong">Account settings</h2>
-
-      <div class="mt-4 space-y-4">
+    <section class="space-y-4">
+      {settings_tabs}
+      <div class="space-y-4">
         <section class="summary-card p-4">
           <div class="flex items-center justify-between gap-2">
             <h3 class="text-sm font-semibold txt-strong">Passkeys</h3>
             <button
-              id="passkey-manage"
+              id="passkey-create"
               type="button"
               class="btn-chip inline-flex h-9 w-9 items-center justify-center rounded-xl p-0"
-              aria-label="Edit selected passkey"
-              title="Edit selected passkey"
-              disabled
+              aria-label="Create passkey"
+              title="Create passkey"
             >
               <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M12 20h9"></path>
-                <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4 11.5-11.5z"></path>
+                <path d="M12 5v14"></path>
+                <path d="M5 12h14"></path>
               </svg>
             </button>
           </div>
           <div id="passkey-status" class="mt-3 hidden"></div>
           <div id="passkeys-list" class="mt-4 space-y-2"><div class="loading-card">Loading passkeys...</div></div>
-          <div class="action-group" data-action-group="single">
-            <button
-              id="create-passkey"
-              type="button"
-              class="btn-primary h-11 w-full px-4"
-              data-action-role="primary"
-            >
-              Create passkey
-            </button>
-          </div>
         </section>
 
         <section class="summary-card p-4">
@@ -766,7 +706,18 @@ pub fn render_dashboard_security(email: &str) -> String {
 
       <div id="passkey-modal" class="app-modal-backdrop hidden" aria-hidden="true">
         <div class="app-modal-card" role="dialog" aria-modal="true" aria-labelledby="passkey-modal-title">
-          <h4 id="passkey-modal-title" class="text-base font-semibold txt-strong">Edit passkey</h4>
+          <div class="flex items-center justify-between gap-2">
+            <h4 id="passkey-modal-title" class="text-base font-semibold txt-strong">Edit passkey</h4>
+            <button id="passkey-modal-delete" type="button" class="btn-destructive h-9 w-9 p-0" aria-label="Delete passkey">
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" class="h-4 w-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 6h18"></path>
+                <path d="M8 6V4h8v2"></path>
+                <path d="M19 6l-1 14H6L5 6"></path>
+                <path d="M10 11v6"></path>
+                <path d="M14 11v6"></path>
+              </svg>
+            </button>
+          </div>
           <div class="mt-3 space-y-3">
             <div>
               <label class="field-label" for="passkey-modal-label-input">Label</label>
@@ -815,32 +766,17 @@ pub fn render_dashboard_security(email: &str) -> String {
               Save label
             </button>
           </div>
-          <div class="action-destructive" data-action-group="destructive">
-            <button
-              id="passkey-modal-delete"
-              type="button"
-              class="btn-destructive h-11 w-full"
-              data-action-role="destructive"
-            >
-              Delete passkey
-            </button>
-          </div>
         </div>
       </div>
     </section>
   </div>
 </main>
-<nav class="bottom-nav">
-  <a href="/dashboard">Home</a>
-  <a href="/dashboard/train">Train</a>
-  <a href="/dashboard/jobs">Jobs</a>
-  <a href="/dashboard/security" class="active">Security</a>
-</nav>
+{bottom_nav}
 <script>
 (() => {{
   const list = document.getElementById('passkeys-list');
   const passkeyStatus = document.getElementById('passkey-status');
-  const passkeyManageButton = document.getElementById('passkey-manage');
+  const passkeyCreateButton = document.getElementById('passkey-create');
   const passkeyModal = document.getElementById('passkey-modal');
   const passkeyModalLabelInput = document.getElementById('passkey-modal-label-input');
   const passkeyModalCredentialInput = document.getElementById('passkey-modal-credential-id');
@@ -852,7 +788,6 @@ pub fn render_dashboard_security(email: &str) -> String {
   const passkeyModalCloseButton = document.getElementById('passkey-modal-close');
   const passkeyModalSaveButton = document.getElementById('passkey-modal-save');
   const passkeyModalDeleteButton = document.getElementById('passkey-modal-delete');
-  const createPasskeyButton = document.getElementById('create-passkey');
   const passwordForm = document.getElementById('password-change-form');
   const newPasswordInput = document.getElementById('new-password');
   const confirmPasswordInput = document.getElementById('confirm-password');
@@ -1070,14 +1005,60 @@ pub fn render_dashboard_security(email: &str) -> String {
     return false;
   }};
 
+  const MODAL_LAYER_BASE = 70;
+  let modalLayerCounter = 0;
+
+  const bringModalToBody = (modalNode) => {{
+    if (!modalNode || !document.body) {{
+      return;
+    }}
+    if (modalNode.parentElement !== document.body) {{
+      document.body.appendChild(modalNode);
+    }}
+  }};
+
+  const openModalLayer = (modalNode) => {{
+    if (!modalNode) {{
+      return;
+    }}
+    bringModalToBody(modalNode);
+    modalLayerCounter += 1;
+    modalNode.style.zIndex = String(MODAL_LAYER_BASE + modalLayerCounter);
+    modalNode.classList.remove('hidden');
+    modalNode.setAttribute('aria-hidden', 'false');
+  }};
+
+  const closeModalLayer = (modalNode) => {{
+    if (!modalNode) {{
+      return;
+    }}
+    modalNode.classList.add('hidden');
+    modalNode.setAttribute('aria-hidden', 'true');
+    modalNode.style.removeProperty('z-index');
+    if (!document.querySelector('.app-modal-backdrop:not(.hidden)')) {{
+      modalLayerCounter = 0;
+    }}
+  }};
+
+  const topVisibleModal = () => {{
+    const visible = Array.from(document.querySelectorAll('.app-modal-backdrop:not(.hidden)'));
+    if (!visible.length) {{
+      return null;
+    }}
+    return visible.reduce((currentTop, candidate) => {{
+      const currentZ = Number(currentTop.style.zIndex || MODAL_LAYER_BASE);
+      const candidateZ = Number(candidate.style.zIndex || MODAL_LAYER_BASE);
+      return candidateZ >= currentZ ? candidate : currentTop;
+    }});
+  }};
+
   const closeSecurityModal = (result) => {{
     if (!modalResolver || !securityModal) {{
       return;
     }}
     const resolve = modalResolver;
     modalResolver = null;
-    securityModal.classList.add('hidden');
-    securityModal.setAttribute('aria-hidden', 'true');
+    closeModalLayer(securityModal);
     if (securityModalInput) {{
       securityModalInput.value = '';
     }}
@@ -1095,8 +1076,7 @@ pub fn render_dashboard_security(email: &str) -> String {
     securityModalConfirm.textContent = options.confirmText || 'Confirm';
     securityModalInputWrap.classList.toggle('hidden', !options.withPassword);
     securityModalInput.value = '';
-    securityModal.classList.remove('hidden');
-    securityModal.setAttribute('aria-hidden', 'false');
+    openModalLayer(securityModal);
     modalResolver = resolve;
 
     requestAnimationFrame(() => {{
@@ -1112,8 +1092,7 @@ pub fn render_dashboard_security(email: &str) -> String {
     if (!passkeyModal) {{
       return;
     }}
-    passkeyModal.classList.add('hidden');
-    passkeyModal.setAttribute('aria-hidden', 'true');
+    closeModalLayer(passkeyModal);
   }};
 
   const openPasskeyModal = () => {{
@@ -1134,19 +1113,11 @@ pub fn render_dashboard_security(email: &str) -> String {
     passkeyModalAaguid.textContent = selected.aaguid || 'Unknown';
     passkeyModalBe.textContent = formatBool(selected.backup_eligible);
     passkeyModalBs.textContent = formatBool(selected.backup_state);
-    passkeyModal.classList.remove('hidden');
-    passkeyModal.setAttribute('aria-hidden', 'false');
+    openModalLayer(passkeyModal);
     requestAnimationFrame(() => {{
       passkeyModalLabelInput.focus();
       passkeyModalLabelInput.select();
     }});
-  }};
-
-  const renderSelectedPasskey = () => {{
-    const selected = selectedCredentialId ? passkeysById.get(selectedCredentialId) : null;
-    if (passkeyManageButton) {{
-      passkeyManageButton.disabled = !selected;
-    }}
   }};
 
   const syncPasskeySelection = () => {{
@@ -1162,7 +1133,6 @@ pub fn render_dashboard_security(email: &str) -> String {
     if (!selectedExists) {{
       selectedCredentialId = null;
     }}
-    renderSelectedPasskey();
   }};
 
   const load = () => fetch('/api/auth/passkeys', {{ headers: {{ Accept: 'application/json' }} }})
@@ -1186,12 +1156,9 @@ pub fn render_dashboard_security(email: &str) -> String {
       if (selectedCredentialId && !passkeys.some((item) => item.credential_id === selectedCredentialId)) {{
         selectedCredentialId = null;
       }}
-      if (!selectedCredentialId) {{
-        selectedCredentialId = passkeys[0].credential_id;
-      }}
       list.innerHTML = passkeys.map((item) => `
         <button type="button" class="summary-card passkey-card w-full text-left" data-credential-id="${{item.credential_id}}" aria-pressed="false">
-          <div class="summary-row">
+          <div class="flex items-center justify-between gap-2 text-sm">
             <span>${{escapeHtml(effectivePasskeyLabel(item))}}</span>
             <span class="txt-supporting">${{item.last_used_at ? `Used ${{formatTimestamp(item.last_used_at)}}` : 'Never used'}}</span>
           </div>
@@ -1201,6 +1168,7 @@ pub fn render_dashboard_security(email: &str) -> String {
         card.addEventListener('click', () => {{
           selectedCredentialId = card.dataset.credentialId || null;
           syncPasskeySelection();
+          openPasskeyModal();
         }});
       }});
       syncPasskeySelection();
@@ -1275,7 +1243,9 @@ pub fn render_dashboard_security(email: &str) -> String {
       return;
     }}
 
-    createPasskeyButton.disabled = true;
+    if (passkeyCreateButton) {{
+      passkeyCreateButton.disabled = true;
+    }}
     try {{
       const friendlyName = safeDetectDeviceLabel();
       const start = await requestJson('/api/auth/passkeys/register/start', 'POST', {{
@@ -1329,16 +1299,26 @@ pub fn render_dashboard_security(email: &str) -> String {
         showStatus(passkeyStatus, `Passkey creation failed${{suffix}}.`, 'error');
       }}
     }} finally {{
-      createPasskeyButton.disabled = false;
+      if (passkeyCreateButton) {{
+        passkeyCreateButton.disabled = false;
+      }}
     }}
   }};
 
-  createPasskeyButton.addEventListener('click', (event) => {{
-    event.preventDefault();
-    createPasskey();
-  }});
-  if (passkeyManageButton) {{
-    passkeyManageButton.addEventListener('click', openPasskeyModal);
+  if (passkeyCreateButton) {{
+    passkeyCreateButton.addEventListener('click', async (event) => {{
+      event.preventDefault();
+      const modalResult = await openSecurityModal({{
+        title: 'Create passkey',
+        message: 'Passkeys are faster to use and resistant to phishing because they do not require typing your password. Create a passkey on this device now?',
+        confirmText: 'Continue',
+        withPassword: false,
+      }});
+      if (!modalResult.confirmed) {{
+        return;
+      }}
+      createPasskey();
+    }});
   }}
   if (passkeyModalCloseButton) {{
     passkeyModalCloseButton.addEventListener('click', closePasskeyModal);
@@ -1388,17 +1368,20 @@ pub fn render_dashboard_security(email: &str) -> String {
   }}
 
   document.addEventListener('keydown', (event) => {{
-    if (passkeyModal && !passkeyModal.classList.contains('hidden') && event.key === 'Escape') {{
-      event.preventDefault();
-      closePasskeyModal();
+    if (event.key !== 'Escape') {{
       return;
     }}
-    if (!securityModal || securityModal.classList.contains('hidden')) {{
+    const modal = topVisibleModal();
+    if (!modal) {{
       return;
     }}
-    if (event.key === 'Escape') {{
-      event.preventDefault();
+    event.preventDefault();
+    if (modal === securityModal) {{
       closeSecurityModal({{ confirmed: false, value: '' }});
+      return;
+    }}
+    if (modal === passkeyModal) {{
+      closePasskeyModal();
     }}
   }});
 
@@ -1466,6 +1449,7 @@ pub fn render_dashboard_security(email: &str) -> String {
 pub fn render_dashboard_train(email: &str) -> String {
     let topbar = app_shell_topbar("Train", &format!("Signed in as {}", html_escape(email)));
     let sidebar = dashboard_desktop_sidebar("train");
+    let bottom_nav = render_dashboard_bottom_nav(DashboardSection::Train);
 
     let mut html = String::new();
     html.push_str(&topbar);
@@ -1481,10 +1465,6 @@ pub fn render_dashboard_train(email: &str) -> String {
         <p class="mt-1 text-sm txt-supporting">Credential-ready providers are used automatically. Search uses station codes selected from suggestions.</p>
         <div id="train-preflight" class="mt-4 space-y-2">
           <div class="loading-card">Loading provider readiness...</div>
-        </div>
-        <div class="action-group action-pair" data-action-group="pair">
-          <a class="btn-ghost h-11 w-full text-center leading-[2.75rem]" href="/dashboard/security/providers">Provider credentials</a>
-          <a class="btn-ghost h-11 w-full text-center leading-[2.75rem]" href="/dashboard/payment">Payment methods</a>
         </div>
       </section>
 
@@ -1540,12 +1520,6 @@ pub fn render_dashboard_train(email: &str) -> String {
     </section>
   </div>
 </main>
-<nav class="bottom-nav">
-  <a href="/dashboard">Home</a>
-  <a href="/dashboard/train" class="active">Train</a>
-  <a href="/dashboard/jobs">Jobs</a>
-  <a href="/dashboard/security">Security</a>
-</nav>
 <script>
 (() => {
   const preflightNode = document.getElementById('train-preflight');
@@ -1576,6 +1550,26 @@ pub fn render_dashboard_train(email: &str) -> String {
   let depSelection = null;
   let arrSelection = null;
   let pollTimer = null;
+  const normalizeLocale = (rawLocale) => {
+    const token = String(rawLocale || '')
+      .trim()
+      .toLowerCase()
+      .replace('_', '-')
+      .split(';')[0]
+      .split(',')[0]
+      .trim();
+    const primary = token.split('-')[0];
+    if (primary === 'ja' || primary === 'jp') return 'ja';
+    if (primary === 'ko' || primary === 'kr') return 'ko';
+    if (primary === 'en') return 'en';
+    return 'en';
+  };
+  const activeLocale = normalizeLocale(
+    document.documentElement?.getAttribute('data-locale')
+      || document.body?.getAttribute('data-locale')
+      || navigator.language
+      || (Array.isArray(navigator.languages) ? navigator.languages[0] : ''),
+  );
 
   const escapeHtml = (value) => String(value || '')
     .replaceAll('&', '&amp;')
@@ -1594,6 +1588,17 @@ pub fn render_dashboard_train(email: &str) -> String {
     let body = null;
     try { body = text ? JSON.parse(text) : null; } catch (_err) {}
     return { ok: response.ok, status: response.status, body };
+  };
+
+  const apiErrorMessage = (response, fallback) => {
+    const body = response && response.body && typeof response.body === 'object' ? response.body : {};
+    const message = typeof body.message === 'string' && body.message.trim()
+      ? body.message.trim()
+      : fallback;
+    const requestId = typeof body.request_id === 'string' && body.request_id.trim()
+      ? ` (request_id: ${body.request_id.trim()})`
+      : '';
+    return `${message}${requestId}`;
   };
 
   const showStatus = (kind, message) => {
@@ -1672,7 +1677,7 @@ pub fn render_dashboard_train(email: &str) -> String {
   const loadHistory = async () => {
     const response = await requestJson('/api/train/search?limit=12');
     if (!response.ok) {
-      historyNode.innerHTML = '<div class="error-card">Failed to load search history.</div>';
+      historyNode.innerHTML = `<div class="error-card">${escapeHtml(apiErrorMessage(response, 'Failed to load search history.'))}</div>`;
       return;
     }
     renderHistory(response.body && Array.isArray(response.body.searches) ? response.body.searches : []);
@@ -1688,7 +1693,7 @@ pub fn render_dashboard_train(email: &str) -> String {
       if (!response.ok) {
         clearInterval(pollTimer);
         pollTimer = null;
-        showStatus('error', 'Search polling failed.');
+        showStatus('error', apiErrorMessage(response, 'Search polling failed.'));
         return;
       }
       const snapshot = response.body || {};
@@ -1704,7 +1709,7 @@ pub fn render_dashboard_train(email: &str) -> String {
   const loadSearch = async (searchId) => {
     const response = await requestJson(`/api/train/search/${encodeURIComponent(searchId)}`);
     if (!response.ok) {
-      showStatus('error', 'Could not load search snapshot.');
+      showStatus('error', apiErrorMessage(response, 'Could not load search snapshot.'));
       return;
     }
     const snapshot = response.body || {};
@@ -1714,28 +1719,79 @@ pub fn render_dashboard_train(email: &str) -> String {
     }
   };
 
-  const renderPreflight = (preflight) => {
-    const providers = Array.isArray(preflight.providers) ? preflight.providers : [];
-    const cards = providers.map((provider) => `
-      <div class="summary-row">
-        <span>${escapeHtml(provider.provider.toUpperCase())}</span>
-        <span class="text-xs txt-supporting">cred: ${provider.credentials_ready ? 'ready' : 'missing'} · pay: ${provider.payment_ready ? 'ready' : 'missing'}</span>
-      </div>
-    `).join('');
-    const counts = preflight.station_catalog && preflight.station_catalog.counts ? preflight.station_catalog.counts : {};
-    preflightNode.innerHTML = `
-      ${cards || '<div class="empty-card">No providers configured.</div>'}
-      <div class="summary-row">
-        <span>Station catalog</span>
-        <span class="text-xs txt-supporting">SRT ${counts.srt || 0} · KTX ${counts.ktx || 0}</span>
-      </div>
+  const providerHasError = (provider) => {
+    if (!provider || typeof provider !== 'object') return false;
+    return (
+      (typeof provider.error === 'string' && provider.error.trim())
+      || (typeof provider.debug === 'string' && provider.debug.trim())
+      || (typeof provider.message === 'string' && provider.message.trim())
+    );
+  };
+
+  const providerStatusToneClass = (ready, hasError) => {
+    if (ready) return 'status-icon status-icon-green';
+    if (hasError) return 'status-icon status-icon-red';
+    return 'status-icon status-icon-gray';
+  };
+
+  const statusIcon = (kind, ready, hasError) => {
+    const title = kind === 'payment' ? 'Payment' : 'Credentials';
+    const state = ready ? 'ready' : (hasError ? 'error' : 'missing');
+    const toneClass = providerStatusToneClass(ready, hasError);
+    const path = kind === 'payment'
+      ? '<rect x="3.5" y="6.5" width="17" height="11" rx="2"></rect><path d="M3.5 10.5h17"></path>'
+      : '<circle cx="12" cy="8" r="3"></circle><path d="M5.5 19a6.5 6.5 0 0 1 13 0"></path>';
+    return `
+      <span class="provider-status-chip" title="${title}: ${state}" aria-label="${title}: ${state}">
+        <svg class="${toneClass}" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          ${path}
+        </svg>
+      </span>
     `;
   };
 
+  const renderPreflight = (preflight) => {
+    const providers = Array.isArray(preflight.providers) ? preflight.providers : [];
+    const providersByName = new Map(
+      providers
+        .map((provider) => [String(provider.provider || '').toLowerCase(), provider])
+        .filter((entry) => entry[0]),
+    );
+    const toProviderCard = (name) => {
+      const provider = providersByName.get(name);
+      const providerReady = Boolean(provider && provider.credentials_ready);
+      const providerHasDebugError = Boolean(provider) && providerHasError(provider);
+      return `
+        <article class="train-preflight-card">
+          <span class="train-preflight-label">${escapeHtml(name.toUpperCase())}</span>
+          <span class="provider-status-group">
+            ${statusIcon('credentials', providerReady, providerHasDebugError)}
+          </span>
+        </article>
+      `;
+    };
+    const paymentProvider = providersByName.get('ktx')
+      || (providers.length ? providers[0] : null);
+    const paymentReady = Boolean(paymentProvider && paymentProvider.payment_ready);
+    const paymentHasError = Boolean(paymentProvider) && providerHasError(paymentProvider);
+    preflightNode.innerHTML = `
+      <div class="train-preflight-grid">
+        ${toProviderCard('ktx')}
+        ${toProviderCard('srt')}
+        <article class="train-preflight-card">
+          <span class="train-preflight-label">Payment</span>
+          <span class="provider-status-group">
+            ${statusIcon('payment', paymentReady, paymentHasError)}
+          </span>
+        </article>
+      </div>
+    `;
+  };
+  
   const loadPreflight = async () => {
     const response = await requestJson('/api/train/preflight');
     if (!response.ok) {
-      preflightNode.innerHTML = '<div class="error-card">Failed to load preflight.</div>';
+      preflightNode.innerHTML = `<div class="error-card">${escapeHtml(apiErrorMessage(response, 'Failed to load preflight.'))}</div>`;
       return;
     }
     renderPreflight(response.body || {});
@@ -1746,19 +1802,104 @@ pub fn render_dashboard_train(email: &str) -> String {
       node.innerHTML = '';
       return;
     }
-    node.innerHTML = suggestions.map((station) => `
-      <button type="button" class="summary-row w-full text-left" data-provider="${escapeHtml(station.provider)}" data-code="${escapeHtml(station.station_code)}" data-name="${escapeHtml(station.station_name_ko)}">
-        <span>${escapeHtml(station.station_name_ko)} (${escapeHtml(station.station_code)})</span>
-        <span class="text-xs txt-supporting">${escapeHtml(station.provider.toUpperCase())}</span>
+    const mergedSuggestions = (() => {
+      const merged = new Map();
+      for (const station of suggestions) {
+        const key = String(station.station_code || '').trim()
+          || `${String(station.station_name_ko || '').trim()}::${String(station.station_name_en || '').trim()}`;
+        const provider = String(station.provider || '').trim().toLowerCase();
+        const existing = merged.get(key);
+        if (!existing) {
+          merged.set(key, {
+            ...station,
+            supported_providers: provider ? [provider] : [],
+          });
+          continue;
+        }
+        if (provider && !existing.supported_providers.includes(provider)) {
+          existing.supported_providers.push(provider);
+        }
+        if (!existing.station_name_en && station.station_name_en) {
+          existing.station_name_en = station.station_name_en;
+        }
+        if (!existing.station_name_ja_katakana && station.station_name_ja_katakana) {
+          existing.station_name_ja_katakana = station.station_name_ja_katakana;
+        }
+      }
+      return Array.from(merged.values());
+    })();
+
+    const selectSuggestionLabel = (station) => {
+      if (activeLocale === 'ja' && station.station_name_ja_katakana) {
+        return station.station_name_ja_katakana;
+      }
+      if (activeLocale === 'en' && station.station_name_en) {
+        return station.station_name_en;
+      }
+      return station.station_name_ko;
+    };
+    const orderedProviderLabels = (providersRaw) => {
+      const order = ['ktx', 'srt'];
+      const unique = [];
+      for (const value of providersRaw) {
+        const normalized = String(value || '').trim().toLowerCase();
+        if (normalized && !unique.includes(normalized)) {
+          unique.push(normalized);
+        }
+      }
+      unique.sort((left, right) => {
+        const leftIndex = order.indexOf(left);
+        const rightIndex = order.indexOf(right);
+        const leftRank = leftIndex >= 0 ? leftIndex : order.length;
+        const rightRank = rightIndex >= 0 ? rightIndex : order.length;
+        if (leftRank !== rightRank) return leftRank - rightRank;
+        return left.localeCompare(right);
+      });
+      return unique.map((value) => value.toUpperCase());
+    };
+    const providerBulletText = (station) => {
+      const providers = Array.isArray(station.supported_providers)
+        ? station.supported_providers
+        : [String(station.provider || '').trim().toLowerCase()].filter((value) => value);
+      if (!providers.length) return '';
+      const labels = orderedProviderLabels(providers);
+      return labels.length ? `• ${labels.join(' • ')}` : '';
+    };
+    node.innerHTML = mergedSuggestions.map((station) => `
+      <button
+        type="button"
+        class="summary-row w-full text-left"
+        data-providers="${escapeHtml(JSON.stringify(Array.isArray(station.supported_providers) ? station.supported_providers : []))}"
+        data-code="${escapeHtml(station.station_code)}"
+        data-name-ko="${escapeHtml(station.station_name_ko || '')}"
+        data-name-en="${escapeHtml(station.station_name_en || '')}"
+        data-name-ja="${escapeHtml(station.station_name_ja_katakana || '')}"
+        data-display-name="${escapeHtml(selectSuggestionLabel(station))}"
+      >
+        <span>${escapeHtml(selectSuggestionLabel(station))} (${escapeHtml(station.station_code)})</span>
+        <span class="text-xs txt-supporting">${escapeHtml(providerBulletText(station))}</span>
       </button>
     `).join('');
 
     Array.from(node.querySelectorAll('[data-code]')).forEach((button) => {
       button.addEventListener('click', () => {
+        let supportedProviders = [];
+        try {
+          const rawProviders = button.getAttribute('data-providers');
+          const parsed = rawProviders ? JSON.parse(rawProviders) : [];
+          supportedProviders = Array.isArray(parsed)
+            ? parsed.map((value) => String(value || '').trim().toLowerCase()).filter((value) => value)
+            : [];
+        } catch (_err) {}
         const station = {
-          provider: button.getAttribute('data-provider'),
+          provider: supportedProviders[0] || '',
+          supported_providers: supportedProviders,
           station_code: button.getAttribute('data-code'),
-          station_name_ko: button.getAttribute('data-name'),
+          station_name_ko: button.getAttribute('data-name-ko'),
+          station_name_en: button.getAttribute('data-name-en'),
+          station_name_ja_katakana: button.getAttribute('data-name-ja'),
+          station_display_name:
+            button.getAttribute('data-display-name') || button.getAttribute('data-name-ko'),
         };
         setter(station);
         node.innerHTML = '';
@@ -1781,14 +1922,21 @@ pub fn render_dashboard_train(email: &str) -> String {
       const response = await requestJson(`/api/train/stations/suggest?q=${encodeURIComponent(query)}&limit=8`);
       if (requestId !== requestCounter) return;
       if (!response.ok) {
-        suggestionsNode.innerHTML = '<div class="error-card">Suggestion lookup failed.</div>';
+        suggestionsNode.innerHTML = `<div class="error-card">${escapeHtml(apiErrorMessage(response, 'Suggestion lookup failed.'))}</div>`;
         return;
       }
       const suggestions = response.body && Array.isArray(response.body.suggestions) ? response.body.suggestions : [];
       renderSuggestions(suggestionsNode, suggestions, (station) => {
         assignSelection(station);
-        inputNode.value = `${station.station_name_ko} (${station.station_code})`;
-        codeNode.textContent = `${station.station_code} · ${String(station.provider || '').toUpperCase()}`;
+        inputNode.value = `${station.station_display_name} (${station.station_code})`;
+        const providerLabels = Array.isArray(station.supported_providers) && station.supported_providers.length
+          ? station.supported_providers
+          : [String(station.provider || '').trim().toLowerCase()].filter((value) => value);
+        const providerLabelText = orderedProviderLabels(providerLabels)
+          .join(' / ');
+        codeNode.textContent = providerLabelText
+          ? `${station.station_code} · ${providerLabelText}`
+          : `${station.station_code}`;
       });
     };
   };
@@ -1829,8 +1977,7 @@ pub fn render_dashboard_train(email: &str) -> String {
       available_only: true,
     });
     if (!response.ok) {
-      const requestId = response.body && response.body.request_id ? ` (request_id: ${response.body.request_id})` : '';
-      showStatus('error', `Search request failed${requestId}`);
+      showStatus('error', apiErrorMessage(response, 'Search request failed.'));
       return;
     }
     const created = response.body || {};
@@ -1847,15 +1994,15 @@ pub fn render_dashboard_train(email: &str) -> String {
 })();
 </script>"#,
     );
+    html.push_str(&bottom_nav);
     html
 }
 
-pub fn render_dashboard_security_providers(email: &str) -> String {
-    let topbar = app_shell_topbar(
-        "Provider Credentials",
-        &format!("Signed in as {}", html_escape(email)),
-    );
+pub fn render_dashboard_settings_providers(email: &str) -> String {
+    let topbar = app_shell_topbar("Settings", &format!("Signed in as {}", html_escape(email)));
     let sidebar = dashboard_desktop_sidebar("security");
+    let bottom_nav = render_dashboard_bottom_nav(DashboardSection::Settings);
+    let settings_tabs = dashboard_settings_tabs("provider");
     let mut html = String::new();
     html.push_str(&topbar);
     html.push_str(
@@ -1863,54 +2010,59 @@ pub fn render_dashboard_security_providers(email: &str) -> String {
   <div class="md:grid md:grid-cols-[220px_minmax(0,1fr)] md:items-start md:gap-4">"#,
     );
     html.push_str(&sidebar);
+    html.push_str(r#"<section class="space-y-4">"#);
+    html.push_str(&settings_tabs);
     html.push_str(
-        r#"<section class="space-y-4">
+        r#"
       <section class="glass-card rounded-[22px] p-5">
-        <h2 class="text-lg font-semibold txt-strong">Provider login material</h2>
-        <p class="mt-1 text-sm txt-supporting">Credentials are encrypted server-side and bound to your account.</p>
-        <div id="provider-security-preflight" class="mt-3 space-y-2"><div class="loading-card">Loading status...</div></div>
-        <div class="action-group action-pair" data-action-group="pair">
-          <a class="btn-ghost h-11 w-full text-center leading-[2.75rem]" href="/dashboard/train">Back to train</a>
-          <a class="btn-ghost h-11 w-full text-center leading-[2.75rem]" href="/dashboard/payment">Payment setup</a>
-        </div>
-      </section>
-
-      <section class="glass-card rounded-[22px] p-5">
-        <h3 class="text-base font-semibold txt-strong">SRT credentials</h3>
-        <form id="provider-form-srt" class="mt-3 space-y-3">
-          <label class="field-label" for="srt-account">Account identifier</label>
-          <input id="srt-account" type="text" autocomplete="username" class="field-input h-11 w-full" />
-          <label class="field-label" for="srt-password">Password</label>
-          <input id="srt-password" type="password" autocomplete="current-password" class="field-input h-11 w-full" />
-          <button type="submit" class="btn-primary h-11 w-full">Save SRT credentials</button>
-        </form>
-      </section>
-
-      <section class="glass-card rounded-[22px] p-5">
-        <h3 class="text-base font-semibold txt-strong">KTX credentials</h3>
-        <form id="provider-form-ktx" class="mt-3 space-y-3">
-          <label class="field-label" for="ktx-account">Account identifier</label>
-          <input id="ktx-account" type="text" autocomplete="username" class="field-input h-11 w-full" />
-          <label class="field-label" for="ktx-password">Password</label>
-          <input id="ktx-password" type="password" autocomplete="current-password" class="field-input h-11 w-full" />
-          <button type="submit" class="btn-primary h-11 w-full">Save KTX credentials</button>
-        </form>
+        <h2 class="text-lg font-semibold txt-strong">Provider Authentication</h2>
+        <p class="mt-1 text-sm txt-supporting">Select a provider card to open its authentication form.</p>
+        <div id="provider-security-preflight" class="mt-3 grid grid-cols-2 gap-2"><div class="loading-card col-span-2">Loading status...</div></div>
       </section>
 
       <div id="provider-security-status" class="hidden"></div>
     </section>
   </div>
 </main>
-<nav class="bottom-nav">
-  <a href="/dashboard">Home</a>
-  <a href="/dashboard/train">Train</a>
-  <a href="/dashboard/jobs">Jobs</a>
-  <a href="/dashboard/security" class="active">Security</a>
-</nav>
+<div id="provider-auth-modal" class="app-modal-backdrop hidden" aria-hidden="true">
+  <div class="app-modal-card" role="dialog" aria-modal="true" aria-labelledby="provider-auth-modal-title">
+    <div class="flex items-center justify-between gap-2">
+      <h3 id="provider-auth-modal-title" class="text-base font-semibold txt-strong">Provider Authentication</h3>
+      <button id="provider-auth-modal-delete" type="button" class="btn-destructive h-9 w-9 p-0" aria-label="Delete credentials">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" class="h-4 w-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 6h18"></path>
+          <path d="M8 6V4h8v2"></path>
+          <path d="M19 6l-1 14H6L5 6"></path>
+          <path d="M10 11v6"></path>
+          <path d="M14 11v6"></path>
+        </svg>
+      </button>
+    </div>
+    <p class="mt-1 text-xs txt-supporting"><span id="provider-auth-modal-provider">Provider</span> credentials are encrypted server-side.</p>
+    <form id="provider-auth-form" class="mt-3 space-y-3">
+      <label class="field-label" for="provider-auth-account">Account identifier</label>
+      <input id="provider-auth-account" type="text" autocomplete="username" class="field-input h-11 w-full" />
+      <label class="field-label" for="provider-auth-password">Password</label>
+      <input id="provider-auth-password" type="password" autocomplete="current-password" class="field-input h-11 w-full" />
+      <div class="grid grid-cols-2 gap-2" data-action-group="pair">
+        <button id="provider-auth-modal-cancel" type="button" class="btn-ghost h-11 w-full">Cancel</button>
+        <button id="provider-auth-modal-save" type="submit" class="btn-primary h-11 w-full">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
 <script>
 (() => {
   const preflightNode = document.getElementById('provider-security-preflight');
   const statusNode = document.getElementById('provider-security-status');
+  const authModal = document.getElementById('provider-auth-modal');
+  const authModalTitle = document.getElementById('provider-auth-modal-title');
+  const authModalProvider = document.getElementById('provider-auth-modal-provider');
+  const authModalDelete = document.getElementById('provider-auth-modal-delete');
+  const authModalCancel = document.getElementById('provider-auth-modal-cancel');
+  const authForm = document.getElementById('provider-auth-form');
+  const authAccountInput = document.getElementById('provider-auth-account');
+  const authPasswordInput = document.getElementById('provider-auth-password');
 
   const requestJson = async (url, method, payload) => {
     const response = await fetch(url, {
@@ -1924,60 +2076,240 @@ pub fn render_dashboard_security_providers(email: &str) -> String {
     return { ok: response.ok, status: response.status, body };
   };
 
+  const escapeHtml = (value) => String(value || '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+
+  const apiErrorMessage = (response, fallback) => {
+    const body = response && response.body && typeof response.body === 'object' ? response.body : {};
+    const message = typeof body.message === 'string' && body.message.trim()
+      ? body.message.trim()
+      : fallback;
+    const requestId = typeof body.request_id === 'string' && body.request_id.trim()
+      ? ` (request_id: ${body.request_id.trim()})`
+      : '';
+    return `${message}${requestId}`;
+  };
+
+  const providerOrder = ['srt', 'ktx'];
+  const MODAL_LAYER_BASE = 70;
+  let modalLayerCounter = 0;
+  let activeProvider = null;
+  let latestProvidersByName = new Map();
+
   const showStatus = (kind, message) => {
     statusNode.classList.remove('hidden');
     statusNode.className = kind === 'error' ? 'error-card' : 'summary-card';
     statusNode.textContent = message;
   };
 
+  const bringModalToBody = (modalNode) => {
+    if (!modalNode || !document.body) return;
+    if (modalNode.parentElement !== document.body) {
+      document.body.appendChild(modalNode);
+    }
+  };
+
+  const openModalLayer = (modalNode) => {
+    if (!modalNode) return;
+    bringModalToBody(modalNode);
+    modalLayerCounter += 1;
+    modalNode.style.zIndex = String(MODAL_LAYER_BASE + modalLayerCounter);
+    modalNode.classList.remove('hidden');
+    modalNode.setAttribute('aria-hidden', 'false');
+  };
+
+  const closeModalLayer = (modalNode) => {
+    if (!modalNode) return;
+    modalNode.classList.add('hidden');
+    modalNode.setAttribute('aria-hidden', 'true');
+    modalNode.style.removeProperty('z-index');
+    if (!document.querySelector('.app-modal-backdrop:not(.hidden)')) {
+      modalLayerCounter = 0;
+    }
+  };
+
+  const normalizeProvider = (value) => {
+    const normalized = String(value || '').trim().toLowerCase();
+    return providerOrder.includes(normalized) ? normalized : null;
+  };
+
+  const activeProviderRecord = () => {
+    if (!activeProvider) return null;
+    return latestProvidersByName.get(activeProvider) || null;
+  };
+
+  const providerDebugMessage = (provider) => {
+    if (!provider || typeof provider !== 'object') return '';
+    if (typeof provider.error === 'string' && provider.error.trim()) return provider.error.trim();
+    if (typeof provider.debug === 'string' && provider.debug.trim()) return provider.debug.trim();
+    if (typeof provider.message === 'string' && provider.message.trim()) return provider.message.trim();
+    return '';
+  };
+
+  const providerStatusToneClass = (ready, hasError) => {
+    if (ready) return 'status-icon status-icon-green';
+    if (hasError) return 'status-icon status-icon-red';
+    return 'status-icon status-icon-gray';
+  };
+
+  const statusIcon = (kind, ready, hasError) => {
+    const title = kind === 'credentials' ? 'Credentials' : 'Payment';
+    const state = ready ? 'ready' : (hasError ? 'error' : 'missing');
+    const toneClass = providerStatusToneClass(ready, hasError);
+    const path = kind === 'credentials'
+      ? '<circle cx="12" cy="8" r="3"></circle><path d="M5.5 19a6.5 6.5 0 0 1 13 0"></path>'
+      : '<rect x="3.5" y="6.5" width="17" height="11" rx="2"></rect><path d="M3.5 10.5h17"></path>';
+    return `
+      <span class="provider-status-chip" title="${title}: ${state}" aria-label="${title}: ${state}">
+        <svg class="${toneClass}" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          ${path}
+        </svg>
+      </span>
+    `;
+  };
+
+  const closeAuthModal = () => {
+    closeModalLayer(authModal);
+    activeProvider = null;
+    if (authForm) authForm.reset();
+  };
+
+  const openAuthModal = (provider) => {
+    const normalizedProvider = normalizeProvider(provider);
+    if (!normalizedProvider) return;
+    activeProvider = normalizedProvider;
+    if (authModalTitle) authModalTitle.textContent = `${normalizedProvider.toUpperCase()} Authentication`;
+    if (authModalProvider) authModalProvider.textContent = normalizedProvider.toUpperCase();
+    if (authForm) authForm.reset();
+    openModalLayer(authModal);
+    requestAnimationFrame(() => {
+      if (authAccountInput) authAccountInput.focus();
+    });
+  };
+
+  const deleteProviderCredentials = async () => {
+    const selected = activeProviderRecord();
+    if (!selected || !activeProvider) return;
+    const prompt = `Delete saved ${activeProvider.toUpperCase()} credentials?`;
+    if (!window.confirm(prompt)) return;
+    const response = await requestJson(`/api/train/providers/${activeProvider}/credentials`, 'DELETE');
+    if (!response.ok) {
+      showStatus(
+        'error',
+        apiErrorMessage(response, `Could not delete ${activeProvider.toUpperCase()} credentials.`),
+      );
+      return;
+    }
+    closeAuthModal();
+    showStatus('success', `${activeProvider.toUpperCase()} credentials deleted.`);
+    await loadPreflight();
+  };
+
   const loadPreflight = async () => {
     const response = await requestJson('/api/train/preflight');
     if (!response.ok) {
-      preflightNode.innerHTML = '<div class="error-card">Could not load readiness.</div>';
+      preflightNode.innerHTML = `<div class="error-card col-span-2">${escapeHtml(apiErrorMessage(response, 'Could not load readiness.'))}</div>`;
       return;
     }
     const providers = response.body && Array.isArray(response.body.providers) ? response.body.providers : [];
-    preflightNode.innerHTML = providers.map((provider) => `
-      <div class="summary-row">
-        <span>${provider.provider.toUpperCase()}</span>
-        <span class="text-xs txt-supporting">credentials: ${provider.credentials_ready ? 'ready' : 'missing'}</span>
-      </div>
-    `).join('') || '<div class="empty-card">No provider data.</div>';
+    latestProvidersByName = new Map(
+      providers
+        .map((provider) => {
+          const key = normalizeProvider(provider.provider);
+          return key ? [key, provider] : null;
+        })
+        .filter((entry) => !!entry),
+    );
+
+    preflightNode.innerHTML = providers.map((provider) => {
+      const providerKey = normalizeProvider(provider.provider);
+      const debugMessage = providerDebugMessage(provider);
+      const hasError = Boolean(debugMessage);
+      return `
+        <button type="button" class="summary-card provider-select-card p-3 w-full text-left" data-provider-open="${providerKey || ''}">
+          <span class="flex h-8 items-center justify-between gap-2">
+            <span class="txt-strong">${provider.provider.toUpperCase()}</span>
+            <span class="provider-status-group">
+              ${statusIcon('credentials', provider.credentials_ready, hasError)}
+            </span>
+          </span>
+          ${debugMessage ? `<span class="support-row mt-2 block">${escapeHtml(debugMessage)}</span>` : ''}
+        </button>
+      `;
+    }).join('') || '<div class="empty-card col-span-2">No provider data.</div>';
+
+    Array.from(preflightNode.querySelectorAll('[data-provider-open]')).forEach((button) => {
+      button.addEventListener('click', () => {
+        const provider = normalizeProvider(button.getAttribute('data-provider-open'));
+        if (!provider) return;
+        openAuthModal(provider);
+      });
+    });
   };
 
-  const bindForm = (provider) => {
-    const form = document.getElementById(`provider-form-${provider}`);
-    if (!form) return;
-    form.addEventListener('submit', async (event) => {
+  if (authModalCancel) {
+    authModalCancel.addEventListener('click', () => {
+      closeAuthModal();
+    });
+  }
+
+  if (authModalDelete) {
+    authModalDelete.addEventListener('click', async () => {
+      await deleteProviderCredentials();
+    });
+  }
+
+  if (authForm) {
+    authForm.addEventListener('submit', async (event) => {
       event.preventDefault();
-      const account = String(form.querySelector('input[type=\"text\"]').value || '').trim();
-      const password = String(form.querySelector('input[type=\"password\"]').value || '');
-      const response = await requestJson(`/api/train/providers/${provider}/credentials`, 'PUT', {
+      if (!activeProvider) return;
+      const account = String(authAccountInput && authAccountInput.value ? authAccountInput.value : '').trim();
+      const password = String(authPasswordInput && authPasswordInput.value ? authPasswordInput.value : '');
+      const response = await requestJson(`/api/train/providers/${activeProvider}/credentials`, 'PUT', {
         account_identifier: account,
         password,
       });
       if (!response.ok) {
-        const requestId = response.body && response.body.request_id ? ` (request_id: ${response.body.request_id})` : '';
-        showStatus('error', `Could not save ${provider.toUpperCase()} credentials${requestId}`);
+        showStatus('error', apiErrorMessage(response, `Could not save ${activeProvider.toUpperCase()} credentials.`));
         return;
       }
-      showStatus('success', `${provider.toUpperCase()} credentials saved.`);
-      loadPreflight();
+      closeAuthModal();
+      showStatus('success', `${activeProvider.toUpperCase()} credentials saved.`);
+      await loadPreflight();
     });
-  };
+  }
 
-  bindForm('srt');
-  bindForm('ktx');
+  if (authModal) {
+    authModal.addEventListener('click', (event) => {
+      if (event.target === authModal) {
+        closeAuthModal();
+      }
+    });
+  }
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') return;
+    if (!authModal || authModal.classList.contains('hidden')) return;
+    closeAuthModal();
+  });
+
   loadPreflight();
 })();
 </script>"#,
     );
+    html.push_str(&bottom_nav);
     html
 }
 
 pub fn render_dashboard_payment(email: &str) -> String {
-    let topbar = app_shell_topbar("Payment", &format!("Signed in as {}", html_escape(email)));
+    let topbar = app_shell_topbar("Settings", &format!("Signed in as {}", html_escape(email)));
     let sidebar = dashboard_desktop_sidebar("security");
+    let bottom_nav = render_dashboard_bottom_nav(DashboardSection::Settings);
+    let settings_tabs = dashboard_settings_tabs("payment");
     let mut html = String::new();
     html.push_str(&topbar);
     html.push_str(
@@ -1985,60 +2317,98 @@ pub fn render_dashboard_payment(email: &str) -> String {
   <div class="md:grid md:grid-cols-[220px_minmax(0,1fr)] md:items-start md:gap-4">"#,
     );
     html.push_str(&sidebar);
+    html.push_str(r#"<section class="space-y-4">"#);
+    html.push_str(&settings_tabs);
     html.push_str(
-        r#"<section class="space-y-4">
+        r#"
       <section class="glass-card rounded-[22px] p-5">
-        <h2 class="text-lg font-semibold txt-strong">Provider payment methods</h2>
-        <p class="mt-1 text-sm txt-supporting">Submit Evervault tokenized fields only. Raw PAN/CVV must never be sent here.</p>
-        <div class="action-group action-pair" data-action-group="pair">
-          <a class="btn-ghost h-11 w-full text-center leading-[2.75rem]" href="/dashboard/security/providers">Provider credentials</a>
-          <a class="btn-ghost h-11 w-full text-center leading-[2.75rem]" href="/dashboard/train">Back to train</a>
+        <div class="flex items-center justify-between gap-2">
+          <h3 class="text-base font-semibold txt-strong">Saved cards</h3>
+          <button
+            id="payment-modal-open"
+            type="button"
+            class="btn-chip inline-flex h-9 w-9 items-center justify-center rounded-xl p-0"
+            aria-label="Add payment card"
+            title="Add payment card"
+          >
+            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 5v14"></path>
+              <path d="M5 12h14"></path>
+            </svg>
+          </button>
         </div>
-      </section>
-
-      <section class="glass-card rounded-[22px] p-5">
-        <h3 class="text-base font-semibold txt-strong">SRT payment token fields</h3>
-        <form id="payment-form-srt" class="mt-3 space-y-3"></form>
-      </section>
-
-      <section class="glass-card rounded-[22px] p-5">
-        <h3 class="text-base font-semibold txt-strong">KTX payment token fields</h3>
-        <form id="payment-form-ktx" class="mt-3 space-y-3"></form>
+        <div id="payment-card-list" class="mt-3 space-y-2"><div class="loading-card">Loading saved cards...</div></div>
       </section>
 
       <div id="payment-status" class="hidden"></div>
     </section>
   </div>
 </main>
-<nav class="bottom-nav">
-  <a href="/dashboard">Home</a>
-  <a href="/dashboard/train">Train</a>
-  <a href="/dashboard/jobs">Jobs</a>
-  <a href="/dashboard/security" class="active">Security</a>
-</nav>
+<div id="payment-modal" class="app-modal-backdrop hidden" aria-hidden="true">
+  <div class="app-modal-card" role="dialog" aria-modal="true" aria-labelledby="payment-modal-title">
+    <div class="flex items-center justify-between gap-2">
+      <h4 id="payment-modal-title" class="text-base font-semibold txt-strong">Payment information</h4>
+      <button id="payment-modal-delete" type="button" class="btn-destructive h-9 w-9 p-0" aria-label="Delete card">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" class="h-4 w-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 6h18"></path>
+          <path d="M8 6V4h8v2"></path>
+          <path d="M19 6l-1 14H6L5 6"></path>
+          <path d="M10 11v6"></path>
+          <path d="M14 11v6"></path>
+        </svg>
+      </button>
+    </div>
+    <p id="payment-modal-selected-card" class="mt-1 text-xs txt-supporting">Adding a new card</p>
+    <form id="payment-form-universal" class="mt-3 space-y-3">
+      <label class="field-label" for="payment-pan">pan_ev</label>
+      <input id="payment-pan" type="text" class="field-input h-11 w-full" autocomplete="off" />
+
+      <label class="field-label" for="payment-expiry-month">expiry_month_ev</label>
+      <input id="payment-expiry-month" type="text" class="field-input h-11 w-full" autocomplete="off" />
+
+      <label class="field-label" for="payment-expiry-year">expiry_year_ev</label>
+      <input id="payment-expiry-year" type="text" class="field-input h-11 w-full" autocomplete="off" />
+
+      <label class="field-label" for="payment-birth-business">birth_or_business_ev</label>
+      <input id="payment-birth-business" type="text" class="field-input h-11 w-full" autocomplete="off" />
+
+      <label class="field-label" for="payment-card-password">card_password_two_digits_ev</label>
+      <input id="payment-card-password" type="text" class="field-input h-11 w-full" autocomplete="off" />
+
+      <label class="field-label" for="payment-card-last4">card_last4 (required)</label>
+      <input id="payment-card-last4" type="text" maxlength="4" class="field-input h-11 w-full" autocomplete="off" />
+
+      <label class="field-label" for="payment-card-brand">card_brand (optional)</label>
+      <input id="payment-card-brand" type="text" class="field-input h-11 w-full" autocomplete="off" />
+
+      <div class="grid grid-cols-2 gap-2" data-action-group="pair">
+        <button id="payment-modal-cancel" type="button" class="btn-ghost h-11 w-full">Cancel</button>
+        <button id="payment-modal-save" type="submit" class="btn-primary h-11 w-full">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
 <script>
 (() => {
   const statusNode = document.getElementById('payment-status');
-  const fieldTemplate = (provider) => `
-    <label class="field-label" for="${provider}-pan">pan_ev</label>
-    <input id="${provider}-pan" type="text" class="field-input h-11 w-full" autocomplete="off" />
-    <label class="field-label" for="${provider}-expiry-month">expiry_month_ev</label>
-    <input id="${provider}-expiry-month" type="text" class="field-input h-11 w-full" autocomplete="off" />
-    <label class="field-label" for="${provider}-expiry-year">expiry_year_ev</label>
-    <input id="${provider}-expiry-year" type="text" class="field-input h-11 w-full" autocomplete="off" />
-    <label class="field-label" for="${provider}-birth-business">birth_or_business_ev</label>
-    <input id="${provider}-birth-business" type="text" class="field-input h-11 w-full" autocomplete="off" />
-    <label class="field-label" for="${provider}-card-password">card_password_two_digits_ev</label>
-    <input id="${provider}-card-password" type="text" class="field-input h-11 w-full" autocomplete="off" />
-    <label class="field-label" for="${provider}-payment-method-ref">payment_method_ref (optional)</label>
-    <input id="${provider}-payment-method-ref" type="text" class="field-input h-11 w-full" autocomplete="off" />
-    <button type="submit" class="btn-primary h-11 w-full">Save ${provider.toUpperCase()} payment method</button>
-  `;
-
-  const srtForm = document.getElementById('payment-form-srt');
-  const ktxForm = document.getElementById('payment-form-ktx');
-  srtForm.innerHTML = fieldTemplate('srt');
-  ktxForm.innerHTML = fieldTemplate('ktx');
+  const form = document.getElementById('payment-form-universal');
+  const cardListNode = document.getElementById('payment-card-list');
+  const paymentModalOpenButton = document.getElementById('payment-modal-open');
+  const paymentModal = document.getElementById('payment-modal');
+  const paymentModalDeleteButton = document.getElementById('payment-modal-delete');
+  const paymentModalCancelButton = document.getElementById('payment-modal-cancel');
+  const paymentModalSelectedCard = document.getElementById('payment-modal-selected-card');
+  const paymentPanInput = document.getElementById('payment-pan');
+  const paymentExpiryMonthInput = document.getElementById('payment-expiry-month');
+  const paymentExpiryYearInput = document.getElementById('payment-expiry-year');
+  const paymentBirthBusinessInput = document.getElementById('payment-birth-business');
+  const paymentCardPasswordInput = document.getElementById('payment-card-password');
+  const paymentCardLast4Input = document.getElementById('payment-card-last4');
+  const paymentCardBrandInput = document.getElementById('payment-card-brand');
+  const MODAL_LAYER_BASE = 70;
+  let modalLayerCounter = 0;
+  let selectedPaymentMethodRef = null;
+  let selectedPaymentLast4 = null;
 
   const requestJson = async (url, method, payload) => {
     const response = await fetch(url, {
@@ -2052,37 +2422,196 @@ pub fn render_dashboard_payment(email: &str) -> String {
     return { ok: response.ok, status: response.status, body };
   };
 
+  const escapeHtml = (value) => String(value || '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+
+  const apiErrorMessage = (response, fallback) => {
+    const body = response && response.body && typeof response.body === 'object' ? response.body : {};
+    const message = typeof body.message === 'string' && body.message.trim()
+      ? body.message.trim()
+      : fallback;
+    const requestId = typeof body.request_id === 'string' && body.request_id.trim()
+      ? ` (request_id: ${body.request_id.trim()})`
+      : '';
+    return `${message}${requestId}`;
+  };
+
   const showStatus = (kind, message) => {
     statusNode.classList.remove('hidden');
     statusNode.className = kind === 'error' ? 'error-card' : 'summary-card';
     statusNode.textContent = message;
   };
 
-  const bindForm = (provider, form) => {
-    form.addEventListener('submit', async (event) => {
-      event.preventDefault();
-      const response = await requestJson(`/api/train/providers/${provider}/payment-method`, 'PUT', {
-        pan_ev: String(document.getElementById(`${provider}-pan`).value || '').trim(),
-        expiry_month_ev: String(document.getElementById(`${provider}-expiry-month`).value || '').trim(),
-        expiry_year_ev: String(document.getElementById(`${provider}-expiry-year`).value || '').trim(),
-        birth_or_business_ev: String(document.getElementById(`${provider}-birth-business`).value || '').trim(),
-        card_password_two_digits_ev: String(document.getElementById(`${provider}-card-password`).value || '').trim(),
-        payment_method_ref: String(document.getElementById(`${provider}-payment-method-ref`).value || '').trim() || null,
-      });
-      if (!response.ok) {
-        const requestId = response.body && response.body.request_id ? ` (request_id: ${response.body.request_id})` : '';
-        showStatus('error', `Could not save ${provider.toUpperCase()} payment method${requestId}`);
-        return;
-      }
-      showStatus('success', `${provider.toUpperCase()} payment method saved.`);
+  const bringModalToBody = (modalNode) => {
+    if (!modalNode || !document.body) return;
+    if (modalNode.parentElement !== document.body) {
+      document.body.appendChild(modalNode);
+    }
+  };
+
+  const openModalLayer = (modalNode) => {
+    if (!modalNode) return;
+    bringModalToBody(modalNode);
+    modalLayerCounter += 1;
+    modalNode.style.zIndex = String(MODAL_LAYER_BASE + modalLayerCounter);
+    modalNode.classList.remove('hidden');
+    modalNode.setAttribute('aria-hidden', 'false');
+  };
+
+  const closeModalLayer = (modalNode) => {
+    if (!modalNode) return;
+    modalNode.classList.add('hidden');
+    modalNode.setAttribute('aria-hidden', 'true');
+    modalNode.style.removeProperty('z-index');
+    if (!document.querySelector('.app-modal-backdrop:not(.hidden)')) {
+      modalLayerCounter = 0;
+    }
+  };
+
+  const resetPaymentForm = () => {
+    if (form) form.reset();
+  };
+
+  const syncPaymentModalState = () => {
+    const hasSelectedCard = !!(selectedPaymentMethodRef && selectedPaymentLast4);
+    if (paymentModalDeleteButton) {
+      paymentModalDeleteButton.disabled = !hasSelectedCard;
+    }
+    if (paymentModalSelectedCard) {
+      paymentModalSelectedCard.textContent = hasSelectedCard
+        ? `Selected card: •••• ${selectedPaymentLast4}`
+        : 'Adding a new card';
+    }
+  };
+
+  const openPaymentModal = () => {
+    syncPaymentModalState();
+    openModalLayer(paymentModal);
+    requestAnimationFrame(() => {
+      if (paymentPanInput) paymentPanInput.focus();
     });
   };
 
-  bindForm('srt', srtForm);
-  bindForm('ktx', ktxForm);
+  const closePaymentModal = () => {
+    closeModalLayer(paymentModal);
+    resetPaymentForm();
+  };
+
+  const deleteSelectedCard = async () => {
+    const paymentMethodRef = String(selectedPaymentMethodRef || '').trim();
+    const last4 = String(selectedPaymentLast4 || '').trim();
+    if (!paymentMethodRef) return;
+    if (!window.confirm(`Delete saved card ending ${last4}?`)) return;
+
+    const response = await requestJson(`/api/train/payment-methods/${encodeURIComponent(paymentMethodRef)}`, 'DELETE');
+    if (!response.ok) {
+      showStatus('error', apiErrorMessage(response, 'Could not delete saved card.'));
+      return;
+    }
+    showStatus('success', `Deleted card ending ${last4}.`);
+    selectedPaymentMethodRef = null;
+    selectedPaymentLast4 = null;
+    closePaymentModal();
+    loadCards();
+  };
+
+  const renderCards = (cards) => {
+    if (!Array.isArray(cards) || cards.length === 0) {
+      cardListNode.innerHTML = '<div class="empty-card">No saved cards.</div>';
+      return;
+    }
+
+    cardListNode.innerHTML = cards.map((card) => `
+      <button type="button" class="summary-card w-full text-left" data-payment-ref="${escapeHtml(card.payment_method_ref || '')}" data-card-last4="${escapeHtml(card.card_last4 || '0000')}">
+        <div class="summary-row">
+          <span class="txt-strong">${escapeHtml((card.card_brand || 'Card').toUpperCase())} · •••• ${escapeHtml(card.card_last4 || '0000')}</span>
+          <span class="text-xs txt-supporting">${escapeHtml(card.payment_method_ref || '')}</span>
+        </div>
+      </button>
+    `).join('');
+
+    Array.from(cardListNode.querySelectorAll('[data-payment-ref]')).forEach((button) => {
+      button.addEventListener('click', async () => {
+        selectedPaymentMethodRef = String(button.getAttribute('data-payment-ref') || '').trim() || null;
+        selectedPaymentLast4 = String(button.getAttribute('data-card-last4') || '').trim() || null;
+        openPaymentModal();
+      });
+    });
+  };
+
+  const loadCards = async () => {
+    const response = await requestJson('/api/train/payment-methods');
+    if (!response.ok) {
+      cardListNode.innerHTML = `<div class="error-card">${escapeHtml(apiErrorMessage(response, 'Could not load saved cards.'))}</div>`;
+      return;
+    }
+    const cards = response.body && Array.isArray(response.body.cards) ? response.body.cards : [];
+    renderCards(cards);
+  };
+
+  if (paymentModalOpenButton) {
+    paymentModalOpenButton.addEventListener('click', () => {
+      selectedPaymentMethodRef = null;
+      selectedPaymentLast4 = null;
+      openPaymentModal();
+    });
+  }
+
+  if (paymentModalCancelButton) {
+    paymentModalCancelButton.addEventListener('click', () => {
+      closePaymentModal();
+    });
+  }
+
+  if (paymentModalDeleteButton) {
+    paymentModalDeleteButton.addEventListener('click', async () => {
+      await deleteSelectedCard();
+    });
+  }
+
+  if (paymentModal) {
+    paymentModal.addEventListener('click', (event) => {
+      if (event.target === paymentModal) {
+        closePaymentModal();
+      }
+    });
+  }
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') return;
+    if (!paymentModal || paymentModal.classList.contains('hidden')) return;
+    closePaymentModal();
+  });
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const response = await requestJson('/api/train/payment-methods', 'PUT', {
+      pan_ev: String(paymentPanInput && paymentPanInput.value ? paymentPanInput.value : '').trim(),
+      expiry_month_ev: String(paymentExpiryMonthInput && paymentExpiryMonthInput.value ? paymentExpiryMonthInput.value : '').trim(),
+      expiry_year_ev: String(paymentExpiryYearInput && paymentExpiryYearInput.value ? paymentExpiryYearInput.value : '').trim(),
+      birth_or_business_ev: String(paymentBirthBusinessInput && paymentBirthBusinessInput.value ? paymentBirthBusinessInput.value : '').trim(),
+      card_password_two_digits_ev: String(paymentCardPasswordInput && paymentCardPasswordInput.value ? paymentCardPasswordInput.value : '').trim(),
+      card_last4: String(paymentCardLast4Input && paymentCardLast4Input.value ? paymentCardLast4Input.value : '').trim(),
+      card_brand: String(paymentCardBrandInput && paymentCardBrandInput.value ? paymentCardBrandInput.value : '').trim() || null,
+    });
+    if (!response.ok) {
+      showStatus('error', apiErrorMessage(response, 'Could not save payment card.'));
+      return;
+    }
+    closePaymentModal();
+    showStatus('success', 'Payment card saved.');
+    loadCards();
+  });
+
+  loadCards();
 })();
 </script>"#,
     );
+    html.push_str(&bottom_nav);
     html
 }
 
@@ -2118,12 +2647,12 @@ pub fn render_admin_maintenance(view: &AdminMaintenanceView) -> String {
           <div class="summary-row"><span>Redis</span><span class="badge">{}</span></div>
         </div>
         <div class="action-group action-pair" data-action-group="pair">
-          <a class="btn-ghost h-12 w-full text-center leading-[3rem]" href="{}">/health</a>
-          <a class="btn-ghost h-12 w-full text-center leading-[3rem]" href="{}">/ready</a>
+          <a class="btn-ghost h-12 w-full text-center" href="{}">/health</a>
+          <a class="btn-ghost h-12 w-full text-center" href="{}">/ready</a>
         </div>
         <div class="action-group action-pair" data-action-group="pair">
-          <a class="btn-ghost h-12 w-full text-center leading-[3rem]" href="{}">metrics text</a>
-          <a class="btn-primary h-12 w-full text-center leading-[3rem]" href="/admin/observability">Open observability</a>
+          <a class="btn-ghost h-12 w-full text-center" href="{}">metrics text</a>
+          <a class="btn-primary h-12 w-full text-center" href="/admin/observability">Open observability</a>
         </div>
       </section>
       <section class="glass-card rounded-[22px] p-5">
@@ -2230,62 +2759,29 @@ pub fn render_admin_section(admin_email: &str, section: &str) -> String {
 }
 
 fn admin_desktop_sidebar(active: &str) -> String {
-    format!(
-        r#"<aside class="hidden md:sticky md:top-6 md:block md:self-start">
-  <div class="glass-card rounded-[22px] p-3">
-    <p class="eyebrow px-3 pt-1">ops navigation</p>
-    <nav class="mt-2 space-y-1">
-      <a href="/admin/maintenance" class="desktop-side-link {}">Maintenance</a>
-      <a href="/admin/users" class="desktop-side-link {}">Users</a>
-      <a href="/admin/runtime" class="desktop-side-link {}">Runtime</a>
-      <a href="/admin/observability" class="desktop-side-link {}">Observability</a>
-      <a href="/admin/security" class="desktop-side-link {}">Security</a>
-      <a href="/admin/config" class="desktop-side-link {}">Config</a>
-      <a href="/admin/audit" class="desktop-side-link {}">Audit</a>
-    </nav>
-  </div>
-</aside>"#,
-        if active == "maintenance" {
-            "active"
-        } else {
-            ""
-        },
-        if active == "users" { "active" } else { "" },
-        if active == "runtime" { "active" } else { "" },
-        if active == "observability" {
-            "active"
-        } else {
-            ""
-        },
-        if active == "security" { "active" } else { "" },
-        if active == "config" { "active" } else { "" },
-        if active == "audit" { "active" } else { "" },
-    )
+    let section = match active {
+        "maintenance" => AdminSection::Maintenance,
+        "users" => AdminSection::Users,
+        "runtime" => AdminSection::Runtime,
+        "observability" => AdminSection::Observability,
+        "security" => AdminSection::Security,
+        "config" => AdminSection::Config,
+        "audit" => AdminSection::Audit,
+        _ => AdminSection::Maintenance,
+    };
+    render_admin_sidebar(section)
 }
 
 fn admin_bottom_nav(active: &str) -> String {
-    format!(
-        r#"<nav class="bottom-nav">
-  <a href="/admin/maintenance" class="{}">Maint</a>
-  <a href="/admin/users" class="{}">Users</a>
-  <a href="/admin/runtime" class="{}">Runtime</a>
-  <a href="/admin/observability" class="{}">Obs</a>
-  <a href="/admin/audit" class="{}">Audit</a>
-</nav>"#,
-        if active == "maintenance" {
-            "active"
-        } else {
-            ""
-        },
-        if active == "users" { "active" } else { "" },
-        if active == "runtime" { "active" } else { "" },
-        if active == "observability" {
-            "active"
-        } else {
-            ""
-        },
-        if active == "audit" { "active" } else { "" },
-    )
+    let section = match active {
+        "maintenance" => AdminSection::Maintenance,
+        "users" => AdminSection::Users,
+        "runtime" => AdminSection::Runtime,
+        "observability" => AdminSection::Observability,
+        "audit" => AdminSection::Audit,
+        _ => AdminSection::Maintenance,
+    };
+    render_admin_bottom_nav(section)
 }
 
 const ADMIN_CONFIRM_MODAL: &str = r##"
@@ -2306,673 +2802,8 @@ const ADMIN_CONFIRM_MODAL: &str = r##"
 </div>
 "##;
 
-const ADMIN_SECTION_SCRIPT: &str = r##"
-<script>
-(() => {
-  const shell = document.querySelector('[data-admin-section]');
-  if (!shell) return;
-  const section = shell.getAttribute('data-admin-section') || '';
-  const content = document.getElementById('admin-content');
-  const flash = document.getElementById('admin-flash');
-  const modal = document.getElementById('admin-confirm-modal');
-  const modalTitle = document.getElementById('admin-confirm-title');
-  const modalMessage = document.getElementById('admin-confirm-message');
-  const modalTarget = document.getElementById('admin-confirm-target');
-  const modalReason = document.getElementById('admin-confirm-reason');
-  const modalCancel = document.getElementById('admin-confirm-cancel');
-  const modalSubmit = document.getElementById('admin-confirm-submit');
-  const chartScriptUrl = '/assets/lightweight-charts.standalone.production.js';
-
-  if (!content || !flash || !modal || !modalTitle || !modalMessage || !modalTarget || !modalReason || !modalCancel || !modalSubmit) {
-    return;
-  }
-
-  const escapeHtml = (value) => String(value ?? '')
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;');
-
-  const asText = (value, fallback = 'n/a') => {
-    if (value === null || value === undefined || value === '') return fallback;
-    return String(value);
-  };
-
-  const formatDate = (value) => {
-    if (!value) return 'n/a';
-    const parsed = new Date(value);
-    if (Number.isNaN(parsed.getTime())) return 'n/a';
-    return parsed.toLocaleString();
-  };
-
-  const setFlash = (kind, message) => {
-    if (!message) {
-      flash.textContent = '';
-      flash.className = 'mt-3 hidden';
-      return;
-    }
-    flash.className = kind === 'error' ? 'mt-3 error-card' : 'mt-3 empty-card';
-    flash.textContent = message;
-  };
-
-  const requestJson = async (url, method = 'GET', payload = null) => {
-    const options = {
-      method,
-      headers: {
-        Accept: 'application/json',
-      },
-    };
-    if (payload !== null) {
-      options.headers['Content-Type'] = 'application/json';
-      options.body = JSON.stringify(payload);
-    }
-    let response;
-    try {
-      response = await fetch(url, options);
-    } catch (error) {
-      return { ok: false, status: 0, body: { message: String(error), request_id: 'n/a' } };
-    }
-    let body = null;
-    try {
-      body = await response.json();
-    } catch (_error) {
-      body = null;
-    }
-    return { ok: response.ok, status: response.status, body };
-  };
-
-  const errorMessage = (result) => {
-    const body = result && result.body ? result.body : {};
-    const message = body.message || 'Request failed';
-    const requestId = body.request_id ? ` (request_id: ${body.request_id})` : '';
-    return `${message}${requestId}`;
-  };
-
-  let modalResolver = null;
-  let runtimeJobsStream = null;
-  let runtimeStreamDisabled = false;
-
-  const closeRuntimeJobsStream = () => {
-    if (runtimeJobsStream) {
-      runtimeJobsStream.close();
-      runtimeJobsStream = null;
-    }
-  };
-  const closeConfirmModal = (value) => {
-    modal.classList.add('hidden');
-    if (modalResolver) {
-      modalResolver(value);
-      modalResolver = null;
-    }
-  };
-
-  const openConfirmModal = ({ title, message, targetLabel, confirmText }) => new Promise((resolve) => {
-    modalResolver = resolve;
-    modalTitle.textContent = title || 'Confirm action';
-    modalMessage.textContent = message || '';
-    modalTarget.value = '';
-    modalTarget.placeholder = targetLabel || '';
-    modalReason.value = '';
-    modalSubmit.textContent = confirmText || 'Confirm';
-    modal.classList.remove('hidden');
-    window.setTimeout(() => modalTarget.focus(), 0);
-  });
-
-  modalCancel.addEventListener('click', () => closeConfirmModal(null));
-  modalSubmit.addEventListener('click', () => {
-    const payload = {
-      confirm_target: modalTarget.value.trim(),
-      reason: modalReason.value.trim(),
-    };
-    if (!payload.confirm_target || !payload.reason) {
-      return;
-    }
-    closeConfirmModal(payload);
-  });
-  modal.addEventListener('click', (event) => {
-    if (event.target === modal) closeConfirmModal(null);
-  });
-  document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && !modal.classList.contains('hidden')) {
-      closeConfirmModal(null);
-    }
-  });
-
-  const renderUsers = async () => {
-    const [usersResult, sessionsResult] = await Promise.all([
-      requestJson('/api/admin/users'),
-      requestJson('/api/admin/sessions'),
-    ]);
-    if (!usersResult.ok) {
-      content.innerHTML = `<div class="error-card">${escapeHtml(errorMessage(usersResult))}</div>`;
-      return;
-    }
-    if (!sessionsResult.ok) {
-      content.innerHTML = `<div class="error-card">${escapeHtml(errorMessage(sessionsResult))}</div>`;
-      return;
-    }
-    const users = Array.isArray(usersResult.body?.users) ? usersResult.body.users : [];
-    const sessions = Array.isArray(sessionsResult.body?.sessions) ? sessionsResult.body.sessions : [];
-    const userRows = users.map((user) => {
-      const accessLabel = user.access_enabled ? 'Disable access' : 'Enable access';
-      const nextAccess = user.access_enabled ? 'false' : 'true';
-      return `
-        <article class="admin-row" data-user-id="${escapeHtml(user.user_id)}">
-          <div class="min-w-0">
-            <p class="truncate text-sm font-semibold txt-strong">${escapeHtml(user.email)}</p>
-            <p class="truncate text-xs txt-faint">${escapeHtml(user.user_id)}</p>
-            <p class="mt-1 text-xs txt-supporting">Status: ${escapeHtml(asText(user.status))} · Role: ${escapeHtml(asText(user.role))}</p>
-          </div>
-          <div class="admin-row-actions">
-            <select class="field-input h-10 w-full md:w-[130px]" data-role-select>
-              ${['user', 'viewer', 'operator', 'admin'].map((role) => `<option value="${role}" ${role === user.role ? 'selected' : ''}>${role}</option>`).join('')}
-            </select>
-            <button class="btn-ghost h-10 w-full md:w-auto" data-action="role">Update role</button>
-            <button class="btn-ghost h-10 w-full md:w-auto" data-action="access" data-next-access="${nextAccess}">${accessLabel}</button>
-            <button class="btn-destructive h-10 w-full md:w-auto" data-action="revoke">Revoke sessions</button>
-          </div>
-        </article>
-      `;
-    }).join('');
-    const sessionRows = sessions.slice(0, 20).map((session) => `
-      <div class="summary-row">
-        <span class="truncate">${escapeHtml(asText(session.email))}</span>
-        <span class="text-xs txt-supporting">${escapeHtml(asText(session.role))} · ${escapeHtml(formatDate(session.last_seen_at))}</span>
-      </div>
-    `).join('');
-    content.innerHTML = `
-      <section class="space-y-2">
-        <h2 class="text-lg font-semibold txt-strong">User/role management</h2>
-        ${userRows || '<div class="empty-card">No users found.</div>'}
-      </section>
-      <section class="space-y-2 pt-2">
-        <h3 class="text-base font-semibold txt-strong">Recent sessions</h3>
-        ${sessionRows || '<div class="empty-card">No sessions found.</div>'}
-      </section>
-    `;
-    content.onclick = async (event) => {
-      const button = event.target.closest('button[data-action]');
-      if (!button) return;
-      const row = button.closest('[data-user-id]');
-      if (!row) return;
-      const userId = row.getAttribute('data-user-id');
-      if (!userId) return;
-      const action = button.getAttribute('data-action');
-      if (action === 'role') {
-        const roleSelect = row.querySelector('[data-role-select]');
-        const role = roleSelect ? roleSelect.value : 'user';
-        const result = await openConfirmModal({
-          title: 'Update role',
-          message: `Type ${userId} and provide a reason to update role.`,
-          targetLabel: userId,
-          confirmText: 'Apply change',
-        });
-        if (!result) return;
-        const response = await requestJson(`/api/admin/users/${encodeURIComponent(userId)}/role`, 'PATCH', {
-          role,
-          reason: result.reason,
-          confirm_target: result.confirm_target,
-        });
-        if (!response.ok) {
-          setFlash('error', errorMessage(response));
-          return;
-        }
-        setFlash('success', 'User role updated.');
-        await renderUsers();
-        return;
-      }
-      if (action === 'access') {
-        const accessEnabled = button.getAttribute('data-next-access') === 'true';
-        const result = await openConfirmModal({
-          title: 'Update user access',
-          message: `Type ${userId} and provide a reason to update access.`,
-          targetLabel: userId,
-          confirmText: 'Apply change',
-        });
-        if (!result) return;
-        const response = await requestJson(`/api/admin/users/${encodeURIComponent(userId)}/access`, 'PATCH', {
-          access_enabled: accessEnabled,
-          reason: result.reason,
-          confirm_target: result.confirm_target,
-        });
-        if (!response.ok) {
-          setFlash('error', errorMessage(response));
-          return;
-        }
-        setFlash('success', 'User access updated.');
-        await renderUsers();
-        return;
-      }
-      if (action === 'revoke') {
-        const result = await openConfirmModal({
-          title: 'Revoke sessions',
-          message: `Type ${userId} and provide a reason to revoke sessions.`,
-          targetLabel: userId,
-          confirmText: 'Revoke',
-        });
-        if (!result) return;
-        const response = await requestJson(`/api/admin/users/${encodeURIComponent(userId)}/sessions/revoke`, 'POST', result);
-        if (!response.ok) {
-          setFlash('error', errorMessage(response));
-          return;
-        }
-        setFlash('success', `Revoked ${asText(response.body?.revoked, '0')} sessions.`);
-        await renderUsers();
-      }
-    };
-  };
-
-  const runtimeState = {
-    jobs: [],
-    flags: [],
-  };
-
-  const renderRuntimeMarkup = () => {
-    const jobRows = runtimeState.jobs.slice(0, 120).map((job) => `
-      <article class="admin-row" data-job-id="${escapeHtml(job.job_id)}">
-        <div class="min-w-0">
-          <p class="truncate text-sm font-semibold txt-strong">${escapeHtml(job.job_id)}</p>
-          <p class="mt-1 text-xs txt-supporting">Status: ${escapeHtml(job.status)} · Attempts: ${escapeHtml(job.attempt_count)} · Updated: ${escapeHtml(formatDate(job.updated_at))}</p>
-        </div>
-        <div class="admin-row-actions">
-          <button class="btn-ghost h-10 w-full md:w-auto" data-job-action="retry">Retry</button>
-          <button class="btn-ghost h-10 w-full md:w-auto" data-job-action="requeue">Requeue</button>
-          <button class="btn-destructive h-10 w-full md:w-auto" data-job-action="cancel">Cancel</button>
-        </div>
-      </article>
-    `).join('');
-    const flagRows = runtimeState.flags.map((flag) => `
-      <article class="summary-row" data-flag="${escapeHtml(flag.flag)}">
-        <span>${escapeHtml(flag.flag)}</span>
-        <button class="btn-ghost h-10 px-3" data-flag-action="${flag.enabled ? 'disable' : 'enable'}">
-          ${flag.enabled ? 'Disable' : 'Enable'}
-        </button>
-      </article>
-    `).join('');
-    content.innerHTML = `
-      <section class="space-y-2">
-        <h2 class="text-lg font-semibold txt-strong">Runtime jobs</h2>
-        ${jobRows || '<div class="empty-card">No runtime jobs available.</div>'}
-      </section>
-      <section class="space-y-2 pt-2">
-        <h3 class="text-base font-semibold txt-strong">Kill switches</h3>
-        ${flagRows || '<div class="empty-card">No kill switches found.</div>'}
-      </section>
-    `;
-  };
-
-  const attachRuntimeHandlers = () => {
-    content.onclick = async (event) => {
-      const jobButton = event.target.closest('[data-job-action]');
-      if (jobButton) {
-        const row = jobButton.closest('[data-job-id]');
-        const jobId = row ? row.getAttribute('data-job-id') : null;
-        const action = jobButton.getAttribute('data-job-action');
-        if (!jobId || !action) return;
-        const payload = await openConfirmModal({
-          title: `Runtime ${action}`,
-          message: `Type ${jobId} and provide a reason for this runtime action.`,
-          targetLabel: jobId,
-          confirmText: 'Apply change',
-        });
-        if (!payload) return;
-        const response = await requestJson(`/api/admin/runtime/jobs/${encodeURIComponent(jobId)}/${action}`, 'POST', payload);
-        if (!response.ok) {
-          setFlash('error', errorMessage(response));
-          return;
-        }
-        setFlash('success', `Job ${jobId} updated.`);
-        await renderRuntime();
-        return;
-      }
-      const flagButton = event.target.closest('[data-flag-action]');
-      if (!flagButton) return;
-      const row = flagButton.closest('[data-flag]');
-      const flag = row ? row.getAttribute('data-flag') : null;
-      if (!flag) return;
-      const enabled = flagButton.getAttribute('data-flag-action') === 'enable';
-      const payload = await openConfirmModal({
-        title: 'Update kill switch',
-        message: `Type ${flag} and provide a reason to update the kill switch.`,
-        targetLabel: flag,
-        confirmText: 'Apply change',
-      });
-      if (!payload) return;
-      const response = await requestJson(`/api/admin/runtime/kill-switches/${encodeURIComponent(flag)}`, 'PUT', {
-        enabled,
-        reason: payload.reason,
-        confirm_target: payload.confirm_target,
-      });
-      if (!response.ok) {
-        setFlash('error', errorMessage(response));
-        return;
-      }
-      setFlash('success', `Kill switch ${flag} updated.`);
-      await renderRuntime();
-    };
-  };
-
-  const openRuntimeJobsStream = () => {
-    if (runtimeStreamDisabled || !window.EventSource) {
-      return;
-    }
-    closeRuntimeJobsStream();
-    try {
-      runtimeJobsStream = new EventSource('/api/admin/runtime/jobs/stream');
-    } catch (_error) {
-      runtimeStreamDisabled = true;
-      return;
-    }
-
-    runtimeJobsStream.addEventListener('runtime_jobs', (event) => {
-      let payload = null;
-      try {
-        payload = JSON.parse(event.data || '{}');
-      } catch (_error) {
-        return;
-      }
-      const jobs = Array.isArray(payload.jobs) ? payload.jobs : [];
-      runtimeState.jobs = jobs;
-      renderRuntimeMarkup();
-      attachRuntimeHandlers();
-    });
-
-    runtimeJobsStream.addEventListener('error', () => {
-      closeRuntimeJobsStream();
-      // Keep the UI responsive if stream is unavailable; actions still refresh state.
-      runtimeStreamDisabled = true;
-    });
-  };
-
-  const renderRuntime = async () => {
-    const [jobsResult, flagsResult] = await Promise.all([
-      requestJson('/api/admin/runtime/jobs'),
-      requestJson('/api/admin/runtime/kill-switches'),
-    ]);
-    if (!jobsResult.ok) {
-      content.innerHTML = `<div class="error-card">${escapeHtml(errorMessage(jobsResult))}</div>`;
-      return;
-    }
-    if (!flagsResult.ok) {
-      content.innerHTML = `<div class="error-card">${escapeHtml(errorMessage(flagsResult))}</div>`;
-      return;
-    }
-    runtimeState.jobs = Array.isArray(jobsResult.body?.jobs) ? jobsResult.body.jobs : [];
-    runtimeState.flags = Array.isArray(flagsResult.body?.flags) ? flagsResult.body.flags : [];
-    renderRuntimeMarkup();
-    attachRuntimeHandlers();
-    openRuntimeJobsStream();
-  };
-
-  const ensureLightweightCharts = async () => {
-    if (window.LightweightCharts) return window.LightweightCharts;
-    if (!window.__bominalLwPromise) {
-      window.__bominalLwPromise = new Promise((resolve, reject) => {
-        const script = document.createElement('script');
-        script.src = chartScriptUrl;
-        script.async = true;
-        script.onload = () => resolve(window.LightweightCharts);
-        script.onerror = () => reject(new Error('lightweight chart load failed'));
-        document.head.appendChild(script);
-      });
-    }
-    return window.__bominalLwPromise;
-  };
-
-  const renderObservability = async () => {
-    const [summaryResult, eventsResult, timeseriesResult, incidentsResult] = await Promise.all([
-      requestJson('/api/admin/maintenance/metrics/summary'),
-      requestJson('/api/admin/observability/events'),
-      requestJson('/api/admin/observability/timeseries?window_minutes=240'),
-      requestJson('/api/admin/incidents?limit=50'),
-    ]);
-    if (!summaryResult.ok) {
-      content.innerHTML = `<div class="error-card">${escapeHtml(errorMessage(summaryResult))}</div>`;
-      return;
-    }
-    if (!eventsResult.ok) {
-      content.innerHTML = `<div class="error-card">${escapeHtml(errorMessage(eventsResult))}</div>`;
-      return;
-    }
-    const summary = summaryResult.body || {};
-    const events = Array.isArray(eventsResult.body?.events) ? eventsResult.body.events : [];
-    const points = Array.isArray(timeseriesResult.body?.points) ? timeseriesResult.body.points : [];
-    const incidents = incidentsResult.ok && Array.isArray(incidentsResult.body?.incidents) ? incidentsResult.body.incidents : [];
-    const eventRows = events.slice(0, 80).map((event) => `
-      <article class="summary-row">
-        <span class="truncate">${escapeHtml(event.source)} · ${escapeHtml(event.event_type)}</span>
-        <span class="text-xs txt-supporting">${escapeHtml(formatDate(event.occurred_at))}</span>
-      </article>
-    `).join('');
-    const incidentRows = incidents.map((incident) => `
-      <article class="admin-row" data-incident-id="${escapeHtml(incident.id)}">
-        <div class="min-w-0">
-          <p class="truncate text-sm font-semibold txt-strong">${escapeHtml(incident.title)}</p>
-          <p class="mt-1 text-xs txt-supporting">${escapeHtml(incident.severity)} · ${escapeHtml(incident.status)} · ${escapeHtml(formatDate(incident.opened_at))}</p>
-        </div>
-        <div class="admin-row-actions">
-          <button class="btn-ghost h-10 w-full md:w-auto" data-incident-status="monitoring">Monitoring</button>
-          <button class="btn-ghost h-10 w-full md:w-auto" data-incident-status="resolved">Resolve</button>
-        </div>
-      </article>
-    `).join('');
-    content.innerHTML = `
-      <section class="grid grid-cols-1 gap-2 md:grid-cols-2">
-        <div class="summary-row"><span>Readiness</span><span class="badge">${summary.readiness_ok ? 'Healthy' : 'Degraded'}</span></div>
-        <div class="summary-row"><span>Error rate</span><span>${asText(summary.error_rate, '0')}</span></div>
-        <div class="summary-row"><span>P95 latency (ms)</span><span>${asText(summary.p95_latency_ms, 'n/a')}</span></div>
-        <div class="summary-row"><span>Saturation</span><span>${asText(summary.saturation, 'n/a')}</span></div>
-      </section>
-      <section class="pt-2">
-        <h2 class="text-base font-semibold txt-strong">Events over time</h2>
-        <div id="obs-timeseries" class="mt-2 h-56 rounded-2xl border border-slate-200/70 bg-white/55 p-2"></div>
-      </section>
-      <section class="space-y-2 pt-2">
-        <h2 class="text-base font-semibold txt-strong">Incident workflow</h2>
-        <form id="incident-create-form" class="grid grid-cols-1 gap-2 md:grid-cols-2">
-          <input class="field-input h-11" name="title" placeholder="Incident title" required minlength="3" maxlength="140" />
-          <select class="field-input h-11" name="severity">
-            <option value="sev1">sev1</option>
-            <option value="sev2">sev2</option>
-            <option value="sev3" selected>sev3</option>
-            <option value="sev4">sev4</option>
-          </select>
-          <input class="field-input h-11 md:col-span-2" name="summary" placeholder="Summary (optional)" maxlength="600" />
-          <input class="field-input h-11 md:col-span-2" name="reason" placeholder="Reason for opening incident" required minlength="8" />
-          <button class="btn-primary h-11 w-full md:w-auto" type="submit">Open incident</button>
-        </form>
-        ${incidentRows || '<div class="empty-card">No incidents.</div>'}
-      </section>
-      <section class="space-y-2 pt-2">
-        <h2 class="text-base font-semibold txt-strong">Events timeline</h2>
-        ${eventRows || '<div class="empty-card">No observability events found.</div>'}
-      </section>
-    `;
-
-    const chartEl = document.getElementById('obs-timeseries');
-    if (chartEl && points.length) {
-      try {
-        const lw = await ensureLightweightCharts();
-        if (lw && lw.createChart) {
-          const chart = lw.createChart(chartEl, {
-            width: chartEl.clientWidth || 320,
-            height: 210,
-            layout: {
-              background: { color: 'transparent' },
-              textColor: getComputedStyle(document.body).getPropertyValue('--text-supporting') ? `rgb(${getComputedStyle(document.body).getPropertyValue('--text-supporting')})` : '#64748b',
-            },
-            grid: {
-              vertLines: { color: 'rgba(148,163,184,0.2)' },
-              horzLines: { color: 'rgba(148,163,184,0.2)' },
-            },
-            rightPriceScale: { borderVisible: false },
-            timeScale: { borderVisible: false, timeVisible: true, secondsVisible: false },
-          });
-          const totalSeries = chart.addLineSeries({ color: '#635bff', lineWidth: 2 });
-          const errorSeries = chart.addLineSeries({ color: '#ef4444', lineWidth: 2 });
-          totalSeries.setData(points.map((point) => ({ time: Math.floor(new Date(point.bucket).getTime() / 1000), value: Number(point.total_events || 0) })));
-          errorSeries.setData(points.map((point) => ({ time: Math.floor(new Date(point.bucket).getTime() / 1000), value: Number(point.error_events || 0) })));
-          chart.timeScale().fitContent();
-          window.addEventListener('resize', () => {
-            chart.applyOptions({ width: chartEl.clientWidth || 320 });
-          });
-        }
-      } catch (_error) {
-        chartEl.innerHTML = '<div class="empty-card">Chart unavailable in this environment.</div>';
-      }
-    }
-
-    content.onclick = async (event) => {
-      const button = event.target.closest('[data-incident-status]');
-      if (!button) return;
-      const row = button.closest('[data-incident-id]');
-      const incidentId = row ? row.getAttribute('data-incident-id') : null;
-      const nextStatus = button.getAttribute('data-incident-status');
-      if (!incidentId || !nextStatus) return;
-      const payload = await openConfirmModal({
-        title: 'Update incident status',
-        message: `Type ${incidentId} and provide a reason to update the incident status.`,
-        targetLabel: incidentId,
-        confirmText: 'Apply change',
-      });
-      if (!payload) return;
-      const response = await requestJson(`/api/admin/incidents/${encodeURIComponent(incidentId)}/status`, 'PATCH', {
-        status: nextStatus,
-        reason: payload.reason,
-        confirm_target: payload.confirm_target,
-      });
-      if (!response.ok) {
-        setFlash('error', errorMessage(response));
-        return;
-      }
-      setFlash('success', `Incident ${incidentId} updated.`);
-      await renderObservability();
-    };
-
-    const form = document.getElementById('incident-create-form');
-    if (form) {
-      form.onsubmit = async (event) => {
-        event.preventDefault();
-        const formData = new FormData(form);
-        const response = await requestJson('/api/admin/incidents', 'POST', {
-          title: String(formData.get('title') || ''),
-          severity: String(formData.get('severity') || 'sev3'),
-          summary: String(formData.get('summary') || ''),
-          reason: String(formData.get('reason') || ''),
-        });
-        if (!response.ok) {
-          setFlash('error', errorMessage(response));
-          return;
-        }
-        setFlash('success', 'Incident opened.');
-        await renderObservability();
-      };
-    }
-  };
-
-  const renderSecurity = async () => {
-    const [capabilitiesResult, sessionsResult] = await Promise.all([
-      requestJson('/api/admin/capabilities'),
-      requestJson('/api/admin/sessions'),
-    ]);
-    if (!capabilitiesResult.ok) {
-      content.innerHTML = `<div class="error-card">${escapeHtml(errorMessage(capabilitiesResult))}</div>`;
-      return;
-    }
-    if (!sessionsResult.ok) {
-      content.innerHTML = `<div class="error-card">${escapeHtml(errorMessage(sessionsResult))}</div>`;
-      return;
-    }
-    const capabilities = capabilitiesResult.body || {};
-    const sessions = Array.isArray(sessionsResult.body?.sessions) ? sessionsResult.body.sessions : [];
-    const sessionRows = sessions.slice(0, 24).map((session) => `
-      <div class="summary-row">
-        <span class="truncate">${escapeHtml(asText(session.email))}</span>
-        <span class="text-xs txt-supporting">step-up: ${session.step_up_verified_at ? 'verified' : 'missing'}</span>
-      </div>
-    `).join('');
-    content.innerHTML = `
-      <section class="space-y-2">
-        <h2 class="text-lg font-semibold txt-strong">Privileges</h2>
-        <div class="summary-row"><span>Role</span><span>${escapeHtml(asText(capabilities.role))}</span></div>
-        <div class="summary-row"><span>Can mutate</span><span>${capabilities.can_mutate ? 'yes' : 'no'}</span></div>
-        <div class="summary-row"><span>Step-up required</span><span>${capabilities.step_up_required_for_mutation ? 'yes' : 'no'}</span></div>
-      </section>
-      <section class="space-y-2 pt-2">
-        <h3 class="text-base font-semibold txt-strong">Session posture</h3>
-        ${sessionRows || '<div class="empty-card">No sessions found.</div>'}
-      </section>
-      <section class="action-group action-single">
-        <a class="btn-primary h-11 w-full text-center leading-[2.75rem]" href="/dashboard/security">Open account security</a>
-      </section>
-    `;
-  };
-
-  const renderConfig = async () => {
-    const result = await requestJson('/api/admin/config/redacted');
-    if (!result.ok) {
-      content.innerHTML = `<div class="error-card">${escapeHtml(errorMessage(result))}</div>`;
-      return;
-    }
-    const config = result.body?.config || {};
-    const rows = Object.keys(config).sort().map((key) => `
-      <div class="summary-row"><span class="truncate">${escapeHtml(key)}</span><span class="truncate text-xs txt-supporting">${escapeHtml(asText(config[key]))}</span></div>
-    `).join('');
-    content.innerHTML = `
-      <section class="space-y-2">
-        <h2 class="text-lg font-semibold txt-strong">Redacted configuration</h2>
-        ${rows || '<div class="empty-card">No config keys available.</div>'}
-      </section>
-    `;
-  };
-
-  const renderAudit = async () => {
-    const result = await requestJson('/api/admin/audit');
-    if (!result.ok) {
-      content.innerHTML = `<div class="error-card">${escapeHtml(errorMessage(result))}</div>`;
-      return;
-    }
-    const entries = Array.isArray(result.body?.entries) ? result.body.entries : [];
-    const rows = entries.slice(0, 120).map((entry) => `
-      <article class="summary-card">
-        <p class="text-sm font-semibold txt-strong">${escapeHtml(entry.action)} · ${escapeHtml(entry.target_type)}</p>
-        <p class="mt-1 text-xs txt-supporting">${escapeHtml(entry.actor_email)} · ${escapeHtml(formatDate(entry.created_at))}</p>
-        <p class="mt-1 text-xs txt-supporting">target: ${escapeHtml(asText(entry.target_id))}</p>
-        <p class="mt-1 text-xs txt-faint">request_id: ${escapeHtml(asText(entry.request_id))}</p>
-      </article>
-    `).join('');
-    content.innerHTML = `
-      <section class="space-y-2">
-        <h2 class="text-lg font-semibold txt-strong">Immutable admin audit</h2>
-        ${rows || '<div class="empty-card">No audit records found.</div>'}
-      </section>
-    `;
-  };
-
-  const renderers = {
-    users: renderUsers,
-    runtime: renderRuntime,
-    observability: renderObservability,
-    security: renderSecurity,
-    config: renderConfig,
-    audit: renderAudit,
-  };
-  window.addEventListener('beforeunload', closeRuntimeJobsStream);
-  if (section !== 'runtime') {
-    closeRuntimeJobsStream();
-  }
-  const renderer = renderers[section];
-  if (!renderer) {
-    content.innerHTML = '<div class="error-card">Unsupported admin section.</div>';
-    return;
-  }
-  renderer().catch((error) => {
-    content.innerHTML = `<div class="error-card">${escapeHtml(String(error))}</div>`;
-  });
-})();
-</script>
-"##;
+const ADMIN_SECTION_SCRIPT: &str =
+    r#"<script type="module" src="/assets/js/admin/entry.js"></script>"#;
 
 #[cfg(test)]
 mod tests {
@@ -3016,24 +2847,31 @@ mod tests {
 
     #[test]
     fn passkey_delete_action_is_destructive_and_prompted_in_modal() {
-        let html = render_dashboard_security("admin@bominal.local");
-        assert!(html.contains("data-action-group=\"destructive\""));
-        assert!(html.contains("class=\"btn-destructive h-11 w-full\""));
+        let html = render_dashboard_settings("admin@bominal.local");
+        assert!(html.contains("id=\"passkey-modal-delete\""));
+        assert!(html.contains("class=\"btn-destructive h-9 w-9 p-0\""));
         assert!(html.contains("const modalResult = await openSecurityModal({"));
         assert!(html.contains("title: 'Delete passkey'"));
+        assert!(html.contains("Settings tabs"));
+        assert!(html.contains("href=\"/dashboard/settings\""));
+        assert!(html.contains("href=\"/dashboard/settings/providers\""));
+        assert!(html.contains("href=\"/dashboard/payment\""));
+        assert!(html.contains(">Account</a>"));
+        assert!(html.contains(">Providers</a>"));
+        assert!(html.contains(">Payment</a>"));
     }
 
     #[test]
-    fn admin_observability_chart_loader_uses_local_assets_path() {
+    fn admin_section_loads_external_module_script() {
         let html = render_admin_section("ops@bominal.com", "observability");
-        assert!(html.contains("/assets/lightweight-charts.standalone.production.js"));
-        assert!(!html.contains("cdn.jsdelivr.net/npm/lightweight-charts"));
+        assert!(html.contains("type=\"module\" src=\"/assets/js/admin/entry.js\""));
     }
 
     #[test]
-    fn admin_runtime_uses_sse_jobs_stream_endpoint() {
+    fn admin_runtime_section_preserves_runtime_mount_point() {
         let html = render_admin_section("ops@bominal.com", "runtime");
-        assert!(html.contains("/api/admin/runtime/jobs/stream"));
+        assert!(html.contains("data-admin-section=\"runtime\""));
+        assert!(html.contains("id=\"admin-content\""));
     }
 
     #[test]
@@ -3042,23 +2880,55 @@ mod tests {
         assert!(html.contains("/api/train/preflight"));
         assert!(html.contains("/api/train/stations/suggest"));
         assert!(html.contains("/api/train/search"));
-        assert!(html.contains("/dashboard/security/providers"));
-        assert!(html.contains("/dashboard/payment"));
+        assert!(!html.contains("/dashboard/settings/providers"));
+        assert!(html.contains("Payment"));
     }
 
     #[test]
     fn dashboard_provider_security_page_posts_to_provider_credentials_route() {
-        let html = render_dashboard_security_providers("admin@bominal.local");
-        assert!(html.contains("/api/train/providers/${provider}/credentials"));
-        assert!(html.contains("provider-form-srt"));
-        assert!(html.contains("provider-form-ktx"));
+        let html = render_dashboard_settings_providers("admin@bominal.local");
+        assert!(html.contains("/api/train/providers/${activeProvider}/credentials"));
+        assert!(html.contains("data-provider-open"));
+        assert!(html.contains("provider-auth-modal"));
+        assert!(html.contains("provider-auth-form"));
+        assert!(html.contains("provider-auth-modal-delete"));
+        assert!(!html.contains("data-provider-edit=\""));
+        assert!(!html.contains("data-provider-delete=\""));
+        assert!(!html.contains("data-provider-reauth"));
+        assert!(!html.contains("Sign out / Sign in"));
+        assert!(!html.contains("provider-action-edit"));
+        assert!(!html.contains("provider-action-delete"));
+        assert!(!html.contains("provider-form-srt"));
+        assert!(!html.contains("provider-form-ktx"));
+        assert!(!html.contains("provider-editor-srt"));
+        assert!(!html.contains("provider-editor-ktx"));
+        assert!(!html.contains("data-provider-editor-body"));
+        assert!(html.contains("Settings tabs"));
+        assert!(html.contains("href=\"/dashboard/settings\""));
+        assert!(html.contains("href=\"/dashboard/settings/providers\""));
+        assert!(html.contains("href=\"/dashboard/payment\""));
+        assert!(html.contains(">Account</a>"));
+        assert!(html.contains(">Providers</a>"));
+        assert!(html.contains(">Payment</a>"));
     }
 
     #[test]
-    fn dashboard_payment_page_posts_to_provider_payment_route() {
+    fn dashboard_payment_page_uses_universal_payment_routes() {
         let html = render_dashboard_payment("admin@bominal.local");
-        assert!(html.contains("/api/train/providers/${provider}/payment-method"));
-        assert!(html.contains("payment-form-srt"));
-        assert!(html.contains("payment-form-ktx"));
+        assert!(html.contains("/api/train/payment-methods"));
+        assert!(
+            html.contains("/api/train/payment-methods/${encodeURIComponent(paymentMethodRef)}")
+        );
+        assert!(html.contains("payment-form-universal"));
+        assert!(html.contains("payment-modal-open"));
+        assert!(html.contains("payment-modal-delete"));
+        assert!(!html.contains("Save up to 3 cards shared across SRT and KTX"));
+        assert!(html.contains("Settings tabs"));
+        assert!(html.contains("href=\"/dashboard/settings\""));
+        assert!(html.contains("href=\"/dashboard/settings/providers\""));
+        assert!(html.contains("href=\"/dashboard/payment\""));
+        assert!(html.contains(">Account</a>"));
+        assert!(html.contains(">Providers</a>"));
+        assert!(html.contains(">Payment</a>"));
     }
 }

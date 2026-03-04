@@ -1,0 +1,7 @@
+[package]
+name = "bominal-ui-primitives"
+version.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true

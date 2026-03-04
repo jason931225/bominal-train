@@ -12,6 +12,7 @@ use super::super::AppState;
 
 const TEST_MASTER_KEY_B64_FALLBACK: &str = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
 const PAYMENT_CRYPTO_SERVICE_STORE_PATH: &str = "/v1/payment-methods/store";
+pub(crate) const UNIVERSAL_PAYMENT_PROVIDER: &str = "universal";
 
 #[derive(Debug, serde::Deserialize)]
 pub(crate) struct PutProviderPaymentMethodRequest {
@@ -19,6 +20,10 @@ pub(crate) struct PutProviderPaymentMethodRequest {
     pub(crate) owner_ref: Option<String>,
     #[serde(default)]
     pub(crate) payment_method_ref: Option<String>,
+    #[serde(default)]
+    pub(crate) card_brand: Option<String>,
+    #[serde(default)]
+    pub(crate) card_last4: String,
     pub(crate) pan_ciphertext: String,
     pub(crate) expiry_month_ciphertext: String,
     pub(crate) expiry_year_ciphertext: String,
@@ -85,9 +90,17 @@ pub(crate) async fn put_provider_payment_method(
     provider: &str,
     payload: PutProviderPaymentMethodRequest,
 ) -> Result<PutProviderPaymentMethodResult, PutProviderPaymentMethodError> {
-    let provider =
+    let input_provider =
         canonical_provider(provider).ok_or(PutProviderPaymentMethodError::ValidationFailed)?;
     validate_payment_payload(&payload)?;
+    let card_last4 = normalize_card_last4(&payload.card_last4)?;
+    let card_brand = payload
+        .card_brand
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned);
+    let storage_provider = UNIVERSAL_PAYMENT_PROVIDER;
 
     let owner_ref = payload
         .owner_ref
@@ -95,7 +108,7 @@ pub(crate) async fn put_provider_payment_method(
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(ToOwned::to_owned)
-        .unwrap_or_else(|| format!("{provider}-owner-{}", Uuid::new_v4()));
+        .unwrap_or_else(|| format!("payment-owner-{}", Uuid::new_v4()));
 
     let payment_method_ref = payload
         .payment_method_ref
@@ -103,13 +116,15 @@ pub(crate) async fn put_provider_payment_method(
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(ToOwned::to_owned)
-        .unwrap_or_else(|| format!("{provider}_pm_{}", Uuid::new_v4()));
+        .unwrap_or_else(|| format!("pm_{}", Uuid::new_v4()));
 
     if let Some(base_url) = payment_crypto_service_base_url() {
         return store_via_payment_crypto_service(
             state,
-            provider,
+            input_provider,
             payload,
+            card_brand.as_deref(),
+            card_last4.as_str(),
             owner_ref.as_str(),
             payment_method_ref.as_str(),
             base_url.as_str(),
@@ -123,9 +138,9 @@ pub(crate) async fn put_provider_payment_method(
 
     let aad = EnvelopeAad {
         payload_kind: PayloadKind::ProviderPayment,
-        provider: Some(provider.to_string()),
+        provider: Some(storage_provider.to_string()),
         subject_id: Some(owner_ref.clone()),
-        scope: format!("{provider}:payment-method:card"),
+        scope: format!("{storage_provider}:payment-method:card"),
         metadata: BTreeMap::from([("payment_method_ref".to_string(), payment_method_ref.clone())]),
     };
     let plaintext = serde_json::to_vec(&serde_json::json!({
@@ -147,18 +162,20 @@ pub(crate) async fn put_provider_payment_method(
         .map_err(|_| PutProviderPaymentMethodError::CryptoUnavailable)?;
     let now = Utc::now();
     let redacted_metadata = serde_json::json!({
-        "provider": provider,
+        "provider": storage_provider,
         "method_kind": "card",
+        "card_last4": card_last4,
+        "card_brand": card_brand,
         "contract": "ciphertext-only-v1"
     });
 
     let params = UpsertPaymentMethodSecretParams {
-        provider,
+        provider: storage_provider,
         owner_ref: owner_ref.as_str(),
         payment_method_ref: payment_method_ref.as_str(),
         method_kind: "card",
-        card_brand: None,
-        card_last4: None,
+        card_brand: card_brand.as_deref(),
+        card_last4: Some(card_last4.as_str()),
         card_exp_month: None,
         card_exp_year: None,
         payment_payload_envelope_ciphertext: encrypted.ciphertext.as_slice(),
@@ -182,7 +199,7 @@ pub(crate) async fn put_provider_payment_method(
 
     Ok(PutProviderPaymentMethodResult {
         accepted: true,
-        provider: provider.to_string(),
+        provider: storage_provider.to_string(),
         payment_method_ref,
         contract: "ciphertext-only-v1",
     })
@@ -192,6 +209,8 @@ async fn store_via_payment_crypto_service(
     state: &AppState,
     provider: &str,
     payload: PutProviderPaymentMethodRequest,
+    card_brand: Option<&str>,
+    card_last4: &str,
     owner_ref: &str,
     payment_method_ref: &str,
     base_url: &str,
@@ -213,8 +232,8 @@ async fn store_via_payment_crypto_service(
             card_password_two_digits_ev: payload.card_password_two_digits_ciphertext.as_str(),
         },
         metadata: CloudRunMetadata {
-            brand: None,
-            last4: None,
+            brand: card_brand,
+            last4: Some(card_last4),
         },
     };
 
@@ -261,7 +280,7 @@ async fn store_via_payment_crypto_service(
 
     Ok(PutProviderPaymentMethodResult {
         accepted: true,
-        provider: provider.to_string(),
+        provider: UNIVERSAL_PAYMENT_PROVIDER.to_string(),
         payment_method_ref: resolved_ref,
         contract: "kms-envelope-over-evervault-v1",
     })
@@ -281,11 +300,20 @@ fn validate_payment_payload(
             .card_password_two_digits_ciphertext
             .trim()
             .is_empty()
+        || payload.card_last4.trim().is_empty()
     {
         return Err(PutProviderPaymentMethodError::ValidationFailed);
     }
 
     Ok(())
+}
+
+fn normalize_card_last4(raw: &str) -> Result<String, PutProviderPaymentMethodError> {
+    let normalized = raw.trim();
+    if normalized.len() != 4 || !normalized.chars().all(|value| value.is_ascii_digit()) {
+        return Err(PutProviderPaymentMethodError::ValidationFailed);
+    }
+    Ok(normalized.to_string())
 }
 
 fn payment_crypto_service_base_url() -> Option<String> {
@@ -409,6 +437,7 @@ fn canonical_provider(raw: &str) -> Option<&'static str> {
     match normalize_env(raw).as_str() {
         "srt" => Some("srt"),
         "ktx" => Some("ktx"),
+        "universal" | "global" => Some(UNIVERSAL_PAYMENT_PROVIDER),
         _ => None,
     }
 }

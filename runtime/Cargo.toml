@@ -1,5 +1,11 @@
 [workspace]
-members = ["crates/api", "crates/worker", "crates/shared"]
+members = [
+    "crates/api",
+    "crates/worker",
+    "crates/shared",
+    "crates/ui_primitives",
+    "crates/ui_patterns",
+]
 resolver = "2"
 
 [workspace.package]
@@ -13,6 +19,8 @@ anyhow = "1.0.100"
 axum = { version = "0.8.7", features = ["macros", "json"] }
 chrono = { version = "0.4.42", features = ["serde"] }
 dotenvy = "0.15.7"
+encoding_rs = "0.8.35"
+to-kana = "0.6.0"
 leptos = { version = "0.8.17", features = ["ssr"] }
 leptos_axum = "0.8.8"
 leptos_meta = "0.8.5"

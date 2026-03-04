@@ -5,4 +5,5 @@ pub mod http_client;
 pub mod providers;
 pub mod queue;
 pub mod repo;
+pub mod station_catalog;
 pub mod telemetry;

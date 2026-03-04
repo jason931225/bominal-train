@@ -1616,6 +1616,8 @@ mod tests {
             user_app_host: "www.bominal.com".to_string(),
             admin_app_host: "ops.bominal.com".to_string(),
             ui_theme_cookie_name: "bominal_theme".to_string(),
+            station_catalog_json_path: "data/train/station_catalog.v1.json".to_string(),
+            station_catalog_source_mode: bominal_shared::config::StationCatalogSourceMode::RepoOnly,
             database_url: String::new(),
             redis: RedisConfig {
                 url: redis_url.to_string(),

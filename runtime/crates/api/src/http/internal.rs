@@ -9,6 +9,7 @@ pub(super) fn register(router: Router<Arc<AppState>>) -> Router<Arc<AppState>> {
         .route("/favicon.ico", get(super::super::favicon_placeholder))
         .route("/", get(super::super::ssr_auth_landing))
         .route("/auth", get(super::super::ssr_auth_alias))
+        .route("/dev/ui", get(super::super::ssr_dev_ui))
         .route("/dashboard", get(super::super::ssr_dashboard))
         .route("/dashboard/train", get(super::super::ssr_dashboard_train))
         .route("/dashboard/jobs", get(super::super::ssr_dashboard_jobs))
@@ -17,12 +18,12 @@ pub(super) fn register(router: Router<Arc<AppState>>) -> Router<Arc<AppState>> {
             get(super::super::ssr_dashboard_job_detail),
         )
         .route(
-            "/dashboard/security",
-            get(super::super::ssr_dashboard_security),
+            "/dashboard/settings",
+            get(super::super::ssr_dashboard_settings),
         )
         .route(
-            "/dashboard/security/providers",
-            get(super::super::ssr_dashboard_security_providers),
+            "/dashboard/settings/providers",
+            get(super::super::ssr_dashboard_settings_providers),
         )
         .route(
             "/dashboard/payment",

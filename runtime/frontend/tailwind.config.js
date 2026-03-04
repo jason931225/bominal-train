@@ -2,7 +2,9 @@
 module.exports = {
   content: [
     "../crates/api/src/**/*.rs",
-    "../crates/shared/src/**/*.rs"
+    "../crates/shared/src/**/*.rs",
+    "../crates/ui_patterns/src/**/*.rs",
+    "../crates/ui_primitives/src/**/*.rs"
   ],
   theme: {
     extend: {

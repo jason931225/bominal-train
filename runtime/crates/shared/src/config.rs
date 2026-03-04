@@ -41,6 +41,12 @@ pub enum AdminRole {
     User,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum StationCatalogSourceMode {
+    RepoOnly,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PasskeyConfig {
     pub provider: PasskeyProvider,
@@ -73,6 +79,8 @@ pub struct AppConfig {
     pub user_app_host: String,
     pub admin_app_host: String,
     pub ui_theme_cookie_name: String,
+    pub station_catalog_json_path: String,
+    pub station_catalog_source_mode: StationCatalogSourceMode,
     pub database_url: String,
     pub redis: RedisConfig,
     pub evervault: EvervaultConfig,
@@ -98,6 +106,14 @@ impl AppConfig {
         let user_app_host = env_or("USER_APP_HOST", "www.bominal.com")?;
         let admin_app_host = env_or("ADMIN_APP_HOST", "ops.bominal.com")?;
         let ui_theme_cookie_name = env_or("UI_THEME_COOKIE_NAME", "bominal_theme")?;
+        let station_catalog_json_path = env_or(
+            "STATION_CATALOG_JSON_PATH",
+            "data/train/station_catalog.v1.json",
+        )?;
+        let station_catalog_source_mode = parse_station_catalog_source_mode(&env_or(
+            "STATION_CATALOG_SOURCE_MODE",
+            "repo_only",
+        )?)?;
         let webauthn_rp_id = env_or("WEBAUTHN_RP_ID", "localhost")?;
         let webauthn_rp_origin_default = format!("http://localhost:{app_port}");
         let webauthn_rp_origin = env_or("WEBAUTHN_RP_ORIGIN", &webauthn_rp_origin_default)?;
@@ -117,6 +133,8 @@ impl AppConfig {
             user_app_host,
             admin_app_host,
             ui_theme_cookie_name,
+            station_catalog_json_path,
+            station_catalog_source_mode,
             database_url,
             redis: RedisConfig {
                 url: env_or("REDIS_URL", "redis://127.0.0.1:6379")?,
@@ -242,6 +260,15 @@ fn parse_passkey_provider(raw: &str) -> Result<PasskeyProvider> {
     match raw.trim().to_ascii_lowercase().as_str() {
         "server_webauthn" => Ok(PasskeyProvider::ServerWebauthn),
         _ => Err(anyhow::anyhow!("PASSKEY_PROVIDER must be: server_webauthn")),
+    }
+}
+
+fn parse_station_catalog_source_mode(raw: &str) -> Result<StationCatalogSourceMode> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "repo_only" => Ok(StationCatalogSourceMode::RepoOnly),
+        _ => Err(anyhow::anyhow!(
+            "STATION_CATALOG_SOURCE_MODE must be: repo_only"
+        )),
     }
 }
 

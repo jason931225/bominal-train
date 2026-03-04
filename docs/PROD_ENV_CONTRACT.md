@@ -29,6 +29,8 @@ This document defines the production-safe environment-variable contract using ke
 | `USER_APP_HOST` | `required` | canonical user-app host for route separation and redirects |
 | `ADMIN_APP_HOST` | `required` | canonical admin-app host for strict admin route/API host enforcement |
 | `UI_THEME_COOKIE_NAME` | `optional` | cookie key used for user theme preference (`system`, `light`, `dark`) |
+| `STATION_CATALOG_JSON_PATH` | `required` | local path to committed station-catalog snapshot consumed by train-service runtime (`repo_only` source mode) |
+| `STATION_CATALOG_SOURCE_MODE` | `required` | station catalog source-mode contract; production must be `repo_only` |
 | `HTTP_REQUEST_TIMEOUT_SECONDS` | `optional` | API request timeout guardrail tuning (defaults to 30s) |
 | `HTTP_REQUEST_BODY_LIMIT_BYTES` | `optional` | API max request body guardrail tuning (defaults to 2 MiB) |
 | `HTTP_CONCURRENCY_LIMIT` | `optional` | API request concurrency guardrail tuning (defaults to 32) |
