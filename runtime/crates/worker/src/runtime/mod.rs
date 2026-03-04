@@ -89,7 +89,7 @@ pub async fn process_next_job(
         config.lease_ttl,
     );
     let execution = executor::ProviderExecutor
-        .execute(&job, &config.payment_policy)
+        .execute(pool, &job, &config.payment_policy)
         .await;
     heartbeat.stop().await;
 

@@ -8,27 +8,19 @@ use secrecy::{ExposeSecret, SecretString};
 use url::form_urlencoded;
 
 use crate::providers::ProviderOperation;
-
-use super::{
-    ClientCallOutput, SrtClient, SrtProviderError, SrtResult,
-    netfunnel::NetfunnelStatus,
-    payment::{PayWithCardRequest, PayWithCardResponse},
-    reservation::{
-        CancelRequest, CancelResponse, GetReservationsRequest, GetReservationsResponse,
-        RefundRequest, RefundResponse, ReserveInfoRequest, ReserveInfoResponse, ReserveRequest,
-        ReserveResponse, ReserveStandbyOptionSettingsRequest, ReserveStandbyOptionSettingsResponse,
-        ReserveStandbyRequest, ReserveStandbyResponse, SrtReservation,
-    },
-    search::{SearchTrainRequest, SearchTrainResponse, SrtTrain},
-    session::{SessionCookie, SessionMaterial, SessionSnapshot},
-    ticket::{SrtTicket, TicketInfoRequest, TicketInfoResponse},
-    types::{
-        ClearRequest, ClearResponse, LoginRequest, LoginResponse, LogoutRequest, LogoutResponse,
-    },
+use crate::providers::srt::{
+    CancelRequest, CancelResponse, ClearRequest, ClearResponse, ClientCallOutput,
+    GetReservationsRequest, GetReservationsResponse, LoginRequest, LoginResponse, LogoutRequest,
+    LogoutResponse, NetfunnelStatus, PayWithCardRequest, PayWithCardResponse, RefundRequest,
+    RefundResponse, ReserveInfoRequest, ReserveInfoResponse, ReserveRequest, ReserveResponse,
+    ReserveStandbyOptionSettingsRequest, ReserveStandbyOptionSettingsResponse,
+    ReserveStandbyRequest, ReserveStandbyResponse, SearchTrainRequest, SearchTrainResponse,
+    SessionCookie, SessionMaterial, SessionSnapshot, SrtClient, SrtProviderError, SrtReservation,
+    SrtResult, SrtTicket, SrtTrain, TicketInfoRequest, TicketInfoResponse,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SrtClientFailureKind {
+pub enum KtxClientFailureKind {
     Transient,
     RateLimited,
     Fatal,
@@ -36,7 +28,7 @@ pub enum SrtClientFailureKind {
     Unauthorized,
 }
 
-impl SrtClientFailureKind {
+impl KtxClientFailureKind {
     fn into_provider_error(self, operation: ProviderOperation) -> SrtProviderError {
         match self {
             Self::Transient => SrtProviderError::Transport {
@@ -65,12 +57,12 @@ impl SrtClientFailureKind {
 
 #[derive(Debug, Clone)]
 struct PlannedFailure {
-    kind: SrtClientFailureKind,
+    kind: KtxClientFailureKind,
     remaining: usize,
 }
 
 #[derive(Debug, Clone)]
-enum SrtTransportMode {
+enum KtxTransportMode {
     Deterministic,
     Live {
         base_url: String,
@@ -79,21 +71,21 @@ enum SrtTransportMode {
 }
 
 #[derive(Debug, Clone)]
-pub struct ReqwestSrtClient {
-    mode: SrtTransportMode,
+pub struct ReqwestKtxClient {
+    mode: KtxTransportMode,
     failures: HashMap<ProviderOperation, PlannedFailure>,
 }
 
-impl Default for ReqwestSrtClient {
+impl Default for ReqwestKtxClient {
     fn default() -> Self {
         Self::deterministic()
     }
 }
 
-impl ReqwestSrtClient {
+impl ReqwestKtxClient {
     pub fn deterministic() -> Self {
         Self {
-            mode: SrtTransportMode::Deterministic,
+            mode: KtxTransportMode::Deterministic,
             failures: HashMap::new(),
         }
     }
@@ -104,7 +96,7 @@ impl ReqwestSrtClient {
             .build()
             .unwrap_or_else(|_| BlockingClient::new());
         Self {
-            mode: SrtTransportMode::Live {
+            mode: KtxTransportMode::Live {
                 base_url: trim_trailing_slash(base_url.into()),
                 client,
             },
@@ -113,13 +105,13 @@ impl ReqwestSrtClient {
     }
 
     pub fn live_default() -> Self {
-        Self::live("https://app.srail.or.kr")
+        Self::live("https://smart.letskorail.com")
     }
 
     pub fn with_failure(
         mut self,
         operation: ProviderOperation,
-        kind: SrtClientFailureKind,
+        kind: KtxClientFailureKind,
         times: usize,
     ) -> Self {
         if times > 0 {
@@ -132,6 +124,30 @@ impl ReqwestSrtClient {
             );
         }
         self
+    }
+
+    pub fn with_srt_failure(
+        self,
+        operation: ProviderOperation,
+        kind: crate::providers::srt::SrtClientFailureKind,
+        times: usize,
+    ) -> Self {
+        let mapped = match kind {
+            crate::providers::srt::SrtClientFailureKind::Transient => {
+                KtxClientFailureKind::Transient
+            }
+            crate::providers::srt::SrtClientFailureKind::RateLimited => {
+                KtxClientFailureKind::RateLimited
+            }
+            crate::providers::srt::SrtClientFailureKind::Fatal => KtxClientFailureKind::Fatal,
+            crate::providers::srt::SrtClientFailureKind::SessionExpired => {
+                KtxClientFailureKind::SessionExpired
+            }
+            crate::providers::srt::SrtClientFailureKind::Unauthorized => {
+                KtxClientFailureKind::Unauthorized
+            }
+        };
+        self.with_failure(operation, mapped, times)
     }
 
     fn maybe_fail(&mut self, operation: ProviderOperation) -> SrtResult<()> {
@@ -165,7 +181,7 @@ impl ReqwestSrtClient {
         endpoint: &str,
         form: Vec<(String, String)>,
     ) -> SrtResult<()> {
-        let SrtTransportMode::Live { base_url, client } = &self.mode else {
+        let KtxTransportMode::Live { base_url, client } = &self.mode else {
             return Ok(());
         };
 
@@ -178,7 +194,7 @@ impl ReqwestSrtClient {
             .send()
             .map_err(|err| SrtProviderError::Transport {
                 message: format!(
-                    "srt transport failed for {}: {err}",
+                    "ktx transport failed for {}: {err}",
                     operation_name(operation)
                 ),
             })?;
@@ -198,7 +214,7 @@ impl ReqwestSrtClient {
         if status.is_server_error() {
             return Err(SrtProviderError::Transport {
                 message: format!(
-                    "srt upstream status {} for {}",
+                    "ktx upstream status {} for {}",
                     status.as_u16(),
                     operation_name(operation)
                 ),
@@ -207,7 +223,7 @@ impl ReqwestSrtClient {
 
         Err(SrtProviderError::OperationFailed {
             message: format!(
-                "srt upstream rejected {} with status {}",
+                "ktx upstream rejected {} with status {}",
                 operation_name(operation),
                 status.as_u16()
             ),
@@ -218,48 +234,48 @@ impl ReqwestSrtClient {
         SessionMaterial {
             cookies: vec![SessionCookie::new(
                 "JSESSIONID",
-                SecretString::new("deterministic-cookie".into()),
+                SecretString::new("ktx-deterministic-cookie".into()),
             )],
-            expires_at: Some(Utc::now() + ChronoDuration::minutes(30)),
+            expires_at: Some(Utc::now() + ChronoDuration::minutes(20)),
         }
     }
 
     fn canned_login_response() -> LoginResponse {
         LoginResponse {
-            membership_number: "MEM-DET-1".to_string(),
-            membership_name: "Deterministic User".to_string(),
-            phone_number: Some("01012341234".to_string()),
+            membership_number: "KTX-DET-1".to_string(),
+            membership_name: "KTX Deterministic User".to_string(),
+            phone_number: Some("01000000000".to_string()),
             session: Self::canned_session(),
         }
     }
 
     fn canned_train() -> SrtTrain {
         SrtTrain {
-            train_code: "17".to_string(),
-            train_number: "301".to_string(),
-            dep_station_code: "0551".to_string(),
+            train_code: "100".to_string(),
+            train_number: "123".to_string(),
+            dep_station_code: "0001".to_string(),
             arr_station_code: "0020".to_string(),
             dep_date: "20260305".to_string(),
-            dep_time: "080000".to_string(),
+            dep_time: "081500".to_string(),
             arr_date: "20260305".to_string(),
-            arr_time: "103000".to_string(),
+            arr_time: "102500".to_string(),
             general_seat_available: true,
-            special_seat_available: false,
-            standby_available: true,
+            special_seat_available: true,
+            standby_available: false,
         }
     }
 
     fn canned_reservation() -> SrtReservation {
         SrtReservation {
-            reservation_id: "PNR-DET-1".to_string(),
-            train_number: "301".to_string(),
-            dep_station_code: "0551".to_string(),
+            reservation_id: "KTX-PNR-1".to_string(),
+            train_number: "123".to_string(),
+            dep_station_code: "0001".to_string(),
             arr_station_code: "0020".to_string(),
             dep_date: "20260305".to_string(),
-            dep_time: "080000".to_string(),
-            arr_time: "103000".to_string(),
+            dep_time: "081500".to_string(),
+            arr_time: "102500".to_string(),
             seat_count: 1,
-            total_cost: 55_000,
+            total_cost: 62_000,
             paid: false,
             waiting: false,
         }
@@ -267,28 +283,31 @@ impl ReqwestSrtClient {
 
     fn canned_ticket() -> SrtTicket {
         SrtTicket {
-            reservation_id: "PNR-DET-1".to_string(),
-            car: Some("4".to_string()),
-            seat: Some("8A".to_string()),
+            reservation_id: "KTX-PNR-1".to_string(),
+            car: Some("8".to_string()),
+            seat: Some("12C".to_string()),
             seat_class: "general".to_string(),
             passenger_type: "adult".to_string(),
-            price: 55_000,
+            price: 62_000,
             discount: 0,
             waiting: false,
         }
     }
 }
 
-impl SrtClient for ReqwestSrtClient {
+impl SrtClient for ReqwestKtxClient {
     fn login(&mut self, request: &LoginRequest) -> SrtResult<ClientCallOutput<LoginResponse>> {
         self.maybe_fail(ProviderOperation::Login)?;
         self.maybe_live_form(
             ProviderOperation::Login,
-            "/apb/selectListApb01080_n.do",
+            "/classes/com.korail.mobile.login.Login",
             vec![
-                ("srtId".to_string(), request.account_identifier.clone()),
                 (
-                    "srtPwd".to_string(),
+                    "txtMemberNo".to_string(),
+                    request.account_identifier.clone(),
+                ),
+                (
+                    "txtPwd".to_string(),
                     request.password.expose_secret().to_string(),
                 ),
             ],
@@ -302,7 +321,11 @@ impl SrtClient for ReqwestSrtClient {
         _request: &LogoutRequest,
     ) -> SrtResult<ClientCallOutput<LogoutResponse>> {
         self.maybe_fail(ProviderOperation::Logout)?;
-        self.maybe_live_form(ProviderOperation::Logout, "/common/logout.do", Vec::new())?;
+        self.maybe_live_form(
+            ProviderOperation::Logout,
+            "/classes/com.korail.mobile.common.logout",
+            Vec::new(),
+        )?;
         Ok(ClientCallOutput::success(LogoutResponse {
             logged_out: true,
         }))
@@ -316,12 +339,12 @@ impl SrtClient for ReqwestSrtClient {
         self.maybe_fail(ProviderOperation::SearchTrain)?;
         self.maybe_live_form(
             ProviderOperation::SearchTrain,
-            "/ara/selectListAra10007_n.do",
+            "/classes/com.korail.mobile.seatMovie.ScheduleView",
             vec![
-                ("dptRsStnCd".to_string(), request.dep_station_code.clone()),
-                ("arvRsStnCd".to_string(), request.arr_station_code.clone()),
-                ("dptDt".to_string(), request.dep_date.clone()),
-                ("dptTm".to_string(), request.dep_time.clone()),
+                ("txtGoStart".to_string(), request.dep_station_code.clone()),
+                ("txtGoEnd".to_string(), request.arr_station_code.clone()),
+                ("txtGoAbrdDt".to_string(), request.dep_date.clone()),
+                ("txtGoHour".to_string(), request.dep_time.clone()),
             ],
         )?;
         Ok(ClientCallOutput::success(SearchTrainResponse {
@@ -338,10 +361,10 @@ impl SrtClient for ReqwestSrtClient {
         self.maybe_fail(ProviderOperation::Reserve)?;
         self.maybe_live_form(
             ProviderOperation::Reserve,
-            "/arc/selectListArc05013_n.do",
+            "/classes/com.korail.mobile.certification.TicketReservation",
             vec![
-                ("trnNo".to_string(), request.train.train_number.clone()),
-                ("dptDt".to_string(), request.train.dep_date.clone()),
+                ("txtTrnNo1".to_string(), request.train.train_number.clone()),
+                ("txtRunDt1".to_string(), request.train.dep_date.clone()),
             ],
         )?;
         Ok(ClientCallOutput::success(ReserveResponse {
@@ -352,43 +375,21 @@ impl SrtClient for ReqwestSrtClient {
     fn reserve_standby(
         &mut self,
         _session: &SessionSnapshot,
-        request: &ReserveStandbyRequest,
+        _request: &ReserveStandbyRequest,
     ) -> SrtResult<ClientCallOutput<ReserveStandbyResponse>> {
-        self.maybe_fail(ProviderOperation::ReserveStandby)?;
-        self.maybe_live_form(
-            ProviderOperation::ReserveStandby,
-            "/arc/selectListArc05013_n.do",
-            vec![
-                ("trnNo".to_string(), request.train.train_number.clone()),
-                ("dptDt".to_string(), request.train.dep_date.clone()),
-                ("reserveType".to_string(), "11".to_string()),
-            ],
-        )?;
-        Ok(ClientCallOutput::success(ReserveStandbyResponse {
-            reservation: Self::canned_reservation(),
-        }))
+        Err(SrtProviderError::UnsupportedOperation {
+            operation: "reserve_standby",
+        })
     }
 
     fn reserve_standby_option_settings(
         &mut self,
         _session: &SessionSnapshot,
-        request: &ReserveStandbyOptionSettingsRequest,
+        _request: &ReserveStandbyOptionSettingsRequest,
     ) -> SrtResult<ClientCallOutput<ReserveStandbyOptionSettingsResponse>> {
-        self.maybe_fail(ProviderOperation::ReserveStandbyOptionSettings)?;
-        self.maybe_live_form(
-            ProviderOperation::ReserveStandbyOptionSettings,
-            "/ata/selectListAta01135_n.do",
-            vec![
-                ("pnrNo".to_string(), request.reservation_id.clone()),
-                (
-                    "smsRecvYn".to_string(),
-                    if request.agree_sms { "Y" } else { "N" }.to_string(),
-                ),
-            ],
-        )?;
-        Ok(ClientCallOutput::success(
-            ReserveStandbyOptionSettingsResponse { updated: true },
-        ))
+        Err(SrtProviderError::UnsupportedOperation {
+            operation: "reserve_standby_option_settings",
+        })
     }
 
     fn get_reservations(
@@ -399,7 +400,7 @@ impl SrtClient for ReqwestSrtClient {
         self.maybe_fail(ProviderOperation::GetReservations)?;
         self.maybe_live_form(
             ProviderOperation::GetReservations,
-            "/atc/selectListAtc14016_n.do",
+            "/classes/com.korail.mobile.certification.ReservationList",
             Vec::new(),
         )?;
         Ok(ClientCallOutput::success(GetReservationsResponse {
@@ -415,8 +416,8 @@ impl SrtClient for ReqwestSrtClient {
         self.maybe_fail(ProviderOperation::TicketInfo)?;
         self.maybe_live_form(
             ProviderOperation::TicketInfo,
-            "/atc/getListAtc14087.do",
-            vec![("pnrNo".to_string(), request.reservation_id.clone())],
+            "/classes/com.korail.mobile.refunds.SelTicketInfo",
+            vec![("txtPnrNo".to_string(), request.reservation_id.clone())],
         )?;
         Ok(ClientCallOutput::success(TicketInfoResponse {
             tickets: vec![Self::canned_ticket()],
@@ -431,8 +432,8 @@ impl SrtClient for ReqwestSrtClient {
         self.maybe_fail(ProviderOperation::Cancel)?;
         self.maybe_live_form(
             ProviderOperation::Cancel,
-            "/ard/selectListArd02045_n.do",
-            vec![("pnrNo".to_string(), request.reservation_id.clone())],
+            "/classes/com.korail.mobile.reservationCancel.ReservationCancelChk",
+            vec![("txtPnrNo".to_string(), request.reservation_id.clone())],
         )?;
         Ok(ClientCallOutput::success(CancelResponse { canceled: true }))
     }
@@ -445,48 +446,41 @@ impl SrtClient for ReqwestSrtClient {
         self.maybe_fail(ProviderOperation::PayWithCard)?;
         self.maybe_live_form(
             ProviderOperation::PayWithCard,
-            "/ata/selectListAta09036_n.do",
+            "/classes/com.korail.mobile.payment.ReservationPayment",
             vec![
-                ("pnrNo".to_string(), request.reservation_id.clone()),
+                ("txtPnrNo".to_string(), request.reservation_id.clone()),
                 (
-                    "stlCrCrdNo".to_string(),
+                    "hidStlCrCrdNo1".to_string(),
                     request.card_number.expose_secret().to_string(),
                 ),
                 (
-                    "vanPwd".to_string(),
+                    "hidVanPwd1".to_string(),
                     request.card_password_two_digits.expose_secret().to_string(),
                 ),
                 (
-                    "athnVal".to_string(),
+                    "hidAthnVal1".to_string(),
                     request.card_validation_number.expose_secret().to_string(),
                 ),
                 (
-                    "crdVlidTrm".to_string(),
+                    "hidCrdVlidTrm1".to_string(),
                     request.card_expiry_yymm.expose_secret().to_string(),
                 ),
             ],
         )?;
         Ok(ClientCallOutput::success(PayWithCardResponse {
             paid: true,
-            approval_code: Some("APR-DET-1".to_string()),
+            approval_code: Some("KTX-APR-1".to_string()),
         }))
     }
 
     fn reserve_info(
         &mut self,
         _session: &SessionSnapshot,
-        request: &ReserveInfoRequest,
+        _request: &ReserveInfoRequest,
     ) -> SrtResult<ClientCallOutput<ReserveInfoResponse>> {
-        self.maybe_fail(ProviderOperation::ReserveInfo)?;
-        self.maybe_live_form(
-            ProviderOperation::ReserveInfo,
-            "/ard/selectListArd02019_n.do",
-            vec![("pnrNo".to_string(), request.reservation_id.clone())],
-        )?;
-        Ok(ClientCallOutput::success(ReserveInfoResponse {
-            reservation: Some(Self::canned_reservation()),
-            refundable: true,
-        }))
+        Err(SrtProviderError::UnsupportedOperation {
+            operation: "reserve_info",
+        })
     }
 
     fn refund(
@@ -497,8 +491,8 @@ impl SrtClient for ReqwestSrtClient {
         self.maybe_fail(ProviderOperation::Refund)?;
         self.maybe_live_form(
             ProviderOperation::Refund,
-            "/atc/selectListAtc02063_n.do",
-            vec![("pnrNo".to_string(), request.reservation_id.clone())],
+            "/classes/com.korail.mobile.refunds.RefundsRequest",
+            vec![("txtPnrNo".to_string(), request.reservation_id.clone())],
         )?;
         Ok(ClientCallOutput::success(RefundResponse { refunded: true }))
     }

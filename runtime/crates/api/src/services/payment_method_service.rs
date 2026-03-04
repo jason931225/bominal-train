@@ -14,7 +14,7 @@ const TEST_MASTER_KEY_B64_FALLBACK: &str = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlh
 const PAYMENT_CRYPTO_SERVICE_STORE_PATH: &str = "/v1/payment-methods/store";
 
 #[derive(Debug, serde::Deserialize)]
-pub(crate) struct PutSrtPaymentMethodRequest {
+pub(crate) struct PutProviderPaymentMethodRequest {
     #[serde(default)]
     pub(crate) owner_ref: Option<String>,
     #[serde(default)]
@@ -27,15 +27,15 @@ pub(crate) struct PutSrtPaymentMethodRequest {
 }
 
 #[derive(Debug, serde::Serialize)]
-pub(crate) struct PutSrtPaymentMethodResult {
+pub(crate) struct PutProviderPaymentMethodResult {
     pub(crate) accepted: bool,
-    pub(crate) provider: &'static str,
+    pub(crate) provider: String,
     pub(crate) payment_method_ref: String,
     pub(crate) contract: &'static str,
 }
 
 #[derive(Debug)]
-pub(crate) enum PutSrtPaymentMethodError {
+pub(crate) enum PutProviderPaymentMethodError {
     ValidationFailed,
     PersistenceUnavailable,
     CryptoUnavailable,
@@ -80,10 +80,13 @@ struct CloudRunStoreResponse {
     detail: String,
 }
 
-pub(crate) async fn put_srt_payment_method(
+pub(crate) async fn put_provider_payment_method(
     state: &AppState,
-    payload: PutSrtPaymentMethodRequest,
-) -> Result<PutSrtPaymentMethodResult, PutSrtPaymentMethodError> {
+    provider: &str,
+    payload: PutProviderPaymentMethodRequest,
+) -> Result<PutProviderPaymentMethodResult, PutProviderPaymentMethodError> {
+    let provider =
+        canonical_provider(provider).ok_or(PutProviderPaymentMethodError::ValidationFailed)?;
     validate_payment_payload(&payload)?;
 
     let owner_ref = payload
@@ -92,7 +95,7 @@ pub(crate) async fn put_srt_payment_method(
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(ToOwned::to_owned)
-        .unwrap_or_else(|| format!("srt-owner-{}", Uuid::new_v4()));
+        .unwrap_or_else(|| format!("{provider}-owner-{}", Uuid::new_v4()));
 
     let payment_method_ref = payload
         .payment_method_ref
@@ -100,11 +103,12 @@ pub(crate) async fn put_srt_payment_method(
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(ToOwned::to_owned)
-        .unwrap_or_else(|| format!("srt_pm_{}", Uuid::new_v4()));
+        .unwrap_or_else(|| format!("{provider}_pm_{}", Uuid::new_v4()));
 
     if let Some(base_url) = payment_crypto_service_base_url() {
         return store_via_payment_crypto_service(
             state,
+            provider,
             payload,
             owner_ref.as_str(),
             payment_method_ref.as_str(),
@@ -114,14 +118,14 @@ pub(crate) async fn put_srt_payment_method(
     }
 
     let Some(pool) = state.db_pool.as_ref() else {
-        return Err(PutSrtPaymentMethodError::PersistenceUnavailable);
+        return Err(PutProviderPaymentMethodError::PersistenceUnavailable);
     };
 
     let aad = EnvelopeAad {
         payload_kind: PayloadKind::ProviderPayment,
-        provider: Some("srt".to_string()),
+        provider: Some(provider.to_string()),
         subject_id: Some(owner_ref.clone()),
-        scope: "srt:payment-method:card".to_string(),
+        scope: format!("{provider}:payment-method:card"),
         metadata: BTreeMap::from([("payment_method_ref".to_string(), payment_method_ref.clone())]),
     };
     let plaintext = serde_json::to_vec(&serde_json::json!({
@@ -131,25 +135,25 @@ pub(crate) async fn put_srt_payment_method(
         "birth_or_business_number_ciphertext": payload.birth_or_business_number_ciphertext,
         "card_password_two_digits_ciphertext": payload.card_password_two_digits_ciphertext
     }))
-    .map_err(|_| PutSrtPaymentMethodError::ValidationFailed)?;
+    .map_err(|_| PutProviderPaymentMethodError::ValidationFailed)?;
 
     let cipher = build_envelope_cipher_from_env(state)?;
     let encrypted = cipher
         .encrypt(&plaintext, aad.clone())
-        .map_err(|_| PutSrtPaymentMethodError::CryptoUnavailable)?;
+        .map_err(|_| PutProviderPaymentMethodError::CryptoUnavailable)?;
     let aad_hash =
-        serde_json::to_vec(&aad).map_err(|_| PutSrtPaymentMethodError::CryptoUnavailable)?;
+        serde_json::to_vec(&aad).map_err(|_| PutProviderPaymentMethodError::CryptoUnavailable)?;
     let key_version = i32::try_from(encrypted.key_version)
-        .map_err(|_| PutSrtPaymentMethodError::CryptoUnavailable)?;
+        .map_err(|_| PutProviderPaymentMethodError::CryptoUnavailable)?;
     let now = Utc::now();
     let redacted_metadata = serde_json::json!({
-        "provider": "srt",
+        "provider": provider,
         "method_kind": "card",
         "contract": "ciphertext-only-v1"
     });
 
     let params = UpsertPaymentMethodSecretParams {
-        provider: "srt",
+        provider,
         owner_ref: owner_ref.as_str(),
         payment_method_ref: payment_method_ref.as_str(),
         method_kind: "card",
@@ -173,12 +177,12 @@ pub(crate) async fn put_srt_payment_method(
         .await
     {
         error!(error = %err, "failed to persist payment method secret");
-        return Err(PutSrtPaymentMethodError::PersistenceFailure);
+        return Err(PutProviderPaymentMethodError::PersistenceFailure);
     }
 
-    Ok(PutSrtPaymentMethodResult {
+    Ok(PutProviderPaymentMethodResult {
         accepted: true,
-        provider: "srt",
+        provider: provider.to_string(),
         payment_method_ref,
         contract: "ciphertext-only-v1",
     })
@@ -186,18 +190,19 @@ pub(crate) async fn put_srt_payment_method(
 
 async fn store_via_payment_crypto_service(
     state: &AppState,
-    payload: PutSrtPaymentMethodRequest,
+    provider: &str,
+    payload: PutProviderPaymentMethodRequest,
     owner_ref: &str,
     payment_method_ref: &str,
     base_url: &str,
-) -> Result<PutSrtPaymentMethodResult, PutSrtPaymentMethodError> {
+) -> Result<PutProviderPaymentMethodResult, PutProviderPaymentMethodError> {
     let url = format!(
         "{}{}",
         trim_trailing_slash(base_url),
         PAYMENT_CRYPTO_SERVICE_STORE_PATH
     );
     let request_body = CloudRunStoreRequest {
-        provider: "srt",
+        provider,
         owner_ref,
         payment_method_ref,
         ev_payload: CloudRunEVPayload {
@@ -220,7 +225,7 @@ async fn store_via_payment_crypto_service(
 
     let response = request_builder.send().await.map_err(|err| {
         error!(error = %err, "payment-crypto service request failed");
-        PutSrtPaymentMethodError::CryptoUnavailable
+        PutProviderPaymentMethodError::CryptoUnavailable
     })?;
     let status = response.status();
     let decoded = response
@@ -236,7 +241,7 @@ async fn store_via_payment_crypto_service(
                 detail = %detail,
                 "payment-crypto service rejected request"
             );
-            return Err(PutSrtPaymentMethodError::ValidationFailed);
+            return Err(PutProviderPaymentMethodError::ValidationFailed);
         }
 
         error!(
@@ -244,7 +249,7 @@ async fn store_via_payment_crypto_service(
             detail = %detail,
             "payment-crypto service unavailable"
         );
-        return Err(PutSrtPaymentMethodError::CryptoUnavailable);
+        return Err(PutProviderPaymentMethodError::CryptoUnavailable);
     }
 
     let resolved_ref = if decoded.payment_method_ref.trim().is_empty() {
@@ -254,17 +259,17 @@ async fn store_via_payment_crypto_service(
     };
     let _storage_mode = decoded.storage_mode;
 
-    Ok(PutSrtPaymentMethodResult {
+    Ok(PutProviderPaymentMethodResult {
         accepted: true,
-        provider: "srt",
+        provider: provider.to_string(),
         payment_method_ref: resolved_ref,
         contract: "kms-envelope-over-evervault-v1",
     })
 }
 
 fn validate_payment_payload(
-    payload: &PutSrtPaymentMethodRequest,
-) -> Result<(), PutSrtPaymentMethodError> {
+    payload: &PutProviderPaymentMethodRequest,
+) -> Result<(), PutProviderPaymentMethodError> {
     if payload.pan_ciphertext.trim().is_empty()
         || payload.expiry_month_ciphertext.trim().is_empty()
         || payload.expiry_year_ciphertext.trim().is_empty()
@@ -277,7 +282,7 @@ fn validate_payment_payload(
             .trim()
             .is_empty()
     {
-        return Err(PutSrtPaymentMethodError::ValidationFailed);
+        return Err(PutProviderPaymentMethodError::ValidationFailed);
     }
 
     Ok(())
@@ -311,7 +316,7 @@ fn redact_detail(raw: &str) -> String {
 
 fn build_envelope_cipher_from_env(
     state: &AppState,
-) -> Result<ServerEnvelopeCipher, PutSrtPaymentMethodError> {
+) -> Result<ServerEnvelopeCipher, PutProviderPaymentMethodError> {
     let key_version = env::var("KEK_VERSION")
         .ok()
         .and_then(|value| value.trim().parse::<u32>().ok())
@@ -335,22 +340,22 @@ fn build_envelope_cipher_from_env(
                 None
             }
         })
-        .ok_or(PutSrtPaymentMethodError::CryptoUnavailable)?;
+        .ok_or(PutProviderPaymentMethodError::CryptoUnavailable)?;
 
     let key_bytes = decode_base64(encoded_master_key.as_str())?;
     if key_bytes.len() != 32 {
-        return Err(PutSrtPaymentMethodError::CryptoUnavailable);
+        return Err(PutProviderPaymentMethodError::CryptoUnavailable);
     }
 
     let mut keys = BTreeMap::new();
     keys.insert(key_version, key_bytes);
 
     let keyring = StaticKeyring::new(key_version, keys)
-        .map_err(|_| PutSrtPaymentMethodError::CryptoUnavailable)?;
+        .map_err(|_| PutProviderPaymentMethodError::CryptoUnavailable)?;
     Ok(ServerEnvelopeCipher::new(keyring))
 }
 
-fn decode_base64(input: &str) -> Result<Vec<u8>, PutSrtPaymentMethodError> {
+fn decode_base64(input: &str) -> Result<Vec<u8>, PutProviderPaymentMethodError> {
     let mut out = Vec::with_capacity((input.len() * 3) / 4 + 3);
     let mut buffer = 0u32;
     let mut bits = 0usize;
@@ -367,7 +372,7 @@ fn decode_base64(input: &str) -> Result<Vec<u8>, PutSrtPaymentMethodError> {
         }
 
         if seen_padding {
-            return Err(PutSrtPaymentMethodError::CryptoUnavailable);
+            return Err(PutProviderPaymentMethodError::CryptoUnavailable);
         }
 
         let sextet = match byte {
@@ -376,7 +381,7 @@ fn decode_base64(input: &str) -> Result<Vec<u8>, PutSrtPaymentMethodError> {
             b'0'..=b'9' => (byte - b'0' + 52) as u32,
             b'+' | b'-' => 62,
             b'/' | b'_' => 63,
-            _ => return Err(PutSrtPaymentMethodError::CryptoUnavailable),
+            _ => return Err(PutProviderPaymentMethodError::CryptoUnavailable),
         };
 
         buffer = (buffer << 6) | sextet;
@@ -390,7 +395,7 @@ fn decode_base64(input: &str) -> Result<Vec<u8>, PutSrtPaymentMethodError> {
     }
 
     if bits > 0 && (buffer & ((1u32 << bits) - 1)) != 0 {
-        return Err(PutSrtPaymentMethodError::CryptoUnavailable);
+        return Err(PutProviderPaymentMethodError::CryptoUnavailable);
     }
 
     Ok(out)
@@ -398,4 +403,12 @@ fn decode_base64(input: &str) -> Result<Vec<u8>, PutSrtPaymentMethodError> {
 
 fn normalize_env(raw: &str) -> String {
     raw.trim().to_ascii_lowercase()
+}
+
+fn canonical_provider(raw: &str) -> Option<&'static str> {
+    match normalize_env(raw).as_str() {
+        "srt" => Some("srt"),
+        "ktx" => Some("ktx"),
+        _ => None,
+    }
 }

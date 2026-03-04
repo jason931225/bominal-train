@@ -3,7 +3,7 @@ mod provider_auth_secret_repo;
 mod provider_contract_ledger_repo;
 mod runtime_job_repo;
 mod runtime_job_v2_repo;
-mod srt_reservation_projection_repo;
+mod train_reservation_projection_repo;
 
 pub use payment_method_secret_repo::{
     PAYMENT_METHOD_SECRET_REVOKE_SQL, PAYMENT_METHOD_SECRET_SELECT_ACTIVE_SQL,
@@ -44,10 +44,10 @@ pub use runtime_job_v2_repo::{
     mark_runtime_job_v2_terminal_query, release_runtime_job_v2_lease_query,
     schedule_runtime_job_v2_retry_query,
 };
-pub use srt_reservation_projection_repo::{
-    SRT_RESERVATION_PROJECTION_SELECT_BY_USER_SQL, SRT_RESERVATION_PROJECTION_SELECT_ONE_SQL,
-    SRT_RESERVATION_PROJECTION_UPSERT_SQL, SqlSrtReservationProjectionRepoContract,
-    SrtReservationProjectionRecord, SrtReservationProjectionRepoContract,
-    UpsertSrtReservationProjectionParams, select_srt_reservation_projection_query,
-    select_srt_reservation_projections_by_user_query, upsert_srt_reservation_projection_query,
+pub use train_reservation_projection_repo::{
+    SqlTrainReservationProjectionRepoContract, TRAIN_RESERVATION_PROJECTION_SELECT_BY_USER_SQL,
+    TRAIN_RESERVATION_PROJECTION_SELECT_ONE_SQL, TRAIN_RESERVATION_PROJECTION_UPSERT_SQL,
+    TrainReservationProjectionRecord, TrainReservationProjectionRepoContract,
+    UpsertTrainReservationProjectionParams, select_train_reservation_projection_query,
+    select_train_reservation_projections_by_user_query, upsert_train_reservation_projection_query,
 };

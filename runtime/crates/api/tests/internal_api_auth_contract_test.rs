@@ -398,3 +398,94 @@ async fn valid_internal_service_token_reaches_handler_and_returns_invalid_reques
     assert_eq!(body["message"], "invalid provider credentials payload");
     assert_eq!(body["request_id"], "downstream-validation");
 }
+
+#[tokio::test]
+async fn valid_internal_service_token_supports_ktx_credentials_route() {
+    let app = build_test_app().await;
+    let service_token = build_valid_internal_service_token();
+
+    let request = match request_builder("/internal/v1/providers/ktx/credentials")
+        .header(INTERNAL_SERVICE_TOKEN_HEADER, service_token)
+        .header("x-request-id", "ktx-credentials-validation")
+        .body(axum::body::Body::from(
+            serde_json::json!({
+                "identity_ciphertext": "",
+                "password_ciphertext": ""
+            })
+            .to_string(),
+        )) {
+        Ok(request) => request,
+        Err(err) => panic!("failed to build request: {err}"),
+    };
+
+    let response = match app.oneshot(request).await {
+        Ok(response) => response,
+        Err(err) => panic!("request failed: {err}"),
+    };
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = response_json(response).await;
+    assert_envelope_fields(&body, "invalid_request");
+    assert_eq!(body["message"], "invalid provider credentials payload");
+    assert_eq!(body["request_id"], "ktx-credentials-validation");
+}
+
+#[tokio::test]
+async fn valid_internal_service_token_supports_ktx_payment_method_route() {
+    let app = build_test_app().await;
+    let service_token = build_valid_internal_service_token();
+
+    let request = match request_builder("/internal/v1/providers/ktx/payment-method")
+        .header(INTERNAL_SERVICE_TOKEN_HEADER, service_token)
+        .header("x-request-id", "ktx-payment-validation")
+        .body(axum::body::Body::from(
+            serde_json::json!({
+                "pan_ciphertext": "",
+                "expiry_month_ciphertext": "",
+                "expiry_year_ciphertext": "",
+                "birth_or_business_number_ciphertext": "",
+                "card_password_two_digits_ciphertext": ""
+            })
+            .to_string(),
+        )) {
+        Ok(request) => request,
+        Err(err) => panic!("failed to build request: {err}"),
+    };
+
+    let response = match app.oneshot(request).await {
+        Ok(response) => response,
+        Err(err) => panic!("request failed: {err}"),
+    };
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = response_json(response).await;
+    assert_envelope_fields(&body, "invalid_request");
+    assert_eq!(body["message"], "invalid payment payload");
+    assert_eq!(body["request_id"], "ktx-payment-validation");
+}
+
+#[tokio::test]
+async fn compatibility_alias_route_is_disabled_without_internal_debug_mode() {
+    let app = build_test_app().await;
+    let service_token = build_valid_internal_service_token();
+
+    let request = match request_builder("/api/internal/providers/ktx/credentials")
+        .header(INTERNAL_SERVICE_TOKEN_HEADER, service_token)
+        .body(axum::body::Body::from(
+            serde_json::json!({
+                "identity_ciphertext": "identity",
+                "password_ciphertext": "password"
+            })
+            .to_string(),
+        )) {
+        Ok(request) => request,
+        Err(err) => panic!("failed to build request: {err}"),
+    };
+
+    let response = match app.oneshot(request).await {
+        Ok(response) => response,
+        Err(err) => panic!("request failed: {err}"),
+    };
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}

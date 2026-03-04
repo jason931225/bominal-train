@@ -149,6 +149,8 @@ async fn auth_landing_shows_passkey_first_controls() {
     assert!(html.contains("Sign in with email"));
     assert!(html.contains("bominal authentication"));
     assert!(html.contains("data-theme-toggle"));
+    assert!(html.contains("options.mediation === 'conditional'"));
+    assert!(html.contains("PASSKEY_PROMPT_TIMEOUT_MS"));
 }
 
 #[tokio::test]
@@ -190,4 +192,50 @@ async fn auth_landing_keeps_email_password_fallback() {
     assert!(html.contains("email-signin-form"));
     assert!(html.contains("passkey-primary"));
     assert!(html.contains("toggle-email"));
+    assert!(html.contains("email-continue"));
+    assert!(html.contains("data-action-group=\"pair\""));
+}
+
+#[tokio::test]
+async fn favicon_is_public_placeholder() {
+    let app = build_test_app(test_config(
+        "",
+        "",
+        "",
+        "",
+        PasskeyProvider::ServerWebauthn,
+        "localhost",
+        "http://localhost:8000",
+    ))
+    .await;
+    let request = match axum::http::Request::builder()
+        .method("GET")
+        .uri("/favicon.ico")
+        .body(axum::body::Body::empty())
+    {
+        Ok(request) => request,
+        Err(err) => panic!("failed to build request: {err}"),
+    };
+
+    let response = match app.oneshot(request).await {
+        Ok(response) => response,
+        Err(err) => panic!("request failed: {err}"),
+    };
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let content_type = response
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default();
+    assert!(content_type.contains("image/svg+xml"));
+    let body = match to_bytes(response.into_body(), usize::MAX).await {
+        Ok(body) => body,
+        Err(err) => panic!("failed to read response body: {err}"),
+    };
+    let body_text = match String::from_utf8(body.to_vec()) {
+        Ok(text) => text,
+        Err(err) => panic!("response body is not valid utf-8: {err}"),
+    };
+    assert!(body_text.contains("<svg"));
 }

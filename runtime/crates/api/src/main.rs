@@ -167,6 +167,16 @@ pub(crate) fn build_router(state: Arc<AppState>) -> Router {
     http::build_router(state)
 }
 
+async fn favicon_placeholder() -> impl IntoResponse {
+    (
+        [(
+            header::CONTENT_TYPE,
+            HeaderValue::from_static("image/svg+xml; charset=utf-8"),
+        )],
+        r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="b" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#635bff"/><stop offset="100%" stop-color="#38bdf8"/></linearGradient></defs><rect x="4" y="4" width="56" height="56" rx="16" fill="#f8faff"/><path d="M22 30h20v16a4 4 0 0 1-4 4H26a4 4 0 0 1-4-4V30z" fill="url(#b)"/><path d="M25 30v-4a7 7 0 1 1 14 0v4" fill="none" stroke="#1f2a44" stroke-width="4" stroke-linecap="round"/><circle cx="32" cy="38.5" r="2.6" fill="#f8faff"/></svg>"##,
+    )
+}
+
 async fn ssr_auth_landing(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,

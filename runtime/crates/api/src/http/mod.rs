@@ -34,7 +34,7 @@ mod internal;
 mod internal_auth;
 mod internal_auth_invites;
 mod internal_provider_jobs;
-mod internal_providers_srt;
+mod internal_providers;
 mod modules;
 mod runtime_queue;
 
@@ -250,7 +250,7 @@ fn register_internal_api(
     let mount_aliases = internal_auth::compatibility_aliases_enabled(state.as_ref());
 
     let internal_router = Router::<Arc<AppState>>::new();
-    let internal_router = internal_providers_srt::register(internal_router, mount_aliases);
+    let internal_router = internal_providers::register(internal_router, mount_aliases);
     let internal_router = internal_provider_jobs::register(internal_router, mount_aliases);
     let internal_router = internal_auth_invites::register(internal_router, mount_aliases);
     let internal_router = internal_router.layer(middleware::from_fn_with_state(

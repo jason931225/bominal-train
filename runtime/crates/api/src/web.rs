@@ -87,31 +87,64 @@ pub fn render_auth_landing() -> String {
         <div class="mt-3 flex justify-center">
           <div class="auth-hero-icon" role="img" aria-label="Secure account sign-in">
             <svg class="auth-hero-icon-main" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M12 3.25a7.25 7.25 0 0 0-7.25 7.25"></path>
-              <path d="M19.25 10.5A7.25 7.25 0 0 0 12 3.25"></path>
-              <path d="M5.5 10.5v.75a6.5 6.5 0 1 0 13 0v-.75"></path>
-              <path d="M8.25 10.5v.75a3.75 3.75 0 0 0 7.5 0v-.75"></path>
-              <path d="M12 8.25v3"></path>
+              <path d="M7 4.5H5.5A1.5 1.5 0 0 0 4 6v1.5"></path>
+              <path d="M17 4.5h1.5A1.5 1.5 0 0 1 20 6v1.5"></path>
+              <path d="M20 16.5V18a1.5 1.5 0 0 1-1.5 1.5H17"></path>
+              <path d="M7 19.5H5.5A1.5 1.5 0 0 1 4 18v-1.5"></path>
+              <path d="M12 8a4 4 0 0 0-4 4"></path>
+              <path d="M16 12a4 4 0 0 0-4-4"></path>
+              <path d="M8.75 12.25a3.25 3.25 0 1 0 6.5 0"></path>
+              <path d="M12 10.25v3.5"></path>
             </svg>
           </div>
         </div>
 
         <div class="auth-action-region mt-6">
           <div id="auth-passkey-view" class="auth-pane" aria-hidden="false">
-            <button id="passkey-primary" class="btn-primary h-12 w-full">Authenticate with passkey</button>
-            <button id="toggle-email" class="btn-ghost mt-3 h-12 w-full">Sign in with email</button>
+            <div class="action-group" data-action-group="pair">
+              <button
+                id="passkey-primary"
+                class="btn-primary h-12 w-full"
+                data-action-role="primary"
+              >
+                Authenticate with passkey
+              </button>
+              <button
+                id="toggle-email"
+                class="btn-ghost h-12 w-full"
+                data-action-role="secondary"
+              >
+                Sign in with email
+              </button>
+            </div>
           </div>
 
           <div id="auth-email-view" class="auth-pane hidden" aria-hidden="true">
-          <form id="email-signin-form" class="space-y-3">
-            <label class="field-label" for="signin-email">Email</label>
-            <input id="signin-email" type="email" autocomplete="email" class="field-input h-12 w-full" />
-            <label class="field-label" for="signin-password">Password</label>
-            <input id="signin-password" type="password" autocomplete="current-password" class="field-input h-12 w-full" />
-            <button type="submit" class="btn-primary h-12 w-full">Continue</button>
-          </form>
-          <button id="back-passkey" type="button" class="btn-ghost mt-3 h-12 w-full">Back to passkey</button>
-        </div>
+            <form id="email-signin-form" class="space-y-3">
+              <label class="field-label" for="signin-email">Email</label>
+              <input id="signin-email" type="email" autocomplete="email" class="field-input h-12 w-full" />
+              <label class="field-label" for="signin-password">Password</label>
+              <input id="signin-password" type="password" autocomplete="current-password" class="field-input h-12 w-full" />
+              <div class="action-group" data-action-group="pair">
+                <button
+                  id="back-passkey"
+                  type="button"
+                  class="btn-ghost h-12 w-full"
+                  data-action-role="secondary"
+                >
+                  Back to passkey
+                </button>
+                <button
+                  id="email-continue"
+                  type="submit"
+                  class="btn-primary h-12 w-full"
+                  data-action-role="primary"
+                >
+                  Continue
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
 
         <div id="auth-error" class="mt-3 hidden error-card"></div>
@@ -155,6 +188,8 @@ pub fn render_auth_landing() -> String {
   const authError = document.getElementById('auth-error');
   const reduceMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
   const fadeDurationMs = reduceMotionQuery.matches ? 0 : 120;
+  const PASSKEY_PROMPT_TIMEOUT_MS = 12000;
+  const passkeyDefaultLabel = passkeyBtn ? passkeyBtn.textContent : 'Authenticate with passkey';
   let swapInProgress = false;
 
   const showError = (message) => {
@@ -237,6 +272,13 @@ pub fn render_auth_landing() -> String {
     return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
   };
 
+  const setPasskeyBusy = (busy, label) => {
+    if (!passkeyBtn) return;
+    passkeyBtn.disabled = busy;
+    passkeyBtn.setAttribute('aria-busy', busy ? 'true' : 'false');
+    passkeyBtn.textContent = busy ? label : passkeyDefaultLabel;
+  };
+
   const serializeAuthCredential = (credential) => ({
     id: credential.id,
     rawId: bufferToB64url(credential.rawId),
@@ -250,25 +292,46 @@ pub fn render_auth_landing() -> String {
     clientExtensionResults: credential.getClientExtensionResults ? credential.getClientExtensionResults() : {},
   });
 
-  const passkeyAuth = async () => {
-    clearError();
-    const start = await requestJson('/api/auth/passkeys/auth/start', 'POST', {});
-    if (!start.ok || !start.body || !start.body.options || !start.body.flow_id) {
-      const requestId = start.body && start.body.request_id ? ` (request_id: ${start.body.request_id})` : '';
-      showError(`Passkey start failed${requestId}`);
-      return;
+  const getPasskeyCredential = async (options) => {
+    if (typeof AbortController !== 'function') {
+      return navigator.credentials.get(options);
     }
-    if (!window.PublicKeyCredential || !navigator.credentials) {
-      showError('WebAuthn is not supported in this browser.');
-      return;
-    }
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), PASSKEY_PROMPT_TIMEOUT_MS);
     try {
-      const options = structuredClone(start.body.options);
+      return await navigator.credentials.get({ ...options, signal: controller.signal });
+    } finally {
+      window.clearTimeout(timeoutId);
+    }
+  };
+
+  const passkeyAuth = async () => {
+    if (!passkeyBtn || passkeyBtn.disabled) return;
+    clearError();
+    setPasskeyBusy(true, 'Preparing passkey...');
+    try {
+      const start = await requestJson('/api/auth/passkeys/auth/start', 'POST', {});
+      if (!start.ok || !start.body || !start.body.options || !start.body.flow_id) {
+        const requestId = start.body && start.body.request_id ? ` (request_id: ${start.body.request_id})` : '';
+        showError(`Passkey start failed${requestId}`);
+        return;
+      }
+      if (!window.PublicKeyCredential || !navigator.credentials) {
+        showError('WebAuthn is not supported in this browser.');
+        return;
+      }
+      const options = typeof structuredClone === 'function'
+        ? structuredClone(start.body.options)
+        : JSON.parse(JSON.stringify(start.body.options));
+      if (options.mediation === 'conditional') {
+        options.mediation = 'required';
+      }
       options.publicKey.challenge = b64urlToBuffer(options.publicKey.challenge);
       if (Array.isArray(options.publicKey.allowCredentials)) {
         options.publicKey.allowCredentials = options.publicKey.allowCredentials.map((item) => ({ ...item, id: b64urlToBuffer(item.id) }));
       }
-      const credential = await navigator.credentials.get(options);
+      setPasskeyBusy(true, 'Waiting for passkey...');
+      const credential = await getPasskeyCredential(options);
       if (!credential) {
         showError('Passkey authentication was cancelled.');
         return;
@@ -289,7 +352,19 @@ pub fn render_auth_landing() -> String {
         showError('Passkey is unavailable on this host. Use email/password sign-in.');
         return;
       }
+      if (err && typeof err === 'object' && err.name === 'NotAllowedError') {
+        showEmailView();
+        showError('Passkey sign-in was cancelled. Continue with email sign-in.');
+        return;
+      }
+      if (err && typeof err === 'object' && err.name === 'AbortError') {
+        showEmailView();
+        showError('Passkey sign-in timed out. Continue with email sign-in.');
+        return;
+      }
       showError('Passkey authentication failed. Use email/password if needed.');
+    } finally {
+      setPasskeyBusy(false);
     }
   };
 
@@ -333,7 +408,15 @@ pub fn render_dashboard_overview(email: &str) -> String {
         <div class="summary-row"><span>Running</span><span>--</span></div>
         <div class="summary-row"><span>Failed</span><span>--</span></div>
       </div>
-      <a href="/dashboard/jobs" class="btn-primary mt-4 inline-flex h-12 w-full items-center justify-center">View Jobs</a>
+      <div class="action-group" data-action-group="single">
+        <a
+          href="/dashboard/jobs"
+          class="btn-primary inline-flex h-12 w-full items-center justify-center"
+          data-action-role="primary"
+        >
+          View Jobs
+        </a>
+      </div>
     </section>
   </div>
 </main>
@@ -439,9 +522,21 @@ pub fn render_dashboard_job_detail(email: &str, job_id: &str) -> String {
     </section>
   </div>
 </main>
-<div class="sticky-action-bar">
-  <a href="/dashboard/jobs" class="btn-ghost h-12 flex-1 text-center leading-[3rem]">Back</a>
-  <button id="manual-refresh" class="btn-primary h-12 flex-1">Refresh</button>
+<div class="action-sticky" data-action-group="sticky">
+  <a
+    href="/dashboard/jobs"
+    class="btn-ghost h-12 w-full text-center leading-[3rem]"
+    data-action-role="secondary"
+  >
+    Back
+  </a>
+  <button
+    id="manual-refresh"
+    class="btn-primary h-12 w-full"
+    data-action-role="primary"
+  >
+    Refresh
+  </button>
 </div>
 <script>
 (() => {{
@@ -532,13 +627,31 @@ pub fn render_dashboard_security(email: &str) -> String {
         <section class="summary-card p-4">
           <div class="flex items-center justify-between gap-2">
             <h3 class="text-sm font-semibold txt-strong">Passkeys</h3>
+            <button
+              id="passkey-manage"
+              type="button"
+              class="btn-chip inline-flex h-9 w-9 items-center justify-center rounded-xl p-0"
+              aria-label="Edit selected passkey"
+              title="Edit selected passkey"
+              disabled
+            >
+              <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 20h9"></path>
+                <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4 11.5-11.5z"></path>
+              </svg>
+            </button>
           </div>
-          <p class="mt-1 text-sm txt-supporting">Register a passkey for faster and safer sign-in.</p>
           <div id="passkey-status" class="mt-3 hidden"></div>
           <div id="passkeys-list" class="mt-4 space-y-2"><div class="loading-card">Loading passkeys...</div></div>
-          <div class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-            <button id="create-passkey" class="btn-primary h-11 px-4">Create passkey</button>
-            <button id="delete-passkey" type="button" class="btn-ghost h-11 w-full" disabled>Delete selected passkey</button>
+          <div class="action-group" data-action-group="single">
+            <button
+              id="create-passkey"
+              type="button"
+              class="btn-primary h-11 w-full px-4"
+              data-action-role="primary"
+            >
+              Create passkey
+            </button>
           </div>
         </section>
 
@@ -557,7 +670,15 @@ pub fn render_dashboard_security(email: &str) -> String {
               <p id="password-strength-text" class="text-xs txt-supporting">Strength: weak</p>
               <p id="password-match-hint" class="text-xs txt-supporting">Passwords must match.</p>
             </div>
-            <button type="submit" class="btn-primary h-12 w-full">Update password</button>
+            <div class="action-group" data-action-group="single">
+              <button
+                type="submit"
+                class="btn-primary h-12 w-full"
+                data-action-role="primary"
+              >
+                Update password
+              </button>
+            </div>
           </form>
           <div id="password-change-status" class="mt-3 hidden"></div>
         </section>
@@ -571,9 +692,87 @@ pub fn render_dashboard_security(email: &str) -> String {
             <label id="security-modal-input-label" class="field-label" for="security-modal-input">Current password</label>
             <input id="security-modal-input" type="password" autocomplete="current-password" class="field-input h-12 w-full" />
           </div>
-          <div class="mt-4 grid grid-cols-2 gap-2">
-            <button id="security-modal-cancel" type="button" class="btn-ghost h-11 w-full">Cancel</button>
-            <button id="security-modal-confirm" type="button" class="btn-primary h-11 w-full">Confirm</button>
+          <div class="action-pair mt-4" data-action-group="pair">
+            <button
+              id="security-modal-cancel"
+              type="button"
+              class="btn-ghost h-11 w-full"
+              data-action-role="secondary"
+            >
+              Cancel
+            </button>
+            <button
+              id="security-modal-confirm"
+              type="button"
+              class="btn-primary h-11 w-full"
+              data-action-role="primary"
+            >
+              Confirm
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div id="passkey-modal" class="app-modal-backdrop hidden" aria-hidden="true">
+        <div class="app-modal-card" role="dialog" aria-modal="true" aria-labelledby="passkey-modal-title">
+          <h4 id="passkey-modal-title" class="text-base font-semibold txt-strong">Edit passkey</h4>
+          <div class="mt-3 space-y-3">
+            <div>
+              <label class="field-label" for="passkey-modal-label-input">Label</label>
+              <input id="passkey-modal-label-input" type="text" maxlength="80" class="field-input h-11 w-full" />
+            </div>
+            <div>
+              <label class="field-label" for="passkey-modal-credential-id">Credential ID</label>
+              <input id="passkey-modal-credential-id" type="text" readonly class="field-input h-11 w-full" />
+            </div>
+            <div class="summary-row">
+              <span>Last used</span>
+              <span id="passkey-modal-last-used" class="txt-supporting">Never</span>
+            </div>
+            <div class="summary-row">
+              <span>Created</span>
+              <span id="passkey-modal-created-at" class="txt-supporting">-</span>
+            </div>
+            <div class="summary-row">
+              <span>AAGUID</span>
+              <span id="passkey-modal-aaguid" class="txt-supporting">Unknown</span>
+            </div>
+            <div class="summary-row">
+              <span>Backup eligible (BE)</span>
+              <span id="passkey-modal-be" class="txt-supporting">Unknown</span>
+            </div>
+            <div class="summary-row">
+              <span>Backup state (BS)</span>
+              <span id="passkey-modal-bs" class="txt-supporting">Unknown</span>
+            </div>
+          </div>
+          <div class="action-pair mt-4" data-action-group="pair">
+            <button
+              id="passkey-modal-close"
+              type="button"
+              class="btn-ghost h-11 w-full"
+              data-action-role="secondary"
+            >
+              Close
+            </button>
+            <button
+              id="passkey-modal-save"
+              type="button"
+              class="btn-primary h-11 w-full"
+              data-action-role="primary"
+            >
+              Save label
+            </button>
+          </div>
+          <div class="action-destructive" data-action-group="destructive">
+            <button
+              id="passkey-modal-delete"
+              type="button"
+              class="btn-destructive h-11 w-full"
+              data-action-role="destructive"
+            >
+              Delete passkey
+            </button>
           </div>
         </div>
       </div>
@@ -589,8 +788,19 @@ pub fn render_dashboard_security(email: &str) -> String {
 (() => {{
   const list = document.getElementById('passkeys-list');
   const passkeyStatus = document.getElementById('passkey-status');
+  const passkeyManageButton = document.getElementById('passkey-manage');
+  const passkeyModal = document.getElementById('passkey-modal');
+  const passkeyModalLabelInput = document.getElementById('passkey-modal-label-input');
+  const passkeyModalCredentialInput = document.getElementById('passkey-modal-credential-id');
+  const passkeyModalLastUsed = document.getElementById('passkey-modal-last-used');
+  const passkeyModalCreatedAt = document.getElementById('passkey-modal-created-at');
+  const passkeyModalAaguid = document.getElementById('passkey-modal-aaguid');
+  const passkeyModalBe = document.getElementById('passkey-modal-be');
+  const passkeyModalBs = document.getElementById('passkey-modal-bs');
+  const passkeyModalCloseButton = document.getElementById('passkey-modal-close');
+  const passkeyModalSaveButton = document.getElementById('passkey-modal-save');
+  const passkeyModalDeleteButton = document.getElementById('passkey-modal-delete');
   const createPasskeyButton = document.getElementById('create-passkey');
-  const deletePasskeyButton = document.getElementById('delete-passkey');
   const passwordForm = document.getElementById('password-change-form');
   const newPasswordInput = document.getElementById('new-password');
   const confirmPasswordInput = document.getElementById('confirm-password');
@@ -606,7 +816,24 @@ pub fn render_dashboard_security(email: &str) -> String {
   const securityModalCancel = document.getElementById('security-modal-cancel');
   const securityModalConfirm = document.getElementById('security-modal-confirm');
   let selectedCredentialId = null;
+  let passkeysById = new Map();
   let modalResolver = null;
+  const PASSKEY_LABEL_OVERRIDES_KEY = 'bominal.passkey.label_overrides.v1';
+  const passkeyLabelOverrides = (() => {{
+    try {{
+      const raw = window.localStorage.getItem(PASSKEY_LABEL_OVERRIDES_KEY);
+      if (!raw) {{
+        return new Map();
+      }}
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object') {{
+        return new Map();
+      }}
+      return new Map(Object.entries(parsed).filter(([_, value]) => typeof value === 'string'));
+    }} catch (_err) {{
+      return new Map();
+    }}
+  }})();
 
   const requestJson = (url, method, payload) => fetch(url, {{
     method,
@@ -649,6 +876,80 @@ pub fn render_dashboard_security(email: &str) -> String {
     let binary = '';
     for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]);
     return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }};
+
+  const escapeHtml = (value) => String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+  const formatTimestamp = (value) => {{
+    if (!value) return 'Never';
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return String(value);
+    return parsed.toLocaleString();
+  }};
+
+  const formatBool = (value) => {{
+    if (value === true) return 'Yes';
+    if (value === false) return 'No';
+    return 'Unknown';
+  }};
+
+  const detectDeviceLabel = () => {{
+    const ua = navigator.userAgent || '';
+    const platformRaw = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '';
+
+    const platform = (() => {{
+      const source = `${{platformRaw}} ${{ua}}`;
+      if (/iPhone|iPad|iPod/i.test(source)) return 'iOS';
+      if (/Android/i.test(source)) return 'Android';
+      if (/Mac/i.test(source)) return 'Mac';
+      if (/Win/i.test(source)) return 'Windows';
+      if (/Linux/i.test(source)) return 'Linux';
+      return 'Device';
+    }})();
+
+    const browser = (() => {{
+      if (/Edg\\//i.test(ua)) return 'Edge';
+      if (/Firefox\\//i.test(ua)) return 'Firefox';
+      if (/Chrome\\//i.test(ua) && !/Edg\\//i.test(ua)) return 'Chrome';
+      if (/Safari\\//i.test(ua) && !/Chrome\\//i.test(ua)) return 'Safari';
+      return 'Browser';
+    }})();
+
+    return `${{platform}} ${{browser}}`;
+  }};
+
+  const safeDetectDeviceLabel = () => {{
+    try {{
+      return detectDeviceLabel();
+    }} catch (_err) {{
+      return 'This device';
+    }}
+  }};
+
+  const persistPasskeyLabelOverrides = () => {{
+    try {{
+      const serializable = Object.fromEntries(passkeyLabelOverrides.entries());
+      window.localStorage.setItem(PASSKEY_LABEL_OVERRIDES_KEY, JSON.stringify(serializable));
+    }} catch (_err) {{}}
+  }};
+
+  const effectivePasskeyLabel = (passkey) => {{
+    if (!passkey || !passkey.credential_id) {{
+      return 'Unnamed passkey';
+    }}
+    const override = passkeyLabelOverrides.get(passkey.credential_id);
+    if (override && override.trim()) {{
+      return override.trim();
+    }}
+    if (passkey.friendly_name && String(passkey.friendly_name).trim()) {{
+      return String(passkey.friendly_name).trim();
+    }}
+    return 'Unnamed passkey';
   }};
 
   const serializeRegisterCredential = (credential) => {{
@@ -755,6 +1056,47 @@ pub fn render_dashboard_security(email: &str) -> String {
     }});
   }});
 
+  const closePasskeyModal = () => {{
+    if (!passkeyModal) {{
+      return;
+    }}
+    passkeyModal.classList.add('hidden');
+    passkeyModal.setAttribute('aria-hidden', 'true');
+  }};
+
+  const openPasskeyModal = () => {{
+    const selected = selectedCredentialId ? passkeysById.get(selectedCredentialId) : null;
+    if (!selected) {{
+      showStatus(passkeyStatus, 'Select a passkey to edit.', 'error');
+      return;
+    }}
+    if (!passkeyModal || !passkeyModalLabelInput || !passkeyModalCredentialInput || !passkeyModalLastUsed || !passkeyModalCreatedAt || !passkeyModalAaguid || !passkeyModalBe || !passkeyModalBs) {{
+      showStatus(passkeyStatus, 'Passkey editor is unavailable.', 'error');
+      return;
+    }}
+
+    passkeyModalLabelInput.value = effectivePasskeyLabel(selected);
+    passkeyModalCredentialInput.value = selected.credential_id || '';
+    passkeyModalLastUsed.textContent = selected.last_used_at ? formatTimestamp(selected.last_used_at) : 'Never';
+    passkeyModalCreatedAt.textContent = formatTimestamp(selected.created_at);
+    passkeyModalAaguid.textContent = selected.aaguid || 'Unknown';
+    passkeyModalBe.textContent = formatBool(selected.backup_eligible);
+    passkeyModalBs.textContent = formatBool(selected.backup_state);
+    passkeyModal.classList.remove('hidden');
+    passkeyModal.setAttribute('aria-hidden', 'false');
+    requestAnimationFrame(() => {{
+      passkeyModalLabelInput.focus();
+      passkeyModalLabelInput.select();
+    }});
+  }};
+
+  const renderSelectedPasskey = () => {{
+    const selected = selectedCredentialId ? passkeysById.get(selectedCredentialId) : null;
+    if (passkeyManageButton) {{
+      passkeyManageButton.disabled = !selected;
+    }}
+  }};
+
   const syncPasskeySelection = () => {{
     let selectedExists = false;
     list.querySelectorAll('[data-credential-id]').forEach((card) => {{
@@ -768,19 +1110,21 @@ pub fn render_dashboard_security(email: &str) -> String {
     if (!selectedExists) {{
       selectedCredentialId = null;
     }}
-    deletePasskeyButton.disabled = !selectedCredentialId;
+    renderSelectedPasskey();
   }};
 
   const load = () => fetch('/api/auth/passkeys', {{ headers: {{ Accept: 'application/json' }} }})
     .then((res) => res.json().then((json) => [res.ok, json]))
     .then(([ok, data]) => {{
       if (!ok) {{
+        passkeysById = new Map();
         selectedCredentialId = null;
         syncPasskeySelection();
         list.innerHTML = `<div class="error-card">Failed to load passkeys. request_id: ${{data.request_id || 'n/a'}}</div>`;
         return;
       }}
       const passkeys = data.passkeys || [];
+      passkeysById = new Map(passkeys.map((item) => [item.credential_id, item]));
       if (!passkeys.length) {{
         selectedCredentialId = null;
         syncPasskeySelection();
@@ -790,9 +1134,15 @@ pub fn render_dashboard_security(email: &str) -> String {
       if (selectedCredentialId && !passkeys.some((item) => item.credential_id === selectedCredentialId)) {{
         selectedCredentialId = null;
       }}
+      if (!selectedCredentialId) {{
+        selectedCredentialId = passkeys[0].credential_id;
+      }}
       list.innerHTML = passkeys.map((item) => `
         <button type="button" class="summary-card passkey-card w-full text-left" data-credential-id="${{item.credential_id}}" aria-pressed="false">
-          <div class="summary-row"><span>${{item.friendly_name || 'Unnamed passkey'}}</span><span>${{item.credential_id}}</span></div>
+          <div class="summary-row">
+            <span>${{escapeHtml(effectivePasskeyLabel(item))}}</span>
+            <span class="txt-supporting">${{item.last_used_at ? `Used ${{formatTimestamp(item.last_used_at)}}` : 'Never used'}}</span>
+          </div>
         </button>
       `).join('');
       list.querySelectorAll('[data-credential-id]').forEach((card) => {{
@@ -818,17 +1168,52 @@ pub fn render_dashboard_security(email: &str) -> String {
       return;
     }}
     clearStatus(passkeyStatus);
-    deletePasskeyButton.disabled = true;
+    if (passkeyModalDeleteButton) {{
+      passkeyModalDeleteButton.disabled = true;
+    }}
     const result = await requestJson(`/api/auth/passkeys/${{selectedCredentialId}}`, 'DELETE');
     if (!result.ok) {{
       const requestId = result.body && result.body.request_id ? ` (request_id: ${{result.body.request_id}})` : '';
       showStatus(passkeyStatus, `Passkey deletion failed${{requestId}}`, 'error');
       syncPasskeySelection();
+      if (passkeyModalDeleteButton) {{
+        passkeyModalDeleteButton.disabled = false;
+      }}
       return;
     }}
+    passkeyLabelOverrides.delete(selectedCredentialId);
+    persistPasskeyLabelOverrides();
     selectedCredentialId = null;
+    closePasskeyModal();
     showStatus(passkeyStatus, 'Passkey deleted successfully.', 'success');
-    load();
+    await load();
+    if (passkeyModalDeleteButton) {{
+      passkeyModalDeleteButton.disabled = false;
+    }}
+  }};
+
+  const saveSelectedPasskeyLabel = async () => {{
+    if (!selectedCredentialId || !passkeyModalLabelInput) {{
+      return;
+    }}
+    const friendlyName = passkeyModalLabelInput.value.trim();
+    if (!friendlyName) {{
+      showStatus(passkeyStatus, 'Passkey label is required.', 'error');
+      passkeyModalLabelInput.focus();
+      return;
+    }}
+    clearStatus(passkeyStatus);
+    if (passkeyModalSaveButton) {{
+      passkeyModalSaveButton.disabled = true;
+    }}
+    passkeyLabelOverrides.set(selectedCredentialId, friendlyName);
+    persistPasskeyLabelOverrides();
+    showStatus(passkeyStatus, 'Passkey label updated for this browser.', 'success');
+    syncPasskeySelection();
+    await load();
+    if (passkeyModalSaveButton) {{
+      passkeyModalSaveButton.disabled = false;
+    }}
   }};
 
   const createPasskey = async () => {{
@@ -840,8 +1225,9 @@ pub fn render_dashboard_security(email: &str) -> String {
 
     createPasskeyButton.disabled = true;
     try {{
+      const friendlyName = safeDetectDeviceLabel();
       const start = await requestJson('/api/auth/passkeys/register/start', 'POST', {{
-        friendly_name: 'This device',
+        friendly_name: friendlyName,
       }});
       if (!start.ok || !start.body || !start.body.options || !start.body.flow_id) {{
         const requestId = start.body && start.body.request_id ? ` (request_id: ${{start.body.request_id}})` : '';
@@ -849,7 +1235,9 @@ pub fn render_dashboard_security(email: &str) -> String {
         return;
       }}
 
-      const options = structuredClone(start.body.options);
+      const options = typeof structuredClone === 'function'
+        ? structuredClone(start.body.options)
+        : JSON.parse(JSON.stringify(start.body.options));
       options.publicKey.challenge = b64urlToBuffer(options.publicKey.challenge);
       if (options.publicKey.user && options.publicKey.user.id) {{
         options.publicKey.user.id = b64urlToBuffer(options.publicKey.user.id);
@@ -877,18 +1265,45 @@ pub fn render_dashboard_security(email: &str) -> String {
       showStatus(passkeyStatus, 'Passkey created successfully.', 'success');
       load();
     }} catch (err) {{
+      const errName = err && typeof err === 'object' && err.name ? String(err.name) : '';
       if (err && typeof err === 'object' && err.name === 'SecurityError') {{
         showStatus(passkeyStatus, 'Passkeys are unavailable on this host. Use localhost for WebAuthn.', 'error');
+      }} else if (err && typeof err === 'object' && err.name === 'NotAllowedError') {{
+        showStatus(passkeyStatus, 'Passkey creation was cancelled or blocked by the browser.', 'error');
+      }} else if (err && typeof err === 'object' && err.name === 'InvalidStateError') {{
+        showStatus(passkeyStatus, 'This authenticator is already registered for your account.', 'error');
       }} else {{
-        showStatus(passkeyStatus, 'Passkey creation failed.', 'error');
+        const suffix = errName ? ` (${{errName}})` : '';
+        showStatus(passkeyStatus, `Passkey creation failed${{suffix}}.`, 'error');
       }}
     }} finally {{
       createPasskeyButton.disabled = false;
     }}
   }};
 
-  createPasskeyButton.addEventListener('click', createPasskey);
-  deletePasskeyButton.addEventListener('click', deleteSelectedPasskey);
+  createPasskeyButton.addEventListener('click', (event) => {{
+    event.preventDefault();
+    createPasskey();
+  }});
+  if (passkeyManageButton) {{
+    passkeyManageButton.addEventListener('click', openPasskeyModal);
+  }}
+  if (passkeyModalCloseButton) {{
+    passkeyModalCloseButton.addEventListener('click', closePasskeyModal);
+  }}
+  if (passkeyModalSaveButton) {{
+    passkeyModalSaveButton.addEventListener('click', saveSelectedPasskeyLabel);
+  }}
+  if (passkeyModalDeleteButton) {{
+    passkeyModalDeleteButton.addEventListener('click', deleteSelectedPasskey);
+  }}
+  if (passkeyModal) {{
+    passkeyModal.addEventListener('click', (event) => {{
+      if (event.target === passkeyModal) {{
+        closePasskeyModal();
+      }}
+    }});
+  }}
 
   if (securityModalCancel) {{
     securityModalCancel.addEventListener('click', () => {{
@@ -921,6 +1336,11 @@ pub fn render_dashboard_security(email: &str) -> String {
   }}
 
   document.addEventListener('keydown', (event) => {{
+    if (passkeyModal && !passkeyModal.classList.contains('hidden') && event.key === 'Escape') {{
+      event.preventDefault();
+      closePasskeyModal();
+      return;
+    }}
     if (!securityModal || securityModal.classList.contains('hidden')) {{
       return;
     }}
@@ -1016,10 +1436,10 @@ pub fn render_admin_maintenance(view: &AdminMaintenanceView) -> String {
     <div class="summary-row mt-4"><span>Readiness</span><span class="badge">{readiness}</span></div>
     <div class="summary-row"><span>Database</span><span class="badge">{}</span></div>
     <div class="summary-row"><span>Redis</span><span class="badge">{}</span></div>
-    <div class="mt-4 grid grid-cols-1 gap-2">
-      <a class="btn-ghost h-12 text-center leading-[3rem]" href="{}">/health</a>
-      <a class="btn-ghost h-12 text-center leading-[3rem]" href="{}">/ready</a>
-      <a class="btn-ghost h-12 text-center leading-[3rem]" href="{}">metrics text</a>
+    <div class="action-group" data-action-group="single">
+      <a class="btn-ghost h-12 w-full text-center leading-[3rem]" href="{}">/health</a>
+      <a class="btn-ghost h-12 w-full text-center leading-[3rem]" href="{}">/ready</a>
+      <a class="btn-ghost h-12 w-full text-center leading-[3rem]" href="{}">metrics text</a>
     </div>
   </section>
   <section class="glass-card mt-4 rounded-[22px] p-5">
@@ -1113,4 +1533,54 @@ fn admin_bottom_nav(active: &str) -> String {
         },
         if active == "audit" { "active" } else { "" },
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn index_of(haystack: &str, needle: &str) -> usize {
+        haystack.find(needle).unwrap_or_else(|| {
+            panic!("expected substring not found: {needle}");
+        })
+    }
+
+    #[test]
+    fn auth_landing_keeps_passkey_first_ordering() {
+        let html = render_auth_landing();
+        let passkey_index = index_of(&html, "id=\"passkey-primary\"");
+        let email_index = index_of(&html, "id=\"toggle-email\"");
+        assert!(passkey_index < email_index);
+        assert!(html.contains("data-action-group=\"pair\""));
+    }
+
+    #[test]
+    fn auth_email_form_uses_secondary_then_primary_actions() {
+        let html = render_auth_landing();
+        let back_index = index_of(&html, "id=\"back-passkey\"");
+        let continue_index = index_of(&html, "id=\"email-continue\"");
+        assert!(back_index < continue_index);
+    }
+
+    #[test]
+    fn job_detail_uses_sticky_action_group_with_secondary_then_primary() {
+        let html = render_dashboard_job_detail("admin@bominal.local", "job-123");
+        let sticky_index = index_of(
+            &html,
+            "class=\"action-sticky\" data-action-group=\"sticky\"",
+        );
+        let sticky_block = &html[sticky_index..];
+        let back_index = index_of(sticky_block, "href=\"/dashboard/jobs\"");
+        let refresh_index = index_of(sticky_block, "id=\"manual-refresh\"");
+        assert!(back_index < refresh_index);
+    }
+
+    #[test]
+    fn passkey_delete_action_is_destructive_and_prompted_in_modal() {
+        let html = render_dashboard_security("admin@bominal.local");
+        assert!(html.contains("data-action-group=\"destructive\""));
+        assert!(html.contains("class=\"btn-destructive h-11 w-full\""));
+        assert!(html.contains("const modalResult = await openSecurityModal({"));
+        assert!(html.contains("title: 'Delete passkey'"));
+    }
 }

@@ -649,6 +649,9 @@ pub(crate) struct PasskeySummary {
     pub(crate) friendly_name: Option<String>,
     pub(crate) created_at: DateTime<Utc>,
     pub(crate) last_used_at: Option<DateTime<Utc>>,
+    pub(crate) aaguid: Option<String>,
+    pub(crate) backup_eligible: Option<bool>,
+    pub(crate) backup_state: Option<bool>,
 }
 
 pub(crate) async fn list_session_passkeys(
@@ -662,8 +665,17 @@ pub(crate) async fn list_session_passkeys(
         .db_pool
         .as_ref()
         .ok_or(AuthServiceError::ServiceUnavailable("database unavailable"))?;
-    let rows = sqlx::query_as::<_, (String, Option<String>, DateTime<Utc>, Option<DateTime<Utc>>)>(
-        "select credential_id, friendly_name, created_at, last_used_at
+    let rows = sqlx::query_as::<
+        _,
+        (
+            String,
+            Option<String>,
+            DateTime<Utc>,
+            Option<DateTime<Utc>>,
+            sqlx::types::Json<serde_json::Value>,
+        ),
+    >(
+        "select credential_id, friendly_name, created_at, last_used_at, passkey
          from user_passkeys
          where user_id = $1
          order by coalesce(last_used_at, created_at) desc",
@@ -675,13 +687,106 @@ pub(crate) async fn list_session_passkeys(
 
     Ok(rows
         .into_iter()
-        .map(|row| PasskeySummary {
-            credential_id: row.0,
-            friendly_name: row.1,
-            created_at: row.2,
-            last_used_at: row.3,
+        .map(|row| {
+            let metadata = extract_passkey_metadata(&row.4.0);
+            PasskeySummary {
+                credential_id: row.0,
+                friendly_name: row.1,
+                created_at: row.2,
+                last_used_at: row.3,
+                aaguid: metadata.aaguid,
+                backup_eligible: metadata.backup_eligible,
+                backup_state: metadata.backup_state,
+            }
         })
         .collect())
+}
+
+#[derive(Debug, Default)]
+struct PasskeyMetadata {
+    aaguid: Option<String>,
+    backup_eligible: Option<bool>,
+    backup_state: Option<bool>,
+}
+
+fn extract_passkey_metadata(passkey_json: &serde_json::Value) -> PasskeyMetadata {
+    let mut metadata = PasskeyMetadata::default();
+    collect_passkey_metadata(passkey_json, &mut metadata);
+    metadata
+}
+
+fn collect_passkey_metadata(value: &serde_json::Value, metadata: &mut PasskeyMetadata) {
+    match value {
+        serde_json::Value::Object(map) => {
+            for (key, nested) in map {
+                let normalized = normalize_metadata_key(key);
+                if metadata.aaguid.is_none()
+                    && normalized == "aaguid"
+                    && let Some(parsed) = value_as_non_empty_string(nested)
+                {
+                    metadata.aaguid = Some(parsed);
+                }
+                if metadata.backup_eligible.is_none()
+                    && matches!(
+                        normalized.as_str(),
+                        "be" | "backupeligible" | "credbackupeligible"
+                    )
+                    && let Some(parsed) = value_as_bool(nested)
+                {
+                    metadata.backup_eligible = Some(parsed);
+                }
+                if metadata.backup_state.is_none()
+                    && matches!(
+                        normalized.as_str(),
+                        "bs" | "backupstate" | "credentialbackedup" | "credbackupstate"
+                    )
+                    && let Some(parsed) = value_as_bool(nested)
+                {
+                    metadata.backup_state = Some(parsed);
+                }
+                collect_passkey_metadata(nested, metadata);
+            }
+        }
+        serde_json::Value::Array(items) => {
+            for item in items {
+                collect_passkey_metadata(item, metadata);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn normalize_metadata_key(key: &str) -> String {
+    key.chars()
+        .filter(|value| value.is_ascii_alphanumeric())
+        .map(|value| value.to_ascii_lowercase())
+        .collect()
+}
+
+fn value_as_non_empty_string(value: &serde_json::Value) -> Option<String> {
+    let parsed = value.as_str()?.trim();
+    if parsed.is_empty() {
+        return None;
+    }
+    Some(parsed.to_string())
+}
+
+fn value_as_bool(value: &serde_json::Value) -> Option<bool> {
+    if let Some(parsed) = value.as_bool() {
+        return Some(parsed);
+    }
+    if let Some(parsed) = value.as_i64() {
+        return Some(parsed != 0);
+    }
+    if let Some(parsed) = value.as_str() {
+        let normalized = parsed.trim().to_ascii_lowercase();
+        return match normalized.as_str() {
+            "true" | "1" | "yes" => Some(true),
+            "false" | "0" | "no" => Some(false),
+            _ => None,
+        };
+    }
+    None
 }
 
 pub(crate) async fn delete_session_passkey(
@@ -1391,6 +1496,39 @@ mod tests {
                 "new password must include a symbol"
             ))
         ));
+    }
+
+    #[test]
+    fn extract_passkey_metadata_reads_nested_aaguid_and_backup_flags() {
+        let value = serde_json::json!({
+            "cred": {
+                "aaguid": "4e5f6a21-8b7f-4c93-a1d1-c36a22b7b543",
+                "flags": {
+                    "be": true,
+                    "bs": false
+                }
+            }
+        });
+        let metadata = super::extract_passkey_metadata(&value);
+        assert_eq!(
+            metadata.aaguid.as_deref(),
+            Some("4e5f6a21-8b7f-4c93-a1d1-c36a22b7b543")
+        );
+        assert_eq!(metadata.backup_eligible, Some(true));
+        assert_eq!(metadata.backup_state, Some(false));
+    }
+
+    #[test]
+    fn extract_passkey_metadata_supports_alias_and_string_values() {
+        let value = serde_json::json!({
+            "data": {
+                "credentialBackedUp": "1",
+                "backupEligible": "true"
+            }
+        });
+        let metadata = super::extract_passkey_metadata(&value);
+        assert_eq!(metadata.backup_eligible, Some(true));
+        assert_eq!(metadata.backup_state, Some(true));
     }
 
     struct RedisTestServer {

@@ -6,6 +6,7 @@ use super::super::AppState;
 
 pub(super) fn register(router: Router<Arc<AppState>>) -> Router<Arc<AppState>> {
     router
+        .route("/favicon.ico", get(super::super::favicon_placeholder))
         .route("/", get(super::super::ssr_auth_landing))
         .route("/auth", get(super::super::ssr_auth_alias))
         .route("/dashboard", get(super::super::ssr_dashboard))

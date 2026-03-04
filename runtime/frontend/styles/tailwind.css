@@ -345,6 +345,29 @@
     @apply border-slate-600 bg-slate-800/45 hover:bg-slate-700/65;
   }
 
+  .btn-destructive {
+    @apply rounded-2xl border px-4 font-medium transition;
+    border-color: rgb(var(--rose-300));
+    background-color: rgb(var(--status-critical-bg));
+    color: rgb(var(--text-critical));
+  }
+
+  .btn-destructive:hover {
+    border-color: rgb(var(--rose-400));
+    background-color: rgb(var(--rose-200));
+  }
+
+  body[data-theme-mode="dark"] .btn-destructive {
+    border-color: rgb(var(--rose-700));
+    background-color: rgb(var(--status-critical-bg));
+    color: rgb(var(--rose-300));
+  }
+
+  body[data-theme-mode="dark"] .btn-destructive:hover {
+    border-color: rgb(var(--rose-600));
+    background-color: rgb(var(--rose-800));
+  }
+
   .btn-chip {
     @apply rounded-xl border border-slate-300 bg-white/55 px-3 py-2 text-xs font-medium hover:bg-white/75;
     color: rgb(var(--text-default));
@@ -525,7 +548,7 @@
   }
 
   .app-modal-backdrop {
-    @apply fixed inset-0 z-[70] flex items-end justify-center bg-slate-950/35 p-4 sm:items-center;
+    @apply fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/35 p-4;
   }
 
   .app-modal-card {
@@ -556,6 +579,30 @@
   .support-row {
     @apply mt-2 text-xs;
     color: rgb(var(--text-supporting));
+  }
+
+  .action-group {
+    @apply mt-4 space-y-2;
+  }
+
+  .action-pair {
+    @apply grid grid-cols-1 gap-2;
+  }
+
+  .action-single {
+    @apply grid grid-cols-1 gap-2;
+  }
+
+  .action-destructive {
+    @apply mt-2 grid grid-cols-1 gap-2;
+  }
+
+  .action-sticky {
+    @apply fixed bottom-16 left-0 right-0 z-30 mx-auto grid w-full max-w-[480px] grid-cols-1 gap-2 border-t border-slate-200/80 bg-white/80 p-3 backdrop-blur;
+  }
+
+  body[data-theme-mode="dark"] .action-sticky {
+    @apply border-slate-700/70 bg-slate-900/80;
   }
 
   .bottom-nav {
@@ -598,6 +645,14 @@
 }
 
 @media (min-width: 768px) {
+  .action-pair {
+    @apply grid-cols-2;
+  }
+
+  .action-sticky {
+    @apply static mx-auto max-w-7xl grid-cols-2 border-0 bg-transparent p-0 backdrop-blur-0;
+  }
+
   .bottom-nav {
     @apply hidden;
   }

@@ -1,3 +1,4 @@
+pub mod ktx;
 pub mod srt;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
