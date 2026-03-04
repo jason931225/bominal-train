@@ -13,7 +13,7 @@ START_WORKER=1
 START_CSS_WATCH=1
 START_RUST_WATCH=1
 APP_PORT_OVERRIDE=""
-TAKEOVER_WATCHERS=0
+TAKEOVER_WATCHERS=1
 LOCK_DIR="/tmp/bominal-dev-up.lock"
 LOCK_PID_FILE="${LOCK_DIR}/pid"
 LOCK_ACQUIRED=0
@@ -30,7 +30,9 @@ Options:
   --rust-watch     Auto-restart Rust services on source changes (default; requires cargo-watch).
   --no-rust-watch  Disable Rust auto-restart and run services directly.
   --takeover-watchers
-                  Stop stale cargo-watch processes for this repo before startup.
+                  Stop stale cargo-watch processes for this repo before startup (default).
+  --no-takeover-watchers
+                  Fail if stale cargo-watch processes exist instead of taking over.
   --port <port>    Override APP_PORT for this dev-up session.
   --help           Show this help.
 
@@ -395,6 +397,9 @@ parse_args() {
       --takeover-watchers)
         TAKEOVER_WATCHERS=1
         ;;
+      --no-takeover-watchers)
+        TAKEOVER_WATCHERS=0
+        ;;
       --port)
         if [ "$#" -lt 2 ]; then
           echo "--port requires a value" >&2
@@ -453,9 +458,9 @@ start_api() {
   (
     cd "${RUNTIME_DIR}"
     if [ "${START_RUST_WATCH}" = "1" ]; then
-      exec cargo watch -x "run -p bominal-api"
+      exec cargo watch -x "run -p bominal-api --bin bominal-api"
     else
-      exec cargo run -p bominal-api
+      exec cargo run -p bominal-api --bin bominal-api
     fi
   ) </dev/null &
   API_PID=$!

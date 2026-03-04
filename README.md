@@ -75,6 +75,17 @@ Runtime route map:
 - Observability contracts: `/health` (liveness), `/ready` (dependency readiness), `/admin/maintenance/metrics` (admin-only Prometheus text).
 - Admin API highlights: `/api/admin/capabilities`, `/api/admin/runtime/jobs/stream` (SSE), `/api/admin/incidents`, `/api/admin/incidents/{incident_id}/status`, `/api/admin/observability/timeseries`.
 
+Station catalog source-of-truth:
+- Runtime uses committed snapshot files in `runtime/data/train/` (repo-driven, no production live-fetch path).
+- Daily refresh automation runs via GitHub Actions workflow: `.github/workflows/station-catalog-refresh.yml`.
+- Manual refresh command:
+
+```bash
+cd runtime
+cargo run -p bominal-api --bin station_catalog_sync -- generate --snapshot data/train/station_catalog.v1.json --meta data/train/station_catalog.meta.json
+cargo run -p bominal-api --bin station_catalog_sync -- validate --snapshot data/train/station_catalog.v1.json --meta data/train/station_catalog.meta.json
+```
+
 `dev-up` defaults to:
 - running bootstrap with `BOMINAL_RUN_TESTS=0` (faster dev loop),
 - applying migrations,
@@ -171,7 +182,7 @@ set -a
 source ../env/dev/runtime.env
 [ -f ../env/local/runtime.env ] && source ../env/local/runtime.env
 set +a
-cargo run -p bominal-api
+cargo run -p bominal-api --bin bominal-api
 ```
 
 Run worker:

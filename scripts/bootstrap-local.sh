@@ -305,7 +305,7 @@ SQL
   local seed_api_log="/tmp/bominal-bootstrap-auth-seed-api.log"
   (
     cd "${RUNTIME_DIR}"
-    APP_PORT="${DEV_AUTH_SEED_PORT}" cargo run -p bominal-api >"${seed_api_log}" 2>&1
+    APP_PORT="${DEV_AUTH_SEED_PORT}" cargo run -p bominal-api --bin bominal-api >"${seed_api_log}" 2>&1
   ) &
   local seed_api_pid=$!
 
@@ -526,7 +526,7 @@ To run API:
   source ../env/dev/runtime.env
   [ -f ../env/local/runtime.env ] && source ../env/local/runtime.env
   set +a
-  cargo run -p bominal-api
+  cargo run -p bominal-api --bin bominal-api
 
 To run worker:
   cd runtime
