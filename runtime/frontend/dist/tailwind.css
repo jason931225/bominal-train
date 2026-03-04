@@ -816,15 +816,32 @@ body[data-theme-mode="dark"].stripe.theme::before {
 }
 
 .auth-hero-icon {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
+  height: 7.5rem;
+  width: 15rem;
 }
 
 .auth-hero-icon-main {
+  position: absolute;
+  inset: 0;
   height: 7.5rem;
   width: 15rem;
   color: rgb(var(--text-supporting));
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+
+.auth-hero-icon-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.auth-hero-icon-hidden {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(4px);
 }
 
 .auth-action-region {
@@ -872,6 +889,10 @@ body[data-theme-mode="dark"] .password-strength-track {
 
 @media (prefers-reduced-motion: reduce) {
   .auth-pane {
+    transition: none;
+  }
+
+  .auth-hero-icon-main {
     transition: none;
   }
 }

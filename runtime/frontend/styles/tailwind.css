@@ -271,13 +271,29 @@
   }
 
   .auth-hero-icon {
-    @apply flex items-center justify-center;
+    @apply relative flex items-center justify-center;
+    height: 7.5rem;
+    width: 15rem;
   }
 
   .auth-hero-icon-main {
+    position: absolute;
+    inset: 0;
     height: 7.5rem;
     width: 15rem;
     color: rgb(var(--text-supporting));
+    transition: opacity 120ms ease, transform 120ms ease;
+  }
+
+  .auth-hero-icon-visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .auth-hero-icon-hidden {
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(4px);
   }
 
   .auth-action-region {
@@ -314,6 +330,10 @@
 
   @media (prefers-reduced-motion: reduce) {
     .auth-pane {
+      transition: none;
+    }
+
+    .auth-hero-icon-main {
       transition: none;
     }
   }
