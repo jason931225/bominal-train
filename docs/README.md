@@ -17,6 +17,7 @@ Repository-level governance entrypoints:
 Active implementation plans:
 - `docs/plans/2026-03-02-runtime-test-backfill-srt-parity.md` - runtime test backfill and SRT parity rewrite plan.
 - `docs/plans/2026-03-03-frontend-admin-ux-claude-prompt.md` - Claude prompt package for mobile/desktop frontend and admin maintenance UX design.
+- `docs/plans/2026-03-04-http3-edge-maybe-todo.md` - deferred edge HTTP/3 evaluation backlog item.
 
 Operational playbooks:
 - `docs/playbooks/RUST_PRODUCTION_CUTOVER.md` - hard-cutover + rollback checklist for Rust production deploy.
