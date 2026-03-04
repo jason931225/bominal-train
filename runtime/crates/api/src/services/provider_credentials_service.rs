@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, env};
+use std::{collections::BTreeMap, env, time::Duration};
 
 use bominal_shared::{
     crypto::{EnvelopeAad, EnvelopeCipher, PayloadKind, ServerEnvelopeCipher, StaticKeyring},
@@ -17,6 +17,8 @@ use uuid::Uuid;
 use super::super::AppState;
 
 const TEST_MASTER_KEY_B64_FALLBACK: &str = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
+const PROVIDER_AUTH_PROBE_ENABLED_ENV: &str = "PROVIDER_AUTH_PROBE_ENABLED";
+const PROVIDER_AUTH_PROBE_TIMEOUT_SECONDS: u64 = 4;
 
 #[derive(Debug, serde::Deserialize)]
 pub(crate) struct PutProviderCredentialsRequest {
@@ -81,6 +83,7 @@ pub(crate) async fn put_provider_credentials(
 
     let probe_result = probe_provider_login_once(
         &state.config.app_env,
+        provider_auth_probe_enabled(),
         provider,
         payload.identity_ciphertext.as_str(),
         payload.password_ciphertext.as_str(),
@@ -282,33 +285,87 @@ impl AuthProbeResult {
             message,
         }
     }
+
+    fn skipped(provider: &str, detail: &str) -> Self {
+        let detail = detail.trim();
+        let message = if detail.is_empty() {
+            format!(
+                "{}: Authentication probe skipped; credentials were saved.",
+                provider.to_ascii_uppercase()
+            )
+        } else {
+            format!("{}: {detail}", provider.to_ascii_uppercase())
+        };
+        Self {
+            status: "skipped",
+            message,
+        }
+    }
+}
+
+fn provider_auth_probe_enabled() -> bool {
+    parse_probe_enabled(env::var(PROVIDER_AUTH_PROBE_ENABLED_ENV).ok())
+}
+
+fn parse_probe_enabled(raw: Option<String>) -> bool {
+    raw.as_deref()
+        .map(str::trim)
+        .map(str::to_ascii_lowercase)
+        .and_then(|value| match value.as_str() {
+            "1" | "true" | "yes" | "on" => Some(true),
+            "0" | "false" | "no" | "off" => Some(false),
+            _ => None,
+        })
+        .unwrap_or(true)
 }
 
 async fn probe_provider_login_once(
     app_env: &str,
+    probe_enabled: bool,
     provider: &str,
     account_identifier: &str,
     password: &str,
 ) -> AuthProbeResult {
+    if !probe_enabled {
+        return AuthProbeResult::skipped(
+            provider,
+            "Authentication probe skipped by configuration.",
+        );
+    }
+
     let app_env = normalize_env(app_env);
     if matches!(app_env.as_str(), "test" | "testing" | "ci" | "integration") {
-        return AuthProbeResult::success(provider);
+        return AuthProbeResult::skipped(
+            provider,
+            "Authentication probe skipped in test-like environment.",
+        );
     }
 
     let provider_owned = provider.to_string();
     let account_owned = account_identifier.to_string();
     let password_owned = password.to_string();
-    match tokio::task::spawn_blocking(move || {
+    let handle = tokio::task::spawn_blocking(move || {
         probe_provider_login_blocking(
             provider_owned.as_str(),
             account_owned.as_str(),
             password_owned.as_str(),
         )
-    })
+    });
+    match tokio::time::timeout(
+        Duration::from_secs(PROVIDER_AUTH_PROBE_TIMEOUT_SECONDS),
+        handle,
+    )
     .await
     {
-        Ok(result) => result,
-        Err(_) => AuthProbeResult::error(provider, "Authentication probe failed"),
+        Ok(Ok(result)) => result,
+        Ok(Err(_)) => AuthProbeResult::error(
+            provider,
+            "Authentication probe failed. Credentials were saved.",
+        ),
+        Err(_) => AuthProbeResult::error(
+            provider,
+            "Authentication probe timed out after 4 seconds. Credentials were saved.",
+        ),
     }
 }
 
@@ -376,6 +433,10 @@ mod tests {
         let error = AuthProbeResult::error("ktx", "Authentication failed");
         assert_eq!(error.status, "error");
         assert_eq!(error.message, "KTX: Authentication failed");
+
+        let skipped = AuthProbeResult::skipped("srt", "Authentication probe skipped.");
+        assert_eq!(skipped.status, "skipped");
+        assert_eq!(skipped.message, "SRT: Authentication probe skipped.");
     }
 
     #[test]
@@ -390,5 +451,26 @@ mod tests {
             }),
             "rate_limited for login"
         );
+    }
+
+    #[test]
+    fn parse_probe_enabled_defaults_to_true_and_accepts_flags() {
+        assert!(parse_probe_enabled(None));
+        assert!(parse_probe_enabled(Some("true".to_string())));
+        assert!(parse_probe_enabled(Some("1".to_string())));
+        assert!(!parse_probe_enabled(Some("false".to_string())));
+        assert!(!parse_probe_enabled(Some("0".to_string())));
+        assert!(parse_probe_enabled(Some("invalid".to_string())));
+    }
+
+    #[tokio::test]
+    async fn probe_is_skipped_when_disabled_or_test_env() {
+        let disabled = probe_provider_login_once("production", false, "srt", "id", "pw").await;
+        assert_eq!(disabled.status, "skipped");
+        assert!(disabled.message.contains("skipped"));
+
+        let test_env = probe_provider_login_once("test", true, "ktx", "id", "pw").await;
+        assert_eq!(test_env.status, "skipped");
+        assert!(test_env.message.contains("test-like environment"));
     }
 }

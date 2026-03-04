@@ -2185,7 +2185,7 @@ pub fn render_dashboard_train(email: &str) -> String {
     const value = typeof provider.auth_probe_status === 'string'
       ? provider.auth_probe_status.trim().toLowerCase()
       : '';
-    return value === 'error' || value === 'success' ? value : '';
+    return value === 'error' || value === 'success' || value === 'skipped' ? value : '';
   };
 
   const providerHasError = (provider) => {
@@ -2788,7 +2788,7 @@ pub fn render_dashboard_settings_providers(email: &str) -> String {
     const value = typeof provider.auth_probe_status === 'string'
       ? provider.auth_probe_status.trim().toLowerCase()
       : '';
-    return value === 'error' || value === 'success' ? value : '';
+    return value === 'error' || value === 'success' || value === 'skipped' ? value : '';
   };
 
   const providerStatusMessage = (provider) => {
