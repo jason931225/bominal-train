@@ -50,13 +50,7 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Enforce generated-only frontend dist policy
-        run: |
-          tracked="$(git ls-files 'runtime/frontend/dist/**')"
-          if [ -n "${tracked}" ]; then
-            echo "::error::runtime/frontend/dist must be generated-only and untracked."
-            printf '%s\n' "${tracked}"
-            exit 1
-          fi
+        run: ./scripts/tests/test_frontend_dist_untracked.sh
 
   script-quality:
     name: Script Quality
@@ -76,7 +70,7 @@ jobs:
           fi
 
       - name: Lint production operator scripts
-        run: shellcheck -x scripts/prod-up.sh scripts/tests/test_prod_up.sh
+        run: shellcheck -x scripts/prod-up.sh scripts/tests/test_prod_up.sh scripts/tests/test_frontend_dist_untracked.sh
 
       - name: Run production operator script tests
         run: bash scripts/tests/test_prod_up.sh
