@@ -2409,6 +2409,12 @@ fn extract_error_message_from_events(events: &[sqlx::postgres::PgRow]) -> Option
             return message;
         }
 
+        if let Some(reason) = extract_error_reason(&payload)
+            && let Some(message) = map_error_reason_to_message(reason)
+        {
+            return Some(message.to_string());
+        }
+
         let fallback = payload
             .get("state")
             .and_then(Value::as_str)
@@ -2427,6 +2433,37 @@ fn value_as_string(value: &Value, key: &str) -> String {
         .and_then(Value::as_str)
         .unwrap_or_default()
         .to_string()
+}
+
+fn extract_error_reason(payload: &Value) -> Option<&str> {
+    payload
+        .get("error_reason")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .or_else(|| {
+            payload
+                .pointer("/context/class")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+        })
+}
+
+fn map_error_reason_to_message(reason: &str) -> Option<&'static str> {
+    match reason {
+        "missing_subject_ref"
+        | "missing_session"
+        | "auth_secret_missing"
+        | "auth_secret_decode"
+        | "auth_payload_decode"
+        | "auth_aad_hash"
+        | "auth_decrypt" => Some("provider credentials are missing or invalid"),
+        "operation_failed" => Some("provider rejected request"),
+        "unsupported_operation" => Some("provider operation is not supported"),
+        "rate_limited" => Some("provider rate limited"),
+        _ => None,
+    }
 }
 
 fn is_failure_status(status: &str) -> bool {
@@ -2672,5 +2709,36 @@ mod tests {
             None,
         );
         assert!(matches!(result, Err(TrainServiceError::InvalidRequest(_))));
+    }
+
+    #[test]
+    fn extract_error_reason_prefers_event_error_reason_field() {
+        let payload = serde_json::json!({
+            "error_reason": "missing_session",
+            "context": { "class": "operation_failed" }
+        });
+
+        assert_eq!(extract_error_reason(&payload), Some("missing_session"));
+    }
+
+    #[test]
+    fn map_error_reason_to_message_maps_known_dead_letter_classes() {
+        assert_eq!(
+            map_error_reason_to_message("missing_session"),
+            Some("provider credentials are missing or invalid")
+        );
+        assert_eq!(
+            map_error_reason_to_message("operation_failed"),
+            Some("provider rejected request")
+        );
+        assert_eq!(
+            map_error_reason_to_message("unsupported_operation"),
+            Some("provider operation is not supported")
+        );
+        assert_eq!(
+            map_error_reason_to_message("rate_limited"),
+            Some("provider rate limited")
+        );
+        assert_eq!(map_error_reason_to_message("fatal"), None);
     }
 }

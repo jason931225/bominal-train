@@ -242,6 +242,7 @@ pub async fn process_next_job(
                                 "state": "dead_lettered",
                                 "failure_kind": failure_kind,
                                 "error_class": error.kind.as_str(),
+                                "error_reason": error_reason_for_event(&error),
                                 "message": error.safe_message(),
                             }),
                         )
@@ -313,6 +314,17 @@ fn operation_name_for_event(job: &executor::ClaimedRuntimeJob) -> String {
         .to_string()
 }
 
+fn error_reason_for_event(error: &executor::ExecutionError) -> String {
+    error
+        .context
+        .get("class")
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(error.kind.as_str())
+        .to_string()
+}
+
 async fn insert_runtime_job_event_best_effort(
     pool: &PgPool,
     job_id: &str,
@@ -334,5 +346,32 @@ async fn insert_runtime_job_event_best_effort(
             error = %err,
             "failed to persist runtime job event",
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn error_reason_for_event_prefers_context_class_over_kind() {
+        let error = executor::ExecutionError::new(
+            executor::ExecutionErrorKind::Fatal,
+            "non-retryable execution failure",
+            json!({ "class": "missing_session" }),
+        );
+
+        assert_eq!(error_reason_for_event(&error), "missing_session");
+    }
+
+    #[test]
+    fn error_reason_for_event_falls_back_to_error_kind() {
+        let error = executor::ExecutionError::new(
+            executor::ExecutionErrorKind::RateLimited,
+            "provider rate limited",
+            json!({}),
+        );
+
+        assert_eq!(error_reason_for_event(&error), "rate_limited");
     }
 }
