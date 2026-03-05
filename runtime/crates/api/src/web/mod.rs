@@ -2088,8 +2088,10 @@ mod tests {
         let html = render_dashboard_settings("admin@bominal.local");
         assert!(html.contains("id=\"passkey-modal-delete\""));
         assert!(html.contains("class=\"btn-destructive h-9 w-9 p-0\""));
-        assert!(html.contains("const modalResult = await openSecurityModal({"));
-        assert!(html.contains("title: 'Delete passkey'"));
+        assert!(html.contains(
+            "type=\"module\" src=\"/assets/js/dashboard/security.js\""
+        ));
+        assert!(!html.contains("const modalResult = await openSecurityModal({"));
         assert!(html.contains("Settings tabs"));
         assert!(html.contains("href=\"/dashboard/settings\""));
         assert!(html.contains("href=\"/dashboard/settings/providers\""));
@@ -2097,6 +2099,21 @@ mod tests {
         assert!(html.contains(">Account</a>"));
         assert!(html.contains(">Providers</a>"));
         assert!(html.contains(">Payment</a>"));
+    }
+
+    #[test]
+    fn dashboard_pages_load_external_module_scripts() {
+        let overview = render_dashboard_overview("admin@bominal.local");
+        assert!(overview.contains("type=\"module\" src=\"/assets/js/dashboard/overview.js\""));
+
+        let jobs = render_dashboard_jobs("admin@bominal.local");
+        assert!(jobs.contains("type=\"module\" src=\"/assets/js/dashboard/jobs.js\""));
+
+        let job_detail = render_dashboard_job_detail("admin@bominal.local", "job-123");
+        assert!(job_detail.contains("type=\"module\" src=\"/assets/js/dashboard/job-detail.js\""));
+
+        let settings = render_dashboard_settings("admin@bominal.local");
+        assert!(settings.contains("type=\"module\" src=\"/assets/js/dashboard/security.js\""));
     }
 
     #[test]
