@@ -165,6 +165,16 @@ Optional labels:
 
 Canonical label definitions MUST be kept in `.github/labels.yml`.
 
+Priority scope classification:
+- `priority:p0`: active incident, security emergency, data-integrity risk, or release-blocking production risk.
+- `priority:p1`: high-impact, near-term committed work with meaningful user/operator risk.
+- `priority:p2`: planned standard backlog delivery without immediate service risk.
+- `priority:p3`: exploratory or deferred backlog work.
+
+PR label inheritance:
+- PR `type:*`, `area:*`, and `priority:*` labels MUST inherit from the primary linked issue (`Closes #...`).
+- Label mismatches between PR and linked issue are merge-blocking governance failures.
+
 ### Issue Governance
 
 Issue intake MUST use repository issue forms (`.github/ISSUE_TEMPLATE/*.yml`) and include:
@@ -196,17 +206,25 @@ Additional PR rules:
   - include replacement reference in body/comment,
   - close or keep only as historical context.
 
-### Copilot Review
+### Secondary AI Review
 
+- Every non-trivial PR SHOULD request both AI reviews when scope/risk warrants it; Copilot-first then Codex cross-check is the default sequence:
+  1. `@copilot review`
+  2. resolve/waive material Copilot findings
+  3. `@codex review`
+- Every PR MUST request at least a secondary Codex review comment after labels/body/checks are ready:
+  - `@codex review`
+- For material-risk changes (`SECURITY`, `PRODUCTION`, `DESTRUCTIVE`) or high-complexity refactors, also request:
+  - `@copilot review`
 - Copilot review is required for:
   - PRs linked to work items with `Risk=Medium` or `Risk=High`,
   - any PR classified as `Review Depth=Secondary Required`.
 - Copilot findings are classified as:
   - `Material`: security/auth/payment/session/data-loss/deploy/test-gap scope,
   - `Advisory`: quality/style/non-blocking scope.
-- Merge is blocked while any material Copilot finding is open.
+- Merge is blocked while any material Codex or Copilot finding is open.
 - Material findings may only be waived by a maintainer with explicit rationale and risk note.
-- Copilot does not replace required human review policy where applicable.
+- AI review is advisory and does not replace required human approval policy where applicable.
 
 ### Project Tracking
 
@@ -214,6 +232,10 @@ Maintain three active GitHub Project v2 boards:
 - `bominal Workstreams`: issue intake and delivery tracking.
 - `bominal Review`: PR review-depth and merge-readiness tracking.
 - `bominal Agent Command`: automation control-plane for dispatch, claim checkpoints, and policy escalations.
+
+Operational runbooks:
+- `docs/playbooks/GITHUB_PROJECT_AUTOMATION.md`
+- `docs/playbooks/GITHUB_PROJECT_OPERATIONS.md`
 
 `bominal Workstreams` required fields:
 - `Status`: `Triage`, `Ready`, `In Progress`, `In Review`, `Blocked`, `Done`
@@ -240,6 +262,11 @@ Maintain three active GitHub Project v2 boards:
 - `Conflict State`: `None`, `Rebase Required`
 - `Escalation State`: `None`, `Secondary Review`, `Policy Exception`
 
+Template adoption strategy:
+- Full adoption: iterative development + kanban flow on `bominal Workstreams`.
+- Partial adoption: feature-release, bug-tracker, and product-launch templates as saved views/filters over the same canonical issues (not separate duplicate issue systems).
+- Non-adoption: avoid template mechanics that duplicate labeling/project state outside canonical issue fields.
+
 Automation expectations:
 - new issues are auto-added to `bominal Workstreams` with `Status=Triage`,
 - implementation starts only from `Ready` issues with required labels/acceptance/verification metadata,
@@ -247,18 +274,19 @@ Automation expectations:
 - claim flow is checkpoint-driven: `Claimed` -> `Design Note Posted` -> `Draft PR Linked`,
 - hard domain lock applies: one `area:*` per implementation item and PR path-set,
 - area WIP cap is `1`; same-area merge conflicts auto-transition active claims to `Blocked` with rebase checklist,
-- linked PR review-ready state moves issue status to `In Review`,
+- linked PR review-ready state moves issue status to `In Review` (or mapped fallback when board options differ),
 - merged linked PR moves issue status to `Done`.
 
 Repository automation prerequisites:
-- repository variables:
+- preferred variables:
   - `BOMINAL_WORKSTREAMS_PROJECT_OWNER`
   - `BOMINAL_WORKSTREAMS_PROJECT_NUMBER`
+- review/command board variables:
   - `BOMINAL_REVIEW_PROJECT_OWNER`
   - `BOMINAL_REVIEW_PROJECT_NUMBER`
   - `BOMINAL_COMMAND_PROJECT_OWNER`
   - `BOMINAL_COMMAND_PROJECT_NUMBER`
-- repository secret `PROJECT_AUTOMATION_TOKEN` with `read:project` and `repo` scopes.
+- repository secret `PROJECT_AUTOMATION_TOKEN` with `project` and `repo` scopes.
 - transition compatibility while workflow migration is in progress:
   - keep legacy `BOMINAL_PROJECT_OWNER`
   - keep legacy `BOMINAL_PROJECT_NUMBER`
@@ -267,6 +295,16 @@ Agent policy:
 - agents MUST pull work from `bominal Agent Command` queue state, not ad-hoc branch choice,
 - no implementation PR without a linked issue (`Closes #...`),
 - secondary review is required when risk/sensitive scope or large-diff policy is triggered.
+
+Orchestrator policy:
+- orchestrator agents MUST create or update a GitHub issue before dispatching execution agents.
+- orchestrator-created issues MUST include:
+  - explicit `type:*`, `area:*`, `priority:*`, and `risk:*` labels,
+  - scope (`in-scope`, `out-of-scope`),
+  - domain constraints (security/auth/payment/deploy boundaries),
+  - acceptance criteria and verification plan,
+  - rollback note and dependency context,
+  - clear implementation instructions and non-goals.
 
 ### Wiki Governance
 

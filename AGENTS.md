@@ -37,6 +37,8 @@ Preserved external reference docs:
 - Validate changes with build/test commands relevant to touched scope.
 - Treat critical-path areas (auth, security, payment boundary, deployment) as high-rigor paths.
 - Do not perform destructive or production/security boundary operations without explicit human approval.
+- For GitHub Project v2 operations, follow `docs/playbooks/GITHUB_PROJECT_OPERATIONS.md` and use PAT-bootstrapped `gh` commands (Project v2 field/item admin is CLI-first in this repo flow).
+- For PRs, request AI reviews generously when warranted: run `@copilot review` first for medium/high-risk or complex scope, then `@codex review` as cross-check before merge.
 
 ## GitHub Project Operating Policy (Mandatory)
 
@@ -47,10 +49,12 @@ Agents MUST follow the three-board model documented in:
 Execution rules:
 - Pull work from `bominal Agent Command` queue state, not ad-hoc branch-first selection.
 - Do not implement without a linked issue in `Ready` state.
+- Orchestrator agents must post/update the issue first with required labels (`type:*`, `area:*`, `priority:*`, `risk:*`, `status:*`) and full scope/risk/domain/verification instructions before dispatching workers.
 - Keep one `area:*` domain per implementation item and PR path-set (hard domain lock).
 - Follow claim checkpoints in order: `Claimed` -> `Design Note Posted` -> `Draft PR Linked`.
 - Respect area WIP cap (`1`) to avoid same-domain merge conflicts.
 - Ensure PRs use `Closes #...`, pass required checks, and resolve review conversations before merge.
+- Ensure PR `type:*`, `area:*`, and `priority:*` labels inherit from the linked issue.
 - For policy-scoped PRs, enforce Copilot material-finding disposition (fix or maintainer waiver with risk note).
 
 ## Current Infrastructure Reality

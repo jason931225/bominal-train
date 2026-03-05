@@ -23,7 +23,7 @@ permissions:
 jobs:
   sync-project:
     name: Project Automation
-    if: vars.BOMINAL_PROJECT_OWNER != '' && vars.BOMINAL_PROJECT_NUMBER != ''
+    if: (vars.BOMINAL_WORKSTREAMS_PROJECT_OWNER != '' && vars.BOMINAL_WORKSTREAMS_PROJECT_NUMBER != '') || (vars.BOMINAL_PROJECT_OWNER != '' && vars.BOMINAL_PROJECT_NUMBER != '')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -38,8 +38,8 @@ jobs:
         if: env.PROJECT_AUTOMATION_TOKEN != ''
         uses: actions/github-script@v7
         env:
-          PROJECT_OWNER: ${{ vars.BOMINAL_PROJECT_OWNER }}
-          PROJECT_NUMBER: ${{ vars.BOMINAL_PROJECT_NUMBER }}
+          PROJECT_OWNER: ${{ vars.BOMINAL_WORKSTREAMS_PROJECT_OWNER || vars.BOMINAL_PROJECT_OWNER }}
+          PROJECT_NUMBER: ${{ vars.BOMINAL_WORKSTREAMS_PROJECT_NUMBER || vars.BOMINAL_PROJECT_NUMBER }}
         with:
           github-token: ${{ env.PROJECT_AUTOMATION_TOKEN }}
           script: |
@@ -84,29 +84,44 @@ jobs:
               }
             }`;
 
-            let project = null;
-            try {
-              const userResp = await github.graphql(queryUserProject, { owner: ownerLogin, number: projectNumber });
-              project = userResp.user?.projectV2 || null;
-            } catch (error) {
-              const message = String(error?.message || "");
-              if (!message.includes("Could not resolve to a User")) {
-                throw error;
+            const hasOwnerLookupError = (error, kind) => {
+              const messages = [
+                error?.message || "",
+                ...((error?.errors || []).map((entry) => entry?.message || "")),
+              ].join(" ");
+              if (kind === "user") {
+                return messages.includes("Could not resolve to a User");
               }
-            }
+              return messages.includes("Could not resolve to an Organization");
+            };
 
-            if (!project) {
+            const loadProject = async () => {
               try {
-                const orgResp = await github.graphql(queryOrgProject, { owner: ownerLogin, number: projectNumber });
-                project = orgResp.organization?.projectV2 || null;
+                const resp = await github.graphql(queryUserProject, { owner: ownerLogin, number: projectNumber });
+                if (resp.user?.projectV2) {
+                  return resp.user.projectV2;
+                }
               } catch (error) {
-                const message = String(error?.message || "");
-                if (!message.includes("Could not resolve to an Organization")) {
+                if (!hasOwnerLookupError(error, "user")) {
                   throw error;
                 }
               }
-            }
 
+              try {
+                const resp = await github.graphql(queryOrgProject, { owner: ownerLogin, number: projectNumber });
+                if (resp.organization?.projectV2) {
+                  return resp.organization.projectV2;
+                }
+              } catch (error) {
+                if (!hasOwnerLookupError(error, "organization")) {
+                  throw error;
+                }
+              }
+
+              return null;
+            };
+
+            const project = await loadProject();
             if (!project) {
               core.setFailed(`Project v2 not found for owner=${ownerLogin} number=${projectNumber}`);
               return;
@@ -166,31 +181,17 @@ jobs:
               return added.addProjectV2ItemById.item.id;
             };
 
-            const resolveSingleSelectOptionName = (fieldName, optionName, fallbackOptions = []) => {
-              const options = optionsByFieldName.get(fieldName);
-              if (!options) {
-                return null;
-              }
-
-              for (const candidate of [optionName, ...fallbackOptions]) {
-                if (options.has(candidate)) {
-                  return candidate;
-                }
-              }
-
-              return null;
-            };
-
-            const setSingleSelectByName = async (itemId, fieldName, optionName, fallbackOptions = []) => {
+            const setSingleSelectByName = async (itemId, fieldName, optionName, warnOnMissingOption = true) => {
               const fieldId = fieldByName.get(fieldName);
-              const resolvedOptionName = resolveSingleSelectOptionName(fieldName, optionName, fallbackOptions);
-              const optionId = optionsByFieldName.get(fieldName)?.get(resolvedOptionName);
-              if (!fieldId || !optionId) {
-                const availableOptions = [...(optionsByFieldName.get(fieldName)?.keys() || [])].join(", ");
-                core.warning(
-                  `Missing project field/option mapping for ${fieldName}=${optionName}; ` +
-                  `fallbacks=[${fallbackOptions.join(", ")}], available=[${availableOptions}].`
-                );
+              const optionId = optionsByFieldName.get(fieldName)?.get(optionName);
+              if (!fieldId) {
+                core.warning(`Missing project field mapping for ${fieldName}; skipping.`);
+                return false;
+              }
+              if (!optionId) {
+                if (warnOnMissingOption) {
+                  core.warning(`Missing project option mapping for ${fieldName}=${optionName}; skipping.`);
+                }
                 return false;
               }
 
@@ -213,16 +214,42 @@ jobs:
                 fieldId,
                 optionId,
               });
+
               return true;
             };
 
-            const statusFallbacks = {
-              "Triage": ["Todo"],
-              "Ready": ["Todo"],
-              "In Progress": [],
-              "In Review": ["In Progress"],
-              "Blocked": ["In Progress", "Todo"],
-              "Done": [],
+            const setSingleSelectByFallback = async (itemId, fieldName, optionNames) => {
+              for (let i = 0; i < optionNames.length; i += 1) {
+                const optionName = optionNames[i];
+                const didSet = await setSingleSelectByName(
+                  itemId,
+                  fieldName,
+                  optionName,
+                  i === optionNames.length - 1
+                );
+                if (didSet) {
+                  return true;
+                }
+              }
+              return false;
+            };
+
+            const setStatusByName = async (itemId, statusName) => {
+              const fallbackMap = {
+                Triage: ["Triage", "Todo"],
+                Ready: ["Ready", "Todo"],
+                "In Progress": ["In Progress"],
+                "In Review": ["In Review", "In Progress", "Todo"],
+                Blocked: ["Blocked", "In Progress", "Todo"],
+                Done: ["Done"],
+              };
+              const candidates = fallbackMap[statusName] || [statusName];
+              const didSet = await setSingleSelectByFallback(itemId, "Status", candidates);
+              if (!didSet) {
+                core.warning(`Missing project field/option mapping for Status candidates=${candidates.join(", ")}; skipping.`);
+                return false;
+              }
+              return true;
             };
 
             const labelsToFieldValue = (labels, prefix, mapping) => {
@@ -253,7 +280,7 @@ jobs:
                 statusValue = "Triage";
               }
               if (statusValue) {
-                await setSingleSelectByName(itemId, "Status", statusValue, statusFallbacks[statusValue] || []);
+                await setStatusByName(itemId, statusValue);
               }
 
               const typeValue = labelsToFieldValue(labels, "type:", {
@@ -265,6 +292,20 @@ jobs:
                 "type:ops": "Ops",
               });
               if (typeValue) await setSingleSelectByName(itemId, "Type", typeValue);
+
+              const areaValue = labelsToFieldValue(labels, "area:", {
+                "area:runtime-api": "runtime-api",
+                "area:runtime-worker": "runtime-worker",
+                "area:runtime-shared": "runtime-shared",
+                "area:runtime-frontend": "runtime-frontend",
+                "area:payment-crypto": "payment-crypto",
+                "area:docs": "docs",
+                "area:ci-cd": "ci-cd",
+                "area:infra": "infra",
+                "area:auth": "auth",
+                "area:observability": "observability",
+              });
+              if (areaValue) await setSingleSelectByName(itemId, "Area", areaValue);
 
               const priorityValue = labelsToFieldValue(labels, "priority:", {
                 "priority:p0": "P0",
@@ -319,19 +360,21 @@ jobs:
                   issue_number: issueNumber,
                 });
                 const itemId = await getProjectItemId(issue.data.node_id);
-                await setSingleSelectByName(itemId, "Status", status, statusFallbacks[status] || []);
+                await setStatusByName(itemId, status);
                 core.info(`Updated linked issue #${issueNumber} status=${status}`);
               }
             }
 
   config-missing:
     name: Project Automation Config Missing
-    if: vars.BOMINAL_PROJECT_OWNER == '' || vars.BOMINAL_PROJECT_NUMBER == ''
+    if: (vars.BOMINAL_WORKSTREAMS_PROJECT_OWNER == '' || vars.BOMINAL_WORKSTREAMS_PROJECT_NUMBER == '') && (vars.BOMINAL_PROJECT_OWNER == '' || vars.BOMINAL_PROJECT_NUMBER == '')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Explain missing configuration
         run: |
-          echo "Project automation is skipped because one or more required vars are missing:"
-          echo "- vars.BOMINAL_PROJECT_OWNER"
-          echo "- vars.BOMINAL_PROJECT_NUMBER"
+          echo "Project automation is skipped because one or more required vars are missing."
+          echo "Configure either:"
+          echo "- vars.BOMINAL_WORKSTREAMS_PROJECT_OWNER + vars.BOMINAL_WORKSTREAMS_PROJECT_NUMBER"
+          echo "or legacy fallback:"
+          echo "- vars.BOMINAL_PROJECT_OWNER + vars.BOMINAL_PROJECT_NUMBER"

@@ -1,0 +1,100 @@
+name: Orchestrator Job
+description: Create a dispatch-ready implementation issue for agent execution.
+title: "orchestrator: "
+labels:
+  - status:ready
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form when orchestrating agent work.
+        Before dispatch, apply labels: exactly one `type:*`, one `area:*`, one `priority:*`, and at least one `risk:*`.
+  - type: input
+    id: label_contract
+    attributes:
+      label: Label Contract
+      description: Paste the exact labels you will apply.
+      placeholder: "type:chore, area:ci-cd, priority:p1, risk:medium, status:ready"
+    validations:
+      required: true
+  - type: textarea
+    id: problem_statement
+    attributes:
+      label: Problem Statement
+      description: What problem are we solving and why now?
+    validations:
+      required: true
+  - type: textarea
+    id: expected_outcome
+    attributes:
+      label: Expected Outcome
+      description: What concrete result defines success?
+    validations:
+      required: true
+  - type: textarea
+    id: scope_in
+    attributes:
+      label: In Scope
+      description: Exact work included.
+      placeholder: "1. ...\n2. ..."
+    validations:
+      required: true
+  - type: textarea
+    id: scope_out
+    attributes:
+      label: Out Of Scope
+      description: Explicit exclusions.
+      placeholder: "1. ...\n2. ..."
+    validations:
+      required: true
+  - type: textarea
+    id: domain_constraints
+    attributes:
+      label: Domain And Safety Constraints
+      description: Security/auth/payment/deploy boundaries and prohibited paths.
+      placeholder: "- Do not change ...\n- Must preserve ..."
+    validations:
+      required: true
+  - type: dropdown
+    id: risk_class
+    attributes:
+      label: Risk Class
+      options:
+        - READ
+        - WRITE
+        - SECURITY
+        - DESTRUCTIVE
+        - PRODUCTION
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance_criteria
+    attributes:
+      label: Acceptance Criteria
+      description: Objective completion checklist.
+      placeholder: "- [ ] ...\n- [ ] ..."
+    validations:
+      required: true
+  - type: textarea
+    id: verification_plan
+    attributes:
+      label: Verification Plan
+      description: Commands/tests/evidence required before completion.
+      placeholder: "- cargo test ...\n- actionlint ...\n- manual check ..."
+    validations:
+      required: true
+  - type: textarea
+    id: rollback_and_dependencies
+    attributes:
+      label: Rollback And Dependencies
+      description: Rollback approach, blockers, and upstream/downstream dependencies.
+    validations:
+      required: true
+  - type: textarea
+    id: executor_instructions
+    attributes:
+      label: Executor Instructions
+      description: Exact instructions for worker agents, including non-goals.
+      placeholder: "Do:\n- ...\nDo not:\n- ..."
+    validations:
+      required: true

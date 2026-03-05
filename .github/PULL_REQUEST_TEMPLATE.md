@@ -13,6 +13,7 @@
 - [ ] Exactly one `type:*` label
 - [ ] Exactly one `area:*` label
 - [ ] Exactly one `priority:*` label
+- [ ] PR labels inherit `type:*`, `area:*`, and `priority:*` from linked issue
 
 ## Risk And Rollback
 
@@ -31,6 +32,12 @@
 ```text
 # paste verification commands/output summary
 ```
+
+## Secondary AI Review
+
+- [ ] Requested `@copilot review` first when risk is `SECURITY` / `PRODUCTION` / `DESTRUCTIVE`, risk label is medium/high, or implementation complexity is high
+- [ ] Requested `@codex review` after Copilot findings are addressed for cross-check
+- [ ] Material AI-review findings resolved or explicitly waived with rationale
 
 ## Docs And Wiki Impact
 
