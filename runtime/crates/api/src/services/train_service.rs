@@ -1120,7 +1120,9 @@ pub(crate) async fn get_provider_credentials_for_user(
     };
 
     Ok(TrainProviderCredentialsSummary {
-        provider: row.try_get("provider").map_err(|_| TrainServiceError::Internal)?,
+        provider: row
+            .try_get("provider")
+            .map_err(|_| TrainServiceError::Internal)?,
         credentials_ready: true,
         auth_probe_status: row
             .try_get::<Option<String>, _>("auth_probe_status")
@@ -1132,7 +1134,9 @@ pub(crate) async fn get_provider_credentials_for_user(
             .map_err(|_| TrainServiceError::Internal)?
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty()),
-        updated_at: row.try_get("updated_at").map_err(|_| TrainServiceError::Internal)?,
+        updated_at: row
+            .try_get("updated_at")
+            .map_err(|_| TrainServiceError::Internal)?,
     })
 }
 
@@ -1189,15 +1193,16 @@ pub(crate) async fn get_provider_payment_method_for_user(
     provider: &str,
 ) -> Result<TrainPaymentCardSummary, TrainServiceError> {
     ensure_valid_user_id(user_id)?;
-    let _ = normalize_train_provider(provider)?;
+    let _normalized_provider = normalize_train_provider(provider)?;
     let pool = require_pool(state)?;
     let row = sqlx::query(
         "select payment_method_ref, card_last4, card_brand, updated_at
          from payment_method_secrets
-         where owner_ref = $1 and revoked_at is null
+         where provider = $1 and owner_ref = $2 and revoked_at is null
          order by updated_at desc
          limit 1",
     )
+    .bind(payment_method_service::UNIVERSAL_PAYMENT_PROVIDER)
     .bind(user_id)
     .fetch_optional(pool)
     .await
@@ -1287,9 +1292,10 @@ pub(crate) async fn get_payment_method_for_user(
     let row = sqlx::query(
         "select payment_method_ref, card_last4, card_brand, updated_at
          from payment_method_secrets
-         where owner_ref = $1 and payment_method_ref = $2 and revoked_at is null
+         where provider = $1 and owner_ref = $2 and payment_method_ref = $3 and revoked_at is null
          limit 1",
     )
+    .bind(payment_method_service::UNIVERSAL_PAYMENT_PROVIDER)
     .bind(user_id)
     .bind(payment_method_ref)
     .fetch_optional(pool)

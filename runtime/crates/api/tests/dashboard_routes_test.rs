@@ -357,6 +357,154 @@ async fn train_api_station_regions_requires_authenticated_session() {
 }
 
 #[tokio::test]
+async fn train_api_security_read_routes_require_authenticated_session() {
+    let app = build_test_app().await;
+    let test_cases = [
+        ("GET", "/api/train/providers/srt/credentials", ""),
+        ("GET", "/api/train/providers/srt/payment-method", ""),
+        ("GET", "/api/train/payment-methods/payment-ref-1", ""),
+    ];
+
+    for (method, uri, body) in test_cases {
+        let request = match Request::builder()
+            .method(method)
+            .uri(uri)
+            .header(header::ACCEPT, "application/json")
+            .body(axum::body::Body::from(body.to_string()))
+        {
+            Ok(request) => request,
+            Err(err) => panic!("failed to build request for {uri}: {err}"),
+        };
+
+        let response = match app.clone().oneshot(request).await {
+            Ok(response) => response,
+            Err(err) => panic!("request failed for {uri}: {err}"),
+        };
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        let body = response_json(response).await;
+        assert_eq!(body["code"], "unauthorized");
+    }
+}
+
+#[tokio::test]
+async fn auth_passkey_read_update_routes_require_authenticated_session() {
+    let app = build_test_app().await;
+    let test_cases = [
+        ("GET", "/api/auth/passkeys/credential-id-1", ""),
+        (
+            "PATCH",
+            "/api/auth/passkeys/credential-id-1",
+            r#"{"friendly_name":"Work key"}"#,
+        ),
+    ];
+
+    for (method, uri, body) in test_cases {
+        let request = match Request::builder()
+            .method(method)
+            .uri(uri)
+            .header(header::ACCEPT, "application/json")
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(axum::body::Body::from(body.to_string()))
+        {
+            Ok(request) => request,
+            Err(err) => panic!("failed to build request for {uri}: {err}"),
+        };
+
+        let response = match app.clone().oneshot(request).await {
+            Ok(response) => response,
+            Err(err) => panic!("request failed for {uri}: {err}"),
+        };
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        let body = response_json(response).await;
+        assert_eq!(body["code"], "unauthorized");
+    }
+}
+
+#[tokio::test]
+async fn train_api_security_read_routes_fail_closed_without_database() {
+    let Some(redis_server) = RedisTestServer::start().await else {
+        eprintln!("redis-server not available; skipping train security route database guard test");
+        return;
+    };
+    let app = build_test_app_with_redis(&redis_server.url).await;
+    let session_id = "session-train-security-read-routes";
+    write_session(&redis_server.url, session_id, user_session()).await;
+
+    let test_cases = [
+        ("GET", "/api/train/providers/srt/credentials", ""),
+        ("GET", "/api/train/providers/srt/payment-method", ""),
+        ("GET", "/api/train/payment-methods/payment-ref-1", ""),
+    ];
+
+    for (method, uri, body) in test_cases {
+        let request = match Request::builder()
+            .method(method)
+            .uri(uri)
+            .header(header::COOKIE, format!("bominal_session={session_id}"))
+            .header(header::ACCEPT, "application/json")
+            .body(axum::body::Body::from(body.to_string()))
+        {
+            Ok(request) => request,
+            Err(err) => panic!("failed to build request for {uri}: {err}"),
+        };
+
+        let response = match app.clone().oneshot(request).await {
+            Ok(response) => response,
+            Err(err) => panic!("request failed for {uri}: {err}"),
+        };
+
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        let body = response_json(response).await;
+        assert_eq!(body["code"], "service_unavailable");
+    }
+}
+
+#[tokio::test]
+async fn auth_passkey_read_update_routes_fail_closed_without_database() {
+    let Some(redis_server) = RedisTestServer::start().await else {
+        eprintln!("redis-server not available; skipping passkey route database guard test");
+        return;
+    };
+    let app = build_test_app_with_redis(&redis_server.url).await;
+    let session_id = "session-passkey-read-update-routes";
+    write_session(&redis_server.url, session_id, user_session()).await;
+
+    let test_cases = [
+        ("GET", "/api/auth/passkeys/credential-id-1", ""),
+        (
+            "PATCH",
+            "/api/auth/passkeys/credential-id-1",
+            r#"{"friendly_name":"Work key"}"#,
+        ),
+    ];
+
+    for (method, uri, body) in test_cases {
+        let request = match Request::builder()
+            .method(method)
+            .uri(uri)
+            .header(header::COOKIE, format!("bominal_session={session_id}"))
+            .header(header::ACCEPT, "application/json")
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(axum::body::Body::from(body.to_string()))
+        {
+            Ok(request) => request,
+            Err(err) => panic!("failed to build request for {uri}: {err}"),
+        };
+
+        let response = match app.clone().oneshot(request).await {
+            Ok(response) => response,
+            Err(err) => panic!("request failed for {uri}: {err}"),
+        };
+
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        let body = response_json(response).await;
+        assert_eq!(body["code"], "service_unavailable");
+    }
+}
+
+#[tokio::test]
 async fn password_change_api_requires_authenticated_session() {
     let app = build_test_app().await;
     let request = match Request::builder()

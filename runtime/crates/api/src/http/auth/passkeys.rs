@@ -39,7 +39,11 @@ pub(super) async fn passkey_get(
     Path(credential_id): Path<String>,
 ) -> impl IntoResponse {
     match auth_service::get_session_passkey(state.as_ref(), &headers, &credential_id).await {
-        Ok(passkey) => (StatusCode::OK, Json(serde_json::json!({ "passkey": passkey }))).into_response(),
+        Ok(passkey) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "passkey": passkey })),
+        )
+            .into_response(),
         Err(err) => map_auth_error(err, &headers).into_response(),
     }
 }
