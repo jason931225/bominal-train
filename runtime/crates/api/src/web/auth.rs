@@ -76,17 +76,7 @@ pub fn render_auth_landing() -> String {
         <div id="auth-error" class="mt-3 hidden error-card"></div>
       </section>
 
-      <button
-        type="button"
-        class="theme-mini-switch"
-        data-theme-toggle
-        data-theme-toggle-compact
-        aria-label="Theme toggle"
-      >
-        <img class="theme-mini-icon theme-mini-icon-sun" src="/assets/icons/runtime-ui/theme-mini-sun-active.svgz" data-svgz-light="/assets/icons/runtime-ui/theme-mini-sun-active.svgz" data-svgz-dark="/assets/icons/runtime-ui/theme-mini-sun-default.svgz" alt="" aria-hidden="true" />
-        <img class="theme-mini-icon theme-mini-icon-moon" src="/assets/icons/runtime-ui/theme-mini-moon-default.svgz" data-svgz-light="/assets/icons/runtime-ui/theme-mini-moon-default.svgz" data-svgz-dark="/assets/icons/runtime-ui/theme-mini-moon-active.svgz" alt="" aria-hidden="true" />
-        <span class="theme-mini-thumb" aria-hidden="true"></span>
-      </button>
+      __BOMINAL_THEME_TOGGLE__
     </div>
   </div>
 </main>
@@ -339,5 +329,8 @@ pub fn render_auth_landing() -> String {
 })();
 </script>
 "#;
-    html.to_string()
+    html.replace(
+        "__BOMINAL_THEME_TOGGLE__",
+        &bominal_ui::render_compact_theme_toggle(),
+    )
 }
