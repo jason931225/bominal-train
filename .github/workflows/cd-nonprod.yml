@@ -29,7 +29,9 @@ on:
         type: boolean
 
 permissions:
+  actions: read
   contents: read
+  pull-requests: read
 
 concurrency:
   group: cd-nonprod-${{ github.ref_name || github.event.inputs.target }}
@@ -41,6 +43,55 @@ env:
   WORKER_IMAGE_NAME: ${{ github.repository_owner }}/bominal-worker
 
 jobs:
+  budget-policy:
+    name: CD Non-Production Budget Policy
+    uses: ./.github/workflows/actions-budget-governor.yml
+
+  cd-budget-guard:
+    name: CD Non-Production Budget Guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs:
+      - budget-policy
+    env:
+      GLOBAL_MODE: ${{ needs.budget-policy.outputs.global_mode }}
+      HOTFIX_PREFIX: ${{ vars.ACTIONS_HOTFIX_BRANCH_PREFIX }}
+    steps:
+      - name: Enforce non-production CD global budget policy
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const mode = process.env.GLOBAL_MODE || "normal";
+            if (mode !== "lockdown") {
+              core.info(`global_mode=${mode}; non-production CD workflow allowed.`);
+              return;
+            }
+
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const hotfixPrefix = process.env.HOTFIX_PREFIX || "hotfix/";
+            let hotfixAllowed = false;
+
+            if (context.eventName === "push") {
+              try {
+                const pulls = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+                  owner,
+                  repo,
+                  commit_sha: context.sha,
+                });
+                hotfixAllowed = (pulls.data || []).some((pr) => pr.head?.ref?.startsWith(hotfixPrefix));
+              } catch (error) {
+                core.warning(`Unable to resolve associated PRs for hotfix check: ${String(error?.message || error)}`);
+              }
+            }
+
+            if (hotfixAllowed) {
+              core.warning("Global budget lockdown active, but associated hotfix PR detected; allowing non-production CD run.");
+              return;
+            }
+
+            core.setFailed("Global Actions budget is in lockdown mode; non-production CD is blocked.");
+
   resolve-target:
     name: Resolve Deployment Target
     runs-on: ubuntu-latest
@@ -85,6 +136,7 @@ jobs:
     timeout-minutes: 30
     needs:
       - resolve-target
+      - cd-budget-guard
     permissions:
       contents: read
       packages: write

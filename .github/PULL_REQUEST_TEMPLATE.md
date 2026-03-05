@@ -15,6 +15,8 @@
 - [ ] Exactly one `area:*` label
 - [ ] Exactly one `priority:*` label
 - [ ] PR labels inherit `type:*`, `area:*`, and `priority:*` from linked issue
+- [ ] Exactly one `ci:tier:*` label (non-promotion PRs)
+- [ ] `semver:*` applied only when this PR contributes to a production release target
 
 ## Risk And Rollback
 

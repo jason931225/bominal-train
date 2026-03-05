@@ -27,6 +27,9 @@ Reference:
 - Enforce branch flow: implementation -> `dev`, promotion `dev -> staging -> main`, hotfix `hotfix/* -> main` then back-promote.
 - `dev -> staging` promotion is gate-driven (`promotion-gate*` + `promotion-pr-open-dev-staging.yml`).
 - `promotion:auto` applies to `staging -> main` PR auto-create only.
+- Apply exactly one `ci:tier:*` label on non-promotion PRs (`ci:tier:light|standard|heavy`).
+- Use `semver:*` only for production release and promotion planning metadata.
+- Prefer one coherent PR with multiple focused commits; split into multiple PRs only for independent/risk-isolated scopes.
 
 ## Review Rules
 
@@ -34,6 +37,7 @@ Reference:
 - Request `@copilot review` first when policy requires secondary review.
 - Request `@codex review` second for cross-check on the same PR.
 - Keep Copilot usage judicious and under monthly budget (`300` requests, reset on the 1st UTC).
+- Keep GitHub Actions usage within minute-governance policy (`3000` global monthly cap, `300` reserved for CD).
 - Treat material Copilot findings as merge-blocking unless fixed or maintainer-waived with explicit risk note.
 
 ## Gate Commands
@@ -44,6 +48,8 @@ Gate commands are processed in `.github/workflows/promotion-gate-commands.yml`.
 - `/gate promote`
 - `/gate waive advisory <finding_id> reason:"..." risk:"..." expires:"YYYY-MM-DD" followup:"#123"`
 - `/promote merge` (PR comments only)
+- `/budget status`
+- `/budget override reason:"..."`
 
 ## Commands And Tooling
 

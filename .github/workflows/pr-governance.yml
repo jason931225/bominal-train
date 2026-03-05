@@ -114,7 +114,7 @@ jobs:
                 issue_number: localIssueNumbers[0],
               });
               const issueLabels = (primaryIssue.data.labels || []).map((l) => typeof l === "string" ? l : l.name);
-              const missingPrefixes = ["type:", "area:", "priority:"]
+              const missingPrefixes = ["type:", "area:", "priority:", "ci:tier:"]
                 .filter((prefix) => !labels.some((name) => name.startsWith(prefix)));
               const inherited = missingPrefixes
                 .map((prefix) => issueLabels.find((name) => name.startsWith(prefix)))
@@ -133,9 +133,25 @@ jobs:
             }
 
             const prefixed = (prefix) => labels.filter((name) => name.startsWith(prefix));
+            if (!promotionPr) {
+              const ciTierExisting = prefixed("ci:tier:");
+              if (ciTierExisting.length === 0) {
+                const defaultTier = docsOnly ? "ci:tier:light" : "ci:tier:standard";
+                await github.rest.issues.addLabels({
+                  owner,
+                  repo,
+                  issue_number: pr.number,
+                  labels: [defaultTier],
+                });
+                labels = [...new Set([...labels, defaultTier])];
+                core.info(`Defaulted PR #${pr.number} to ${defaultTier}`);
+              }
+            }
+
             const typeLabels = prefixed("type:");
             const areaLabels = prefixed("area:");
             const priorityLabels = prefixed("priority:");
+            const ciTierLabels = prefixed("ci:tier:");
 
             if (typeLabels.length !== 1) {
               failures.push(`Exactly one type:* label required (found ${typeLabels.length})`);
@@ -145,6 +161,9 @@ jobs:
             }
             if (priorityLabels.length !== 1) {
               failures.push(`Exactly one priority:* label required (found ${priorityLabels.length})`);
+            }
+            if (!promotionPr && ciTierLabels.length !== 1) {
+              failures.push(`Exactly one ci:tier:* label required for non-promotion PRs (found ${ciTierLabels.length})`);
             }
 
             if (!promotionPr && closingRefs.length === 0) {

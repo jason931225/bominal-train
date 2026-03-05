@@ -161,6 +161,9 @@ All active Issues and PRs MUST carry:
 
 Optional labels:
 - status/risk labels (`status:*`, `risk:*`) are encouraged for routing and incident response.
+- CI execution tier labels (`ci:tier:light|standard|heavy`) are required on non-promotion PRs.
+- semver labels (`semver:major|minor|patch|none`) are release metadata for production-release and promotion planning only.
+- budget labels (`budget:override`, `budget:lockdown`) are reserved for Actions minute-governance controls.
 - `duplicate`, `help wanted`, `question`, `invalid`, `wontfix` remain available for triage outcomes.
 
 Canonical label definitions MUST be kept in `.github/labels.yml`.
@@ -193,8 +196,9 @@ Every PR to `main` MUST:
 1. Link at least one issue with closing syntax (`Closes #123`).
 2. Include summary, scope, risk/rollback notes, verification evidence, docs impact, and changelog impact in the PR template.
 3. Carry required labels (`type:*`, `area:*`, `priority:*`).
-4. Resolve all review conversations before merge.
-5. Pass required checks and branch protection rules.
+4. Carry exactly one `ci:tier:*` label unless it is an explicit promotion/back-promotion PR.
+5. Resolve all review conversations before merge.
+6. Pass required checks and branch protection rules.
 
 Additional PR rules:
 - Docs-only PRs:
@@ -205,6 +209,9 @@ Additional PR rules:
   - apply `duplicate`,
   - include replacement reference in body/comment,
   - close or keep only as historical context.
+- PR structure:
+  - one PR should represent one coherent change scope, even when it contains multiple focused commits,
+  - split into multiple PRs only when scopes are independent, need different merge order, or require risk isolation.
 
 ### Secondary AI Review
 
@@ -231,6 +238,22 @@ Additional PR rules:
 - AI review is advisory and does not replace required human approval policy where applicable.
 - Copilot review monthly budget is capped at `300` requests per month (UTC month boundary, reset on day `1`).
 - CI MUST track monthly `@copilot review` invocation count and fail when budget is exceeded.
+
+### Actions Minute Governance
+
+- GitHub Actions usage is billed by minute and must be actively governed.
+- Monthly global Actions budget cap: `3000` minutes.
+- Reserved CD budget pool: `300` minutes (for `CD`, `CD Non-Production`, and `Release Tag` workflows).
+- Non-CD budget cap: `2700` minutes.
+- Governance modes:
+  - `normal`: full non-CD policy checks run.
+  - `throttle`: only `ci:tier:heavy` (or hotfix/override) PRs run heavy checks; other PRs run cheap checks only.
+  - `lockdown`: non-hotfix non-CD workflows are blocked; CD remains reserved until global cap is reached.
+- Global lockdown (`>=3000` used) blocks CD/release workflows unless explicit emergency override policy is invoked.
+- Budget tracking and reporting:
+  - reusable evaluator workflow: `.github/workflows/actions-budget-governor.yml`,
+  - daily report workflow: `.github/workflows/actions-budget-report.yml`,
+  - operator commands: `/budget status`, `/budget override reason:\"...\"`.
 
 ### Project Tracking
 
@@ -297,6 +320,13 @@ Repository automation prerequisites:
   - `BOMINAL_REVIEW_PROJECT_NUMBER`
   - `BOMINAL_COMMAND_PROJECT_OWNER`
   - `BOMINAL_COMMAND_PROJECT_NUMBER`
+  - optional: `ACTIONS_MINUTES_MONTHLY_BUDGET` (default `3000`)
+  - optional: `ACTIONS_CD_RESERVED_MINUTES` (default `300`)
+  - optional: `ACTIONS_BURNRATE_ENFORCE` (default `true`)
+  - optional: `ACTIONS_BURNRATE_BUFFER_PCT` (default `10`)
+  - optional: `ACTIONS_CD_WORKFLOW_NAMES` (default `CD,CD Non-Production,Release Tag`)
+  - optional: `ACTIONS_HOTFIX_BRANCH_PREFIX` (default `hotfix/`)
+  - optional: `ACTIONS_BUDGET_REPORT_ISSUE_NUMBER` (issue number for daily budget report comment updates)
   - optional: `COPILOT_REVIEW_MONTHLY_BUDGET` (default `300`)
   - optional: `COPILOT_REVIEW_WARN_THRESHOLD` (default `270`)
 - repository secret `PROJECT_AUTOMATION_TOKEN` with `repo`, `project`, and `read:project` scopes.
@@ -330,6 +360,8 @@ Command policy:
 - `/gate promote` sets promotion intent (and project `Promotion Flag=Promote` where available).
 - `/gate waive advisory ...` records advisory-only waivers in gate `## Waiver Ledger`.
 - `/promote merge` is restricted to write/maintain/admin and enforces green checks + no active `CHANGES_REQUESTED`.
+- `/budget status` reports month-to-date usage and current governance mode.
+- `/budget override reason:\"...\"` applies auditable temporary budget bypass marker (`budget:override`).
 
 Orchestrator policy:
 - orchestrator agents MUST create or update a GitHub issue before dispatching execution agents.
@@ -381,6 +413,8 @@ Required branch settings:
 Required status checks:
 - `Workflow Lint`
 - `PR Governance`
+- `CI Budget Policy`
+- `PR Execution Policy`
 - `Copilot Review Budget`
 - `Branch Policy Gate`
 

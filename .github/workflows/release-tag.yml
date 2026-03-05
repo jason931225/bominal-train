@@ -22,16 +22,43 @@ on:
         type: boolean
 
 permissions:
+  actions: read
   contents: write
   issues: read
   pull-requests: read
 
 jobs:
+  budget-policy:
+    name: Release Budget Policy
+    uses: ./.github/workflows/actions-budget-governor.yml
+
+  release-budget-guard:
+    name: Release Budget Guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs:
+      - budget-policy
+    env:
+      GLOBAL_MODE: ${{ needs.budget-policy.outputs.global_mode }}
+    steps:
+      - name: Enforce global budget before release tagging
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const mode = process.env.GLOBAL_MODE || "normal";
+            if (mode === "lockdown") {
+              core.setFailed("Global Actions budget is in lockdown mode; release tagging is temporarily blocked.");
+              return;
+            }
+            core.info(`global_mode=${mode}; release tagging allowed.`);
+
   tag-and-release:
     name: Release Tag
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    needs:
+      - release-budget-guard
     environment: production
     steps:
       - name: Checkout

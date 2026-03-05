@@ -32,7 +32,9 @@ Priority scope contract:
 - `priority:p3`: low urgency or exploratory maintenance.
 
 PR label inheritance policy:
-- PRs inherit missing `type:*`, `area:*`, and `priority:*` labels from the first linked issue (`Closes #...`) via `PR Governance` automation.
+- PRs inherit missing `type:*`, `area:*`, `priority:*`, and `ci:tier:*` labels from the first linked issue (`Closes #...`) via `PR Governance` automation.
+- `semver:*` is release metadata and should be applied only when the PR is tied to a production release/promotion target.
+- Prefer one coherent PR with multiple focused commits; split into multiple PRs only for independent scopes, merge-order constraints, or risk isolation.
 
 ## Required Field Model
 
@@ -116,6 +118,31 @@ Judicious-use rules:
 - Avoid consuming budget on low-risk docs-only or trivial hygiene PRs.
 - Default cross-check sequence remains `@copilot review` then `@codex review` when secondary review is warranted.
 
+## Actions Minute Governance
+
+Global Actions budget controls:
+- Monthly global cap: `3000` minutes.
+- Reserved CD pool: `300` minutes.
+- Non-CD cap: `2700` minutes.
+- Scope: all repository workflows count toward global usage.
+
+Governance modes:
+- `normal`: full non-CD policy checks run.
+- `throttle`: only `ci:tier:heavy` (or hotfix/override) PRs run heavy checks; other PRs run cheap checks only.
+- `lockdown`: non-hotfix non-CD workflows are blocked; CD reserve remains protected.
+- Global lockdown (`>=3000`) blocks CD and release workflows.
+
+Implementation surfaces:
+- reusable evaluator: `.github/workflows/actions-budget-governor.yml`
+- PR/full CI policy: `.github/workflows/ci.yml`
+- push-minimal CI: `.github/workflows/ci-push-minimal.yml`
+- command handler: `.github/workflows/actions-budget-commands.yml`
+- daily report: `.github/workflows/actions-budget-report.yml`
+
+Operator commands:
+- `/budget status`
+- `/budget override reason:"..."`
+
 ## Gate Manifest Contract
 
 Every promotion gate issue contains a machine-readable manifest block:
@@ -193,7 +220,7 @@ gh project list --owner "$BOMINAL_WORKSTREAMS_PROJECT_OWNER"
 
 Create + add issue to Workstreams:
 ```bash
-ISSUE_URL=$(gh issue create --repo jason931225/bominal --title "chore: board automation smoke test" --body "Policy smoke test issue" --label type:chore --label area:ci-cd --label priority:p3 --label status:ready)
+ISSUE_URL=$(gh issue create --repo jason931225/bominal --title "chore: board automation smoke test" --body "Policy smoke test issue" --label type:chore --label area:ci-cd --label priority:p3 --label ci:tier:standard --label status:ready)
 gh project item-add "$BOMINAL_WORKSTREAMS_PROJECT_NUMBER" --owner "$BOMINAL_WORKSTREAMS_PROJECT_OWNER" --url "$ISSUE_URL"
 ```
 
@@ -203,6 +230,12 @@ gh issue comment <GATE_ISSUE_NUMBER> --repo jason931225/bominal --body "/gate re
 gh issue comment <GATE_ISSUE_NUMBER> --repo jason931225/bominal --body "/gate promote"
 gh issue comment <GATE_ISSUE_NUMBER> --repo jason931225/bominal --body '/gate waive advisory finding-123 reason:"non-blocking style issue" risk:"low" expires:"2026-04-01" followup:"#999"'
 gh pr comment <PR_NUMBER> --repo jason931225/bominal --body "/promote merge"
+```
+
+Budget commands:
+```bash
+gh issue comment <ISSUE_OR_PR_NUMBER> --repo jason931225/bominal --body "/budget status"
+gh issue comment <ISSUE_OR_PR_NUMBER> --repo jason931225/bominal --body '/budget override reason:"urgent release validation required"'
 ```
 
 Review requests (cross-check):
@@ -224,6 +257,15 @@ GitHub MCP equivalents for agents:
 Optional review-budget variables:
 - `COPILOT_REVIEW_MONTHLY_BUDGET` (default `300`)
 - `COPILOT_REVIEW_WARN_THRESHOLD` (default `270`)
+
+Optional Actions-minute governance variables:
+- `ACTIONS_MINUTES_MONTHLY_BUDGET` (default `3000`)
+- `ACTIONS_CD_RESERVED_MINUTES` (default `300`)
+- `ACTIONS_BURNRATE_ENFORCE` (default `true`)
+- `ACTIONS_BURNRATE_BUFFER_PCT` (default `10`)
+- `ACTIONS_CD_WORKFLOW_NAMES` (default `CD,CD Non-Production,Release Tag`)
+- `ACTIONS_HOTFIX_BRANCH_PREFIX` (default `hotfix/`)
+- `ACTIONS_BUDGET_REPORT_ISSUE_NUMBER` (issue number for daily report updates)
 
 PAT fallback scopes (for CLI sessions):
 - `repo`

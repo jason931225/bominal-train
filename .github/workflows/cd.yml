@@ -19,7 +19,9 @@ on:
         type: boolean
 
 permissions:
+  actions: read
   contents: read
+  pull-requests: read
 
 concurrency:
   group: cd-${{ github.ref }}
@@ -31,10 +33,61 @@ env:
   WORKER_IMAGE_NAME: ${{ github.repository_owner }}/bominal-worker
 
 jobs:
+  budget-policy:
+    name: CD Budget Policy
+    uses: ./.github/workflows/actions-budget-governor.yml
+
+  cd-budget-guard:
+    name: CD Budget Guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs:
+      - budget-policy
+    env:
+      GLOBAL_MODE: ${{ needs.budget-policy.outputs.global_mode }}
+      HOTFIX_PREFIX: ${{ vars.ACTIONS_HOTFIX_BRANCH_PREFIX }}
+    steps:
+      - name: Enforce CD global budget policy
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const mode = process.env.GLOBAL_MODE || "normal";
+            if (mode !== "lockdown") {
+              core.info(`global_mode=${mode}; CD workflow allowed.`);
+              return;
+            }
+
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const hotfixPrefix = process.env.HOTFIX_PREFIX || "hotfix/";
+            let hotfixAllowed = false;
+
+            if (context.eventName === "push") {
+              try {
+                const pulls = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+                  owner,
+                  repo,
+                  commit_sha: context.sha,
+                });
+                hotfixAllowed = (pulls.data || []).some((pr) => pr.head?.ref?.startsWith(hotfixPrefix));
+              } catch (error) {
+                core.warning(`Unable to resolve associated PRs for hotfix check: ${String(error?.message || error)}`);
+              }
+            }
+
+            if (hotfixAllowed) {
+              core.warning("Global budget lockdown active, but associated hotfix PR detected; allowing CD run.");
+              return;
+            }
+
+            core.setFailed("Global Actions budget is in lockdown mode; CD is blocked to prevent monthly cap overrun.");
+
   build-and-publish:
     name: Build, Sign, and Publish Images
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    needs:
+      - cd-budget-guard
     permissions:
       contents: read
       packages: write

@@ -35,15 +35,18 @@ jobs:
             const requiredChecks = [
               "Workflow Lint",
               "PR Governance",
+              "CI Budget Policy",
+              "PR Execution Policy",
               "Copilot Review Budget",
               "Frontend Artifact Policy",
               "Script Quality",
               "Secret Scan",
-              "Rust Quality Gates",
-              "Rust Coverage Gate",
             ];
 
             const optionalIfPresent = [
+              "Runtime API Image Smoke",
+              "Rust Quality Gates",
+              "Rust Coverage Gate",
               "Dependency Review",
               "Dependency Review Policy",
               "Frontend Asset Gate",
@@ -96,6 +99,16 @@ jobs:
               const runs = response.data.check_runs || [];
               const byName = latestByName(runs);
               byName.delete("Branch Policy Gate");
+
+              const failFastChecks = ["CI Budget Policy", "PR Execution Policy"];
+              for (const name of failFastChecks) {
+                const run = byName.get(name);
+                if (!run || run.status !== "completed") continue;
+                if (!["success", "neutral", "skipped"].includes(run.conclusion)) {
+                  core.setFailed(`Policy check failed: ${name}=${run.conclusion}`);
+                  return;
+                }
+              }
 
               const missing = [];
               const pending = [];

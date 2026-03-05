@@ -1,0 +1,102 @@
+name: CI Push Minimal
+
+on:
+  push:
+    branches:
+      - dev
+      - staging
+      - main
+    paths-ignore:
+      - docs/**
+      - "**/*.md"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: ci-push-minimal-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  budget-policy:
+    name: CI Push Budget Policy
+    uses: ./.github/workflows/actions-budget-governor.yml
+
+  noncd-budget-guard:
+    name: CI Push Non-CD Budget Guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs:
+      - budget-policy
+    steps:
+      - name: Enforce non-CD budget cap on push workflows
+        uses: actions/github-script@v7
+        env:
+          NONCD_MODE: ${{ needs.budget-policy.outputs.noncd_mode }}
+          NONCD_REMAINING: ${{ needs.budget-policy.outputs.noncd_remaining_minutes }}
+          NONCD_USED: ${{ needs.budget-policy.outputs.noncd_used_minutes }}
+        with:
+          script: |
+            const mode = process.env.NONCD_MODE || "normal";
+            if (mode !== "lockdown") {
+              core.info(`noncd_mode=${mode}; proceeding with minimal post-merge checks.`);
+              return;
+            }
+
+            core.setFailed(
+              `Non-CD Actions budget is in lockdown mode (used=${process.env.NONCD_USED}m, remaining=${process.env.NONCD_REMAINING}m). ` +
+              `Post-merge minimal checks are halted to preserve reserved CD capacity.`
+            );
+
+  post-merge-secret-scan:
+    name: Post-Merge Secret Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs:
+      - noncd-budget-guard
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Scan for leaked secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  post-merge-frontend-artifact-policy:
+    name: Post-Merge Frontend Artifact Policy
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs:
+      - noncd-budget-guard
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Enforce generated-only frontend dist policy
+        run: ./scripts/tests/test_frontend_dist_untracked.sh
+
+  post-merge-script-quality:
+    name: Post-Merge Script Quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs:
+      - noncd-budget-guard
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install shellcheck
+        run: |
+          if ! command -v shellcheck >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install --yes shellcheck
+          fi
+
+      - name: Lint shell scripts
+        run: shellcheck -x scripts/prod-up.sh scripts/clean-runtime-debug.sh scripts/tests/*.sh
