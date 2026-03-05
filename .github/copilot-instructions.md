@@ -1,6 +1,6 @@
-# Bominal code review instructions
+# bominal code review instructions
 
-Review this repository like a pragmatic staff engineer protecting Bominal’s behavior through refactors, migrations, and deployment changes.
+Review this repository like a pragmatic staff engineer protecting bominal’s behavior through refactors, migrations, and deployment changes.
 
 Priorities, in order:
 
