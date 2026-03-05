@@ -32,6 +32,7 @@ jobs:
 
             const requiredChecks = [
               "Workflow Lint",
+              "PR Governance",
               "Frontend Artifact Policy",
               "Script Quality",
               "Secret Scan",

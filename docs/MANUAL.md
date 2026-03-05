@@ -124,35 +124,144 @@ Mandatory artifacts:
 - deployment decision log,
 - post-deploy verification summary.
 
-## Pull Request Governance
+## GitHub Project Management Policy
 
-Standardize PR handling so every open change follows predictable review and safety expectations.
+Use GitHub Issues, Pull Requests, Actions, Milestones, and Project tracking as the operational source of truth for active delivery.
 
-Scope labelling (minimum):
-- `documentation`
-  - Use for docs-only or doc-adjacent changes (`docs/**`, `.github` instruction docs, process docs).
-- `enhancement`
-  - Use for new functionality or behavior expansion.
-- `bug`
-  - Use for defect corrections and regressions.
-- `duplicate`
-  - Use when the PR supersedes or duplicates existing open/merged work.
+Authority model:
+- Canonical policy and security/deploy standards remain in-repo (`docs/MANUAL.md`).
+- GitHub Wiki is active for operational guidance, onboarding, and coordination pages, and MUST link back to canonical manual sections when policy-sensitive topics are referenced.
 
-Additional labels (`help wanted`, `question`, `invalid`, `wontfix`) remain available for triage, clarification, and outcome signaling.
+### Label Taxonomy
 
-Best-practice PR lifecycle:
-1. Create PR title/body with a one-line summary and explicit scope list.
-2. Include behavior impact and verification evidence (`tests run`, manual checks, and rollback notes for risky changes).
-3. Apply labels before requesting review so routing can be automated.
-4. Check recent open PRs for same intent/files to avoid duplicates.
-5. If duplicate, add `duplicate`, post a short replacement comment, and close or keep as historical.
-6. For docs-only PRs, keep scope narrow, apply `documentation`, and rely on docs-only CI/CD routing.
+All active Issues and PRs MUST carry:
+- exactly one `type:*` label:
+  - `type:bug`
+  - `type:enhancement`
+  - `type:documentation`
+  - `type:chore`
+  - `type:security`
+  - `type:ops`
+- exactly one `area:*` label:
+  - `area:runtime-api`
+  - `area:runtime-worker`
+  - `area:runtime-shared`
+  - `area:runtime-frontend`
+  - `area:payment-crypto`
+  - `area:docs`
+  - `area:ci-cd`
+  - `area:infra`
+  - `area:auth`
+  - `area:observability`
+- exactly one `priority:*` label:
+  - `priority:p0`
+  - `priority:p1`
+  - `priority:p2`
+  - `priority:p3`
 
-### Copilot Review (If Possible)
+Optional labels:
+- status/risk labels (`status:*`, `risk:*`) are encouraged for routing and incident response.
+- `duplicate`, `help wanted`, `question`, `invalid`, `wontfix` remain available for triage outcomes.
 
-- If human review is unavailable or delayed and repository access allows, request a Copilot review before merge.
-- Trigger it after labels and PR summary are set.
-- If Copilot review is unavailable, proceed with human review and state the reason in a PR comment.
+Canonical label definitions MUST be kept in `.github/labels.yml`.
+
+### Issue Governance
+
+Issue intake MUST use repository issue forms (`.github/ISSUE_TEMPLATE/*.yml`) and include:
+- problem statement
+- expected outcome
+- in-scope / out-of-scope
+- acceptance criteria
+- risk classification
+- verification plan
+
+Blank issues are disabled by default.
+
+### Pull Request Governance
+
+Every PR to `main` MUST:
+1. Link at least one issue with closing syntax (`Closes #123`).
+2. Include summary, scope, risk/rollback notes, verification evidence, docs impact, and changelog impact in the PR template.
+3. Carry required labels (`type:*`, `area:*`, `priority:*`).
+4. Resolve all review conversations before merge.
+5. Pass required checks and branch protection rules.
+
+Additional PR rules:
+- Docs-only PRs:
+  - scope must remain docs/markdown only,
+  - must include `type:documentation` and `area:docs`,
+  - use docs-only CI/CD routing (no heavy build/deploy stages).
+- Duplicate PRs:
+  - apply `duplicate`,
+  - include replacement reference in body/comment,
+  - close or keep only as historical context.
+
+### Copilot Review
+
+- If human review is delayed and repository access allows, request Copilot review after labels/body are complete.
+- Copilot is advisory and does not replace required human approval policy where applicable.
+- Unresolved Copilot threads must be resolved before merge when they flag material scope/documentation mismatches.
+
+### Project Tracking
+
+Maintain a single active GitHub Project v2 board (`bominal Delivery`) for active work.
+
+Required project fields:
+- `Status`: `Triage`, `Ready`, `In Progress`, `In Review`, `Blocked`, `Done`
+- `Type`: `Bug`, `Enhancement`, `Docs`, `Chore`, `Security`, `Ops`
+- `Area`: aligned to `area:*` taxonomy
+- `Priority`: `P0`, `P1`, `P2`, `P3`
+- `Risk`: `Low`, `Medium`, `High`
+- `Target Release`: semver target (for example `v0.2.0`)
+- `Due Date`
+
+Automation expectations:
+- new issues are added to project with `Status=Triage`,
+- linked PR activity moves issue status to `In Review`,
+- merged linked PR moves issue status to `Done`.
+
+### Wiki Governance
+
+Required active wiki pages:
+- Home
+- Roadmap
+- Release Calendar
+- Incident Index
+- Contributor Workflow
+
+Wiki pages that describe policy MUST link back to canonical manual anchors instead of redefining policy independently.
+
+### Milestones, Releases, And Tags
+
+Release planning model:
+- create one milestone per planned semver release (`vX.Y.Z`),
+- assign all release-scoped issues/PRs to that milestone,
+- close milestone only after acceptance criteria are met.
+
+Tagging model:
+- create annotated semver tags only (`vMAJOR.MINOR.PATCH`) from `main`,
+- create tags through protected manual workflow dispatch (not ad-hoc local tagging),
+- each release tag MUST have release notes and changelog alignment evidence.
+
+### Branch Protection Baseline For `main`
+
+Required branch settings:
+- require pull request before merge,
+- require at least 1 approving review,
+- dismiss stale approvals on new commits,
+- require conversation resolution,
+- require strict up-to-date status checks,
+- enforce for admins,
+- disallow force-pushes and deletions.
+
+Required status checks:
+- `Workflow Lint`
+- `PR Governance`
+- `Branch Policy Gate`
+
+Merge strategy default:
+- prefer squash merge for routine feature/fix PRs,
+- merge commit and rebase merge should remain disabled unless a documented exception is approved.
 
 ## Deployment And Rollback Standard
 

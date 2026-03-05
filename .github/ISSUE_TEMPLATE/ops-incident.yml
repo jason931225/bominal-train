@@ -1,0 +1,76 @@
+name: Ops Incident
+description: Track production-impacting incidents and corrective actions.
+title: "incident: "
+labels:
+  - type:ops
+  - priority:p0
+  - risk:high
+body:
+  - type: textarea
+    id: problem_statement
+    attributes:
+      label: Incident Summary
+      description: What happened and when?
+    validations:
+      required: true
+  - type: input
+    id: severity
+    attributes:
+      label: Severity
+      description: Use SEV1, SEV2, SEV3, or SEV4.
+      placeholder: SEV2
+    validations:
+      required: true
+  - type: input
+    id: owner
+    attributes:
+      label: Incident Owner
+      description: GitHub handle of current incident owner.
+      placeholder: "@owner"
+    validations:
+      required: true
+  - type: textarea
+    id: expected_outcome
+    attributes:
+      label: Stabilization Goal
+      description: What stable state must be restored?
+    validations:
+      required: true
+  - type: textarea
+    id: scope_in
+    attributes:
+      label: In Scope
+      description: Immediate containment and remediation actions.
+    validations:
+      required: true
+  - type: textarea
+    id: scope_out
+    attributes:
+      label: Out Of Scope
+      description: Explicitly list deferred work.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance_criteria
+    attributes:
+      label: Acceptance Criteria
+      description: Required signals before incident closure.
+    validations:
+      required: true
+  - type: dropdown
+    id: risk_class
+    attributes:
+      label: Risk Class
+      options:
+        - SECURITY
+        - DESTRUCTIVE
+        - PRODUCTION
+    validations:
+      required: true
+  - type: textarea
+    id: verification_plan
+    attributes:
+      label: Verification Plan
+      description: Health checks, rollback notes, and evidence references.
+    validations:
+      required: true

@@ -1,0 +1,71 @@
+name: Bug Report
+description: Report a defect or regression in bominal.
+title: "bug: "
+labels:
+  - type:bug
+  - priority:p1
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for defects and regressions. Keep scope concrete and reproducible.
+  - type: textarea
+    id: problem_statement
+    attributes:
+      label: Problem Statement
+      description: What is broken, where, and for whom?
+      placeholder: Describe current behavior and impact.
+    validations:
+      required: true
+  - type: textarea
+    id: expected_outcome
+    attributes:
+      label: Expected Outcome
+      description: What should happen instead?
+    validations:
+      required: true
+  - type: textarea
+    id: scope_in
+    attributes:
+      label: In Scope
+      description: Explicitly list what this issue should change.
+      placeholder: "1. ...\n2. ..."
+    validations:
+      required: true
+  - type: textarea
+    id: scope_out
+    attributes:
+      label: Out Of Scope
+      description: Explicitly list what this issue should not change.
+      placeholder: "1. ...\n2. ..."
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance_criteria
+    attributes:
+      label: Acceptance Criteria
+      description: Measurable conditions required to close this issue.
+      placeholder: "- [ ] ...\n- [ ] ..."
+    validations:
+      required: true
+  - type: dropdown
+    id: risk_class
+    attributes:
+      label: Risk Class
+      description: Choose highest applicable risk class.
+      options:
+        - READ
+        - WRITE
+        - SECURITY
+        - DESTRUCTIVE
+        - PRODUCTION
+    validations:
+      required: true
+  - type: textarea
+    id: verification_plan
+    attributes:
+      label: Verification Plan
+      description: Commands/tests/checks that prove completion.
+      placeholder: "- cargo test ...\n- manual check ..."
+    validations:
+      required: true
