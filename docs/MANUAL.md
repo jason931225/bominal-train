@@ -220,6 +220,11 @@ Automation expectations:
 - linked PR activity moves issue status to `In Review`,
 - merged linked PR moves issue status to `Done`.
 
+Repository automation prerequisites:
+- repository variable `BOMINAL_PROJECT_OWNER` (user/org that owns the Project v2),
+- repository variable `BOMINAL_PROJECT_NUMBER` (Project v2 number),
+- repository secret `PROJECT_AUTOMATION_TOKEN` with `read:project` and `repo` scopes.
+
 ### Wiki Governance
 
 Required active wiki pages:
@@ -230,6 +235,9 @@ Required active wiki pages:
 - Contributor Workflow
 
 Wiki pages that describe policy MUST link back to canonical manual anchors instead of redefining policy independently.
+
+Wiki bootstrap note:
+- if `<repo>.wiki.git` is not yet provisioned, initialize the first wiki page via GitHub UI, then manage pages through git or web edits.
 
 ### Milestones, Releases, And Tags
 
