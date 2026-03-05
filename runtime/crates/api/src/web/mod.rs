@@ -2088,9 +2088,7 @@ mod tests {
         let html = render_dashboard_settings("admin@bominal.local");
         assert!(html.contains("id=\"passkey-modal-delete\""));
         assert!(html.contains("class=\"btn-destructive h-9 w-9 p-0\""));
-        assert!(html.contains(
-            "type=\"module\" src=\"/assets/js/dashboard/security.js\""
-        ));
+        assert!(html.contains("type=\"module\" src=\"/assets/js/dashboard/security.js\""));
         assert!(!html.contains("const modalResult = await openSecurityModal({"));
         assert!(html.contains("Settings tabs"));
         assert!(html.contains("href=\"/dashboard/settings\""));
