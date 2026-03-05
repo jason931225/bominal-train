@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use crate::AppState;
+use super::super::super::AppState;
 
 pub(crate) fn redacted_config_snapshot(state: &AppState) -> BTreeMap<String, serde_json::Value> {
     let mut out = BTreeMap::new();

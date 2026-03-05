@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 
-use crate::AppState;
+use super::super::super::AppState;
 
 use super::{AdminServiceError, ObservabilityEventRecord, ObservabilityTimeseriesPoint};
 

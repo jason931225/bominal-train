@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
-use crate::AppState;
+use super::super::super::AppState;
 
 use super::{AdminServiceError, AuditRecord};
 
