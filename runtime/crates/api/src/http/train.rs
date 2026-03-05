@@ -27,11 +27,13 @@ pub(super) fn register(router: Router<Arc<AppState>>) -> Router<Arc<AppState>> {
         .route("/api/train/search/{search_id}", get(get_search))
         .route(
             "/api/train/providers/{provider}/credentials",
-            put(put_provider_credentials).delete(delete_provider_credentials),
+            get(get_provider_credentials)
+                .put(put_provider_credentials)
+                .delete(delete_provider_credentials),
         )
         .route(
             "/api/train/providers/{provider}/payment-method",
-            put(put_provider_payment_method),
+            get(get_provider_payment_method).put(put_provider_payment_method),
         )
         .route(
             "/api/train/payment-methods",
@@ -39,7 +41,7 @@ pub(super) fn register(router: Router<Arc<AppState>>) -> Router<Arc<AppState>> {
         )
         .route(
             "/api/train/payment-methods/{payment_method_ref}",
-            delete(delete_payment_method),
+            get(get_payment_method).delete(delete_payment_method),
         )
 }
 
@@ -161,6 +163,28 @@ async fn put_provider_credentials(
     }
 }
 
+async fn get_provider_credentials(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(provider): Path<String>,
+) -> impl IntoResponse {
+    let session = match auth_service::require_session_state(state.as_ref(), &headers).await {
+        Ok(session) => session,
+        Err(err) => return map_auth_error(err, &headers).into_response(),
+    };
+
+    match train_service::get_provider_credentials_for_user(
+        state.as_ref(),
+        &session.user_id,
+        &provider,
+    )
+    .await
+    {
+        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
+        Err(err) => map_train_error(err, &headers).into_response(),
+    }
+}
+
 async fn delete_provider_credentials(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
@@ -172,6 +196,28 @@ async fn delete_provider_credentials(
     };
 
     match train_service::delete_provider_credentials_for_user(
+        state.as_ref(),
+        &session.user_id,
+        &provider,
+    )
+    .await
+    {
+        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
+        Err(err) => map_train_error(err, &headers).into_response(),
+    }
+}
+
+async fn get_provider_payment_method(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(provider): Path<String>,
+) -> impl IntoResponse {
+    let session = match auth_service::require_session_state(state.as_ref(), &headers).await {
+        Ok(session) => session,
+        Err(err) => return map_auth_error(err, &headers).into_response(),
+    };
+
+    match train_service::get_provider_payment_method_for_user(
         state.as_ref(),
         &session.user_id,
         &provider,
@@ -240,6 +286,28 @@ async fn list_payment_methods(
     };
 
     match train_service::list_payment_methods_for_user(state.as_ref(), &session.user_id).await {
+        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
+        Err(err) => map_train_error(err, &headers).into_response(),
+    }
+}
+
+async fn get_payment_method(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(payment_method_ref): Path<String>,
+) -> impl IntoResponse {
+    let session = match auth_service::require_session_state(state.as_ref(), &headers).await {
+        Ok(session) => session,
+        Err(err) => return map_auth_error(err, &headers).into_response(),
+    };
+
+    match train_service::get_payment_method_for_user(
+        state.as_ref(),
+        &session.user_id,
+        &payment_method_ref,
+    )
+    .await
+    {
         Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(err) => map_train_error(err, &headers).into_response(),
     }

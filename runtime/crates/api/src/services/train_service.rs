@@ -269,6 +269,15 @@ pub(crate) struct TrainProviderCredentialsDeleteResponse {
     pub(crate) provider: String,
 }
 
+#[derive(Debug, Serialize)]
+pub(crate) struct TrainProviderCredentialsSummary {
+    pub(crate) provider: String,
+    pub(crate) credentials_ready: bool,
+    pub(crate) auth_probe_status: Option<String>,
+    pub(crate) auth_probe_message: Option<String>,
+    pub(crate) updated_at: DateTime<Utc>,
+}
+
 #[derive(Debug, Deserialize)]
 pub(crate) struct StationSuggestQuery {
     pub(crate) q: String,
@@ -1079,6 +1088,54 @@ pub(crate) async fn delete_provider_credentials_for_user(
     })
 }
 
+pub(crate) async fn get_provider_credentials_for_user(
+    state: &AppState,
+    user_id: &str,
+    provider: &str,
+) -> Result<TrainProviderCredentialsSummary, TrainServiceError> {
+    ensure_valid_user_id(user_id)?;
+    let provider = normalize_train_provider(provider)?;
+    let pool = require_pool(state)?;
+    let row = sqlx::query(
+        "select
+            provider,
+            updated_at,
+            redacted_metadata ->> 'auth_probe_status' as auth_probe_status,
+            redacted_metadata ->> 'auth_probe_message' as auth_probe_message
+         from provider_auth_secrets
+         where provider = $1 and subject_ref = $2 and credential_kind = 'login' and revoked_at is null
+         order by updated_at desc
+         limit 1",
+    )
+    .bind(provider)
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|_| TrainServiceError::Internal)?;
+
+    let Some(row) = row else {
+        return Err(TrainServiceError::NotFound(
+            "provider credentials not found".to_string(),
+        ));
+    };
+
+    Ok(TrainProviderCredentialsSummary {
+        provider: row.try_get("provider").map_err(|_| TrainServiceError::Internal)?,
+        credentials_ready: true,
+        auth_probe_status: row
+            .try_get::<Option<String>, _>("auth_probe_status")
+            .map_err(|_| TrainServiceError::Internal)?
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty()),
+        auth_probe_message: row
+            .try_get::<Option<String>, _>("auth_probe_message")
+            .map_err(|_| TrainServiceError::Internal)?
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty()),
+        updated_at: row.try_get("updated_at").map_err(|_| TrainServiceError::Internal)?,
+    })
+}
+
 pub(crate) async fn put_payment_method_for_user(
     state: &AppState,
     user_id: &str,
@@ -1126,6 +1183,49 @@ pub(crate) async fn put_payment_method_for_user(
     .map_err(map_payment_method_error)
 }
 
+pub(crate) async fn get_provider_payment_method_for_user(
+    state: &AppState,
+    user_id: &str,
+    provider: &str,
+) -> Result<TrainPaymentCardSummary, TrainServiceError> {
+    ensure_valid_user_id(user_id)?;
+    let _ = normalize_train_provider(provider)?;
+    let pool = require_pool(state)?;
+    let row = sqlx::query(
+        "select payment_method_ref, card_last4, card_brand, updated_at
+         from payment_method_secrets
+         where owner_ref = $1 and revoked_at is null
+         order by updated_at desc
+         limit 1",
+    )
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|_| TrainServiceError::Internal)?;
+
+    let Some(row) = row else {
+        return Err(TrainServiceError::NotFound(
+            "payment method not found".to_string(),
+        ));
+    };
+
+    Ok(TrainPaymentCardSummary {
+        payment_method_ref: row
+            .try_get("payment_method_ref")
+            .map_err(|_| TrainServiceError::Internal)?,
+        card_last4: row
+            .try_get::<Option<String>, _>("card_last4")
+            .map_err(|_| TrainServiceError::Internal)?
+            .unwrap_or_else(|| "0000".to_string()),
+        card_brand: row
+            .try_get("card_brand")
+            .map_err(|_| TrainServiceError::Internal)?,
+        updated_at: row
+            .try_get("updated_at")
+            .map_err(|_| TrainServiceError::Internal)?,
+    })
+}
+
 pub(crate) async fn list_payment_methods_for_user(
     state: &AppState,
     user_id: &str,
@@ -1169,6 +1269,54 @@ pub(crate) async fn list_payment_methods_for_user(
     }
 
     Ok(TrainPaymentMethodListResponse { cards })
+}
+
+pub(crate) async fn get_payment_method_for_user(
+    state: &AppState,
+    user_id: &str,
+    payment_method_ref: &str,
+) -> Result<TrainPaymentCardSummary, TrainServiceError> {
+    ensure_valid_user_id(user_id)?;
+    let payment_method_ref = payment_method_ref.trim();
+    if payment_method_ref.is_empty() {
+        return Err(TrainServiceError::InvalidRequest(
+            "payment_method_ref is required".to_string(),
+        ));
+    }
+    let pool = require_pool(state)?;
+    let row = sqlx::query(
+        "select payment_method_ref, card_last4, card_brand, updated_at
+         from payment_method_secrets
+         where owner_ref = $1 and payment_method_ref = $2 and revoked_at is null
+         limit 1",
+    )
+    .bind(user_id)
+    .bind(payment_method_ref)
+    .fetch_optional(pool)
+    .await
+    .map_err(|_| TrainServiceError::Internal)?;
+
+    let Some(row) = row else {
+        return Err(TrainServiceError::NotFound(
+            "payment method not found".to_string(),
+        ));
+    };
+
+    Ok(TrainPaymentCardSummary {
+        payment_method_ref: row
+            .try_get("payment_method_ref")
+            .map_err(|_| TrainServiceError::Internal)?,
+        card_last4: row
+            .try_get::<Option<String>, _>("card_last4")
+            .map_err(|_| TrainServiceError::Internal)?
+            .unwrap_or_else(|| "0000".to_string()),
+        card_brand: row
+            .try_get("card_brand")
+            .map_err(|_| TrainServiceError::Internal)?,
+        updated_at: row
+            .try_get("updated_at")
+            .map_err(|_| TrainServiceError::Internal)?,
+    })
 }
 
 pub(crate) async fn delete_payment_method_for_user(
