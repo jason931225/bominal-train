@@ -124,6 +124,36 @@ Mandatory artifacts:
 - deployment decision log,
 - post-deploy verification summary.
 
+## Pull Request Governance
+
+Standardize PR handling so every open change follows predictable review and safety expectations.
+
+Scope labelling (minimum):
+- `documentation`
+  - Use for docs-only or doc-adjacent changes (`docs/**`, `.github` instruction docs, process docs).
+- `enhancement`
+  - Use for new functionality or behavior expansion.
+- `bug`
+  - Use for defect corrections and regressions.
+- `duplicate`
+  - Use when the PR supersedes or duplicates existing open/merged work.
+
+Additional labels (`help wanted`, `question`, `invalid`, `wontfix`) remain available for triage, clarification, and outcome signaling.
+
+Best-practice PR lifecycle:
+1. Create PR title/body with a one-line summary and explicit scope list.
+2. Include behavior impact and verification evidence (`tests run`, manual checks, and rollback notes for risky changes).
+3. Apply labels before requesting review so routing can be automated.
+4. Check recent open PRs for same intent/files to avoid duplicates.
+5. If duplicate, add `duplicate`, post a short replacement comment, and close or keep as historical.
+6. For docs-only PRs, keep scope narrow, apply `documentation`, and rely on docs-only CI/CD routing.
+
+### Copilot Review (If Possible)
+
+- If human review is unavailable or delayed and repository access allows, request a Copilot review before merge.
+- Trigger it after labels and PR summary are set.
+- If Copilot review is unavailable, proceed with human review and state the reason in a PR comment.
+
 ## Deployment And Rollback Standard
 
 Deployment policy:
