@@ -18,8 +18,8 @@ pub(crate) use incidents::{create_incident, list_incidents, update_incident_stat
 pub(crate) use maintenance::{list_kill_switches, upsert_kill_switch};
 pub(crate) use observability::{list_observability_events, list_observability_timeseries};
 pub(crate) use runtime::{
-    RuntimeJobEventsPage, cancel_runtime_job, ensure_runtime_job_exists, get_runtime_job,
-    list_runtime_job_events_page, list_runtime_jobs, requeue_runtime_job, retry_runtime_job,
+    cancel_runtime_job, ensure_runtime_job_exists, get_runtime_job, list_runtime_job_events_page,
+    list_runtime_jobs, requeue_runtime_job, retry_runtime_job,
 };
 pub(crate) use security::validate_sensitive_confirmation;
 pub(crate) use users::{list_sessions, list_users, set_user_access, set_user_role};
