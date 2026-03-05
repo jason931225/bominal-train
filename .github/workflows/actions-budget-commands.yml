@@ -1,0 +1,148 @@
+name: Actions Budget Commands
+
+on:
+  issue_comment:
+    types:
+      - created
+      - edited
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  budget-commands:
+    name: Handle Budget Commands
+    if: startsWith(github.event.comment.body, '/budget ')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Process command
+        uses: actions/github-script@v7
+        env:
+          ACTIONS_MINUTES_MONTHLY_BUDGET: ${{ vars.ACTIONS_MINUTES_MONTHLY_BUDGET }}
+          ACTIONS_CD_RESERVED_MINUTES: ${{ vars.ACTIONS_CD_RESERVED_MINUTES }}
+          ACTIONS_BURNRATE_ENFORCE: ${{ vars.ACTIONS_BURNRATE_ENFORCE }}
+          ACTIONS_BURNRATE_BUFFER_PCT: ${{ vars.ACTIONS_BURNRATE_BUFFER_PCT }}
+          ACTIONS_CD_WORKFLOW_NAMES: ${{ vars.ACTIONS_CD_WORKFLOW_NAMES }}
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const issue = context.payload.issue;
+            const comment = context.payload.comment;
+            const commenter = comment.user?.login;
+            const body = (comment.body || "").trim();
+
+            const reply = async (text) => {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: issue.number,
+                body: text,
+              });
+            };
+
+            const permResp = await github.rest.repos.getCollaboratorPermissionLevel({
+              owner,
+              repo,
+              username: commenter,
+            });
+            const isWriter = ["admin", "maintain", "write"].includes(permResp.data.permission);
+
+            const monthlyBudget = Number(process.env.ACTIONS_MINUTES_MONTHLY_BUDGET || 3000);
+            const reservedCd = Number(process.env.ACTIONS_CD_RESERVED_MINUTES || 300);
+            const burnrateBufferPct = Number(process.env.ACTIONS_BURNRATE_BUFFER_PCT || 10);
+            const burnrateEnforce = String(process.env.ACTIONS_BURNRATE_ENFORCE || "true").toLowerCase() !== "false";
+            const cdWorkflowNames = new Set(
+              (process.env.ACTIONS_CD_WORKFLOW_NAMES || "CD,CD Non-Production,Release Tag")
+                .split(",")
+                .map((v) => v.trim())
+                .filter(Boolean)
+            );
+
+            const now = new Date();
+            const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+            const monthStartIso = monthStart.toISOString();
+            const daysInMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0)).getUTCDate();
+            const dayOfMonth = now.getUTCDate();
+
+            const runs = await github.paginate(github.rest.actions.listWorkflowRunsForRepo, {
+              owner,
+              repo,
+              per_page: 100,
+              created: `>=${monthStartIso}`,
+            });
+
+            let globalUsed = 0;
+            let cdUsed = 0;
+            let nonCdUsed = 0;
+            for (const run of runs) {
+              if (run.status !== "completed") continue;
+              const started = run.run_started_at ? Date.parse(run.run_started_at) : NaN;
+              const finished = run.updated_at ? Date.parse(run.updated_at) : NaN;
+              if (!Number.isFinite(started) || !Number.isFinite(finished) || finished < started) continue;
+              const durationMin = (finished - started) / 60000;
+              globalUsed += durationMin;
+              if (cdWorkflowNames.has(run.name)) {
+                cdUsed += durationMin;
+              } else {
+                nonCdUsed += durationMin;
+              }
+            }
+
+            const nonCdCap = monthlyBudget - reservedCd;
+            const globalRemaining = Math.max(0, monthlyBudget - globalUsed);
+            const nonCdRemaining = Math.max(0, nonCdCap - nonCdUsed);
+            const proratedNonCd = nonCdCap * (dayOfMonth / daysInMonth);
+            const throttleThreshold = proratedNonCd * (1 + burnrateBufferPct / 100);
+            const projectedNonCdEnd = dayOfMonth > 0 ? (nonCdUsed / dayOfMonth) * daysInMonth : 0;
+
+            const globalMode = globalUsed >= monthlyBudget ? "lockdown" : "normal";
+            const nonCdMode =
+              nonCdUsed >= nonCdCap
+                ? "lockdown"
+                : (burnrateEnforce && nonCdUsed >= throttleThreshold ? "throttle" : "normal");
+
+            if (body.startsWith("/budget status")) {
+              await reply(
+                [
+                  `@${commenter} budget snapshot (UTC month):`,
+                  "",
+                  `- Global mode: \`${globalMode}\``,
+                  `- Non-CD mode: \`${nonCdMode}\``,
+                  `- Global used: \`${Math.round(globalUsed)} / ${monthlyBudget}\` min`,
+                  `- CD used: \`${Math.round(cdUsed)} / ${reservedCd}\` reserved min`,
+                  `- Non-CD used: \`${Math.round(nonCdUsed)} / ${nonCdCap}\` cap min`,
+                  `- Remaining global: \`${Math.round(globalRemaining)}\` min`,
+                  `- Remaining non-CD: \`${Math.round(nonCdRemaining)}\` min`,
+                  `- Projected non-CD month end: \`${Math.round(projectedNonCdEnd)}\` min`,
+                ].join("\n")
+              );
+              return;
+            }
+
+            if (body.startsWith("/budget override")) {
+              if (!isWriter) {
+                await reply(`@${commenter} is not authorized for budget override (requires write/maintain/admin).`);
+                core.setFailed(`Unauthorized /budget override by ${commenter}`);
+                return;
+              }
+
+              const reasonMatch = body.match(/^\/budget\s+override(?:\s+reason:\"([^\"]+)\")?/i);
+              const reason = reasonMatch?.[1] || "No explicit reason provided.";
+
+              await github.rest.issues.addLabels({
+                owner,
+                repo,
+                issue_number: issue.number,
+                labels: ["budget:override"],
+              });
+
+              await reply(`Budget override applied by @${commenter}. Reason: ${reason}`);
+              return;
+            }
+
+            await reply(`@${commenter} unknown budget command. Supported: /budget status, /budget override reason:\"...\"`);

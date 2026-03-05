@@ -3,12 +3,8 @@ name: CI
 on:
   pull_request:
     branches:
-      - main
-    paths-ignore:
-      - docs/**
-      - "**/*.md"
-  push:
-    branches:
+      - dev
+      - staging
       - main
     paths-ignore:
       - docs/**
@@ -16,7 +12,9 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: read
   contents: read
+  issues: read
   pull-requests: read
 
 concurrency:
@@ -27,24 +25,78 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  workflow-lint:
-    name: Workflow Lint
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
+  budget-policy:
+    name: CI Budget Policy
+    uses: ./.github/workflows/actions-budget-governor.yml
 
-      - name: Lint GitHub Actions workflows
-        run: |
-          docker run --rm -v "$PWD":/repo -w /repo rhysd/actionlint:latest -color -oneline .github/workflows/*.yml
+  pr-execution-policy:
+    name: PR Execution Policy
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs:
+      - budget-policy
+    outputs:
+      run_heavy: ${{ steps.policy.outputs.run_heavy }}
+      ci_tier_label: ${{ steps.policy.outputs.ci_tier_label }}
+      is_hotfix: ${{ steps.policy.outputs.is_hotfix }}
+      budget_override: ${{ steps.policy.outputs.budget_override }}
+    steps:
+      - name: Resolve execution policy
+        id: policy
+        uses: actions/github-script@v7
+        env:
+          NONCD_MODE: ${{ needs.budget-policy.outputs.noncd_mode }}
+          HOTFIX_PREFIX: ${{ vars.ACTIONS_HOTFIX_BRANCH_PREFIX }}
+        with:
+          script: |
+            const eventName = context.eventName;
+            const noncdMode = process.env.NONCD_MODE || "normal";
+            const hotfixPrefix = process.env.HOTFIX_PREFIX || "hotfix/";
+
+            if (eventName !== "pull_request") {
+              core.setOutput("run_heavy", "true");
+              core.setOutput("ci_tier_label", "manual");
+              core.setOutput("is_hotfix", "false");
+              core.setOutput("budget_override", "false");
+              return;
+            }
+
+            const pr = context.payload.pull_request;
+            const labels = (pr.labels || []).map((label) => label.name);
+            const ciTierLabel = labels.find((name) => name.startsWith("ci:tier:")) || "ci:tier:standard";
+            const isHotfix = pr.head.ref.startsWith(hotfixPrefix);
+            const budgetOverride = labels.includes("budget:override");
+
+            if (noncdMode === "lockdown" && !isHotfix && !budgetOverride) {
+              core.setFailed(`Monthly non-CD Actions budget is in lockdown mode. Non-hotfix PRs are blocked until budget resets or override is applied.`);
+              return;
+            }
+
+            let runHeavy = true;
+            if (noncdMode === "throttle" && !isHotfix && !budgetOverride) {
+              runHeavy = ciTierLabel === "ci:tier:heavy";
+            }
+
+            core.setOutput("run_heavy", runHeavy ? "true" : "false");
+            core.setOutput("ci_tier_label", ciTierLabel);
+            core.setOutput("is_hotfix", isHotfix ? "true" : "false");
+            core.setOutput("budget_override", budgetOverride ? "true" : "false");
+
+            core.summary
+              .addHeading("PR Execution Policy")
+              .addRaw(`noncd_mode=${noncdMode}\n`, true)
+              .addRaw(`ci_tier=${ciTierLabel}\n`, true)
+              .addRaw(`is_hotfix=${isHotfix}\n`, true)
+              .addRaw(`budget_override=${budgetOverride}\n`, true)
+              .addRaw(`run_heavy=${runHeavy}\n`, true)
+              .write();
 
   frontend-artifact-policy:
     name: Frontend Artifact Policy
     runs-on: ubuntu-latest
     timeout-minutes: 5
     needs:
-      - workflow-lint
+      - pr-execution-policy
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -57,7 +109,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs:
-      - workflow-lint
+      - pr-execution-policy
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -82,7 +134,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     needs:
-      - workflow-lint
+      - rust-quality
+      - pr-execution-policy
+    if: needs.pr-execution-policy.outputs.run_heavy == 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -97,6 +151,8 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+    needs:
+      - pr-execution-policy
     outputs:
       frontend_css: ${{ steps.filter.outputs.frontend_css }}
       payment_crypto: ${{ steps.filter.outputs.payment_crypto }}
@@ -126,7 +182,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs:
-      - workflow-lint
+      - pr-execution-policy
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -138,14 +194,75 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  copilot-review-budget:
+    name: Copilot Review Budget
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs:
+      - pr-execution-policy
+    env:
+      COPILOT_REVIEW_MONTHLY_BUDGET: ${{ vars.COPILOT_REVIEW_MONTHLY_BUDGET }}
+      COPILOT_REVIEW_WARN_THRESHOLD: ${{ vars.COPILOT_REVIEW_WARN_THRESHOLD }}
+    steps:
+      - name: Track monthly @copilot review usage
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            const budget = Number(process.env.COPILOT_REVIEW_MONTHLY_BUDGET || 300);
+            const warnThreshold = Number(process.env.COPILOT_REVIEW_WARN_THRESHOLD || 270);
+
+            if (!Number.isFinite(budget) || budget <= 0) {
+              core.setFailed(`Invalid COPILOT_REVIEW_MONTHLY_BUDGET value: ${process.env.COPILOT_REVIEW_MONTHLY_BUDGET || "<empty>"}`);
+              return;
+            }
+
+            const now = new Date();
+            const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
+            const monthLabel = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+
+            const comments = await github.paginate(github.rest.issues.listCommentsForRepo, {
+              owner,
+              repo,
+              since: monthStart,
+              per_page: 100,
+            });
+
+            const invocations = comments.filter((comment) => /@copilot\s+review/i.test(comment.body || ""));
+            const used = invocations.length;
+            const remaining = Math.max(0, budget - used);
+
+            core.summary
+              .addHeading("Copilot Review Budget")
+              .addRaw(`Month (UTC): ${monthLabel}\n`, true)
+              .addRaw(`Budget: ${budget}\n`, true)
+              .addRaw(`Used: ${used}\n`, true)
+              .addRaw(`Remaining: ${remaining}\n`, true)
+              .write();
+
+            if (used >= budget) {
+              core.setFailed(`Copilot review budget exceeded for ${monthLabel}: used=${used}, budget=${budget}.`);
+              return;
+            }
+
+            if (used >= warnThreshold) {
+              core.warning(`Copilot review usage is near budget: used=${used}, budget=${budget}, remaining=${remaining}. Use judiciously.`);
+            } else {
+              core.info(`Copilot review usage OK: used=${used}, budget=${budget}, remaining=${remaining}.`);
+            }
+
   dependency-review:
     name: Dependency Review
-    if: github.event_name == 'pull_request' && vars.CI_ENABLE_DEPENDENCY_REVIEW == 'true'
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: read
       pull-requests: write
+    needs:
+      - pr-execution-policy
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -156,23 +273,15 @@ jobs:
           fail-on-severity: high
           fail-on-scopes: runtime
 
-  dependency-review-policy:
-    name: Dependency Review Policy
-    if: github.event_name == 'pull_request' && vars.CI_ENABLE_DEPENDENCY_REVIEW != 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Explain dependency review policy
-        run: |
-          echo "Dependency Review is disabled by policy (CI_ENABLE_DEPENDENCY_REVIEW != 'true')."
-          echo "Enable repo variable CI_ENABLE_DEPENDENCY_REVIEW=true after required GitHub security features are available."
-
   rust-quality:
     name: Rust Quality Gates
     runs-on: ubuntu-latest
     timeout-minutes: 25
     needs:
       - secret-scan
+      - dependency-review
+      - pr-execution-policy
+    if: needs.pr-execution-policy.outputs.run_heavy == 'true'
     defaults:
       run:
         working-directory: runtime
@@ -199,15 +308,44 @@ jobs:
       - name: Lint
         run: cargo clippy --workspace --locked -- -D warnings
 
-      - name: Run tests
-        run: cargo test --workspace --locked
+      - name: Run unit tests
+        run: cargo test --workspace --locked --lib --bins
+
+  rust-integration:
+    name: Rust Integration Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs:
+      - rust-quality
+      - pr-execution-policy
+    if: needs.pr-execution-policy.outputs.run_heavy == 'true'
+    defaults:
+      run:
+        working-directory: runtime
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo and build outputs
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: runtime
+          prefix-key: integration
+
+      - name: Run integration tests
+        run: cargo test --workspace --locked --tests
 
   rust-coverage:
     name: Rust Coverage Gate
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs:
-      - rust-quality
+      - rust-integration
+      - pr-execution-policy
+    if: needs.pr-execution-policy.outputs.run_heavy == 'true'
     defaults:
       run:
         working-directory: runtime
@@ -246,11 +384,13 @@ jobs:
   payment-crypto-tests:
     name: Payment Crypto Go Tests
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.payment_crypto == 'true'
+    if: needs.pr-execution-policy.outputs.run_heavy == 'true' && (github.event_name == 'workflow_dispatch' || needs.changes.outputs.payment_crypto == 'true')
     timeout-minutes: 15
     needs:
       - changes
+      - rust-quality
       - secret-scan
+      - pr-execution-policy
     defaults:
       run:
         working-directory: runtime/cloudrun/payment-crypto
@@ -270,11 +410,13 @@ jobs:
   station-catalog-validate:
     name: Station Catalog Snapshot Validation
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.station_catalog == 'true'
+    if: needs.pr-execution-policy.outputs.run_heavy == 'true' && (github.event_name == 'workflow_dispatch' || needs.changes.outputs.station_catalog == 'true')
     timeout-minutes: 15
     needs:
       - changes
+      - rust-quality
       - secret-scan
+      - pr-execution-policy
     defaults:
       run:
         working-directory: runtime
@@ -297,11 +439,13 @@ jobs:
   frontend-assets:
     name: Frontend Asset Gate
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.frontend_css == 'true'
+    if: needs.pr-execution-policy.outputs.run_heavy == 'true' && (github.event_name == 'workflow_dispatch' || needs.changes.outputs.frontend_css == 'true')
     timeout-minutes: 15
     needs:
       - changes
+      - rust-quality
       - secret-scan
+      - pr-execution-policy
     steps:
       - name: Checkout
         uses: actions/checkout@v5

@@ -1,0 +1,83 @@
+name: CI Clean Build Nightly
+
+on:
+  schedule:
+    - cron: "20 5 * * *"
+  workflow_dispatch:
+    inputs:
+      run_docker_clean_build:
+        description: Run no-cache Docker clean-build verification
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-clean-build-nightly-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  rust-clean-build:
+    name: Rust Clean Compile And Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: runtime
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Clean cargo outputs
+        run: cargo clean
+
+      - name: Compile from scratch with locked dependencies
+        run: cargo check --workspace --locked
+
+      - name: Run unit tests from scratch
+        run: cargo test --workspace --locked --lib --bins
+
+      - name: Run integration tests from scratch
+        run: cargo test --workspace --locked --tests
+
+  docker-clean-build:
+    name: Docker No-Cache Build Verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    needs:
+      - rust-clean-build
+    if: github.event_name == 'schedule' || inputs.run_docker_clean_build
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build runtime API image without cache
+        run: |
+          docker buildx build \
+            --no-cache \
+            --progress plain \
+            --file runtime/Dockerfile.api \
+            --tag bominal-api:ci-clean-${{ github.run_id }} \
+            runtime
+
+      - name: Build runtime worker image without cache
+        run: |
+          docker buildx build \
+            --no-cache \
+            --progress plain \
+            --file runtime/Dockerfile.worker \
+            --tag bominal-worker:ci-clean-${{ github.run_id }} \
+            runtime

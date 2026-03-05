@@ -1,0 +1,358 @@
+name: Promotion Gate Controller
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+concurrency:
+  group: promotion-gate-controller
+  cancel-in-progress: false
+
+jobs:
+  sync-gates:
+    name: Sync Promotion Gate Issues
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PROJECT_AUTOMATION_TOKEN: ${{ secrets.PROJECT_AUTOMATION_TOKEN }}
+      WORKSTREAMS_PROJECT_OWNER: ${{ vars.BOMINAL_WORKSTREAMS_PROJECT_OWNER }}
+      WORKSTREAMS_PROJECT_NUMBER: ${{ vars.BOMINAL_WORKSTREAMS_PROJECT_NUMBER }}
+      LEGACY_PROJECT_OWNER: ${{ vars.BOMINAL_PROJECT_OWNER }}
+      LEGACY_PROJECT_NUMBER: ${{ vars.BOMINAL_PROJECT_NUMBER }}
+      PROMOTION_GATE_REVIEWER_MAP_JSON: ${{ vars.PROMOTION_GATE_REVIEWER_MAP_JSON }}
+      PROMOTION_GATE_DEFAULT_REVIEWER: ${{ vars.PROMOTION_GATE_DEFAULT_REVIEWER }}
+      PROMOTION_GATE_ENABLED: ${{ vars.PROMOTION_GATE_ENABLED }}
+    steps:
+      - name: Skip when disabled
+        if: env.PROMOTION_GATE_ENABLED == 'false'
+        run: |
+          echo "Promotion gate controller disabled (PROMOTION_GATE_ENABLED=false)."
+
+      - name: Build/refresh gate issues from Workstreams checkpoint
+        if: env.PROMOTION_GATE_ENABLED != 'false' && env.PROJECT_AUTOMATION_TOKEN != ''
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ env.PROJECT_AUTOMATION_TOKEN }}
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            const normalize = (value) => (value || "").trim();
+            const projectOwner = normalize(process.env.WORKSTREAMS_PROJECT_OWNER || process.env.LEGACY_PROJECT_OWNER);
+            const projectNumber = Number(process.env.WORKSTREAMS_PROJECT_NUMBER || process.env.LEGACY_PROJECT_NUMBER || 0);
+
+            if (!projectOwner || !Number.isFinite(projectNumber) || projectNumber <= 0) {
+              core.warning("Workstreams project owner/number not configured; skipping gate controller run.");
+              return;
+            }
+
+            const reviewerMapRaw = process.env.PROMOTION_GATE_REVIEWER_MAP_JSON || "{}";
+            let reviewerMap = {};
+            try {
+              reviewerMap = JSON.parse(reviewerMapRaw);
+            } catch (error) {
+              core.warning(`Invalid PROMOTION_GATE_REVIEWER_MAP_JSON: ${String(error?.message || error)}`);
+              reviewerMap = {};
+            }
+            const fallbackReviewer = normalize(process.env.PROMOTION_GATE_DEFAULT_REVIEWER);
+
+            const queryUserProject = `
+              query($owner:String!, $number:Int!, $after:String) {
+                user(login: $owner) {
+                  projectV2(number: $number) {
+                    id
+                    fields(first: 100) {
+                      nodes {
+                        ... on ProjectV2FieldCommon { id name }
+                        ... on ProjectV2SingleSelectField {
+                          id
+                          name
+                          options { id name }
+                        }
+                      }
+                    }
+                    items(first: 100, after: $after) {
+                      pageInfo { hasNextPage endCursor }
+                      nodes {
+                        id
+                        content {
+                          ... on Issue { id number title milestone { title } }
+                        }
+                        fieldValues(first: 50) {
+                          nodes {
+                            ... on ProjectV2ItemFieldSingleSelectValue {
+                              field { ... on ProjectV2FieldCommon { name } }
+                              name
+                            }
+                            ... on ProjectV2ItemFieldTextValue {
+                              field { ... on ProjectV2FieldCommon { name } }
+                              text
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }`;
+
+            const queryOrgProject = `
+              query($owner:String!, $number:Int!, $after:String) {
+                organization(login: $owner) {
+                  projectV2(number: $number) {
+                    id
+                    fields(first: 100) {
+                      nodes {
+                        ... on ProjectV2FieldCommon { id name }
+                        ... on ProjectV2SingleSelectField {
+                          id
+                          name
+                          options { id name }
+                        }
+                      }
+                    }
+                    items(first: 100, after: $after) {
+                      pageInfo { hasNextPage endCursor }
+                      nodes {
+                        id
+                        content {
+                          ... on Issue { id number title milestone { title } }
+                        }
+                        fieldValues(first: 50) {
+                          nodes {
+                            ... on ProjectV2ItemFieldSingleSelectValue {
+                              field { ... on ProjectV2FieldCommon { name } }
+                              name
+                            }
+                            ... on ProjectV2ItemFieldTextValue {
+                              field { ... on ProjectV2FieldCommon { name } }
+                              text
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }`;
+
+            const resolveProjectPage = async (after) => {
+              try {
+                const userResp = await github.graphql(queryUserProject, { owner: projectOwner, number: projectNumber, after });
+                if (userResp.user?.projectV2) {
+                  return userResp.user.projectV2;
+                }
+              } catch (error) {
+                const message = String(error?.message || "");
+                if (!message.includes("Could not resolve to a User")) {
+                  throw error;
+                }
+              }
+
+              const orgResp = await github.graphql(queryOrgProject, { owner: projectOwner, number: projectNumber, after });
+              return orgResp.organization?.projectV2 || null;
+            };
+
+            const fieldValuesToMap = (fieldValues) => {
+              const map = new Map();
+              for (const node of fieldValues || []) {
+                const fieldName = node?.field?.name;
+                if (!fieldName) continue;
+                if (Object.prototype.hasOwnProperty.call(node, "name") && node.name) {
+                  map.set(fieldName, node.name);
+                } else if (Object.prototype.hasOwnProperty.call(node, "text") && node.text) {
+                  map.set(fieldName, node.text);
+                }
+              }
+              return map;
+            };
+
+            const projectData = await resolveProjectPage(null);
+            if (!projectData) {
+              core.warning(`Workstreams project not found for owner=${projectOwner} number=${projectNumber}`);
+              return;
+            }
+
+            const fieldByName = new Map();
+            const singleSelectOptionByField = new Map();
+            for (const field of projectData.fields.nodes || []) {
+              if (!field?.name || !field?.id) continue;
+              fieldByName.set(field.name, field.id);
+              if (Array.isArray(field.options)) {
+                singleSelectOptionByField.set(field.name, new Map(field.options.map((option) => [option.name, option.id])));
+              }
+            }
+
+            const updateSingleSelect = async (projectId, itemId, fieldName, optionName) => {
+              const fieldId = fieldByName.get(fieldName);
+              const optionId = singleSelectOptionByField.get(fieldName)?.get(optionName);
+              if (!fieldId || !optionId) {
+                return false;
+              }
+              await github.graphql(`
+                mutation($projectId:ID!, $itemId:ID!, $fieldId:ID!, $optionId:String!) {
+                  updateProjectV2ItemFieldValue(input: {
+                    projectId: $projectId,
+                    itemId: $itemId,
+                    fieldId: $fieldId,
+                    value: { singleSelectOptionId: $optionId }
+                  }) {
+                    projectV2Item { id }
+                  }
+                }
+              `, { projectId, itemId, fieldId, optionId });
+              return true;
+            };
+
+            const updateTextField = async (projectId, itemId, fieldName, text) => {
+              const fieldId = fieldByName.get(fieldName);
+              if (!fieldId) {
+                return false;
+              }
+              await github.graphql(`
+                mutation($projectId:ID!, $itemId:ID!, $fieldId:ID!, $text:String!) {
+                  updateProjectV2ItemFieldValue(input: {
+                    projectId: $projectId,
+                    itemId: $itemId,
+                    fieldId: $fieldId,
+                    value: { text: $text }
+                  }) {
+                    projectV2Item { id }
+                  }
+                }
+              `, { projectId, itemId, fieldId, text });
+              return true;
+            };
+
+            const getOpenGateIssue = async (bundleId) => {
+              const found = await github.paginate(github.rest.issues.listForRepo, {
+                owner,
+                repo,
+                state: "open",
+                labels: "gate:open",
+                per_page: 100,
+              });
+              return found.find((issue) => issue.title.includes(`[${bundleId}]`) && !issue.pull_request) || null;
+            };
+
+            let after = null;
+            let processed = 0;
+            while (true) {
+              const page = await resolveProjectPage(after);
+              if (!page) {
+                break;
+              }
+
+              for (const item of page.items.nodes || []) {
+                const content = item.content;
+                if (!content?.number) continue;
+
+                const valueMap = fieldValuesToMap(item.fieldValues?.nodes || []);
+                const checkpoint = valueMap.get("Release Checkpoint") || "";
+                if (checkpoint !== "Ready for Staging Gate") {
+                  continue;
+                }
+
+                const issueResp = await github.rest.issues.get({
+                  owner,
+                  repo,
+                  issue_number: content.number,
+                });
+                const controlIssue = issueResp.data;
+                const labels = (controlIssue.labels || []).map((label) => typeof label === "string" ? label : label.name);
+                const areaLabel = labels.find((name) => name.startsWith("area:")) || "area:ci-cd";
+                const priorityLabel = labels.find((name) => name.startsWith("priority:")) || "priority:p1";
+
+                const milestoneTitle = controlIssue.milestone?.title || "unscoped";
+                const bundleId = valueMap.get("Bundle ID") || `bundle-${milestoneTitle.replace(/[^A-Za-z0-9._-]+/g, "-")}-${areaLabel.replace(":", "-")}-issue-${controlIssue.number}`;
+
+                const reviewer = normalize(reviewerMap[areaLabel]) || fallbackReviewer;
+                const existingGate = await getOpenGateIssue(bundleId);
+
+                const gateBody = [
+                  `# Promotion Gate [${bundleId}]`,
+                  "",
+                  `Control issue: #${controlIssue.number}`,
+                  `Milestone: ${milestoneTitle}`,
+                  `Area: ${areaLabel}`,
+                  "",
+                  "<!-- promotion-gate-manifest:start -->",
+                  `bundle_id: ${bundleId}`,
+                  `milestone: ${milestoneTitle}`,
+                  `area: ${areaLabel}`,
+                  "risk: medium",
+                  "ordered_prs:",
+                  "  - 0",
+                  "depends_on:",
+                  `  - issue: ${controlIssue.number}`,
+                  "release_summary_required: true",
+                  "<!-- promotion-gate-manifest:end -->",
+                  "",
+                  "## Merge Order Notes",
+                  `- Source: #${controlIssue.number}`,
+                  "- Ordered PRs:",
+                  "  - [ ] #<fill-pr-number>",
+                  "",
+                  "## Risk Assessment",
+                  "- Risk class: WRITE",
+                  "- Sensitive scope:",
+                  "- Rollback:",
+                  "",
+                  "## Release Summary",
+                  "- Scope summary:",
+                  "- Key changes:",
+                  "- Regression checks:",
+                  "",
+                  "## Round Review Log",
+                  "- Round 1: @copilot review requested",
+                  "- Round 1: @codex review requested",
+                  "",
+                  "## Waiver Ledger",
+                  "- None",
+                ].join("\n");
+
+                let gateIssue = existingGate;
+                if (!gateIssue) {
+                  const created = await github.rest.issues.create({
+                    owner,
+                    repo,
+                    title: `gate: staging review [${bundleId}]`,
+                    body: gateBody,
+                    labels: ["type:chore", areaLabel, priorityLabel, "gate:open", "gate:review-round-required"],
+                    assignees: reviewer ? [reviewer] : undefined,
+                  });
+                  gateIssue = created.data;
+                } else {
+                  await github.rest.issues.update({
+                    owner,
+                    repo,
+                    issue_number: gateIssue.number,
+                    body: gateIssue.body || gateBody,
+                  });
+                }
+
+                await updateSingleSelect(projectData.id, item.id, "Release Checkpoint", "Gate In Progress");
+                await updateTextField(projectData.id, item.id, "Gate Issue URL", gateIssue.html_url);
+                await updateTextField(projectData.id, item.id, "Merge Order Source", controlIssue.html_url);
+
+                processed += 1;
+              }
+
+              if (!page.items.pageInfo.hasNextPage) {
+                break;
+              }
+              after = page.items.pageInfo.endCursor;
+            }
+
+            core.info(`Promotion gate controller processed ${processed} workstream item(s).`);
+
+      - name: Explain missing project token
+        if: env.PROMOTION_GATE_ENABLED != 'false' && env.PROJECT_AUTOMATION_TOKEN == ''
+        run: |
+          echo "PROMOTION_GATE_ENABLED is on but PROJECT_AUTOMATION_TOKEN is missing; controller cannot query Project v2."

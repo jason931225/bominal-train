@@ -7,6 +7,7 @@
 ## Linked Issue
 
 - Closes #
+- Promotion/back-promotion PR exception: reference source PR and source issue if no new close target.
 
 ## Labels
 
@@ -14,6 +15,8 @@
 - [ ] Exactly one `area:*` label
 - [ ] Exactly one `priority:*` label
 - [ ] PR labels inherit `type:*`, `area:*`, and `priority:*` from linked issue
+- [ ] Exactly one `ci:tier:*` label (non-promotion PRs)
+- [ ] `semver:*` applied only when this PR contributes to a production release target
 
 ## Risk And Rollback
 
@@ -22,7 +25,15 @@
 - Review depth: Standard / Secondary Required
 - Secondary-review trigger (if required):
 - Copilot required by policy? Yes / No
+- Copilot requested? (`@copilot review`) Yes / No
+- Codex requested after Copilot? (`@codex review`) Yes / No
 - Material Copilot findings disposition (fixed / maintainer-waived with reason):
+
+## Branch And Promotion
+
+- Branch flow: implementation -> dev / dev -> staging / staging -> main / hotfix -> main
+- Promotion mode: Manual / Auto (`promotion:auto`)
+- Env stage impact: Development / Staging / Production
 
 ## Verification Evidence
 

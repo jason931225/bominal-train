@@ -1,0 +1,254 @@
+name: Promotion PR Open Dev Staging
+
+on:
+  issues:
+    types:
+      - opened
+      - edited
+      - reopened
+      - labeled
+      - unlabeled
+  workflow_dispatch:
+    inputs:
+      gate_issue_number:
+        description: Specific gate issue number to process
+        required: false
+        type: string
+  schedule:
+    - cron: '*/30 * * * *'
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: promotion-pr-open-dev-staging-${{ github.event.issue.number || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  open-dev-staging:
+    name: Open dev -> staging Promotion PR
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Create promotion PR from passed gate issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            const toLabelNames = (labels) => (labels || []).map((label) => typeof label === "string" ? label : label.name);
+            const parseManifestValue = (body, key) => {
+              const startMarker = "<!-- promotion-gate-manifest:start -->";
+              const endMarker = "<!-- promotion-gate-manifest:end -->";
+              const start = (body || "").indexOf(startMarker);
+              const end = (body || "").indexOf(endMarker);
+              if (start === -1 || end === -1 || end <= start) {
+                return null;
+              }
+              const text = body.slice(start + startMarker.length, end);
+              const re = new RegExp(`^${key}:\\s*(.+)$`, "mi");
+              const match = text.match(re);
+              return match ? match[1].trim() : null;
+            };
+
+            const upsertComment = async (issueNumber, marker, body) => {
+              const comments = await github.paginate(github.rest.issues.listComments, {
+                owner,
+                repo,
+                issue_number: issueNumber,
+                per_page: 100,
+              });
+              const existing = comments.find((comment) => comment.user?.type === "Bot" && comment.body?.includes(marker));
+              if (existing) {
+                await github.rest.issues.updateComment({
+                  owner,
+                  repo,
+                  comment_id: existing.id,
+                  body,
+                });
+              } else {
+                await github.rest.issues.createComment({
+                  owner,
+                  repo,
+                  issue_number: issueNumber,
+                  body,
+                });
+              }
+            };
+
+            const hasRequiredGateLabels = (issue) => {
+              const labels = toLabelNames(issue.labels);
+              const required = [
+                "gate:open",
+                "gate:promote",
+                "gate:ci-pass",
+                "gate:governance-pass",
+                "gate:review-round-complete",
+              ];
+              const blocking = [
+                "gate:ci-fail",
+                "gate:governance-fail",
+                "gate:review-round-required",
+                "status:blocked",
+              ];
+              return required.every((label) => labels.includes(label)) && !blocking.some((label) => labels.includes(label));
+            };
+
+            const resolveTargets = async () => {
+              if (context.eventName === "workflow_dispatch") {
+                const value = Number(core.getInput("gate_issue_number"));
+                if (!Number.isFinite(value) || value <= 0) {
+                  return [];
+                }
+                const resp = await github.rest.issues.get({ owner, repo, issue_number: value });
+                return [resp.data];
+              }
+
+              if (context.eventName === "issues" && context.payload.issue && !context.payload.issue.pull_request) {
+                const resp = await github.rest.issues.get({
+                  owner,
+                  repo,
+                  issue_number: context.payload.issue.number,
+                });
+                return [resp.data];
+              }
+
+              const open = await github.paginate(github.rest.issues.listForRepo, {
+                owner,
+                repo,
+                state: "open",
+                labels: "gate:open,gate:promote",
+                per_page: 100,
+              });
+              return open.filter((issue) => !issue.pull_request);
+            };
+
+            const existingPromotionPr = await github.paginate(github.rest.pulls.list, {
+              owner,
+              repo,
+              state: "open",
+              head: `${owner}:dev`,
+              base: "staging",
+              per_page: 100,
+            });
+            let openDevStagingPr = existingPromotionPr[0] || null;
+
+            const targets = await resolveTargets();
+            if (targets.length === 0) {
+              core.info("No gate targets found.");
+              return;
+            }
+
+            for (const gateIssue of targets) {
+              if (!hasRequiredGateLabels(gateIssue)) {
+                core.info(`Gate issue #${gateIssue.number} does not meet promotion prerequisites; skipping.`);
+                continue;
+              }
+
+              const gateLabels = toLabelNames(gateIssue.labels);
+              const bundleId = parseManifestValue(gateIssue.body || "", "bundle_id") || `bundle-gate-${gateIssue.number}`;
+              const controlIssueMatch = (gateIssue.body || "").match(/Control issue:\s*#(\d+)/i);
+              const controlIssueNumber = controlIssueMatch ? Number(controlIssueMatch[1]) : null;
+
+              let controlIssue = null;
+              if (controlIssueNumber && Number.isFinite(controlIssueNumber) && controlIssueNumber > 0) {
+                try {
+                  const controlResp = await github.rest.issues.get({
+                    owner,
+                    repo,
+                    issue_number: controlIssueNumber,
+                  });
+                  controlIssue = controlResp.data;
+                } catch (error) {
+                  core.warning(`Unable to resolve control issue #${controlIssueNumber}: ${String(error?.message || error)}`);
+                }
+              }
+
+              if (openDevStagingPr) {
+                const body = [
+                  "<!-- gate-promotion-pr -->",
+                  `Promotion PR already open: #${openDevStagingPr.number} (${openDevStagingPr.html_url}).`,
+                  "",
+                  `Bundle: \`${bundleId}\``,
+                ].join("\n");
+                await upsertComment(gateIssue.number, "<!-- gate-promotion-pr -->", body);
+                if (!gateLabels.includes("gate:pr-opened")) {
+                  await github.rest.issues.addLabels({
+                    owner,
+                    repo,
+                    issue_number: gateIssue.number,
+                    labels: ["gate:pr-opened"],
+                  });
+                }
+                continue;
+              }
+
+              const title = `promote: dev -> staging [${bundleId}]`;
+              const promotionBody = [
+                `Automated promotion PR opened from passed gate issue #${gateIssue.number}.`,
+                controlIssue ? `Control issue: #${controlIssue.number}` : "Control issue: not specified",
+                "",
+                "Gate prerequisites satisfied:",
+                "- gate:ci-pass",
+                "- gate:governance-pass",
+                "- gate:review-round-complete",
+                "- gate:promote",
+                "",
+                "Promotion policy:",
+                "- Request `@copilot review` then `@codex review` when additional cross-check is needed.",
+                "- Merge with `/promote merge` after required checks and review conversations are clear.",
+              ].join("\n");
+
+              const created = await github.rest.pulls.create({
+                owner,
+                repo,
+                title,
+                head: "dev",
+                base: "staging",
+                body: promotionBody,
+                maintainer_can_modify: true,
+              });
+              openDevStagingPr = created.data;
+
+              const controlLabels = toLabelNames(controlIssue?.labels || []);
+              const areaLabel =
+                controlLabels.find((label) => label.startsWith("area:")) ||
+                gateLabels.find((label) => label.startsWith("area:")) ||
+                "area:ci-cd";
+              const priorityLabel =
+                controlLabels.find((label) => label.startsWith("priority:")) ||
+                gateLabels.find((label) => label.startsWith("priority:")) ||
+                "priority:p1";
+              const typeLabel =
+                controlLabels.find((label) => label.startsWith("type:")) ||
+                "type:ops";
+
+              await github.rest.issues.addLabels({
+                owner,
+                repo,
+                issue_number: created.data.number,
+                labels: [...new Set([typeLabel, areaLabel, priorityLabel])],
+              });
+
+              const gateComment = [
+                "<!-- gate-promotion-pr -->",
+                `Opened promotion PR #${created.data.number}: ${created.data.html_url}`,
+                "",
+                `Bundle: \`${bundleId}\``,
+              ].join("\n");
+              await upsertComment(gateIssue.number, "<!-- gate-promotion-pr -->", gateComment);
+
+              const labelsToAdd = ["gate:pr-opened"];
+              const missing = labelsToAdd.filter((label) => !gateLabels.includes(label));
+              if (missing.length > 0) {
+                await github.rest.issues.addLabels({
+                  owner,
+                  repo,
+                  issue_number: gateIssue.number,
+                  labels: missing,
+                });
+              }
+            }

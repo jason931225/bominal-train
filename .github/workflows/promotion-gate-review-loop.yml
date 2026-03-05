@@ -1,0 +1,177 @@
+name: Promotion Gate Review Loop
+
+on:
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - edited
+      - labeled
+      - unlabeled
+      - ready_for_review
+  issue_comment:
+    types:
+      - created
+      - edited
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+concurrency:
+  group: promotion-gate-review-loop-${{ github.event.pull_request.number || github.event.issue.number || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  review_round:
+    name: Review Round Status
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Evaluate review loop state
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            const upsertComment = async (issueNumber, marker, body) => {
+              const comments = await github.paginate(github.rest.issues.listComments, {
+                owner,
+                repo,
+                issue_number: issueNumber,
+                per_page: 100,
+              });
+              const existing = comments.find((comment) => comment.user?.type === "Bot" && comment.body?.includes(marker));
+              if (existing) {
+                await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+              } else {
+                await github.rest.issues.createComment({ owner, repo, issue_number: issueNumber, body });
+              }
+            };
+
+            const parseManifestPrs = (body) => {
+              const start = body.indexOf("<!-- promotion-gate-manifest:start -->");
+              const end = body.indexOf("<!-- promotion-gate-manifest:end -->");
+              if (start === -1 || end === -1 || end <= start) {
+                return [];
+              }
+              const manifestText = body.slice(start, end);
+              const prs = [];
+              for (const line of manifestText.split(/\r?\n/)) {
+                const match = line.trim().match(/^\-\s*(\d+)$/);
+                if (match) {
+                  prs.push(Number(match[1]));
+                }
+              }
+              return [...new Set(prs.filter((n) => Number.isFinite(n) && n > 0))];
+            };
+
+            const findGateIssues = async () => {
+              if (context.eventName === "issue_comment") {
+                const issueNumber = context.payload.issue?.number;
+                if (!issueNumber || context.payload.issue?.pull_request) return [];
+                const issueResp = await github.rest.issues.get({ owner, repo, issue_number: issueNumber });
+                const labels = (issueResp.data.labels || []).map((label) => typeof label === "string" ? label : label.name);
+                if (labels.includes("gate:open")) {
+                  return [issueResp.data];
+                }
+                return [];
+              }
+
+              if (context.eventName === "pull_request") {
+                const prNumber = context.payload.pull_request.number;
+                const gateIssues = await github.paginate(github.rest.issues.listForRepo, {
+                  owner,
+                  repo,
+                  state: "open",
+                  labels: "gate:open",
+                  per_page: 100,
+                });
+                return gateIssues.filter((issue) => !issue.pull_request && (issue.body || "").includes(`- ${prNumber}`));
+              }
+
+              const gateIssues = await github.paginate(github.rest.issues.listForRepo, {
+                owner,
+                repo,
+                state: "open",
+                labels: "gate:open",
+                per_page: 100,
+              });
+              return gateIssues.filter((issue) => !issue.pull_request);
+            };
+
+            const gateIssues = await findGateIssues();
+            if (gateIssues.length === 0) {
+              core.info("No gate issues to evaluate for review-loop state.");
+              return;
+            }
+
+            for (const gateIssue of gateIssues) {
+              const labels = (gateIssue.labels || []).map((label) => typeof label === "string" ? label : label.name);
+              const orderedPrs = parseManifestPrs(gateIssue.body || "");
+              const failures = [];
+
+              if (orderedPrs.length === 0) {
+                failures.push("No PRs found in manifest ordered_prs list.");
+              }
+
+              for (const prNumber of orderedPrs) {
+                const prComments = await github.paginate(github.rest.issues.listComments, {
+                  owner,
+                  repo,
+                  issue_number: prNumber,
+                  per_page: 100,
+                });
+
+                const hasCopilotReviewRequest = prComments.some((comment) => /@copilot\s+review/i.test(comment.body || ""));
+                const hasCodexReviewRequest = prComments.some((comment) => /@codex\s+review/i.test(comment.body || ""));
+
+                if (!hasCopilotReviewRequest) {
+                  failures.push(`PR #${prNumber} is missing @copilot review request evidence.`);
+                }
+                if (!hasCodexReviewRequest) {
+                  failures.push(`PR #${prNumber} is missing @codex review request evidence.`);
+                }
+
+                const reviewsResp = await github.rest.pulls.listReviews({ owner, repo, pull_number: prNumber, per_page: 100 });
+                const latestByUser = new Map();
+                for (const review of reviewsResp.data) {
+                  if (review.user?.login) {
+                    latestByUser.set(review.user.login, review.state);
+                  }
+                }
+                if ([...latestByUser.values()].includes("CHANGES_REQUESTED")) {
+                  failures.push(`PR #${prNumber} has unresolved CHANGES_REQUESTED review state.`);
+                }
+              }
+
+              const pass = failures.length === 0;
+              const addLabels = pass ? ["gate:review-round-complete"] : ["gate:review-round-required"];
+              const removeLabels = pass ? ["gate:review-round-required"] : ["gate:review-round-complete"];
+
+              if (addLabels.some((label) => !labels.includes(label))) {
+                await github.rest.issues.addLabels({ owner, repo, issue_number: gateIssue.number, labels: addLabels });
+              }
+              for (const label of removeLabels) {
+                if (!labels.includes(label)) continue;
+                try {
+                  await github.rest.issues.removeLabel({ owner, repo, issue_number: gateIssue.number, name: label });
+                } catch (error) {
+                  core.info(`Unable to remove label ${label}: ${String(error?.message || error)}`);
+                }
+              }
+
+              const body = [
+                "<!-- gate-review-loop-status -->",
+                "## review-loop status",
+                `Round state: ${pass ? "COMPLETE" : "REQUIRED"}`,
+                "",
+                pass ? "Both @copilot review and @codex review evidence is present and no blocking review state remains." : `Outstanding items:\n- ${failures.join("\n- ")}`,
+              ].join("\n");
+
+              await upsertComment(gateIssue.number, "<!-- gate-review-loop-status -->", body);
+            }
