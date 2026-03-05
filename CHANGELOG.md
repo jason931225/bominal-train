@@ -13,6 +13,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Changed
 
+- [0000000] Added a local runtime build-artifact cleanup helper that removes `runtime/target/debug` safely without touching release artifacts, and documented the command in local troubleshooting guidance (`scripts/clean-runtime-debug.sh`, `scripts/tests/test_clean_runtime_debug.sh`, `README.md`).
 - [0000000] Added soft-warning provider credential auth-probe controls by introducing `PROVIDER_AUTH_PROBE_ENABLED` (default `true`), enforcing a 4-second probe timeout, returning explicit probe statuses (`success`/`error`/`skipped`) with user-facing probe messages while still persisting encrypted credentials on probe failure/timeout, and documenting the production env contract for probe toggling (`runtime/crates/api/src/services/provider_credentials_service.rs`, `env/dev/runtime.env`, `env/prod/runtime.env.example`, `docs/PROD_ENV_CONTRACT.md`).
 - [0000000] Added a deferred HTTP/3 exploration TODO focused on edge-only rollout criteria and fallback safety, and indexed it in docs (`docs/plans/2026-03-04-http3-edge-maybe-todo.md`, `docs/README.md`).
 - [0000000] Fixed provider-credentials delete UX on the dashboard security page by preserving the selected provider identifier through modal-close state reset, updating success feedback copy to `{PROVIDER}: Credentials removed.`, and ensuring missing credentials render the neutral gray status icon (not error state) after DB removal (`runtime/crates/api/src/web.rs`).
