@@ -1,4 +1,4 @@
-pub(crate) mod admin_service;
+pub(crate) mod admin;
 pub(crate) mod auth_service;
 pub(crate) mod dashboard_service;
 pub(crate) mod metrics_service;
@@ -9,3 +9,5 @@ pub(crate) mod provider_jobs_service;
 pub(crate) mod runtime_queue_service;
 pub(crate) mod station_search;
 pub(crate) mod train_service;
+
+pub(crate) use admin as admin_service;
