@@ -294,10 +294,7 @@ struct StationForms {
 impl StationForms {
     fn from_document(document: &StationSearchDocument<'_>) -> Self {
         let ko_norm = normalize(document.normalized_name);
-        let en_norm = document
-            .station_name_en
-            .map(normalize)
-            .unwrap_or_else(String::new);
+        let en_norm = document.station_name_en.map(normalize).unwrap_or_default();
         let ja_norm = normalize(document.station_name_ja_katakana);
         let initials = extract_hangul_initials(document.station_name_ko);
         let jamo = decompose_hangul_to_compat_jamo(document.station_name_ko);
@@ -817,11 +814,11 @@ fn compose_compat_jamo_stream(input: &str) -> String {
             }
 
             let mut advance = 2usize;
-            if idx + 2 < chars.len() {
-                if let Some(combined) = combine_vowel(v_char, chars[idx + 2]) {
-                    v_char = combined;
-                    advance = 3;
-                }
+            if idx + 2 < chars.len()
+                && let Some(combined) = combine_vowel(v_char, chars[idx + 2])
+            {
+                v_char = combined;
+                advance = 3;
             }
             let Some(v_index) = jungseong_index(v_char) else {
                 out.push(current);
@@ -843,13 +840,13 @@ fn compose_compat_jamo_stream(input: &str) -> String {
                         let c2 = chars[idx + advance + 1];
                         if let Some(combined) = combine_jongseong(c1, c2) {
                             let next_idx = idx + advance + 2;
-                            if next_idx >= chars.len() || jungseong_index(chars[next_idx]).is_none()
+                            if (next_idx >= chars.len()
+                                || jungseong_index(chars[next_idx]).is_none())
+                                && let Some(combined_index) = jongseong_index(combined)
                             {
-                                if let Some(combined_index) = jongseong_index(combined) {
-                                    t_index = combined_index;
-                                    advance += 2;
-                                    take_as_jong = false;
-                                }
+                                t_index = combined_index;
+                                advance += 2;
+                                take_as_jong = false;
                             }
                         }
                     }

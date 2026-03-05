@@ -2,6 +2,30 @@ import { appendQuery, asText, escapeHtml, formatDate, toLower } from "../common/
 import { itemsFromEnvelope, pageFromEnvelope } from "../common/pagination.js";
 
 const JOB_LIMIT = 25;
+const JOB_EVENTS_LIMIT = 20;
+
+const jobStatusBadgeClass = (status) => {
+  const normalized = toLower(status);
+  if (["failed", "cancelled", "dead_letter", "fatal"].includes(normalized)) {
+    return "badge-critical";
+  }
+  if (["queued", "retry_scheduled", "pending"].includes(normalized)) {
+    return "badge-warning";
+  }
+  if (["succeeded", "completed", "done"].includes(normalized)) {
+    return "badge-success";
+  }
+  return "badge-muted";
+};
+
+const safeJsonSnippet = (value, maxLength = 420) => {
+  try {
+    const text = JSON.stringify(value ?? {}, null, 2);
+    return text.length > maxLength ? `${text.slice(0, maxLength)}…` : text;
+  } catch (_error) {
+    return "{}";
+  }
+};
 
 export const renderRuntimeSection = async (ctx) => {
   const state = {
@@ -16,6 +40,9 @@ export const renderRuntimeSection = async (ctx) => {
       nextCursor: null,
       hasMore: false,
       loading: false,
+      openEventJobId: null,
+      loadingEventsFor: null,
+      eventsByJobId: new Map(),
     },
     flags: [],
     streamDisabled: false,
@@ -60,34 +87,102 @@ export const renderRuntimeSection = async (ctx) => {
     state.flags = Array.isArray(result.body?.flags) ? result.body.flags : [];
   };
 
+  const fetchJobEvents = async (jobId) => {
+    state.jobs.loadingEventsFor = jobId;
+    const response = await ctx.requestJson(
+      appendQuery(`/api/admin/runtime/jobs/${encodeURIComponent(jobId)}/events`, {
+        limit: JOB_EVENTS_LIMIT,
+      }),
+    );
+    state.jobs.loadingEventsFor = null;
+    if (!response.ok) {
+      throw new Error(ctx.errorMessage(response));
+    }
+    const items = Array.isArray(response.body?.items) ? response.body.items : [];
+    state.jobs.eventsByJobId.set(jobId, items);
+  };
+
   const render = () => {
+    if (
+      state.jobs.openEventJobId &&
+      !state.jobs.items.some((job) => job.job_id === state.jobs.openEventJobId)
+    ) {
+      state.jobs.openEventJobId = null;
+    }
+
     const jobRows = state.jobs.items
-      .map(
-        (job) => `
+      .map((job) => {
+        const isEventsOpen = state.jobs.openEventJobId === job.job_id;
+        const isEventsLoading = state.jobs.loadingEventsFor === job.job_id;
+        const jobEvents = state.jobs.eventsByJobId.get(job.job_id) || [];
+        return `
           <article class="admin-row" data-job-id="${escapeHtml(job.job_id)}">
             <div class="min-w-0">
               <p class="truncate text-sm font-semibold txt-strong">${escapeHtml(job.job_id)}</p>
-              <p class="mt-1 text-xs txt-supporting">Status: ${escapeHtml(job.status)} · Attempts: ${escapeHtml(job.attempt_count)} · Updated: ${escapeHtml(formatDate(job.updated_at))}</p>
-              <p class="mt-1 text-xs txt-faint">Provider: ${escapeHtml(asText(job.provider))} · Operation: ${escapeHtml(asText(job.operation))}</p>
+              <div class="admin-row-meta">
+                <span class="badge ${jobStatusBadgeClass(job.status)}">${escapeHtml(asText(job.status))}</span>
+                <span class="admin-pill">Attempts: ${escapeHtml(asText(job.attempt_count, "0"))}</span>
+                <span class="admin-pill">Provider: ${escapeHtml(asText(job.provider))}</span>
+                <span class="admin-pill">Operation: ${escapeHtml(asText(job.operation))}</span>
+                <span class="admin-pill">Next run: ${escapeHtml(formatDate(job.next_run_at))}</span>
+                <span class="admin-pill">Updated: ${escapeHtml(formatDate(job.updated_at))}</span>
+              </div>
             </div>
             <div class="admin-row-actions">
+              <button class="btn-ghost h-10 w-full md:w-auto" data-job-action="events">${isEventsOpen ? "Hide events" : "View events"}</button>
               <button class="btn-ghost h-10 w-full md:w-auto" data-job-action="retry">Retry</button>
               <button class="btn-ghost h-10 w-full md:w-auto" data-job-action="requeue">Requeue</button>
               <button class="btn-destructive h-10 w-full md:w-auto" data-job-action="cancel">Cancel</button>
             </div>
+            ${
+              isEventsOpen
+                ? `<div class="space-y-2 rounded-2xl border border-slate-200/80 bg-white/60 p-3">
+                     <p class="text-xs font-semibold uppercase tracking-[0.08em] txt-supporting">Recent events</p>
+                     ${
+                       isEventsLoading
+                         ? '<div class="loading-card">Loading runtime events…</div>'
+                         : jobEvents.length
+                           ? jobEvents
+                               .map(
+                                 (event) => `
+                                   <article class="summary-row">
+                                     <span class="truncate text-xs font-semibold txt-strong">${escapeHtml(asText(event.event_type))}</span>
+                                     <span class="text-xs txt-supporting">${escapeHtml(formatDate(event.created_at))}</span>
+                                   </article>
+                                   <details class="rounded-2xl border border-slate-200/70 bg-white/70 px-3 py-2 text-xs txt-faint">
+                                     <summary class="cursor-pointer txt-supporting">Payload preview</summary>
+                                     <pre class="mt-2 max-h-36 overflow-auto whitespace-pre-wrap">${escapeHtml(safeJsonSnippet(event.event_payload))}</pre>
+                                   </details>
+                                 `,
+                               )
+                               .join("")
+                           : '<div class="empty-card">No runtime events found for this job.</div>'
+                     }
+                   </div>`
+                : ""
+            }
           </article>
-        `,
-      )
+        `;
+      })
       .join("");
 
     const flagRows = state.flags
       .map(
         (flag) => `
-          <article class="summary-row" data-flag="${escapeHtml(flag.flag)}">
-            <span>${escapeHtml(flag.flag)}</span>
-            <button class="btn-ghost h-10 px-3" data-flag-action="${flag.enabled ? "disable" : "enable"}">
-              ${flag.enabled ? "Disable" : "Enable"}
-            </button>
+          <article class="admin-row" data-flag="${escapeHtml(flag.flag)}">
+            <div class="min-w-0">
+              <p class="truncate text-sm font-semibold txt-strong">${escapeHtml(flag.flag)}</p>
+              <div class="admin-row-meta">
+                <span class="badge ${flag.enabled ? "badge-critical" : "badge-success"}">${flag.enabled ? "Enabled" : "Disabled"}</span>
+                <span class="admin-pill">Reason: ${escapeHtml(asText(flag.reason))}</span>
+                <span class="admin-pill">Updated: ${escapeHtml(formatDate(flag.updated_at))}</span>
+              </div>
+            </div>
+            <div class="admin-row-actions">
+              <button class="btn-ghost h-10 px-3" data-flag-action="${flag.enabled ? "disable" : "enable"}">
+                ${flag.enabled ? "Disable" : "Enable"}
+              </button>
+            </div>
           </article>
         `,
       )
@@ -131,6 +226,7 @@ export const renderRuntimeSection = async (ctx) => {
       state.filters.operation = toLower(
         String(ctx.content.querySelector("#runtime-filter-operation")?.value || ""),
       );
+      state.jobs.openEventJobId = null;
       try {
         await fetchJobs({ reset: true });
         render();
@@ -141,6 +237,7 @@ export const renderRuntimeSection = async (ctx) => {
 
     ctx.content.querySelector("#runtime-filter-reset")?.addEventListener("click", async () => {
       state.filters = { q: "", status: "", provider: "", operation: "" };
+      state.jobs.openEventJobId = null;
       try {
         await fetchJobs({ reset: true });
         render();
@@ -165,6 +262,26 @@ export const renderRuntimeSection = async (ctx) => {
         const jobId = row?.getAttribute("data-job-id");
         const action = actionButton.getAttribute("data-job-action");
         if (!jobId || !action) return;
+
+        if (action === "events") {
+          if (state.jobs.openEventJobId === jobId) {
+            state.jobs.openEventJobId = null;
+            render();
+            return;
+          }
+          state.jobs.openEventJobId = jobId;
+          if (!state.jobs.eventsByJobId.has(jobId)) {
+            try {
+              render();
+              await fetchJobEvents(jobId);
+            } catch (error) {
+              ctx.setFlash("error", String(error));
+            }
+          }
+          render();
+          return;
+        }
+
         const payload = await ctx.openConfirmModal({
           title: `Runtime ${action}`,
           message: `Type ${jobId} and provide a reason for this runtime action.`,
@@ -182,6 +299,7 @@ export const renderRuntimeSection = async (ctx) => {
           return;
         }
         ctx.setFlash("success", `Job ${jobId} updated.`);
+        state.jobs.eventsByJobId.delete(jobId);
         await fetchJobs({ reset: true });
         render();
       });

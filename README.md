@@ -152,6 +152,12 @@ or run on another port:
   - expected occasionally when API and worker start in parallel,
   - only actionable if followed by a process exit/error (for example port conflict).
 
+- `runtime/target/debug` keeps growing (local disk pressure):
+
+```bash
+./scripts/clean-runtime-debug.sh
+```
+
 `--rust-watch` requires:
 
 ```bash

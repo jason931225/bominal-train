@@ -433,8 +433,21 @@
     @apply grid grid-cols-1 gap-2 md:flex md:flex-wrap md:items-center md:justify-end;
   }
 
+  .admin-row-meta {
+    @apply mt-2 flex flex-wrap gap-2;
+  }
+
+  .admin-pill {
+    @apply inline-flex items-center rounded-full border border-slate-200/80 bg-white/70 px-2 py-1 text-xs;
+    color: rgb(var(--text-supporting));
+  }
+
   body[data-theme-mode="dark"] .desktop-side-link {
     @apply border-slate-700/70 bg-slate-900/60;
+  }
+
+  body[data-theme-mode="dark"] .admin-pill {
+    @apply border-slate-700/80 bg-slate-900/70;
   }
 
   body[data-theme-mode="dark"] .desktop-side-link:hover {
@@ -712,6 +725,31 @@
     @apply rounded-full px-2 py-0.5 text-xs font-semibold;
     background-color: rgb(var(--status-accent-bg));
     color: rgb(var(--text-accent));
+  }
+
+  .badge-muted {
+    background-color: rgb(var(--neutral-200));
+    color: rgb(var(--text-supporting));
+  }
+
+  .badge-success {
+    background-color: rgb(var(--status-success-bg));
+    color: rgb(var(--text-success));
+  }
+
+  .badge-warning {
+    background-color: rgb(var(--status-warning-bg));
+    color: rgb(var(--text-warning));
+  }
+
+  .badge-critical {
+    background-color: rgb(var(--status-critical-bg));
+    color: rgb(var(--text-critical));
+  }
+
+  body[data-theme-mode="dark"] .badge-muted {
+    background-color: rgb(var(--neutral-700));
+    color: rgb(var(--neutral-200));
   }
 
   .error-card {

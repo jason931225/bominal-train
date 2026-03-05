@@ -26,6 +26,7 @@ This document defines the production-safe environment-variable contract using ke
 | `FRONTEND_ASSETS_DIR` | `optional` | defaults internally when unset; explicit value recommended for deploy consistency |
 | `SESSION_COOKIE_DOMAIN` | `optional` | enables shared session cookie scope across subdomains (for `www` + `ops`) |
 | `STEP_UP_TTL_SECONDS` | `optional` | passkey step-up freshness window for sensitive admin mutations (defaults to 600s) |
+| `PROVIDER_AUTH_PROBE_ENABLED` | `optional` | toggles live provider login probe on credential save; default `true` (set `false` to skip probe and persist credentials with `skipped` status) |
 | `USER_APP_HOST` | `required` | canonical user-app host for route separation and redirects |
 | `ADMIN_APP_HOST` | `required` | canonical admin-app host for strict admin route/API host enforcement |
 | `UI_THEME_COOKIE_NAME` | `optional` | cookie key used for user theme preference (`system`, `light`, `dark`) |

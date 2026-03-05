@@ -452,8 +452,7 @@ dependencies = [
  "async-stream",
  "axum",
  "bominal-shared",
- "bominal-ui-patterns",
- "bominal-ui-primitives",
+ "bominal-ui",
  "chrono",
  "leptos",
  "leptos_axum",
@@ -498,6 +497,14 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "url",
+]
+
+[[package]]
+name = "bominal-ui"
+version = "0.1.0"
+dependencies = [
+ "bominal-ui-patterns",
+ "bominal-ui-primitives",
 ]
 
 [[package]]

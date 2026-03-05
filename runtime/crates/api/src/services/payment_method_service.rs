@@ -121,13 +121,15 @@ pub(crate) async fn put_provider_payment_method(
     if let Some(base_url) = payment_crypto_service_base_url() {
         return store_via_payment_crypto_service(
             state,
-            input_provider,
-            payload,
-            card_brand.as_deref(),
-            card_last4.as_str(),
-            owner_ref.as_str(),
-            payment_method_ref.as_str(),
-            base_url.as_str(),
+            StoreViaPaymentCryptoServiceInput {
+                provider: input_provider,
+                payload,
+                card_brand: card_brand.as_deref(),
+                card_last4: card_last4.as_str(),
+                owner_ref: owner_ref.as_str(),
+                payment_method_ref: payment_method_ref.as_str(),
+                base_url: base_url.as_str(),
+            },
         )
         .await;
     }
@@ -205,35 +207,39 @@ pub(crate) async fn put_provider_payment_method(
     })
 }
 
+struct StoreViaPaymentCryptoServiceInput<'a> {
+    provider: &'a str,
+    payload: PutProviderPaymentMethodRequest,
+    card_brand: Option<&'a str>,
+    card_last4: &'a str,
+    owner_ref: &'a str,
+    payment_method_ref: &'a str,
+    base_url: &'a str,
+}
+
 async fn store_via_payment_crypto_service(
     state: &AppState,
-    provider: &str,
-    payload: PutProviderPaymentMethodRequest,
-    card_brand: Option<&str>,
-    card_last4: &str,
-    owner_ref: &str,
-    payment_method_ref: &str,
-    base_url: &str,
+    input: StoreViaPaymentCryptoServiceInput<'_>,
 ) -> Result<PutProviderPaymentMethodResult, PutProviderPaymentMethodError> {
     let url = format!(
         "{}{}",
-        trim_trailing_slash(base_url),
+        trim_trailing_slash(input.base_url),
         PAYMENT_CRYPTO_SERVICE_STORE_PATH
     );
     let request_body = CloudRunStoreRequest {
-        provider,
-        owner_ref,
-        payment_method_ref,
+        provider: input.provider,
+        owner_ref: input.owner_ref,
+        payment_method_ref: input.payment_method_ref,
         ev_payload: CloudRunEVPayload {
-            pan_ev: payload.pan_ciphertext.as_str(),
-            expiry_month_ev: payload.expiry_month_ciphertext.as_str(),
-            expiry_year_ev: payload.expiry_year_ciphertext.as_str(),
-            birth_or_business_ev: payload.birth_or_business_number_ciphertext.as_str(),
-            card_password_two_digits_ev: payload.card_password_two_digits_ciphertext.as_str(),
+            pan_ev: input.payload.pan_ciphertext.as_str(),
+            expiry_month_ev: input.payload.expiry_month_ciphertext.as_str(),
+            expiry_year_ev: input.payload.expiry_year_ciphertext.as_str(),
+            birth_or_business_ev: input.payload.birth_or_business_number_ciphertext.as_str(),
+            card_password_two_digits_ev: input.payload.card_password_two_digits_ciphertext.as_str(),
         },
         metadata: CloudRunMetadata {
-            brand: card_brand,
-            last4: Some(card_last4),
+            brand: input.card_brand,
+            last4: Some(input.card_last4),
         },
     };
 
@@ -272,7 +278,7 @@ async fn store_via_payment_crypto_service(
     }
 
     let resolved_ref = if decoded.payment_method_ref.trim().is_empty() {
-        payment_method_ref.to_string()
+        input.payment_method_ref.to_string()
     } else {
         decoded.payment_method_ref
     };

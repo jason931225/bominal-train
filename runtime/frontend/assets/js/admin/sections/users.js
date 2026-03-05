@@ -4,6 +4,32 @@ import { itemsFromEnvelope, pageFromEnvelope } from "../common/pagination.js";
 const USER_LIMIT = 25;
 const SESSION_LIMIT = 25;
 
+const roleBadgeClass = (role) => {
+  const normalized = toLower(role);
+  if (normalized === "admin") return "badge-critical";
+  if (normalized === "operator") return "badge-warning";
+  if (normalized === "viewer") return "badge-muted";
+  return "badge-success";
+};
+
+const accessBadgeClass = (enabled) => (enabled ? "badge-success" : "badge-critical");
+
+const statusBadgeClass = (status) => {
+  const normalized = toLower(status);
+  if (normalized === "active") return "badge-success";
+  if (normalized === "invited") return "badge-warning";
+  return "badge-muted";
+};
+
+const sessionStepUpBadgeClass = (value) => (value ? "badge-success" : "badge-warning");
+const sessionRevokedBadgeClass = (value) => (value ? "badge-critical" : "badge-success");
+
+const shortHash = (value) => {
+  const text = asText(value, "");
+  if (text.length <= 18) return text;
+  return `${text.slice(0, 10)}…${text.slice(-6)}`;
+};
+
 export const renderUsersSection = async (ctx) => {
   const state = {
     filters: {
@@ -86,7 +112,12 @@ export const renderUsersSection = async (ctx) => {
             <div class="min-w-0">
               <p class="truncate text-sm font-semibold txt-strong">${escapeHtml(user.email)}</p>
               <p class="truncate text-xs txt-faint">${escapeHtml(user.user_id)}</p>
-              <p class="mt-1 text-xs txt-supporting">Status: ${escapeHtml(asText(user.status))} · Role: ${escapeHtml(asText(user.role))}</p>
+              <div class="admin-row-meta">
+                <span class="badge ${roleBadgeClass(user.role)}">Role: ${escapeHtml(asText(user.role))}</span>
+                <span class="badge ${statusBadgeClass(user.status)}">Status: ${escapeHtml(asText(user.status))}</span>
+                <span class="badge ${accessBadgeClass(user.access_enabled)}">${user.access_enabled ? "Access enabled" : "Access disabled"}</span>
+                <span class="admin-pill">Updated: ${escapeHtml(formatDate(user.updated_at))}</span>
+              </div>
             </div>
             <div class="admin-row-actions">
               <select class="field-input h-10 w-full md:w-[130px]" data-role-select>
@@ -107,14 +138,30 @@ export const renderUsersSection = async (ctx) => {
       .join("");
 
     const sessionRows = state.sessions.items
-      .map(
-        (session) => `
-          <div class="summary-row">
-            <span class="truncate">${escapeHtml(asText(session.email))}</span>
-            <span class="text-xs txt-supporting">${escapeHtml(asText(session.role))} · ${escapeHtml(formatDate(session.last_seen_at))}</span>
-          </div>
-        `,
-      )
+      .map((session) => {
+        const userId = asText(session.user_id, "");
+        const canRevoke = Boolean(userId);
+        return `
+          <article class="admin-row" data-session-user-id="${escapeHtml(userId)}">
+            <div class="min-w-0">
+              <p class="truncate text-sm font-semibold txt-strong">${escapeHtml(asText(session.email))}</p>
+              <p class="truncate text-xs txt-faint">Session: <span class="font-mono">${escapeHtml(shortHash(session.session_id_hash))}</span></p>
+              <div class="admin-row-meta">
+                <span class="badge ${roleBadgeClass(session.role)}">Role: ${escapeHtml(asText(session.role))}</span>
+                <span class="badge ${sessionStepUpBadgeClass(session.step_up_verified_at)}">${session.step_up_verified_at ? "Step-up verified" : "Step-up missing"}</span>
+                <span class="badge ${sessionRevokedBadgeClass(session.revoked_at)}">${session.revoked_at ? "Revoked" : "Active"}</span>
+                <span class="admin-pill">Issued: ${escapeHtml(formatDate(session.issued_at))}</span>
+                <span class="admin-pill">Last seen: ${escapeHtml(formatDate(session.last_seen_at))}</span>
+              </div>
+            </div>
+            ${
+              canRevoke
+                ? '<div class="admin-row-actions"><button class="btn-destructive h-10 w-full md:w-auto" data-session-revoke>Revoke user sessions</button></div>'
+                : ""
+            }
+          </article>
+        `;
+      })
       .join("");
 
     ctx.content.innerHTML = `
@@ -314,6 +361,35 @@ export const renderUsersSection = async (ctx) => {
         const payload = await ctx.openConfirmModal({
           title: "Revoke sessions",
           message: `Type ${userId} and provide a reason to revoke sessions.`,
+          targetLabel: userId,
+          confirmText: "Revoke",
+        });
+        if (!payload) return;
+        const response = await ctx.requestJson(
+          `/api/admin/users/${encodeURIComponent(userId)}/sessions/revoke`,
+          "POST",
+          payload,
+        );
+        if (!response.ok) {
+          ctx.setFlash("error", ctx.errorMessage(response));
+          return;
+        }
+        const revokedCount = asText(response.body?.revoked, "0");
+        ctx.setFlash("success", `Revoked ${revokedCount} sessions.`);
+        await Promise.all([fetchUsers({ reset: true }), fetchSessions({ reset: true })]);
+        render();
+      });
+    });
+
+    ctx.content.querySelectorAll("[data-session-revoke]").forEach((button) => {
+      button.addEventListener("click", async (event) => {
+        const actionButton = event.currentTarget;
+        const row = actionButton.closest("[data-session-user-id]");
+        const userId = String(row?.getAttribute("data-session-user-id") || "").trim();
+        if (!userId) return;
+        const payload = await ctx.openConfirmModal({
+          title: "Revoke sessions",
+          message: `Type ${userId} and provide a reason to revoke all active sessions.`,
           targetLabel: userId,
           confirmText: "Revoke",
         });

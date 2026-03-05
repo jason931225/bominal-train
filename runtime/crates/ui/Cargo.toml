@@ -1,0 +1,11 @@
+[package]
+name = "bominal-ui"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+bominal-ui-patterns = { path = "../ui_patterns" }
+bominal-ui-primitives = { path = "../ui_primitives" }
+
+[lints]
+workspace = true

@@ -41,6 +41,10 @@ pub(crate) struct TrainProviderPreflight {
     pub(crate) credentials_ready: bool,
     pub(crate) payment_ready: bool,
     pub(crate) payment_method_ref: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) auth_probe_status: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) auth_probe_message: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -2095,7 +2099,8 @@ async fn provider_preflight(
     provider: &str,
     user_id: &str,
 ) -> Result<TrainProviderPreflight, TrainServiceError> {
-    let credentials_ready = credentials_ready(pool, provider, user_id).await?;
+    let auth_probe = provider_auth_probe(pool, provider, user_id).await?;
+    let credentials_ready = auth_probe.is_some();
     let payment_method_ref = latest_payment_method_ref(pool, provider, user_id).await?;
     let payment_ready = payment_method_ref.is_some();
 
@@ -2104,7 +2109,60 @@ async fn provider_preflight(
         credentials_ready,
         payment_ready,
         payment_method_ref,
+        auth_probe_status: auth_probe.as_ref().and_then(|value| value.status.clone()),
+        auth_probe_message: auth_probe.and_then(|value| value.message),
     })
+}
+
+#[derive(Debug)]
+struct ProviderAuthProbe {
+    status: Option<String>,
+    message: Option<String>,
+}
+
+async fn provider_auth_probe(
+    pool: &PgPool,
+    provider: &str,
+    user_id: &str,
+) -> Result<Option<ProviderAuthProbe>, TrainServiceError> {
+    let row = sqlx::query(
+        "select
+            redacted_metadata ->> 'auth_probe_status' as auth_probe_status,
+            redacted_metadata ->> 'auth_probe_message' as auth_probe_message
+         from provider_auth_secrets
+         where provider = $1 and subject_ref = $2 and credential_kind = 'login' and revoked_at is null
+         order by updated_at desc
+         limit 1",
+    )
+    .bind(provider)
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|err| {
+        error!(
+            error = %err,
+            provider = %provider,
+            "train preflight provider_auth_probe query failed"
+        );
+        TrainServiceError::Internal
+    })?;
+
+    let Some(row) = row else {
+        return Ok(None);
+    };
+
+    let status = row
+        .try_get::<Option<String>, _>("auth_probe_status")
+        .map_err(|_| TrainServiceError::Internal)?
+        .map(|value| value.trim().to_ascii_lowercase())
+        .filter(|value| !value.is_empty());
+    let message = row
+        .try_get::<Option<String>, _>("auth_probe_message")
+        .map_err(|_| TrainServiceError::Internal)?
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+
+    Ok(Some(ProviderAuthProbe { status, message }))
 }
 
 async fn credentials_ready(
@@ -2398,27 +2456,35 @@ fn extract_error_message_from_events(events: &[sqlx::postgres::PgRow]) -> Option
         let Ok(payload) = row.try_get::<Value, _>("event_payload") else {
             continue;
         };
-
-        let message = payload
-            .get("message")
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(ToOwned::to_owned);
-        if message.is_some() {
-            return message;
-        }
-
-        let fallback = payload
-            .get("state")
-            .and_then(Value::as_str)
-            .map(|value| format!("provider job {value}"));
-        if fallback.is_some() {
-            return fallback;
+        if let Some(message) = extract_error_message_from_payload(&payload) {
+            return Some(message);
         }
     }
 
     None
+}
+
+fn extract_error_message_from_payload(payload: &Value) -> Option<String> {
+    if let Some(reason) = extract_error_reason(payload)
+        && let Some(message) = map_error_reason_to_message(reason)
+    {
+        return Some(message.to_string());
+    }
+
+    let message = payload
+        .get("message")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned);
+    if message.is_some() {
+        return message;
+    }
+
+    payload
+        .get("state")
+        .and_then(Value::as_str)
+        .map(|value| format!("provider job {value}"))
 }
 
 fn value_as_string(value: &Value, key: &str) -> String {
@@ -2427,6 +2493,37 @@ fn value_as_string(value: &Value, key: &str) -> String {
         .and_then(Value::as_str)
         .unwrap_or_default()
         .to_string()
+}
+
+fn extract_error_reason(payload: &Value) -> Option<&str> {
+    payload
+        .get("error_reason")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .or_else(|| {
+            payload
+                .pointer("/context/class")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+        })
+}
+
+fn map_error_reason_to_message(reason: &str) -> Option<&'static str> {
+    match reason {
+        "missing_subject_ref"
+        | "missing_session"
+        | "auth_secret_missing"
+        | "auth_secret_decode"
+        | "auth_payload_decode"
+        | "auth_aad_hash"
+        | "auth_decrypt" => Some("provider credentials are missing or invalid"),
+        "operation_failed" => Some("provider rejected request"),
+        "unsupported_operation" => Some("provider operation is not supported"),
+        "rate_limited" => Some("provider rate limited"),
+        _ => None,
+    }
 }
 
 fn is_failure_status(status: &str) -> bool {
@@ -2448,7 +2545,7 @@ fn aggregate_status<'a>(statuses: impl Iterator<Item = &'a str>) -> &'static str
         return "completed";
     }
 
-    let any_completed = collected.iter().any(|status| *status == "completed");
+    let any_completed = collected.contains(&"completed");
     let any_running = collected
         .iter()
         .any(|status| matches!(*status, "running" | "queued"));
@@ -2672,5 +2769,48 @@ mod tests {
             None,
         );
         assert!(matches!(result, Err(TrainServiceError::InvalidRequest(_))));
+    }
+
+    #[test]
+    fn extract_error_reason_prefers_event_error_reason_field() {
+        let payload = serde_json::json!({
+            "error_reason": "missing_session",
+            "context": { "class": "operation_failed" }
+        });
+
+        assert_eq!(extract_error_reason(&payload), Some("missing_session"));
+    }
+
+    #[test]
+    fn map_error_reason_to_message_maps_known_dead_letter_classes() {
+        assert_eq!(
+            map_error_reason_to_message("missing_session"),
+            Some("provider credentials are missing or invalid")
+        );
+        assert_eq!(
+            map_error_reason_to_message("operation_failed"),
+            Some("provider rejected request")
+        );
+        assert_eq!(
+            map_error_reason_to_message("unsupported_operation"),
+            Some("provider operation is not supported")
+        );
+        assert_eq!(
+            map_error_reason_to_message("rate_limited"),
+            Some("provider rate limited")
+        );
+        assert_eq!(map_error_reason_to_message("fatal"), None);
+    }
+
+    #[test]
+    fn error_reason_message_takes_precedence_over_generic_payload_message() {
+        let payload = serde_json::json!({
+            "message": "non-retryable execution failure",
+            "error_reason": "auth_secret_missing"
+        });
+        assert_eq!(
+            extract_error_message_from_payload(&payload),
+            Some("provider credentials are missing or invalid".to_string())
+        );
     }
 }

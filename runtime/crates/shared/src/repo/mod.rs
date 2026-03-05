@@ -14,9 +14,10 @@ pub use payment_method_secret_repo::{
 };
 pub use provider_auth_secret_repo::{
     PROVIDER_AUTH_SECRET_REVOKE_SQL, PROVIDER_AUTH_SECRET_SELECT_ACTIVE_SQL,
-    PROVIDER_AUTH_SECRET_UPSERT_SQL, ProviderAuthSecretRecord, ProviderAuthSecretRepoContract,
-    SqlProviderAuthSecretRepoContract, UpsertProviderAuthSecretParams,
-    revoke_provider_auth_secret_query, select_active_provider_auth_secret_query,
+    PROVIDER_AUTH_SECRET_UPDATE_METADATA_SQL, PROVIDER_AUTH_SECRET_UPSERT_SQL,
+    ProviderAuthSecretRecord, ProviderAuthSecretRepoContract, SqlProviderAuthSecretRepoContract,
+    UpsertProviderAuthSecretParams, revoke_provider_auth_secret_query,
+    select_active_provider_auth_secret_query, update_provider_auth_secret_metadata_query,
     upsert_provider_auth_secret_query,
 };
 pub use provider_contract_ledger_repo::{
