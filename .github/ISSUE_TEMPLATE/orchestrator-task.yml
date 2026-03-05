@@ -1,5 +1,5 @@
 name: Orchestrator Work Item
-description: Structured issue template for agent dispatch from the command queue.
+description: Structured issue template for deterministic agent dispatch and promotion-gate readiness.
 title: "orchestrator: "
 labels:
   - type:chore
@@ -10,32 +10,40 @@ body:
   - type: markdown
     attributes:
       value: |
-        Use this template when posting a queue item for implementation agents.
-        Include complete scope, risk, domain lock, and verification instructions.
+        Use this template for orchestrator-posted implementation jobs.
+        Include complete scope/risk/domain constraints so agents can execute without policy drift.
   - type: textarea
     id: objective
     attributes:
       label: Objective
-      description: What outcome must this work item produce?
-      placeholder: One clear result statement.
+      description: Outcome this work item must produce.
+      placeholder: One clear, testable result statement.
     validations:
       required: true
   - type: dropdown
     id: target_branch
     attributes:
       label: Target Branch Stage
-      description: Branch where this issue should land first.
+      description: Branch where implementation lands first.
       options:
         - dev
         - staging
         - main
     validations:
       required: true
+  - type: input
+    id: milestone
+    attributes:
+      label: Milestone Or Release Target
+      description: Milestone required for sequencing and promotion tracking.
+      placeholder: v0.2.0
+    validations:
+      required: true
   - type: textarea
     id: domain_scope
     attributes:
       label: Domain And Path Lock
-      description: One `area:*` domain and allowed file/path scope for this item.
+      description: One `area:*` domain and allowed path set.
       placeholder: |
         area:runtime-api
         allowed paths:
@@ -50,7 +58,48 @@ body:
       placeholder: |
         Risk class: WRITE
         Sensitive scope: auth/session
+        Blast radius: dashboard login path
         Rollback: revert PR and redeploy previous digest
+    validations:
+      required: true
+  - type: dropdown
+    id: bundle_mode
+    attributes:
+      label: Bundle Mode
+      description: Choose single-item or sequenced bundle execution.
+      options:
+        - Single Item
+        - Sequenced Bundle
+    validations:
+      required: true
+  - type: textarea
+    id: bundle_manifest
+    attributes:
+      label: Bundle Manifest (Machine-Readable)
+      description: Required for sequenced bundles and promotion governance validation.
+      value: |
+        <!-- promotion-gate-manifest:start -->
+        bundle_id: bundle-<milestone>-<area>-<issue>
+        milestone: <milestone-title>
+        area: area:<domain>
+        risk: low|medium|high
+        ordered_prs:
+          - 0
+        depends_on:
+          - issue: 0
+        release_summary_required: true
+        <!-- promotion-gate-manifest:end -->
+    validations:
+      required: true
+  - type: textarea
+    id: merge_order_notes
+    attributes:
+      label: Merge Order Notes
+      description: Canonical merge order and dependency notes (no ambiguity).
+      placeholder: |
+        - PR #101 depends on PR #99
+        - Merge order: #99 -> #101 -> #105
+        - Do not merge #105 until smoke tests pass on #101
     validations:
       required: true
   - type: textarea
@@ -73,7 +122,7 @@ body:
     id: acceptance_criteria
     attributes:
       label: Acceptance Criteria
-      description: Merge criteria and runtime/behavior conditions.
+      description: Merge and runtime behavior criteria.
       placeholder: "- [ ] ...\n- [ ] ..."
     validations:
       required: true
@@ -81,7 +130,7 @@ body:
     id: verification_plan
     attributes:
       label: Verification Plan
-      description: Exact commands/tests/checks to run before PR.
+      description: Exact commands/tests/checks before PR.
       placeholder: |
         - cargo test -p bominal-api
         - ./infra/scripts/local-check.sh
@@ -91,11 +140,14 @@ body:
     id: agent_instructions
     attributes:
       label: Agent Dispatch Notes
-      description: Required sequence for agent checkpoints and review requests.
-      placeholder: |
-        - Claim in Agent Command board
-        - Post design note
-        - Open draft PR (Closes #...)
-        - Request @copilot review then @codex review
+      description: Required issue/PR/review sequencing for agents.
+      value: |
+        - Claim in `bominal Agent Command` board before coding.
+        - Post design note and path-set lock confirmation.
+        - Open draft PR with `Closes #<issue>`.
+        - Request `@copilot review` first.
+        - Request `@codex review` second.
+        - Resolve all material findings before merge.
+        - For promotion-gated bundles, finish `## Release Summary` in gate issue before `/gate promote`.
     validations:
       required: true

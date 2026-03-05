@@ -5,7 +5,6 @@ on:
     types:
       - closed
     branches:
-      - dev
       - staging
 
 permissions:
@@ -18,7 +17,7 @@ concurrency:
 
 jobs:
   create-promotion:
-    name: Create Promotion PR
+    name: Create Promotion PR (staging -> main)
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -37,7 +36,6 @@ jobs:
 
             const sourceBase = pr.base.ref;
             const map = {
-              dev: { head: "dev", base: "staging" },
               staging: { head: "staging", base: "main" },
             };
 
@@ -69,6 +67,7 @@ jobs:
               `Automated promotion PR generated from merged source PR #${pr.number}.`,
               "",
               "Promotion mode: auto-create + maintainer command merge.",
+              "Note: dev -> staging promotion is controlled by gate workflows.",
               "",
               "Policy:",
               "- Verify required checks are green.",

@@ -219,12 +219,18 @@ Additional PR rules:
 - Copilot review is required for:
   - PRs linked to work items with `Risk=Medium` or `Risk=High`,
   - any PR classified as `Review Depth=Secondary Required`.
+- Copilot review should be used judiciously:
+  - avoid routine docs-only or low-risk hygiene PRs unless explicitly warranted,
+  - prefer risk-driven usage (security/auth/payment/deploy/sensitive migrations),
+  - default cross-check order is `@copilot review` then `@codex review`.
 - Copilot findings are classified as:
   - `Material`: security/auth/payment/session/data-loss/deploy/test-gap scope,
   - `Advisory`: quality/style/non-blocking scope.
 - Merge is blocked while any material Codex or Copilot finding is open.
 - Material findings may only be waived by a maintainer with explicit rationale and risk note.
 - AI review is advisory and does not replace required human approval policy where applicable.
+- Copilot review monthly budget is capped at `300` requests per month (UTC month boundary, reset on day `1`).
+- CI MUST track monthly `@copilot review` invocation count and fail when budget is exceeded.
 
 ### Project Tracking
 
@@ -243,9 +249,13 @@ Operational runbooks:
 - `Area`: aligned to `area:*` taxonomy
 - `Priority`: `P0`, `P1`, `P2`, `P3`
 - `Risk`: `Low`, `Medium`, `High`
+- `Release Checkpoint`: `Backlog`, `Ready for Staging Gate`, `Gate In Progress`, `Promotion PR Open`, `Promoted`
+- `Promotion Flag`: `None`, `Promote`, `Hold`
 - `Target Release`: semver target (for example `v0.2.0`)
 - `Due Date`
 - `Linked PR`
+- `Gate Issue URL` (text)
+- `Merge Order Source` (text)
 
 `bominal Review` required fields:
 - `Review Status`: `Ready for Review`, `Changes Requested`, `Approved`, `Merged`
@@ -275,7 +285,8 @@ Automation expectations:
 - hard domain lock applies: one `area:*` per implementation item and PR path-set,
 - area WIP cap is `1`; same-area merge conflicts auto-transition active claims to `Blocked` with rebase checklist,
 - linked PR review-ready state moves issue status to `In Review` (or mapped fallback when board options differ),
-- merged linked PR moves issue status to `Done`.
+- merged linked PR moves issue status to `Done`,
+- promotion to `staging` is gate-driven from milestone checkpoints, not direct branch merge side effects.
 
 Repository automation prerequisites:
 - preferred variables:
@@ -286,6 +297,8 @@ Repository automation prerequisites:
   - `BOMINAL_REVIEW_PROJECT_NUMBER`
   - `BOMINAL_COMMAND_PROJECT_OWNER`
   - `BOMINAL_COMMAND_PROJECT_NUMBER`
+  - optional: `COPILOT_REVIEW_MONTHLY_BUDGET` (default `300`)
+  - optional: `COPILOT_REVIEW_WARN_THRESHOLD` (default `270`)
 - repository secret `PROJECT_AUTOMATION_TOKEN` with `repo`, `project`, and `read:project` scopes.
 - transition compatibility while workflow migration is in progress:
   - keep legacy `BOMINAL_PROJECT_OWNER`
@@ -294,7 +307,29 @@ Repository automation prerequisites:
 Agent policy:
 - agents MUST pull work from `bominal Agent Command` queue state, not ad-hoc branch choice,
 - no implementation PR without a linked issue (`Closes #...`),
-- secondary review is required when risk/sensitive scope or large-diff policy is triggered.
+- secondary review is required when risk/sensitive scope or large-diff policy is triggered,
+- orchestrator-authored issues MUST include scope, risk, domain lock, dependency notes, and merge-order notes.
+
+### Promotion Gate And Commands
+
+Promotion governance is enforced by deterministic workflows:
+- `promotion-gate-controller.yml`: creates/refreshes gate issues from Workstreams `Release Checkpoint=Ready for Staging Gate`.
+- `promotion-gate.yml`: runs `ci_gate` and `promotion_governance_gate`.
+- `promotion-gate-review-loop.yml`: enforces review-loop evidence (`@copilot review`, `@codex review`) and no unresolved `CHANGES_REQUESTED`.
+- `promotion-gate-commands.yml`: handles `/gate ...` and `/promote merge`.
+- `promotion-pr-open-dev-staging.yml`: opens `dev -> staging` PR only after gate pass + promotion intent.
+
+Gate pass prerequisites for `dev -> staging`:
+- `gate:ci-pass`
+- `gate:governance-pass`
+- `gate:review-round-complete`
+- `gate:promote`
+
+Command policy:
+- `/gate refresh` reruns gate validation for a specific issue.
+- `/gate promote` sets promotion intent (and project `Promotion Flag=Promote` where available).
+- `/gate waive advisory ...` records advisory-only waivers in gate `## Waiver Ledger`.
+- `/promote merge` is restricted to write/maintain/admin and enforces green checks + no active `CHANGES_REQUESTED`.
 
 Orchestrator policy:
 - orchestrator agents MUST create or update a GitHub issue before dispatching execution agents.
@@ -346,6 +381,7 @@ Required branch settings:
 Required status checks:
 - `Workflow Lint`
 - `PR Governance`
+- `Copilot Review Budget`
 - `Branch Policy Gate`
 
 Merge strategy default:

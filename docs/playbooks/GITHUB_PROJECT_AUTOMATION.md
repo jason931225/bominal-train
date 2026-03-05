@@ -19,17 +19,20 @@ Maintain three active GitHub Project v2 boards:
 
 Adopt board template ideas by partial composition:
 
-- `Kanban` (adopted): status flow (`Triage -> Ready -> In Progress -> In Review -> Done`) is the backbone.
-- `Iterative development` (adopted): queue checkpoints and incremental PR milestones.
-- `Bug tracker` (partially adopted): severity/risk handling through `priority:*` + `risk:*` labels.
-- `Feature release` (partially adopted): `Target Release`, `Env Stage`, `Promotion State` fields.
-- `Product launch` (selective adoption): release-calendar/milestone alignment; no marketing pipeline coupling.
+- `Kanban` (adopted): status flow (`Triage -> Ready -> In Progress -> In Review -> Blocked -> Done`) is the baseline.
+- `Iterative development` (adopted): issue checkpoint flow + draft PR milestones.
+- `Bug tracker` (partially adopted): severity/risk handling through `priority:*` + `risk:*` taxonomy.
+- `Feature release` (partially adopted): `Target Release`, `Release Checkpoint`, `Promotion Flag` fields.
+- `Product launch` (selective adoption): release calendar + milestone discipline only.
 
 Priority scope contract:
 - `priority:p0`: service-impacting, security-critical, or release-blocking.
 - `priority:p1`: high-value near-term delivery.
 - `priority:p2`: normal planned backlog.
 - `priority:p3`: low urgency or exploratory maintenance.
+
+PR label inheritance policy:
+- PRs inherit missing `type:*`, `area:*`, and `priority:*` labels from the first linked issue (`Closes #...`) via `PR Governance` automation.
 
 ## Required Field Model
 
@@ -39,12 +42,13 @@ Priority scope contract:
 - `Area`: label-aligned `area:*`
 - `Priority`: `P0`, `P1`, `P2`, `P3`
 - `Risk`: `Low`, `Medium`, `High`
-- `Env Stage`: `Development`, `Staging`, `Production`
-- `Promotion State`: `PR Open`, `Merged to dev`, `Merged to staging`, `Released`
-- `Promotion Mode`: `Manual`, `Auto`
+- `Release Checkpoint`: `Backlog`, `Ready for Staging Gate`, `Gate In Progress`, `Promotion PR Open`, `Promoted`
+- `Promotion Flag`: `None`, `Promote`, `Hold`
 - `Target Release`
 - `Due Date`
 - `Linked PR`
+- `Gate Issue URL` (text)
+- `Merge Order Source` (text)
 
 ### `bominal Review`
 - `Review Status`: `Ready for Review`, `Changes Requested`, `Approved`, `Merged`
@@ -61,90 +65,174 @@ Priority scope contract:
 - `Conflict State`: `None`, `Rebase Required`
 - `Escalation State`: `None`, `Secondary Review`, `Policy Exception`
 
-## Branch Promotion Lifecycle
+## Promotion Automation Architecture
 
-Branch and promotion policy:
-- implementation branches -> `dev`
-- `dev` -> `staging`
-- `staging` -> `main`
-- `hotfix/*` -> `main` then back-promote (`main -> staging -> dev`)
+Promotion is implemented as workflow composition:
 
-Automation rules:
-- issue label `promotion:auto` enables automatic PR creation after merge:
-  - merged PR into `dev` opens `dev -> staging`
-  - merged PR into `staging` opens `staging -> main`
-- promotion PR merge remains maintainer-controlled via `/promote merge` command.
-- merged hotfix PR to `main` opens `main -> staging` back-promotion PR.
+1. `promotion-gate-controller.yml`
+- Watches Workstreams `Release Checkpoint=Ready for Staging Gate`.
+- Creates/refreshes gate issue labeled `gate:open`.
+- Assigns reviewer using `PROMOTION_GATE_REVIEWER_MAP_JSON` with fallback `PROMOTION_GATE_DEFAULT_REVIEWER`.
 
-## Review Sequencing
+2. `promotion-gate.yml`
+- Runs two required jobs on each gate issue:
+  - `ci_gate`
+  - `promotion_governance_gate`
+- Writes pass/fail labels and per-rule bot comments.
 
-When secondary review is required:
-1. Request `@copilot review`.
-2. Resolve material findings or maintainers explicitly waive with risk note.
-3. Request `@codex review` for cross-check.
-4. Merge only after checks are green and conversations are resolved.
+3. `promotion-gate-review-loop.yml`
+- Verifies review-loop evidence across bundle PRs.
+- Requires evidence of `@copilot review` and `@codex review` comments.
+- Blocks when `CHANGES_REQUESTED` remains unresolved.
 
-## Orchestrator Issue Authoring Contract
+4. `promotion-gate-commands.yml`
+- Handles gate and promotion commands.
+- `/gate refresh`: re-run gate checks for one issue.
+- `/gate promote`: mark promotion intent and set `Promotion Flag=Promote` when project field access is available.
+- `/gate waive advisory ...`: advisory-only waiver entry into gate `## Waiver Ledger`.
+- `/promote merge`: safeguarded merge command for promotion/back-promotion PRs.
 
-Orchestrator-posted issues MUST include:
-- objective and user/operator outcome,
-- exact `area:*` domain and allowed path-set,
-- risk class, sensitive boundaries, rollback plan,
+5. `promotion-pr-open-dev-staging.yml`
+- Opens `dev -> staging` promotion PR only when gate labels show pass state:
+  - `gate:ci-pass`
+  - `gate:governance-pass`
+  - `gate:review-round-complete`
+  - `gate:promote`
+
+6. `promotion-pr-create.yml`
+- Handles `staging -> main` auto-create only for merged PRs explicitly labeled `promotion:auto`.
+
+## Review Budget Policy
+
+Copilot review usage controls:
+- Monthly budget: `300` invocations.
+- Reset boundary: first day of each month (UTC).
+- CI tracking: `.github/workflows/ci.yml` job `Copilot Review Budget`.
+- Hard gate: CI fails when monthly usage reaches/exceeds budget.
+- Warning band: warn at `270` by default (`COPILOT_REVIEW_WARN_THRESHOLD`, override via repo variable).
+
+Judicious-use rules:
+- Prefer Copilot review for medium/high risk, secondary-required, or promotion-gate-critical changes.
+- Avoid consuming budget on low-risk docs-only or trivial hygiene PRs.
+- Default cross-check sequence remains `@copilot review` then `@codex review` when secondary review is warranted.
+
+## Gate Manifest Contract
+
+Every promotion gate issue contains a machine-readable manifest block:
+
+```yaml
+<!-- promotion-gate-manifest:start -->
+bundle_id: bundle-<milestone>-<area>-<issue>
+milestone: <milestone-title>
+area: area:<domain>
+risk: low|medium|high
+ordered_prs:
+  - 0
+depends_on:
+  - issue: 0
+release_summary_required: true
+<!-- promotion-gate-manifest:end -->
+```
+
+Required gate sections outside the manifest:
+- `## Merge Order Notes`
+- `## Risk Assessment`
+- `## Release Summary`
+- `## Round Review Log`
+- `## Waiver Ledger`
+
+## Command Processing And Waivers
+
+Command processing location:
+- Workflow: `.github/workflows/promotion-gate-commands.yml`
+- Trigger: `issue_comment` (`created`, `edited`)
+
+Command authorization:
+- Requires repository permission `write|maintain|admin`.
+
+Waiver policy:
+- Only advisory findings can be waived by command.
+- Format:
+  ```text
+  /gate waive advisory <finding_id> reason:"..." risk:"..." expires:"YYYY-MM-DD" followup:"#123"
+  ```
+- Result:
+  - Adds label `gate:advisory-waived`.
+  - Appends immutable ledger entry in gate issue `## Waiver Ledger`.
+
+## Orchestrator Issue Contract
+
+Orchestrator-created issues MUST include:
+- objective and expected operator outcome,
+- one `area:*` domain lock and explicit allowed path-set,
+- risk class, sensitive boundaries, rollback and blast radius,
 - in-scope/out-of-scope,
-- acceptance criteria,
-- verification command checklist,
-- agent dispatch instructions (claim/design-note/draft-PR/review sequence).
+- acceptance criteria and exact verification commands,
+- bundle manifest, dependency notes, and merge-order notes when sequence is required,
+- review sequencing instructions (`@copilot review` then `@codex review`).
 
-Use `.github/ISSUE_TEMPLATE/orchestrator-task.yml` for this.
+Use `.github/ISSUE_TEMPLATE/orchestrator-task.yml`.
 
 ## Tested Agent Bootstrap Commands
 
-GitHub CLI bootstrap (session start):
+GitHub CLI bootstrap:
 ```bash
 gh auth status
 gh repo view jason931225/bominal --json name,defaultBranchRef
 ```
 
-If the default CLI token is missing `read:project`, bootstrap with the local full-scope PAT:
+PAT bootstrap fallback (`env/dev/test.env`):
 ```bash
 set -a
 source env/dev/test.env
 set +a
 export GH_TOKEN="$GH_PAT_FULL"
-gh project list --owner @me
+gh auth status
+gh project list --owner "$BOMINAL_WORKSTREAMS_PROJECT_OWNER"
 ```
 
-Create and queue a work item:
+Create + add issue to Workstreams:
 ```bash
-gh issue create --repo jason931225/bominal --title "chore: dummy project automation check" --body "Policy smoke test issue" --label type:chore --label area:ci-cd --label priority:p3 --label status:ready
-gh project item-add "$BOMINAL_WORKSTREAMS_PROJECT_NUMBER" --owner "$BOMINAL_WORKSTREAMS_PROJECT_OWNER" --url "<ISSUE_URL>"
+ISSUE_URL=$(gh issue create --repo jason931225/bominal --title "chore: board automation smoke test" --body "Policy smoke test issue" --label type:chore --label area:ci-cd --label priority:p3 --label status:ready)
+gh project item-add "$BOMINAL_WORKSTREAMS_PROJECT_NUMBER" --owner "$BOMINAL_WORKSTREAMS_PROJECT_OWNER" --url "$ISSUE_URL"
 ```
 
-Promotion-review commands:
+Promotion/gate commands:
 ```bash
-gh pr review <PR_NUMBER> --repo jason931225/bominal --comment --body "@copilot review"
-gh pr review <PR_NUMBER> --repo jason931225/bominal --comment --body "@codex review"
+gh issue comment <GATE_ISSUE_NUMBER> --repo jason931225/bominal --body "/gate refresh"
+gh issue comment <GATE_ISSUE_NUMBER> --repo jason931225/bominal --body "/gate promote"
+gh issue comment <GATE_ISSUE_NUMBER> --repo jason931225/bominal --body '/gate waive advisory finding-123 reason:"non-blocking style issue" risk:"low" expires:"2026-04-01" followup:"#999"'
 gh pr comment <PR_NUMBER> --repo jason931225/bominal --body "/promote merge"
 ```
 
-GitHub MCP equivalents (preferred in agent automation):
-- queue/read issues: `list_issues`, `issue_read`, `issue_write`
-- PR lifecycle: `list_pull_requests`, `pull_request_read`, `update_pull_request`, `merge_pull_request`
-- review operations: `request_copilot_review`, `add_issue_comment`, `pull_request_review_write`
-- repo governance checks: `get_me`, `list_branches`, `list_releases`
+Review requests (cross-check):
+```bash
+gh pr comment <PR_NUMBER> --repo jason931225/bominal --body "@copilot review"
+gh pr comment <PR_NUMBER> --repo jason931225/bominal --body "@codex review"
+```
 
-## Auth And Scope Requirements
+GitHub MCP equivalents for agents:
+- queue and issue lifecycle: `list_issues`, `issue_read`, `issue_write`, `add_issue_comment`
+- PR lifecycle and validation: `list_pull_requests`, `pull_request_read`, `update_pull_request`, `merge_pull_request`
+- review automation: `request_copilot_review`, `pull_request_review_write`, `add_comment_to_pending_review`
+- governance checks: `list_branches`, `list_releases`, `get_me`
 
-Required scopes for CLI PAT fallback (if GitHub App/session auth is unavailable):
+## Auth Scope Requirements
+
+`PROJECT_AUTOMATION_TOKEN` secret must support Project v2 GraphQL reads/writes.
+
+Optional review-budget variables:
+- `COPILOT_REVIEW_MONTHLY_BUDGET` (default `300`)
+- `COPILOT_REVIEW_WARN_THRESHOLD` (default `270`)
+
+PAT fallback scopes (for CLI sessions):
 - `repo`
 - `project`
 - `read:project`
 - `workflow`
 
-`PROJECT_AUTOMATION_TOKEN` secret must support Project v2 GraphQL reads/writes for configured boards.
+## Failure Handling
 
-## Exception Handling
-
-- Policy violation: move to `Escalated`, apply `status:blocked`, post corrective checklist.
-- Emergency hotfix: temporary bypass requires explicit maintainer approval and post-merge incident note.
-- Manual override always requires an auditable issue/PR comment trail.
+- Policy violation: add `status:blocked`, keep gate in fail state, and post corrective checklist.
+- Emergency override: requires explicit maintainer comment trail with reason and rollback plan.
+- Missing project-field capability: gate/command workflows continue with explicit warning comments instead of silent skip.

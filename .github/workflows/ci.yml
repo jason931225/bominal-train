@@ -21,6 +21,7 @@ on:
 
 permissions:
   contents: read
+  issues: read
   pull-requests: read
 
 concurrency:
@@ -141,6 +142,65 @@ jobs:
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  copilot-review-budget:
+    name: Copilot Review Budget
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs:
+      - workflow-lint
+    env:
+      COPILOT_REVIEW_MONTHLY_BUDGET: ${{ vars.COPILOT_REVIEW_MONTHLY_BUDGET }}
+      COPILOT_REVIEW_WARN_THRESHOLD: ${{ vars.COPILOT_REVIEW_WARN_THRESHOLD }}
+    steps:
+      - name: Track monthly @copilot review usage
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            const budget = Number(process.env.COPILOT_REVIEW_MONTHLY_BUDGET || 300);
+            const warnThreshold = Number(process.env.COPILOT_REVIEW_WARN_THRESHOLD || 270);
+
+            if (!Number.isFinite(budget) || budget <= 0) {
+              core.setFailed(`Invalid COPILOT_REVIEW_MONTHLY_BUDGET value: ${process.env.COPILOT_REVIEW_MONTHLY_BUDGET || "<empty>"}`);
+              return;
+            }
+
+            const now = new Date();
+            const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
+            const monthLabel = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+
+            const comments = await github.paginate(github.rest.issues.listCommentsForRepo, {
+              owner,
+              repo,
+              since: monthStart,
+              per_page: 100,
+            });
+
+            const invocations = comments.filter((comment) => /@copilot\s+review/i.test(comment.body || ""));
+            const used = invocations.length;
+            const remaining = Math.max(0, budget - used);
+
+            core.summary
+              .addHeading("Copilot Review Budget")
+              .addRaw(`Month (UTC): ${monthLabel}\n`, true)
+              .addRaw(`Budget: ${budget}\n`, true)
+              .addRaw(`Used: ${used}\n`, true)
+              .addRaw(`Remaining: ${remaining}\n`, true)
+              .write();
+
+            if (used >= budget) {
+              core.setFailed(`Copilot review budget exceeded for ${monthLabel}: used=${used}, budget=${budget}.`);
+              return;
+            }
+
+            if (used >= warnThreshold) {
+              core.warning(`Copilot review usage is near budget: used=${used}, budget=${budget}, remaining=${remaining}. Use judiciously.`);
+            } else {
+              core.info(`Copilot review usage OK: used=${used}, budget=${budget}, remaining=${remaining}.`);
+            }
 
   dependency-review:
     name: Dependency Review
