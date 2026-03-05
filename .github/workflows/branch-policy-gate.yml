@@ -55,7 +55,7 @@ jobs:
             ];
 
             // Keep docs-only classification in sync with pr-governance.yml and ci.yml path ignores.
-            const isDocsFile = (path) => path.startsWith("docs/") || (path.endsWith(".md") && !path.startsWith(".github/"));
+            const isDocsFile = (path) => path.startsWith("docs/") || path.endsWith(".md");
 
             const files = await github.paginate(github.rest.pulls.listFiles, {
               owner,

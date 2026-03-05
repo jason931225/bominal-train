@@ -35,13 +35,19 @@ jobs:
             }
 
             const sourceBase = pr.base.ref;
+            const sourceHead = pr.head.ref;
             const map = {
-              staging: { head: "staging", base: "main" },
+              staging: { expectedHead: "dev", head: "staging", base: "main" },
             };
 
             const target = map[sourceBase];
             if (!target) {
               core.info(`Base branch ${sourceBase} is not configured for auto-promotion; skipping.`);
+              return;
+            }
+
+            if (target.expectedHead && sourceHead !== target.expectedHead) {
+              core.info(`Skipping auto-promotion for ${sourceHead} -> ${sourceBase}; expected source head is ${target.expectedHead}.`);
               return;
             }
 

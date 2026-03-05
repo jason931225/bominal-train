@@ -482,8 +482,8 @@ jobs:
                   });
                   const issueItemId = await getProjectItemId(projects.command, issue.data.node_id);
                   if (action === "closed" && pr.merged) {
-                    await setSingleSelectByName(projects.command, issueItemId, "Claim State", "Draft PR Linked");
-                    await setSingleSelectByName(projects.command, issueItemId, "Checkpoint", "Draft PR");
+                    await setSingleSelectByName(projects.command, issueItemId, "Claim State", "Merged", ["Draft PR Linked"]);
+                    await setSingleSelectByName(projects.command, issueItemId, "Checkpoint", "Merged", ["Draft PR"]);
                   } else {
                     await setSingleSelectByName(projects.command, issueItemId, "Claim State", "Draft PR Linked");
                     await setSingleSelectByName(projects.command, issueItemId, "Checkpoint", "Draft PR");

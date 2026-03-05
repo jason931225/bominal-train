@@ -50,7 +50,7 @@ jobs:
             });
 
             // Keep docs-only classification in sync with branch-policy-gate.yml.
-            const isDocsFile = (name) => name.startsWith("docs/") || (name.endsWith(".md") && !name.startsWith(".github/"));
+            const isDocsFile = (name) => name.startsWith("docs/") || name.endsWith(".md");
             const docsOnly = files.length > 0 && files.every((f) => isDocsFile(f.filename));
             const changedPaths = files.map((f) => f.filename);
 
@@ -92,10 +92,10 @@ jobs:
                 return headRef === "staging" || headRef.startsWith("hotfix/");
               }
               if (baseRef === "staging") {
-                return headRef === "dev" || headRef === "main" || headRef.startsWith("hotfix/");
+                return headRef === "dev" || headRef === "main";
               }
               if (baseRef === "dev") {
-                return headRef !== "main";
+                return headRef !== "main" && !headRef.startsWith("hotfix/");
               }
               return true;
             })();
