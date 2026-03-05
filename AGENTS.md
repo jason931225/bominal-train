@@ -37,6 +37,8 @@ Preserved external reference docs:
 - Validate changes with build/test commands relevant to touched scope.
 - Treat critical-path areas (auth, security, payment boundary, deployment) as high-rigor paths.
 - Do not perform destructive or production/security boundary operations without explicit human approval.
+- For GitHub Project v2 operations, follow `docs/playbooks/GITHUB_PROJECT_OPERATIONS.md` and use PAT-bootstrapped `gh` commands (Project v2 field/item admin is CLI-first in this repo flow).
+- For PRs, request secondary AI review with `@codex review`; add `@copilot review` for material-risk/high-complexity changes.
 
 ## GitHub Project Operating Policy (Mandatory)
 

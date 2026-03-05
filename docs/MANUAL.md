@@ -196,17 +196,21 @@ Additional PR rules:
   - include replacement reference in body/comment,
   - close or keep only as historical context.
 
-### Copilot Review
+### Secondary AI Review
 
+- Every PR MUST request a secondary Codex review comment after labels/body/checks are ready:
+  - `@codex review`
+- For material-risk changes (`SECURITY`, `PRODUCTION`, `DESTRUCTIVE`) or high-complexity refactors, also request:
+  - `@copilot review`
 - Copilot review is required for:
   - PRs linked to work items with `Risk=Medium` or `Risk=High`,
   - any PR classified as `Review Depth=Secondary Required`.
 - Copilot findings are classified as:
   - `Material`: security/auth/payment/session/data-loss/deploy/test-gap scope,
   - `Advisory`: quality/style/non-blocking scope.
-- Merge is blocked while any material Copilot finding is open.
+- Merge is blocked while any material Codex or Copilot finding is open.
 - Material findings may only be waived by a maintainer with explicit rationale and risk note.
-- Copilot does not replace required human review policy where applicable.
+- AI review is advisory and does not replace required human approval policy where applicable.
 
 ### Project Tracking
 
@@ -214,6 +218,10 @@ Maintain three active GitHub Project v2 boards:
 - `bominal Workstreams`: issue intake and delivery tracking.
 - `bominal Review`: PR review-depth and merge-readiness tracking.
 - `bominal Agent Command`: automation control-plane for dispatch, claim checkpoints, and policy escalations.
+
+Operational runbooks:
+- `docs/playbooks/GITHUB_PROJECT_AUTOMATION.md`
+- `docs/playbooks/GITHUB_PROJECT_OPERATIONS.md`
 
 `bominal Workstreams` required fields:
 - `Status`: `Triage`, `Ready`, `In Progress`, `In Review`, `Blocked`, `Done`
@@ -247,18 +255,19 @@ Automation expectations:
 - claim flow is checkpoint-driven: `Claimed` -> `Design Note Posted` -> `Draft PR Linked`,
 - hard domain lock applies: one `area:*` per implementation item and PR path-set,
 - area WIP cap is `1`; same-area merge conflicts auto-transition active claims to `Blocked` with rebase checklist,
-- linked PR review-ready state moves issue status to `In Review`,
+- linked PR review-ready state moves issue status to `In Review` (or mapped fallback when board options differ),
 - merged linked PR moves issue status to `Done`.
 
 Repository automation prerequisites:
-- repository variables:
+- preferred variables:
   - `BOMINAL_WORKSTREAMS_PROJECT_OWNER`
   - `BOMINAL_WORKSTREAMS_PROJECT_NUMBER`
+- review/command board variables:
   - `BOMINAL_REVIEW_PROJECT_OWNER`
   - `BOMINAL_REVIEW_PROJECT_NUMBER`
   - `BOMINAL_COMMAND_PROJECT_OWNER`
   - `BOMINAL_COMMAND_PROJECT_NUMBER`
-- repository secret `PROJECT_AUTOMATION_TOKEN` with `read:project` and `repo` scopes.
+- repository secret `PROJECT_AUTOMATION_TOKEN` with `project` and `repo` scopes.
 - transition compatibility while workflow migration is in progress:
   - keep legacy `BOMINAL_PROJECT_OWNER`
   - keep legacy `BOMINAL_PROJECT_NUMBER`

@@ -25,6 +25,7 @@ Active implementation plans:
 Operational playbooks:
 - `docs/playbooks/RUST_PRODUCTION_CUTOVER.md` - hard-cutover + rollback checklist for Rust production deploy.
 - `docs/playbooks/GITHUB_PROJECT_AUTOMATION.md` - board topology, agent dispatch checkpoints, secondary-review triggers, and Copilot material-finding disposition workflow.
+- `docs/playbooks/GITHUB_PROJECT_OPERATIONS.md` - tested PAT/MCP project-board operations runbook, automation validation flow, and secondary-review command policy (`@codex review`, risk-based `@copilot review`).
 
 Note:
 - Legacy split docs trees (governance/humans/agents/playbooks/plans/etc.) were intentionally removed from canonical usage.

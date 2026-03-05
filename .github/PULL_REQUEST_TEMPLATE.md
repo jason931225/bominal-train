@@ -32,6 +32,12 @@
 # paste verification commands/output summary
 ```
 
+## Secondary AI Review
+
+- [ ] Requested `@codex review` in PR comments
+- [ ] Requested `@copilot review` when risk is `SECURITY` / `PRODUCTION` / `DESTRUCTIVE` or implementation complexity is high
+- [ ] Material AI-review findings resolved or explicitly waived with rationale
+
 ## Docs And Wiki Impact
 
 - Docs updated:
