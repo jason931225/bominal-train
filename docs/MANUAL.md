@@ -148,7 +148,7 @@ Best-practice PR lifecycle:
 5. If duplicate, add `duplicate`, post a short replacement comment, and close or keep as historical.
 6. For docs-only PRs, keep scope narrow, apply `documentation`, and rely on docs-only CI/CD routing.
 
-### Copilot review (if possible)
+### Copilot Review (If Possible)
 
 - If human review is unavailable or delayed and repository access allows, request a Copilot review before merge.
 - Trigger it after labels and PR summary are set.
