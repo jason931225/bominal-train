@@ -617,13 +617,26 @@ pub fn render_dashboard_settings(email: &str) -> String {
     if (passkeyModalSaveButton) {{
       passkeyModalSaveButton.disabled = true;
     }}
-    passkeyLabelOverrides.set(selectedCredentialId, friendlyName);
-    persistPasskeyLabelOverrides();
-    showStatus(passkeyStatus, 'Passkey label updated for this browser.', 'success');
-    syncPasskeySelection();
-    await load();
-    if (passkeyModalSaveButton) {{
-      passkeyModalSaveButton.disabled = false;
+    try {{
+      const result = await requestJson(`/api/auth/passkeys/${{selectedCredentialId}}`, 'PATCH', {{
+        friendly_name: friendlyName,
+      }});
+      if (!result.ok) {{
+        const requestId = result.body && result.body.request_id ? ` (request_id: ${{result.body.request_id}})` : '';
+        showStatus(passkeyStatus, `Passkey label update failed${{requestId}}`, 'error');
+        return;
+      }}
+      passkeyLabelOverrides.delete(selectedCredentialId);
+      persistPasskeyLabelOverrides();
+      showStatus(passkeyStatus, 'Passkey label updated successfully.', 'success');
+      syncPasskeySelection();
+      await load();
+    }} catch (_err) {{
+      showStatus(passkeyStatus, 'Passkey label update failed.', 'error');
+    }} finally {{
+      if (passkeyModalSaveButton) {{
+        passkeyModalSaveButton.disabled = false;
+      }}
     }}
   }};
 
