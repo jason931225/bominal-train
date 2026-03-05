@@ -8,7 +8,7 @@ use axum::{
 };
 use bominal_shared::error::{ApiError, ApiErrorCode, ApiErrorStatus};
 
-use super::super::{AppState, request_id_from_headers};
+use super::super::super::{AppState, request_id_from_headers};
 
 const INTERNAL_SERVICE_TOKEN_HEADER: &str = "x-internal-service-token";
 const INTERNAL_SERVICE_AUDIENCE: &str = "internal-api";
@@ -469,7 +469,7 @@ mod tests {
             },
             db_pool: None,
             redis_client: None,
-            metrics_handle: super::super::super::init_metrics_recorder()
+            metrics_handle: super::super::super::super::init_metrics_recorder()
                 .expect("metrics recorder should initialize for tests"),
             http_client: reqwest::Client::new(),
             webauthn: None,
@@ -691,7 +691,7 @@ mod tests {
     #[test]
     fn compatibility_aliases_enabled_requires_non_prod_and_debug() {
         let production_debug = test_state("production-debug");
-        assert!(!compatibility_aliases_enabled(&production_debug));
+        assert!(!compatibility_aliases_enabled_impl(&production_debug));
 
         let dev_debug = test_state("dev-debug");
         assert!(compatibility_aliases_enabled_impl(&dev_debug));
