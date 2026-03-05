@@ -216,7 +216,7 @@ Maintain three active GitHub Project v2 boards:
 - `bominal Agent Command`: automation control-plane for dispatch, claim checkpoints, and policy escalations.
 
 `bominal Workstreams` required fields:
-- `Status`: `Triage`, `Ready`, `In Progress`, `Blocked`, `Done`
+- `Status`: `Triage`, `Ready`, `In Progress`, `In Review`, `Blocked`, `Done`
 - `Type`: `Bug`, `Enhancement`, `Docs`, `Chore`, `Security`, `Ops`
 - `Area`: aligned to `area:*` taxonomy
 - `Priority`: `P0`, `P1`, `P2`, `P3`

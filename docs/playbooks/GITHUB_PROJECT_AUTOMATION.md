@@ -18,7 +18,7 @@ Maintain three active GitHub Project v2 boards:
 ## Required Field Model
 
 ### `bominal Workstreams`
-- `Status`: `Triage`, `Ready`, `In Progress`, `Blocked`, `Done`
+- `Status`: `Triage`, `Ready`, `In Progress`, `In Review`, `Blocked`, `Done`
 - `Type`: `Bug`, `Enhancement`, `Docs`, `Chore`, `Security`, `Ops`
 - `Area`: label-aligned `area:*`
 - `Priority`: `P0`, `P1`, `P2`, `P3`
