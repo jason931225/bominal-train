@@ -1,11 +1,11 @@
 pub mod reqwest_client;
 
-use crate::providers::{ProviderAdapter, ProviderResult};
 use crate::providers::model::{
     LoginRequest, LoginResponse, ProviderOperationRequest, ProviderOperationResponse,
     SessionSnapshot,
 };
 use crate::providers::srt::SrtProviderAdapter;
+use crate::providers::{ProviderAdapter, ProviderResult};
 
 pub use reqwest_client::{KtxClientFailureKind, ReqwestKtxClient};
 

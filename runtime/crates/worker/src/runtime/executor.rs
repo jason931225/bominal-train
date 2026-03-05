@@ -16,9 +16,7 @@ use bominal_shared::{
         ReserveStandbyRequest, SearchTrainRequest, SecretString, SrtClientFailureKind,
         SrtOperationRequest, SrtOperationResponse, TicketInfoRequest,
     },
-    providers::srt::{
-        ReqwestSrtClient, SrtProviderAdapter,
-    },
+    providers::srt::{ReqwestSrtClient, SrtProviderAdapter},
     repo::{select_active_payment_method_secret_query, select_active_provider_auth_secret_query},
 };
 use chrono::Utc;
@@ -419,13 +417,11 @@ fn map_provider_error(
             "provider authentication failed",
             json!({"provider": provider, "operation": operation_name, "class": "auth"}),
         ),
-        ProviderError::NotLoggedIn | ProviderError::ReloginUnavailable => {
-            ExecutionError::new(
-                ExecutionErrorKind::Fatal,
-                "provider login/session material missing",
-                json!({"provider": provider, "operation": operation_name, "class": "missing_session"}),
-            )
-        }
+        ProviderError::NotLoggedIn | ProviderError::ReloginUnavailable => ExecutionError::new(
+            ExecutionErrorKind::Fatal,
+            "provider login/session material missing",
+            json!({"provider": provider, "operation": operation_name, "class": "missing_session"}),
+        ),
         ProviderError::OperationFailed { message } => {
             let kind = if message.to_ascii_lowercase().contains("rate_limited") {
                 ExecutionErrorKind::RateLimited

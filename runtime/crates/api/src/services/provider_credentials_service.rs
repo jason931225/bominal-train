@@ -6,9 +6,7 @@ use bominal_shared::{
     providers::ProviderError,
     providers::ktx::{KtxProviderAdapter, ReqwestKtxClient},
     providers::model::{LoginAccountType, LoginRequest, SecretString},
-    providers::srt::{
-        ReqwestSrtClient, SrtProviderAdapter,
-    },
+    providers::srt::{ReqwestSrtClient, SrtProviderAdapter},
     repo::{
         UpsertProviderAuthSecretParams, update_provider_auth_secret_metadata_query,
         upsert_provider_auth_secret_query,

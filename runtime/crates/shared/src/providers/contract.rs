@@ -4,11 +4,10 @@ use super::{
     model::{
         CancelRequest, CancelResponse, ClearRequest, ClearResponse, GetReservationsRequest,
         GetReservationsResponse, LoginRequest, LoginResponse, LogoutRequest, LogoutResponse,
-        PayWithCardRequest, PayWithCardResponse, RefundRequest, RefundResponse,
-        ReserveInfoRequest, ReserveInfoResponse, ReserveRequest, ReserveResponse,
-        ReserveStandbyOptionSettingsRequest, ReserveStandbyOptionSettingsResponse,
-        ReserveStandbyRequest, ReserveStandbyResponse, SearchTrainRequest, SearchTrainResponse,
-        TicketInfoRequest, TicketInfoResponse,
+        PayWithCardRequest, PayWithCardResponse, RefundRequest, RefundResponse, ReserveInfoRequest,
+        ReserveInfoResponse, ReserveRequest, ReserveResponse, ReserveStandbyOptionSettingsRequest,
+        ReserveStandbyOptionSettingsResponse, ReserveStandbyRequest, ReserveStandbyResponse,
+        SearchTrainRequest, SearchTrainResponse, TicketInfoRequest, TicketInfoResponse,
     },
 };
 
@@ -42,7 +41,8 @@ pub trait ProviderAdapter {
 
     fn cancel(&mut self, request: CancelRequest) -> ProviderResult<CancelResponse>;
 
-    fn pay_with_card(&mut self, request: PayWithCardRequest) -> ProviderResult<PayWithCardResponse>;
+    fn pay_with_card(&mut self, request: PayWithCardRequest)
+    -> ProviderResult<PayWithCardResponse>;
 
     fn reserve_info(&mut self, request: ReserveInfoRequest) -> ProviderResult<ReserveInfoResponse>;
 
