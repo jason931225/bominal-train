@@ -1,3 +1,5 @@
+use bominal_ui::render_auth_landing_pattern;
+
 pub fn render_auth_landing() -> String {
     let html = r#"
 <main class="mx-auto flex min-h-[100dvh] w-full px-4 py-6 2xl:px-8">
@@ -339,5 +341,5 @@ pub fn render_auth_landing() -> String {
 })();
 </script>
 "#;
-    html.to_string()
+    render_auth_landing_pattern(html)
 }

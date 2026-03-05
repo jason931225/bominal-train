@@ -150,6 +150,7 @@ async fn auth_landing_shows_passkey_first_controls() {
     assert!(html.contains("Authenticate with passkey"));
     assert!(html.contains("Sign in with email"));
     assert!(html.contains("bominal authentication"));
+    assert!(html.contains("data-ui-pattern=\"auth-landing\""));
     assert!(html.contains("data-theme-toggle"));
     assert!(html.contains("options.mediation === 'conditional'"));
     assert!(html.contains("PASSKEY_PROMPT_TIMEOUT_MS"));

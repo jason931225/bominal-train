@@ -373,3 +373,7 @@ pub fn render_dev_ui_showcase() -> String {
 {nav_preview}"#
     )
 }
+
+pub fn render_auth_landing_pattern(content: &str) -> String {
+    format!(r#"<div data-ui-pattern="auth-landing">{content}</div>"#)
+}
