@@ -153,7 +153,7 @@ jobs:
 
   dependency-review:
     name: Dependency Review
-    if: github.event_name == 'pull_request' && vars.CI_ENABLE_DEPENDENCY_REVIEW == 'true'
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -169,16 +169,89 @@ jobs:
           fail-on-severity: high
           fail-on-scopes: runtime
 
-  dependency-review-policy:
-    name: Dependency Review Policy
-    if: github.event_name == 'pull_request' && vars.CI_ENABLE_DEPENDENCY_REVIEW != 'true'
+  cargo-audit:
+    name: Cargo Audit
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
+    needs:
+      - secret-scan
+    defaults:
+      run:
+        working-directory: runtime
     steps:
-      - name: Explain dependency review policy
-        run: |
-          echo "Dependency Review is disabled by policy (CI_ENABLE_DEPENDENCY_REVIEW != 'true')."
-          echo "Enable repo variable CI_ENABLE_DEPENDENCY_REVIEW=true after required GitHub security features are available."
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo and build outputs
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: runtime
+          prefix-key: cargo-audit
+
+      - name: Install cargo-audit
+        uses: taiki-e/install-action@cargo-audit
+
+      - name: Run cargo audit
+        run: cargo audit --deny warnings
+
+  cargo-deny:
+    name: Cargo Deny
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs:
+      - secret-scan
+    defaults:
+      run:
+        working-directory: runtime
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo and build outputs
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: runtime
+          prefix-key: cargo-deny
+
+      - name: Install cargo-deny
+        uses: taiki-e/install-action@cargo-deny
+
+      - name: Run cargo deny checks
+        run: cargo deny check advisories bans sources
+
+  cargo-udeps:
+    name: Cargo Udeps
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs:
+      - secret-scan
+    defaults:
+      run:
+        working-directory: runtime
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup nightly Rust toolchain
+        uses: dtolnay/rust-toolchain@nightly
+
+      - name: Cache cargo and build outputs
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: runtime
+          prefix-key: cargo-udeps
+
+      - name: Install cargo-udeps
+        uses: taiki-e/install-action@cargo-udeps
+
+      - name: Run cargo udeps
+        run: cargo +nightly udeps --workspace --all-targets --locked
 
   rust-quality:
     name: Rust Quality Gates
@@ -247,7 +320,7 @@ jobs:
           RUST_COVERAGE_MIN: ${{ vars.RUST_COVERAGE_MIN }}
         run: |
           mkdir -p target/coverage
-          coverage_min="${RUST_COVERAGE_MIN:-35}"
+          coverage_min="${RUST_COVERAGE_MIN:-50}"
           cargo llvm-cov --workspace --fail-under-lines "${coverage_min}" --lcov --output-path target/coverage/lcov.info
 
       - name: Upload coverage report
