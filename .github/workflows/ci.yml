@@ -134,6 +134,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     needs:
+      - rust-quality
       - pr-execution-policy
     if: needs.pr-execution-policy.outputs.run_heavy == 'true'
     steps:
@@ -254,7 +255,7 @@ jobs:
 
   dependency-review:
     name: Dependency Review
-    if: github.event_name == 'pull_request' && vars.CI_ENABLE_DEPENDENCY_REVIEW == 'true'
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -272,25 +273,13 @@ jobs:
           fail-on-severity: high
           fail-on-scopes: runtime
 
-  dependency-review-policy:
-    name: Dependency Review Policy
-    if: github.event_name == 'pull_request' && vars.CI_ENABLE_DEPENDENCY_REVIEW != 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    needs:
-      - pr-execution-policy
-    steps:
-      - name: Explain dependency review policy
-        run: |
-          echo "Dependency Review is disabled by policy (CI_ENABLE_DEPENDENCY_REVIEW != 'true')."
-          echo "Enable repo variable CI_ENABLE_DEPENDENCY_REVIEW=true after required GitHub security features are available."
-
   rust-quality:
     name: Rust Quality Gates
     runs-on: ubuntu-latest
     timeout-minutes: 25
     needs:
       - secret-scan
+      - dependency-review
       - pr-execution-policy
     if: needs.pr-execution-policy.outputs.run_heavy == 'true'
     defaults:
@@ -319,15 +308,42 @@ jobs:
       - name: Lint
         run: cargo clippy --workspace --locked -- -D warnings
 
-      - name: Run tests
-        run: cargo test --workspace --locked
+      - name: Run unit tests
+        run: cargo test --workspace --locked --lib --bins
+
+  rust-integration:
+    name: Rust Integration Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs:
+      - rust-quality
+      - pr-execution-policy
+    if: needs.pr-execution-policy.outputs.run_heavy == 'true'
+    defaults:
+      run:
+        working-directory: runtime
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo and build outputs
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: runtime
+          prefix-key: integration
+
+      - name: Run integration tests
+        run: cargo test --workspace --locked --tests
 
   rust-coverage:
     name: Rust Coverage Gate
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs:
-      - rust-quality
+      - rust-integration
       - pr-execution-policy
     if: needs.pr-execution-policy.outputs.run_heavy == 'true'
     defaults:
@@ -372,6 +388,7 @@ jobs:
     timeout-minutes: 15
     needs:
       - changes
+      - rust-quality
       - secret-scan
       - pr-execution-policy
     defaults:
@@ -397,6 +414,7 @@ jobs:
     timeout-minutes: 15
     needs:
       - changes
+      - rust-quality
       - secret-scan
       - pr-execution-policy
     defaults:
@@ -425,6 +443,7 @@ jobs:
     timeout-minutes: 15
     needs:
       - changes
+      - rust-quality
       - secret-scan
       - pr-execution-policy
     steps:

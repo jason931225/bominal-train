@@ -52,13 +52,62 @@ jobs:
             }
             core.info(`global_mode=${mode}; release tagging allowed.`);
 
+  release-clean-preflight:
+    name: Release Clean Build Preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    needs:
+      - release-budget-guard
+    defaults:
+      run:
+        working-directory: runtime
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Clean cargo outputs
+        run: cargo clean
+
+      - name: Compile from scratch with locked dependencies
+        run: cargo check --workspace --locked
+
+      - name: Run unit tests from scratch
+        run: cargo test --workspace --locked --lib --bins
+
+      - name: Run integration tests from scratch
+        run: cargo test --workspace --locked --tests
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build runtime API image without cache
+        run: |
+          docker buildx build \
+            --no-cache \
+            --progress plain \
+            --file Dockerfile.api \
+            --tag bominal-api:release-preflight-${{ github.run_id }} \
+            .
+
+      - name: Build runtime worker image without cache
+        run: |
+          docker buildx build \
+            --no-cache \
+            --progress plain \
+            --file Dockerfile.worker \
+            --tag bominal-worker:release-preflight-${{ github.run_id }} \
+            .
+
   tag-and-release:
     name: Release Tag
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs:
-      - release-budget-guard
+      - release-clean-preflight
     environment: production
     steps:
       - name: Checkout

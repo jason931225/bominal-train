@@ -41,14 +41,14 @@ jobs:
               "Frontend Artifact Policy",
               "Script Quality",
               "Secret Scan",
+              "Dependency Review",
             ];
 
             const optionalIfPresent = [
               "Runtime API Image Smoke",
               "Rust Quality Gates",
+              "Rust Integration Tests",
               "Rust Coverage Gate",
-              "Dependency Review",
-              "Dependency Review Policy",
               "Frontend Asset Gate",
               "Payment Crypto Go Tests",
               "Station Catalog Snapshot Validation",

@@ -60,6 +60,8 @@ Execution rules:
 - Ensure PR `type:*`, `area:*`, and `priority:*` labels inherit from the linked issue.
 - For policy-scoped PRs, enforce review sequence: `@copilot review` first, then `@codex review`; material findings must be fixed or explicitly waived with a maintainer risk note.
 - Apply exactly one `ci:tier:*` label for non-promotion PRs (`ci:tier:light|standard|heavy`), and use `semver:*` only for production-release planning/promotion metadata.
+- Keep dependency vulnerability review always-on for PRs; do not bypass it with repo variables.
+- Preserve CI ordering: unit/static checks before integration-heavy checks.
 - Keep `@copilot review` usage judicious and within monthly budget (`300`, resets on the 1st UTC); rely on CI budget tracking before requesting additional reviews.
 - Keep Actions usage within minute-governance policy: `3000` monthly global cap with `300` reserved for CD workflows.
 - For project operations commands and MCP tooling, follow `docs/playbooks/GITHUB_PROJECT_AUTOMATION.md`.

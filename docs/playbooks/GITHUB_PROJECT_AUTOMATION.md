@@ -136,8 +136,15 @@ Implementation surfaces:
 - reusable evaluator: `.github/workflows/actions-budget-governor.yml`
 - PR/full CI policy: `.github/workflows/ci.yml`
 - push-minimal CI: `.github/workflows/ci-push-minimal.yml`
+- nightly clean-build CI: `.github/workflows/ci-clean-build-nightly.yml`
 - command handler: `.github/workflows/actions-budget-commands.yml`
 - daily report: `.github/workflows/actions-budget-report.yml`
+
+Efficiency defaults:
+- trigger model is `PR full CI + protected push minimal CI` (not all-branch push CI),
+- dependency vulnerability scan is always-on for PR CI,
+- unit/static gates execute before integration-heavy jobs,
+- CD selectively rebuilds changed runtime images and reuses stable refs for unchanged services.
 
 Operator commands:
 - `/budget status`

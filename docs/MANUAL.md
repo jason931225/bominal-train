@@ -80,22 +80,28 @@ Verification contract:
 Platform is intentionally tool-agnostic. Any CI/CD implementation MUST satisfy these outcome gates.
 
 Required pipeline stages:
+0. Trigger gate
+- full CI on pull requests to protected branches (`dev`, `staging`, `main`),
+- minimal post-merge guardrail CI on protected branch pushes,
+- docs/markdown-only changes bypass heavy CI/CD stages.
+
 1. Source integrity gate
 - deterministic checkout
 - lockfile integrity
 - forbidden-secret scan
 
 2. Build and static gate
-- compile all runtime services
+- compile all runtime services with locked dependencies
 - type/lint checks for web/runtime assets
+- scheduled clean-build verification without cache for dependency drift detection
 
 3. Test and quality gate
-- unit + integration test execution
+- unit tests first, then integration tests
 - coverage threshold enforcement
 - critical-path negative test enforcement
 
 4. Supply-chain and security gate
-- dependency vulnerability scan
+- dependency vulnerability scan on every pull request
 - base image provenance/signing checks
 
 5. Release gate
@@ -415,6 +421,7 @@ Required status checks:
 - `PR Governance`
 - `CI Budget Policy`
 - `PR Execution Policy`
+- `Dependency Review`
 - `Copilot Review Budget`
 - `Branch Policy Gate`
 
