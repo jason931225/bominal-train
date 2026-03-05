@@ -8,8 +8,7 @@ use crate::AppState;
 
 use super::{
     ProviderJobEvent, ProviderJobEventsPage, ProviderJobResult, ProviderJobsError,
-    mapping::validate_job_id,
-    state::runtime_job_exists,
+    mapping::validate_job_id, state::runtime_job_exists,
 };
 
 pub(crate) async fn get_provider_job(
