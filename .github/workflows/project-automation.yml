@@ -46,7 +46,7 @@ jobs:
             const ownerLogin = process.env.PROJECT_OWNER;
             const projectNumber = Number(process.env.PROJECT_NUMBER);
 
-            const queryProject = `
+            const queryUserProject = `
             query($owner:String!, $number:Int!) {
               user(login: $owner) {
                 projectV2(number: $number) {
@@ -63,6 +63,10 @@ jobs:
                   }
                 }
               }
+            }`;
+
+            const queryOrgProject = `
+            query($owner:String!, $number:Int!) {
               organization(login: $owner) {
                 projectV2(number: $number) {
                   id
@@ -80,8 +84,44 @@ jobs:
               }
             }`;
 
-            const projectResp = await github.graphql(queryProject, { owner: ownerLogin, number: projectNumber });
-            const project = projectResp.user?.projectV2 || projectResp.organization?.projectV2;
+            const hasOwnerLookupError = (error, kind) => {
+              const messages = [
+                error?.message || "",
+                ...((error?.errors || []).map((entry) => entry?.message || "")),
+              ].join(" ");
+              if (kind === "user") {
+                return messages.includes("Could not resolve to a User");
+              }
+              return messages.includes("Could not resolve to an Organization");
+            };
+
+            const loadProject = async () => {
+              try {
+                const resp = await github.graphql(queryUserProject, { owner: ownerLogin, number: projectNumber });
+                if (resp.user?.projectV2) {
+                  return resp.user.projectV2;
+                }
+              } catch (error) {
+                if (!hasOwnerLookupError(error, "user")) {
+                  throw error;
+                }
+              }
+
+              try {
+                const resp = await github.graphql(queryOrgProject, { owner: ownerLogin, number: projectNumber });
+                if (resp.organization?.projectV2) {
+                  return resp.organization.projectV2;
+                }
+              } catch (error) {
+                if (!hasOwnerLookupError(error, "organization")) {
+                  throw error;
+                }
+              }
+
+              return null;
+            };
+
+            const project = await loadProject();
             if (!project) {
               core.setFailed(`Project v2 not found for owner=${ownerLogin} number=${projectNumber}`);
               return;
@@ -141,12 +181,18 @@ jobs:
               return added.addProjectV2ItemById.item.id;
             };
 
-            const setSingleSelectByName = async (itemId, fieldName, optionName) => {
+            const setSingleSelectByName = async (itemId, fieldName, optionName, warnOnMissingOption = true) => {
               const fieldId = fieldByName.get(fieldName);
               const optionId = optionsByFieldName.get(fieldName)?.get(optionName);
-              if (!fieldId || !optionId) {
-                core.warning(`Missing project field/option mapping for ${fieldName}=${optionName}; skipping.`);
-                return;
+              if (!fieldId) {
+                core.warning(`Missing project field mapping for ${fieldName}; skipping.`);
+                return false;
+              }
+              if (!optionId) {
+                if (warnOnMissingOption) {
+                  core.warning(`Missing project option mapping for ${fieldName}=${optionName}; skipping.`);
+                }
+                return false;
               }
 
               await github.graphql(`
@@ -168,6 +214,42 @@ jobs:
                 fieldId,
                 optionId,
               });
+
+              return true;
+            };
+
+            const setSingleSelectByFallback = async (itemId, fieldName, optionNames) => {
+              for (let i = 0; i < optionNames.length; i += 1) {
+                const optionName = optionNames[i];
+                const didSet = await setSingleSelectByName(
+                  itemId,
+                  fieldName,
+                  optionName,
+                  i === optionNames.length - 1
+                );
+                if (didSet) {
+                  return true;
+                }
+              }
+              return false;
+            };
+
+            const setStatusByName = async (itemId, statusName) => {
+              const fallbackMap = {
+                Triage: ["Triage", "Todo"],
+                Ready: ["Ready", "Todo"],
+                "In Progress": ["In Progress"],
+                "In Review": ["In Review", "In Progress", "Todo"],
+                Blocked: ["Blocked", "In Progress", "Todo"],
+                Done: ["Done"],
+              };
+              const candidates = fallbackMap[statusName] || [statusName];
+              const didSet = await setSingleSelectByFallback(itemId, "Status", candidates);
+              if (!didSet) {
+                core.warning(`Missing project field/option mapping for Status candidates=${candidates.join(", ")}; skipping.`);
+                return false;
+              }
+              return true;
             };
 
             const labelsToFieldValue = (labels, prefix, mapping) => {
@@ -198,7 +280,7 @@ jobs:
                 statusValue = "Triage";
               }
               if (statusValue) {
-                await setSingleSelectByName(itemId, "Status", statusValue);
+                await setStatusByName(itemId, statusValue);
               }
 
               const typeValue = labelsToFieldValue(labels, "type:", {
@@ -210,6 +292,20 @@ jobs:
                 "type:ops": "Ops",
               });
               if (typeValue) await setSingleSelectByName(itemId, "Type", typeValue);
+
+              const areaValue = labelsToFieldValue(labels, "area:", {
+                "area:runtime-api": "runtime-api",
+                "area:runtime-worker": "runtime-worker",
+                "area:runtime-shared": "runtime-shared",
+                "area:runtime-frontend": "runtime-frontend",
+                "area:payment-crypto": "payment-crypto",
+                "area:docs": "docs",
+                "area:ci-cd": "ci-cd",
+                "area:infra": "infra",
+                "area:auth": "auth",
+                "area:observability": "observability",
+              });
+              if (areaValue) await setSingleSelectByName(itemId, "Area", areaValue);
 
               const priorityValue = labelsToFieldValue(labels, "priority:", {
                 "priority:p0": "P0",
@@ -264,7 +360,7 @@ jobs:
                   issue_number: issueNumber,
                 });
                 const itemId = await getProjectItemId(issue.data.node_id);
-                await setSingleSelectByName(itemId, "Status", status);
+                await setStatusByName(itemId, status);
                 core.info(`Updated linked issue #${issueNumber} status=${status}`);
               }
             }
