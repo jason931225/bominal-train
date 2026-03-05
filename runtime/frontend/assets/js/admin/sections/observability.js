@@ -19,6 +19,39 @@ const ensureLightweightCharts = async () => {
   return window.__bominalLwPromise;
 };
 
+const severityBadgeClass = (severity) => {
+  const normalized = toLower(severity);
+  if (normalized === "sev1") return "badge-critical";
+  if (normalized === "sev2") return "badge-warning";
+  if (normalized === "sev3") return "badge-muted";
+  return "badge-success";
+};
+
+const incidentStatusBadgeClass = (status) => {
+  const normalized = toLower(status);
+  if (normalized === "open") return "badge-critical";
+  if (normalized === "monitoring") return "badge-warning";
+  if (normalized === "resolved") return "badge-success";
+  return "badge-muted";
+};
+
+const eventBadgeClass = (eventType) => {
+  const normalized = toLower(eventType);
+  if (normalized.includes("error") || normalized.includes("fail")) return "badge-critical";
+  if (normalized.includes("warn") || normalized.includes("retry")) return "badge-warning";
+  if (normalized.includes("success") || normalized.includes("ok")) return "badge-success";
+  return "badge-muted";
+};
+
+const safeJsonSnippet = (value, maxLength = 560) => {
+  try {
+    const text = JSON.stringify(value ?? {}, null, 2);
+    return text.length > maxLength ? `${text.slice(0, maxLength)}…` : text;
+  } catch (_error) {
+    return "{}";
+  }
+};
+
 export const renderObservabilitySection = async (ctx) => {
   const state = {
     summary: null,
@@ -171,9 +204,21 @@ export const renderObservabilitySection = async (ctx) => {
     const eventRows = state.events.items
       .map(
         (event) => `
-          <article class="summary-row">
-            <span class="truncate">${escapeHtml(event.source)} · ${escapeHtml(event.event_type)}</span>
-            <span class="text-xs txt-supporting">${escapeHtml(formatDate(event.occurred_at))}</span>
+          <article class="admin-row">
+            <div class="min-w-0">
+              <p class="truncate text-sm font-semibold txt-strong">${escapeHtml(event.source)} · ${escapeHtml(event.event_type)}</p>
+              <div class="admin-row-meta">
+                <span class="badge ${eventBadgeClass(event.event_type)}">${escapeHtml(asText(event.event_type))}</span>
+                <span class="admin-pill">Source: ${escapeHtml(asText(event.source))}</span>
+                <span class="admin-pill">Target: ${escapeHtml(asText(event.target_id))}</span>
+                <span class="admin-pill">Request ID: ${escapeHtml(asText(event.request_id))}</span>
+                <span class="admin-pill">Occurred: ${escapeHtml(formatDate(event.occurred_at))}</span>
+              </div>
+            </div>
+            <details class="rounded-2xl border border-slate-200/70 bg-white/70 px-3 py-2 text-xs txt-faint">
+              <summary class="cursor-pointer txt-supporting">Detail preview</summary>
+              <pre class="mt-2 max-h-40 overflow-auto whitespace-pre-wrap">${escapeHtml(safeJsonSnippet(event.detail))}</pre>
+            </details>
           </article>
         `,
       )
@@ -185,7 +230,18 @@ export const renderObservabilitySection = async (ctx) => {
           <article class="admin-row" data-incident-id="${escapeHtml(incident.id)}">
             <div class="min-w-0">
               <p class="truncate text-sm font-semibold txt-strong">${escapeHtml(incident.title)}</p>
-              <p class="mt-1 text-xs txt-supporting">${escapeHtml(incident.severity)} · ${escapeHtml(incident.status)} · ${escapeHtml(formatDate(incident.opened_at))}</p>
+              <div class="admin-row-meta">
+                <span class="badge ${severityBadgeClass(incident.severity)}">${escapeHtml(asText(incident.severity))}</span>
+                <span class="badge ${incidentStatusBadgeClass(incident.status)}">${escapeHtml(asText(incident.status))}</span>
+                <span class="admin-pill">Opened: ${escapeHtml(formatDate(incident.opened_at))}</span>
+                <span class="admin-pill">Resolved: ${escapeHtml(formatDate(incident.resolved_at))}</span>
+                <span class="admin-pill">Creator: ${escapeHtml(asText(incident.created_by))}</span>
+              </div>
+              ${
+                incident.summary
+                  ? `<p class="mt-1 text-xs txt-supporting">${escapeHtml(asText(incident.summary))}</p>`
+                  : ""
+              }
             </div>
             <div class="admin-row-actions">
               <button class="btn-ghost h-10 w-full md:w-auto" data-incident-status="monitoring">Monitoring</button>
@@ -198,7 +254,7 @@ export const renderObservabilitySection = async (ctx) => {
 
     ctx.content.innerHTML = `
       <section class="grid grid-cols-1 gap-2 md:grid-cols-2">
-        <div class="summary-row"><span>Readiness</span><span class="badge">${summary.readiness_ok ? "Healthy" : "Degraded"}</span></div>
+        <div class="summary-row"><span>Readiness</span><span class="badge ${summary.readiness_ok ? "badge-success" : "badge-critical"}">${summary.readiness_ok ? "Healthy" : "Degraded"}</span></div>
         <div class="summary-row"><span>Error rate</span><span>${asText(summary.error_rate, "0")}</span></div>
         <div class="summary-row"><span>Average latency (ms)</span><span>${asText(summary.avg_latency_ms, "n/a")}</span></div>
         <div class="summary-row"><span>Total requests</span><span>${asText(summary.request_total, "n/a")}</span></div>
@@ -227,6 +283,10 @@ export const renderObservabilitySection = async (ctx) => {
           <input id="incident-filter-q" class="field-input h-10 md:col-span-2" placeholder="Search incidents" value="${escapeHtml(state.incidents.filters.q)}" />
           <input id="incident-filter-status" class="field-input h-10" placeholder="status" value="${escapeHtml(state.incidents.filters.status)}" />
           <input id="incident-filter-severity" class="field-input h-10" placeholder="severity" value="${escapeHtml(state.incidents.filters.severity)}" />
+          <div class="grid grid-cols-2 gap-2 md:col-span-4">
+            <button type="submit" class="btn-primary h-10 w-full">Apply</button>
+            <button type="button" id="incident-filter-reset" class="btn-ghost h-10 w-full">Reset</button>
+          </div>
         </form>
         ${incidentRows || '<div class="empty-card">No incidents.</div>'}
         ${
@@ -242,6 +302,11 @@ export const renderObservabilitySection = async (ctx) => {
           <input id="obs-filter-q" class="field-input h-10 md:col-span-2" placeholder="Search events" value="${escapeHtml(state.events.filters.q)}" />
           <input id="obs-filter-source" class="field-input h-10" placeholder="source" value="${escapeHtml(state.events.filters.source)}" />
           <input id="obs-filter-type" class="field-input h-10" placeholder="event_type" value="${escapeHtml(state.events.filters.event_type)}" />
+          <input id="obs-filter-target" class="field-input h-10" placeholder="target_id" value="${escapeHtml(state.events.filters.target_id)}" />
+          <div class="grid grid-cols-2 gap-2 md:col-span-4">
+            <button type="submit" class="btn-primary h-10 w-full">Apply</button>
+            <button type="button" id="obs-filter-reset" class="btn-ghost h-10 w-full">Reset</button>
+          </div>
         </form>
         ${eventRows || '<div class="empty-card">No observability events found.</div>'}
         ${
@@ -272,7 +337,8 @@ export const renderObservabilitySection = async (ctx) => {
       render();
     });
 
-    ctx.content.querySelector("#incident-filters")?.addEventListener("change", async () => {
+    ctx.content.querySelector("#incident-filters")?.addEventListener("submit", async (event) => {
+      event.preventDefault();
       state.incidents.filters.q = String(
         ctx.content.querySelector("#incident-filter-q")?.value || "",
       ).trim();
@@ -290,7 +356,18 @@ export const renderObservabilitySection = async (ctx) => {
       }
     });
 
-    ctx.content.querySelector("#obs-events-filters")?.addEventListener("change", async () => {
+    ctx.content.querySelector("#incident-filter-reset")?.addEventListener("click", async () => {
+      state.incidents.filters = { q: "", status: "", severity: "" };
+      try {
+        await fetchIncidents({ reset: true });
+        render();
+      } catch (error) {
+        ctx.setFlash("error", String(error));
+      }
+    });
+
+    ctx.content.querySelector("#obs-events-filters")?.addEventListener("submit", async (event) => {
+      event.preventDefault();
       state.events.filters.q = String(ctx.content.querySelector("#obs-filter-q")?.value || "").trim();
       state.events.filters.source = toLower(
         String(ctx.content.querySelector("#obs-filter-source")?.value || ""),
@@ -298,7 +375,19 @@ export const renderObservabilitySection = async (ctx) => {
       state.events.filters.event_type = toLower(
         String(ctx.content.querySelector("#obs-filter-type")?.value || ""),
       );
-      state.events.filters.target_id = "";
+      state.events.filters.target_id = String(
+        ctx.content.querySelector("#obs-filter-target")?.value || "",
+      ).trim();
+      try {
+        await fetchEvents({ reset: true });
+        render();
+      } catch (error) {
+        ctx.setFlash("error", String(error));
+      }
+    });
+
+    ctx.content.querySelector("#obs-filter-reset")?.addEventListener("click", async () => {
+      state.events.filters = { q: "", source: "", event_type: "", target_id: "" };
       try {
         await fetchEvents({ reset: true });
         render();
