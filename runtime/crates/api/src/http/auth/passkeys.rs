@@ -11,6 +11,11 @@ use bominal_shared::error::{ApiError, ApiErrorCode, ApiErrorStatus};
 use super::{SessionEnvelope, map_auth_error, map_passkey_error};
 use super::super::super::{AppState, request_id_from_headers, services::{auth_service, passkey_service}};
 
+#[derive(Debug, serde::Deserialize)]
+pub(super) struct UpdatePasskeyLabelRequest {
+    friendly_name: String,
+}
+
 pub(super) async fn passkeys_list(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
@@ -25,6 +30,17 @@ pub(super) async fn passkeys_list(
     }
 }
 
+pub(super) async fn passkey_get(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(credential_id): Path<String>,
+) -> impl IntoResponse {
+    match auth_service::get_session_passkey(state.as_ref(), &headers, &credential_id).await {
+        Ok(passkey) => (StatusCode::OK, Json(serde_json::json!({ "passkey": passkey }))).into_response(),
+        Err(err) => map_auth_error(err, &headers).into_response(),
+    }
+}
+
 pub(super) async fn passkey_delete(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
@@ -32,6 +48,48 @@ pub(super) async fn passkey_delete(
 ) -> impl IntoResponse {
     match auth_service::delete_session_passkey(state.as_ref(), &headers, &credential_id).await {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(err) => map_auth_error(err, &headers).into_response(),
+    }
+}
+
+pub(super) async fn passkey_update(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(credential_id): Path<String>,
+    Json(payload): Json<UpdatePasskeyLabelRequest>,
+) -> impl IntoResponse {
+    let friendly_name = payload.friendly_name.trim();
+    if friendly_name.is_empty() {
+        return ApiError::new(
+            ApiErrorStatus::BadRequest,
+            ApiErrorCode::InvalidRequest,
+            "friendly_name is required",
+            request_id_from_headers(&headers),
+        )
+        .into_response();
+    }
+    if friendly_name.chars().count() > 80 {
+        return ApiError::new(
+            ApiErrorStatus::BadRequest,
+            ApiErrorCode::InvalidRequest,
+            "friendly_name must be at most 80 characters",
+            request_id_from_headers(&headers),
+        )
+        .into_response();
+    }
+    match auth_service::update_session_passkey_label(
+        state.as_ref(),
+        &headers,
+        &credential_id,
+        friendly_name,
+    )
+    .await
+    {
+        Ok(()) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "updated": true, "credential_id": credential_id })),
+        )
+            .into_response(),
         Err(err) => map_auth_error(err, &headers).into_response(),
     }
 }

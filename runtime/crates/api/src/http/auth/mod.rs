@@ -42,7 +42,9 @@ pub(super) fn register(router: Router<Arc<AppState>>) -> Router<Arc<AppState>> {
         .route("/api/auth/passkeys", get(passkeys::passkeys_list))
         .route(
             "/api/auth/passkeys/{credential_id}",
-            delete(passkeys::passkey_delete),
+            get(passkeys::passkey_get)
+                .delete(passkeys::passkey_delete)
+                .patch(passkeys::passkey_update),
         )
         .route("/api/auth/invite/accept", post(callbacks::invite_accept))
         .route(

@@ -702,6 +702,58 @@ pub(crate) async fn list_session_passkeys(
         .collect())
 }
 
+pub(crate) async fn get_session_passkey(
+    state: &AppState,
+    headers: &HeaderMap,
+    credential_id: &str,
+) -> Result<PasskeySummary, AuthServiceError> {
+    let session = require_session_state(state, headers).await?;
+    let user_uuid = Uuid::parse_str(&session.user_id)
+        .map_err(|_| AuthServiceError::InvalidRequest("invalid user id"))?;
+    let normalized_credential_id = credential_id.trim();
+    if normalized_credential_id.is_empty() {
+        return Err(AuthServiceError::InvalidRequest(
+            "credential_id is required",
+        ));
+    }
+    let pool = state
+        .db_pool
+        .as_ref()
+        .ok_or(AuthServiceError::ServiceUnavailable("database unavailable"))?;
+    let row = sqlx::query_as::<
+        _,
+        (
+            String,
+            Option<String>,
+            DateTime<Utc>,
+            Option<DateTime<Utc>>,
+            sqlx::types::Json<serde_json::Value>,
+        ),
+    >(
+        "select credential_id, friendly_name, created_at, last_used_at, passkey
+         from user_passkeys
+         where user_id = $1 and credential_id = $2
+         limit 1",
+    )
+    .bind(user_uuid)
+    .bind(normalized_credential_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|_| AuthServiceError::Internal)?;
+
+    let row = row.ok_or(AuthServiceError::NotFound("passkey not found"))?;
+    let metadata = extract_passkey_metadata(&row.4.0);
+    Ok(PasskeySummary {
+        credential_id: row.0,
+        friendly_name: row.1,
+        created_at: row.2,
+        last_used_at: row.3,
+        aaguid: metadata.aaguid,
+        backup_eligible: metadata.backup_eligible,
+        backup_state: metadata.backup_state,
+    })
+}
+
 #[derive(Debug, Default)]
 struct PasskeyMetadata {
     aaguid: Option<String>,
@@ -812,6 +864,53 @@ pub(crate) async fn delete_session_passkey(
         .execute(pool)
         .await
         .map_err(|_| AuthServiceError::Internal)?;
+    if result.rows_affected() == 0 {
+        return Err(AuthServiceError::NotFound("passkey not found"));
+    }
+    Ok(())
+}
+
+pub(crate) async fn update_session_passkey_label(
+    state: &AppState,
+    headers: &HeaderMap,
+    credential_id: &str,
+    friendly_name: &str,
+) -> Result<(), AuthServiceError> {
+    let session = require_session_state(state, headers).await?;
+    let user_uuid = Uuid::parse_str(&session.user_id)
+        .map_err(|_| AuthServiceError::InvalidRequest("invalid user id"))?;
+    let normalized_credential_id = credential_id.trim();
+    if normalized_credential_id.is_empty() {
+        return Err(AuthServiceError::InvalidRequest(
+            "credential_id is required",
+        ));
+    }
+    let normalized_friendly_name = friendly_name.trim();
+    if normalized_friendly_name.is_empty() {
+        return Err(AuthServiceError::InvalidRequest(
+            "friendly_name is required",
+        ));
+    }
+    if normalized_friendly_name.chars().count() > 80 {
+        return Err(AuthServiceError::InvalidRequest(
+            "friendly_name must be at most 80 characters",
+        ));
+    }
+    let pool = state
+        .db_pool
+        .as_ref()
+        .ok_or(AuthServiceError::ServiceUnavailable("database unavailable"))?;
+    let result = sqlx::query(
+        "update user_passkeys
+         set friendly_name = $3, updated_at = now()
+         where user_id = $1 and credential_id = $2",
+    )
+    .bind(user_uuid)
+    .bind(normalized_credential_id)
+    .bind(normalized_friendly_name)
+    .execute(pool)
+    .await
+    .map_err(|_| AuthServiceError::Internal)?;
     if result.rows_affected() == 0 {
         return Err(AuthServiceError::NotFound("passkey not found"));
     }
