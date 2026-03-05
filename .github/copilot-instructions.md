@@ -20,6 +20,18 @@ Architecture:
 - `runtime/cloudrun/payment-crypto`: separate Go Cloud Run service with KMS-backed payment handling.
 - `runtime/frontend`: asset pipeline, not a separate SPA.
 
+Project-governance checks (mandatory):
+- Validate linked issue syntax (`Closes #...`) and required labels (`type:*`, `area:*`, `priority:*`).
+- Treat board policy as first-class contract:
+  - `bominal Workstreams` for issue state,
+  - `bominal Review` for review depth and merge readiness,
+  - `bominal Agent Command` for claim/checkpoint/escalation state.
+- Flag policy violations when PR scope crosses multiple `area:*` domains without explicit split/escalation.
+- Require secondary review posture for sensitive scope (`auth`, `payment-crypto`, deploy/infra, security) and high-risk changes.
+- Classify findings as:
+  - `Material`: security/auth/payment/session/data-loss/deploy/test-gap concerns (merge-blocking until fixed or maintainer waiver with risk note),
+  - `Advisory`: non-blocking quality improvements.
+
 Priorities, in order:
 1. Correctness and user-visible behavior
 2. Security and trust boundaries
@@ -42,6 +54,7 @@ When reviewing:
 - Only raise an issue when you can explain the failure mode or maintenance risk.
 - For each issue, name the scenario, why it matters, and the smallest safe fix.
 - Prefer targeted patches, assertions, or tests over broad rewrites.
+- Explicitly call out whether each blocking item is policy-material (must block merge) or advisory.
 
 Always check:
 - auth/authz, internal-service auth, cookie/session behavior, tenant isolation

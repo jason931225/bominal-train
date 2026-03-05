@@ -198,15 +198,24 @@ Additional PR rules:
 
 ### Copilot Review
 
-- If human review is delayed and repository access allows, request Copilot review after labels/body are complete.
-- Copilot is advisory and does not replace required human approval policy where applicable.
-- Unresolved Copilot threads must be resolved before merge when they flag material scope/documentation mismatches.
+- Copilot review is required for:
+  - PRs linked to work items with `Risk=Medium` or `Risk=High`,
+  - any PR classified as `Review Depth=Secondary Required`.
+- Copilot findings are classified as:
+  - `Material`: security/auth/payment/session/data-loss/deploy/test-gap scope,
+  - `Advisory`: quality/style/non-blocking scope.
+- Merge is blocked while any material Copilot finding is open.
+- Material findings may only be waived by a maintainer with explicit rationale and risk note.
+- Copilot does not replace required human review policy where applicable.
 
 ### Project Tracking
 
-Maintain a single active GitHub Project v2 board (`bominal Delivery`) for active work.
+Maintain three active GitHub Project v2 boards:
+- `bominal Workstreams`: issue intake and delivery tracking.
+- `bominal Review`: PR review-depth and merge-readiness tracking.
+- `bominal Agent Command`: automation control-plane for dispatch, claim checkpoints, and policy escalations.
 
-Required project fields:
+`bominal Workstreams` required fields:
 - `Status`: `Triage`, `Ready`, `In Progress`, `In Review`, `Blocked`, `Done`
 - `Type`: `Bug`, `Enhancement`, `Docs`, `Chore`, `Security`, `Ops`
 - `Area`: aligned to `area:*` taxonomy
@@ -214,16 +223,50 @@ Required project fields:
 - `Risk`: `Low`, `Medium`, `High`
 - `Target Release`: semver target (for example `v0.2.0`)
 - `Due Date`
+- `Linked PR`
+
+`bominal Review` required fields:
+- `Review Status`: `Ready for Review`, `Changes Requested`, `Approved`, `Merged`
+- `Review Depth`: `Standard`, `Secondary Required`
+- `Copilot Required`: `Yes`, `No`
+- `Copilot Material State`: `Clear`, `Material Open`, `Material Waived`
+- `Linked Issue`
+
+`bominal Agent Command` required fields:
+- `Queue Rank`
+- `Claim State`: `Ready`, `Claimed`, `Design Note Posted`, `Draft PR Linked`, `Blocked`, `Escalated`
+- `Checkpoint`: `Claim`, `Design Note`, `Draft PR`
+- `Domain Lock`: `Pass`, `Fail`
+- `Conflict State`: `None`, `Rebase Required`
+- `Escalation State`: `None`, `Secondary Review`, `Policy Exception`
 
 Automation expectations:
-- new issues are added to project with `Status=Triage`,
-- linked PR activity moves issue status to `In Review`,
+- new issues are auto-added to `bominal Workstreams` with `Status=Triage`,
+- implementation starts only from `Ready` issues with required labels/acceptance/verification metadata,
+- agent pickup order is deterministic: highest `priority:*`, then FIFO oldest `Ready`,
+- claim flow is checkpoint-driven: `Claimed` -> `Design Note Posted` -> `Draft PR Linked`,
+- hard domain lock applies: one `area:*` per implementation item and PR path-set,
+- area WIP cap is `1`; same-area merge conflicts auto-transition active claims to `Blocked` with rebase checklist,
+- linked PR review-ready state moves issue status to `In Review`,
 - merged linked PR moves issue status to `Done`.
 
 Repository automation prerequisites:
-- repository variable `BOMINAL_PROJECT_OWNER` (user/org that owns the Project v2),
-- repository variable `BOMINAL_PROJECT_NUMBER` (Project v2 number),
+- repository variables:
+  - `BOMINAL_WORKSTREAMS_PROJECT_OWNER`
+  - `BOMINAL_WORKSTREAMS_PROJECT_NUMBER`
+  - `BOMINAL_REVIEW_PROJECT_OWNER`
+  - `BOMINAL_REVIEW_PROJECT_NUMBER`
+  - `BOMINAL_COMMAND_PROJECT_OWNER`
+  - `BOMINAL_COMMAND_PROJECT_NUMBER`
 - repository secret `PROJECT_AUTOMATION_TOKEN` with `read:project` and `repo` scopes.
+- transition compatibility while workflow migration is in progress:
+  - keep legacy `BOMINAL_PROJECT_OWNER`
+  - keep legacy `BOMINAL_PROJECT_NUMBER`
+
+Agent policy:
+- agents MUST pull work from `bominal Agent Command` queue state, not ad-hoc branch choice,
+- no implementation PR without a linked issue (`Closes #...`),
+- secondary review is required when risk/sensitive scope or large-diff policy is triggered.
 
 ### Wiki Governance
 
@@ -255,7 +298,7 @@ Tagging model:
 
 Required branch settings:
 - require pull request before merge,
-- require at least 1 approving review,
+- require configured approving review count (solo mode may be `0`; policy-driven secondary review gates still apply),
 - dismiss stale approvals on new commits,
 - require conversation resolution,
 - require strict up-to-date status checks,
