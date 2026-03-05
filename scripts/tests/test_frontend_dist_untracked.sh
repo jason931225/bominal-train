@@ -17,23 +17,22 @@ require_command() {
 main() {
   require_command git
 
-  if ! git rev-parse --show-toplevel >/dev/null 2>&1; then
+  local repo_root
+  if ! repo_root="$(git rev-parse --show-toplevel 2>/dev/null)"; then
     fail "must be run from within a git repository"
   fi
 
-  local has_tracked_files
-  has_tracked_files=0
+  local tracked_files
+  if ! tracked_files="$(git -C "${repo_root}" ls-files -- "runtime/frontend/dist/**")"; then
+    fail "failed to query tracked files under runtime/frontend/dist/**"
+  fi
 
-  while IFS= read -r tracked_file; do
-    if [ "${has_tracked_files}" -eq 0 ]; then
-      printf '%s\n' "::error::runtime/frontend/dist must be generated-only and untracked."
-      printf '%s\n' "tracked files detected:"
-      has_tracked_files=1
-    fi
-    printf ' - %s\n' "${tracked_file}"
-  done < <(git ls-files -- "runtime/frontend/dist/**")
-
-  if [ "${has_tracked_files}" -eq 1 ]; then
+  if [ -n "${tracked_files}" ]; then
+    printf '%s\n' "::error::runtime/frontend/dist must be generated-only and untracked."
+    printf '%s\n' "tracked files detected:"
+    while IFS= read -r tracked_file; do
+      printf ' - %s\n' "${tracked_file}"
+    done <<< "${tracked_files}"
     exit 1
   fi
 }
