@@ -3,10 +3,11 @@ use std::{collections::BTreeMap, env, time::Duration};
 use bominal_shared::{
     crypto::{EnvelopeAad, EnvelopeCipher, PayloadKind, ServerEnvelopeCipher, StaticKeyring},
     providers::ProviderAdapter,
+    providers::ProviderError,
     providers::ktx::{KtxProviderAdapter, ReqwestKtxClient},
+    providers::model::{LoginAccountType, LoginRequest, SecretString},
     providers::srt::{
-        LoginAccountType, LoginRequest, ReqwestSrtClient, SecretString, SrtProviderAdapter,
-        SrtProviderError,
+        ReqwestSrtClient, SrtProviderAdapter,
     },
     repo::{
         UpsertProviderAuthSecretParams, update_provider_auth_secret_metadata_query,
@@ -448,15 +449,15 @@ fn probe_provider_login_blocking(
     }
 }
 
-fn probe_error_message(error: &SrtProviderError) -> String {
+fn probe_error_message(error: &ProviderError) -> String {
     match error {
-        SrtProviderError::Unauthorized | SrtProviderError::SessionExpired => {
+        ProviderError::Unauthorized | ProviderError::SessionExpired => {
             "Authentication failed. Verify account identifier and password.".to_string()
         }
-        SrtProviderError::NotLoggedIn | SrtProviderError::ReloginUnavailable => {
+        ProviderError::NotLoggedIn | ProviderError::ReloginUnavailable => {
             "Authentication failed. Provider session could not be created.".to_string()
         }
-        SrtProviderError::Transport { message } | SrtProviderError::OperationFailed { message } => {
+        ProviderError::Transport { message } | ProviderError::OperationFailed { message } => {
             let trimmed = message.trim();
             let lower = trimmed.to_ascii_lowercase();
             if lower.contains("timed out") || lower.contains("timeout") {
@@ -469,7 +470,7 @@ fn probe_error_message(error: &SrtProviderError) -> String {
                 trimmed.to_string()
             }
         }
-        SrtProviderError::UnsupportedOperation { .. } => {
+        ProviderError::UnsupportedOperation { .. } => {
             "Authentication probe is not supported for this provider.".to_string()
         }
     }
@@ -497,11 +498,11 @@ mod tests {
     #[test]
     fn probe_error_message_maps_auth_failures_to_actionable_text() {
         assert_eq!(
-            probe_error_message(&SrtProviderError::Unauthorized),
+            probe_error_message(&ProviderError::Unauthorized),
             "Authentication failed. Verify account identifier and password."
         );
         assert_eq!(
-            probe_error_message(&SrtProviderError::OperationFailed {
+            probe_error_message(&ProviderError::OperationFailed {
                 message: "rate_limited for login".to_string()
             }),
             "rate_limited for login"

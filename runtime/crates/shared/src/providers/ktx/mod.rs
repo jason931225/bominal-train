@@ -1,10 +1,11 @@
 pub mod reqwest_client;
 
-use crate::providers::ProviderAdapter;
-use crate::providers::srt::{
-    LoginRequest, LoginResponse, SessionSnapshot, SrtOperationRequest, SrtOperationResponse,
-    SrtProviderAdapter, SrtResult,
+use crate::providers::{ProviderAdapter, ProviderResult};
+use crate::providers::model::{
+    LoginRequest, LoginResponse, ProviderOperationRequest, ProviderOperationResponse,
+    SessionSnapshot,
 };
+use crate::providers::srt::SrtProviderAdapter;
 
 pub use reqwest_client::{KtxClientFailureKind, ReqwestKtxClient};
 
@@ -20,11 +21,14 @@ impl KtxProviderAdapter {
         }
     }
 
-    pub fn login(&mut self, request: LoginRequest) -> SrtResult<LoginResponse> {
+    pub fn login(&mut self, request: LoginRequest) -> ProviderResult<LoginResponse> {
         self.inner.login(request)
     }
 
-    pub fn dispatch(&mut self, request: SrtOperationRequest) -> SrtResult<SrtOperationResponse> {
+    pub fn dispatch(
+        &mut self,
+        request: ProviderOperationRequest,
+    ) -> ProviderResult<ProviderOperationResponse> {
         self.inner.dispatch(request)
     }
 

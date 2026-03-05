@@ -7,14 +7,17 @@ use bominal_shared::{
         RedactionMode, ServerEnvelopeCipher, StaticKeyring, redact_json,
     },
     providers::ProviderAdapter,
+    providers::ProviderError,
     providers::ktx::{KtxProviderAdapter, ReqwestKtxClient},
-    providers::srt::{
+    providers::model::{
         CancelRequest, CardIdentityType, ClearRequest, GetReservationsRequest, LoginAccountType,
         LoginRequest, LogoutRequest, Passenger, PayWithCardRequest, RefundRequest,
-        ReqwestSrtClient, ReserveInfoRequest, ReserveRequest, ReserveStandbyOptionSettingsRequest,
+        ReserveInfoRequest, ReserveRequest, ReserveStandbyOptionSettingsRequest,
         ReserveStandbyRequest, SearchTrainRequest, SecretString, SrtClientFailureKind,
-        SrtOperationRequest, SrtOperationResponse, SrtProviderAdapter, SrtProviderError,
-        TicketInfoRequest,
+        SrtOperationRequest, SrtOperationResponse, TicketInfoRequest,
+    },
+    providers::srt::{
+        ReqwestSrtClient, SrtProviderAdapter,
     },
     repo::{select_active_payment_method_secret_query, select_active_provider_auth_secret_query},
 };
@@ -401,29 +404,29 @@ fn build_redacted_result(job: &ClaimedRuntimeJob, response: &SrtOperationRespons
 }
 
 fn map_provider_error(
-    error: SrtProviderError,
+    error: ProviderError,
     provider: &str,
     operation_name: &str,
 ) -> ExecutionError {
     match error {
-        SrtProviderError::Transport { message } => ExecutionError::new(
+        ProviderError::Transport { message } => ExecutionError::new(
             ExecutionErrorKind::Transient,
             message,
             json!({"provider": provider, "operation": operation_name, "class": "transport"}),
         ),
-        SrtProviderError::SessionExpired | SrtProviderError::Unauthorized => ExecutionError::new(
+        ProviderError::SessionExpired | ProviderError::Unauthorized => ExecutionError::new(
             ExecutionErrorKind::Transient,
             "provider authentication failed",
             json!({"provider": provider, "operation": operation_name, "class": "auth"}),
         ),
-        SrtProviderError::NotLoggedIn | SrtProviderError::ReloginUnavailable => {
+        ProviderError::NotLoggedIn | ProviderError::ReloginUnavailable => {
             ExecutionError::new(
                 ExecutionErrorKind::Fatal,
                 "provider login/session material missing",
                 json!({"provider": provider, "operation": operation_name, "class": "missing_session"}),
             )
         }
-        SrtProviderError::OperationFailed { message } => {
+        ProviderError::OperationFailed { message } => {
             let kind = if message.to_ascii_lowercase().contains("rate_limited") {
                 ExecutionErrorKind::RateLimited
             } else {
@@ -441,7 +444,7 @@ fn map_provider_error(
                 json!({"provider": provider, "operation": operation_name, "class": class}),
             )
         }
-        SrtProviderError::UnsupportedOperation { operation } => ExecutionError::new(
+        ProviderError::UnsupportedOperation { operation } => ExecutionError::new(
             ExecutionErrorKind::Fatal,
             format!("provider operation '{operation}' is not supported"),
             json!({"provider": provider, "operation": operation_name, "class": "unsupported_operation"}),
@@ -450,20 +453,20 @@ fn map_provider_error(
 }
 
 #[cfg(test)]
-fn map_srt_error(error: SrtProviderError, operation_name: &str) -> ExecutionError {
+fn map_srt_error(error: ProviderError, operation_name: &str) -> ExecutionError {
     map_provider_error(error, "srt", operation_name)
 }
 
 fn dispatch_srt_with_client(
     parsed: &ParsedProviderExecution,
     client: ReqwestSrtClient,
-) -> Result<SrtOperationResponse, SrtProviderError> {
+) -> Result<SrtOperationResponse, ProviderError> {
     let mut adapter = SrtProviderAdapter::new(client);
     if operation_requires_login_material(&parsed.request) {
         let login_request = parsed
             .login_material
             .clone()
-            .ok_or(SrtProviderError::NotLoggedIn)?;
+            .ok_or(ProviderError::NotLoggedIn)?;
         adapter.login(login_request)?;
     }
     adapter.dispatch(parsed.request.clone())
@@ -472,22 +475,22 @@ fn dispatch_srt_with_client(
 fn dispatch_ktx_with_client(
     parsed: &ParsedProviderExecution,
     client: ReqwestKtxClient,
-) -> Result<SrtOperationResponse, SrtProviderError> {
+) -> Result<SrtOperationResponse, ProviderError> {
     let mut adapter = KtxProviderAdapter::new(client);
     if operation_requires_login_material(&parsed.request) {
         let login_request = parsed
             .login_material
             .clone()
-            .ok_or(SrtProviderError::NotLoggedIn)?;
+            .ok_or(ProviderError::NotLoggedIn)?;
         adapter.login(login_request)?;
     }
     adapter.dispatch(parsed.request.clone())
 }
 
-fn should_fallback_to_deterministic(error: &SrtProviderError) -> bool {
+fn should_fallback_to_deterministic(error: &ProviderError) -> bool {
     match error {
-        SrtProviderError::Transport { .. } => true,
-        SrtProviderError::OperationFailed { message } => {
+        ProviderError::Transport { .. } => true,
+        ProviderError::OperationFailed { message } => {
             message.to_ascii_lowercase().contains("rate_limited")
         }
         _ => false,
@@ -1840,7 +1843,7 @@ mod tests {
     #[test]
     fn map_srt_error_maps_operation_failed_to_rate_limited_or_fatal() {
         let rate_limited = map_srt_error(
-            SrtProviderError::OperationFailed {
+            ProviderError::OperationFailed {
                 message: "RATE_LIMITED by provider".to_string(),
             },
             "reserve",
@@ -1850,7 +1853,7 @@ mod tests {
         assert_eq!(rate_limited.context["class"], json!("rate_limited"));
 
         let fatal = map_srt_error(
-            SrtProviderError::OperationFailed {
+            ProviderError::OperationFailed {
                 message: "seat unavailable".to_string(),
             },
             "reserve",
@@ -1862,12 +1865,12 @@ mod tests {
 
     #[test]
     fn map_srt_error_maps_auth_and_missing_session_failures() {
-        let auth = map_srt_error(SrtProviderError::SessionExpired, "search_train");
+        let auth = map_srt_error(ProviderError::SessionExpired, "search_train");
         assert_eq!(auth.kind, ExecutionErrorKind::Transient);
         assert_eq!(auth.message, "provider authentication failed");
         assert_eq!(auth.context["class"], json!("auth"));
 
-        let missing_session = map_srt_error(SrtProviderError::NotLoggedIn, "pay_with_card");
+        let missing_session = map_srt_error(ProviderError::NotLoggedIn, "pay_with_card");
         assert_eq!(missing_session.kind, ExecutionErrorKind::Fatal);
         assert_eq!(
             missing_session.message,
@@ -1879,7 +1882,7 @@ mod tests {
     #[test]
     fn map_srt_error_maps_transport_and_unsupported_operation_failures() {
         let transport = map_srt_error(
-            SrtProviderError::Transport {
+            ProviderError::Transport {
                 message: "network timeout".to_string(),
             },
             "search_train",
@@ -1888,7 +1891,7 @@ mod tests {
         assert_eq!(transport.context["class"], json!("transport"));
 
         let unsupported = map_srt_error(
-            SrtProviderError::UnsupportedOperation {
+            ProviderError::UnsupportedOperation {
                 operation: "mystery_op",
             },
             "clear",
@@ -1921,7 +1924,7 @@ mod tests {
 
     #[test]
     fn map_provider_error_preserves_provider_label() {
-        let error = map_provider_error(SrtProviderError::Unauthorized, "ktx", "login");
+        let error = map_provider_error(ProviderError::Unauthorized, "ktx", "login");
         assert_eq!(error.kind, ExecutionErrorKind::Transient);
         assert_eq!(error.context["provider"], json!("ktx"));
         assert_eq!(error.context["operation"], json!("login"));
@@ -1955,7 +1958,7 @@ mod tests {
             .expect_err("reserve_info should be unsupported for ktx");
         assert!(matches!(
             &error,
-            SrtProviderError::UnsupportedOperation { operation } if *operation == "reserve_info"
+            ProviderError::UnsupportedOperation { operation } if *operation == "reserve_info"
         ));
 
         let mapped = map_provider_error(error, "ktx", "reserve_info");
