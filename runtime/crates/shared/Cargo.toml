@@ -22,7 +22,6 @@ sha2.workspace = true
 sqlx.workspace = true
 thiserror.workspace = true
 to-kana.workspace = true
-tracing.workspace = true
 tracing-subscriber.workspace = true
 url.workspace = true
 
