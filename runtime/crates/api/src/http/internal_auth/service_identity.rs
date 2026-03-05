@@ -8,7 +8,7 @@ use axum::{
 };
 use bominal_shared::error::{ApiError, ApiErrorCode, ApiErrorStatus};
 
-use super::super::{AppState, request_id_from_headers};
+use super::super::super::{AppState, request_id_from_headers};
 
 const INTERNAL_SERVICE_TOKEN_HEADER: &str = "x-internal-service-token";
 const INTERNAL_SERVICE_AUDIENCE: &str = "internal-api";
@@ -35,12 +35,12 @@ struct JwtHeader {
 }
 
 #[derive(Debug)]
-enum InternalAuthError {
+pub(super) enum InternalAuthError {
     MissingServiceToken,
     InvalidServiceToken,
 }
 
-pub(super) async fn require_service_jwt(
+pub(super) async fn require_service_jwt_impl(
     State(state): State<Arc<AppState>>,
     request: Request,
     next: Next,
@@ -66,7 +66,7 @@ pub(super) async fn require_service_jwt(
     }
 }
 
-pub(super) fn compatibility_aliases_enabled(state: &AppState) -> bool {
+pub(super) fn compatibility_aliases_enabled_impl(state: &AppState) -> bool {
     let app_env = normalize_app_env(&state.config.app_env);
     let non_production = !matches!(app_env.as_str(), "production" | "prod");
     let internal_debug_mode = internal_debug_mode_enabled(&app_env);
@@ -74,7 +74,10 @@ pub(super) fn compatibility_aliases_enabled(state: &AppState) -> bool {
     non_production && internal_debug_mode
 }
 
-fn validate_service_token(state: &AppState, headers: &HeaderMap) -> Result<(), InternalAuthError> {
+pub(super) fn validate_service_token(
+    state: &AppState,
+    headers: &HeaderMap,
+) -> Result<(), InternalAuthError> {
     let token = headers
         .get(INTERNAL_SERVICE_TOKEN_HEADER)
         .and_then(|value| value.to_str().ok())
@@ -466,7 +469,7 @@ mod tests {
             },
             db_pool: None,
             redis_client: None,
-            metrics_handle: super::super::super::init_metrics_recorder()
+            metrics_handle: super::super::super::super::init_metrics_recorder()
                 .expect("metrics recorder should initialize for tests"),
             http_client: reqwest::Client::new(),
             webauthn: None,
@@ -688,12 +691,12 @@ mod tests {
     #[test]
     fn compatibility_aliases_enabled_requires_non_prod_and_debug() {
         let production_debug = test_state("production-debug");
-        assert!(!compatibility_aliases_enabled(&production_debug));
+        assert!(!compatibility_aliases_enabled_impl(&production_debug));
 
         let dev_debug = test_state("dev-debug");
-        assert!(compatibility_aliases_enabled(&dev_debug));
+        assert!(compatibility_aliases_enabled_impl(&dev_debug));
 
         let prod = test_state("prod");
-        assert!(!compatibility_aliases_enabled(&prod));
+        assert!(!compatibility_aliases_enabled_impl(&prod));
     }
 }
