@@ -33,13 +33,13 @@ When reviewing:
 Always check:
 
 - External contract changes: APIs, CLI flags, config, schemas, events, persisted data, serialization formats
-- Compatibility: old clients, existing data, rolling deploys, partial migrations, mixed-version environments
+- Compatibility: old clients, existing data, rolling deploys, partial migrations, mixed-version environments, database schema/queue-key compatibility, rollback safety for migrations/deploy scripts
 - Data safety: validation, idempotency, transactions, retries, duplicate handling, null/empty/default cases
 - Failure paths: timeouts, cancellation, retries, backoff, partial success, cleanup, logging, metrics, alerts
 - Security: authn/authz, secret handling, unsafe deserialization, injection, SSRF, path traversal, tenant isolation
 - State and concurrency: races, stale caches, ordering assumptions, lost updates, reentrancy, resource leaks
 - Performance: N+1 behavior, unnecessary allocations, repeated I/O, unbounded scans, hot-loop work, large payloads
-- Observability: actionable errors, structured logs, tracing/metrics around risky code paths
+- Observability: actionable errors, structured logs, tracing/metrics, and health/readiness behavior around risky code paths
 - Tests: missing regression tests, edge cases, failure-path coverage, compatibility or migration tests
 
 For refactors and large rewrites:
@@ -76,26 +76,7 @@ Architecture:
 - `runtime/frontend` is an asset pipeline, not a separate SPA.
 - `runtime/migrations` is deploy-critical.
 
-Review priorities:
-
-1. User-visible behavior and API/config/env contracts
-2. Security and data handling boundaries
-3. Compatibility across deploys, migrations, and mixed versions
-4. Reliability: timeouts, retries, cancellation, idempotency, DLQ/lease behavior
-5. Performance on hot paths
-6. Tests and observability
-
 Prefer durable contracts over file layout. Large refactors are acceptable if behavior, safety, rollout compatibility, and test coverage are preserved.
-
-Always check:
-
-- auth/authz, internal-service auth, session/cookie behavior
-- database schema changes, queue keys, Redis/Postgres compatibility
-- health/readiness/metrics behavior
-- rollback safety for migrations and deploy scripts
-- missing negative-path and regression tests
-- logging/redaction quality
-- unnecessary allocations, blocking work on async paths, N+1 queries, full-table scans, repeated remote calls
 
 Output format:
 
@@ -104,5 +85,3 @@ Output format:
 3. Important issues
 4. Optional improvements
 5. Suggested tests
-
-If the change looks good, say so clearly and list residual risks worth testing instead of inventing issues.
