@@ -1404,7 +1404,7 @@ pub fn render_dashboard_settings_providers(email: &str) -> String {
       const providerKey = normalizeProvider(provider.provider);
       const statusMessage = providerStatusMessage(provider);
       const probeStatus = providerAuthProbeStatus(provider);
-      const hasError = Boolean(provider.credentials_ready) && probeStatus === 'error';
+      const hasError = probeStatus === 'error';
       return `
         <button type="button" class="summary-card provider-select-card p-3 w-full text-left" data-provider-open="${providerKey || ''}">
           <span class="flex h-8 items-center justify-between gap-2">
@@ -2180,6 +2180,7 @@ mod tests {
     fn dashboard_provider_security_submit_shows_auth_probe_status_feedback() {
         let html = render_dashboard_settings_providers("admin@bominal.local");
         assert!(html.contains("const providerAuthProbeStatus = (provider) => {"));
+        assert!(html.contains("const hasError = probeStatus === 'error';"));
         assert!(html.contains("const probeStatus = typeof result.auth_probe_status === 'string'"));
         assert!(html.contains(
             "showStatus('error', probeMessage || `${submittedProvider.toUpperCase()}: Authentication failed.`);"
