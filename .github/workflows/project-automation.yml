@@ -6,6 +6,7 @@ on:
       - opened
       - reopened
       - labeled
+      - unlabeled
       - edited
   pull_request:
     types:
@@ -13,6 +14,8 @@ on:
       - reopened
       - ready_for_review
       - synchronize
+      - labeled
+      - unlabeled
       - closed
 
 permissions:
@@ -23,35 +26,66 @@ permissions:
 jobs:
   sync-project:
     name: Project Automation
-    if: (vars.BOMINAL_WORKSTREAMS_PROJECT_OWNER != '' && vars.BOMINAL_WORKSTREAMS_PROJECT_NUMBER != '') || (vars.BOMINAL_PROJECT_OWNER != '' && vars.BOMINAL_PROJECT_NUMBER != '')
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
     env:
       PROJECT_AUTOMATION_TOKEN: ${{ secrets.PROJECT_AUTOMATION_TOKEN }}
+      WORKSTREAMS_PROJECT_OWNER: ${{ vars.BOMINAL_WORKSTREAMS_PROJECT_OWNER }}
+      WORKSTREAMS_PROJECT_NUMBER: ${{ vars.BOMINAL_WORKSTREAMS_PROJECT_NUMBER }}
+      REVIEW_PROJECT_OWNER: ${{ vars.BOMINAL_REVIEW_PROJECT_OWNER }}
+      REVIEW_PROJECT_NUMBER: ${{ vars.BOMINAL_REVIEW_PROJECT_NUMBER }}
+      COMMAND_PROJECT_OWNER: ${{ vars.BOMINAL_COMMAND_PROJECT_OWNER }}
+      COMMAND_PROJECT_NUMBER: ${{ vars.BOMINAL_COMMAND_PROJECT_NUMBER }}
+      LEGACY_PROJECT_OWNER: ${{ vars.BOMINAL_PROJECT_OWNER }}
+      LEGACY_PROJECT_NUMBER: ${{ vars.BOMINAL_PROJECT_NUMBER }}
     steps:
       - name: Explain missing token
         if: env.PROJECT_AUTOMATION_TOKEN == ''
         run: |
           echo "Project automation is skipped because secrets.PROJECT_AUTOMATION_TOKEN is not configured."
 
-      - name: Sync issue and PR state into Project v2
+      - name: Sync issue and PR state into Project v2 boards
         if: env.PROJECT_AUTOMATION_TOKEN != ''
         uses: actions/github-script@v7
-        env:
-          PROJECT_OWNER: ${{ vars.BOMINAL_WORKSTREAMS_PROJECT_OWNER || vars.BOMINAL_PROJECT_OWNER }}
-          PROJECT_NUMBER: ${{ vars.BOMINAL_WORKSTREAMS_PROJECT_NUMBER || vars.BOMINAL_PROJECT_NUMBER }}
         with:
           github-token: ${{ env.PROJECT_AUTOMATION_TOKEN }}
           script: |
-            const ownerLogin = process.env.PROJECT_OWNER;
-            const projectNumber = Number(process.env.PROJECT_NUMBER);
+            const toInt = (value) => {
+              const parsed = Number(value);
+              return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+            };
+
+            const normalizeOwner = (value) => (value || "").trim();
+
+            const projectTargets = [
+              {
+                key: "workstreams",
+                owner: normalizeOwner(process.env.WORKSTREAMS_PROJECT_OWNER || process.env.LEGACY_PROJECT_OWNER),
+                number: toInt(process.env.WORKSTREAMS_PROJECT_NUMBER || process.env.LEGACY_PROJECT_NUMBER),
+              },
+              {
+                key: "review",
+                owner: normalizeOwner(process.env.REVIEW_PROJECT_OWNER),
+                number: toInt(process.env.REVIEW_PROJECT_NUMBER),
+              },
+              {
+                key: "command",
+                owner: normalizeOwner(process.env.COMMAND_PROJECT_OWNER),
+                number: toInt(process.env.COMMAND_PROJECT_NUMBER),
+              },
+            ].filter((target) => target.owner && target.number);
+
+            if (projectTargets.length === 0) {
+              core.setFailed("No project automation target is configured. Set BOMINAL_WORKSTREAMS_* (or legacy BOMINAL_PROJECT_*) and optional REVIEW/COMMAND project vars.");
+              return;
+            }
 
             const queryUserProject = `
             query($owner:String!, $number:Int!) {
               user(login: $owner) {
                 projectV2(number: $number) {
                   id
-                  fields(first: 50) {
+                  fields(first: 100) {
                     nodes {
                       ... on ProjectV2FieldCommon { id name }
                       ... on ProjectV2SingleSelectField {
@@ -70,7 +104,7 @@ jobs:
               organization(login: $owner) {
                 projectV2(number: $number) {
                   id
-                  fields(first: 50) {
+                  fields(first: 100) {
                     nodes {
                       ... on ProjectV2FieldCommon { id name }
                       ... on ProjectV2SingleSelectField {
@@ -84,63 +118,76 @@ jobs:
               }
             }`;
 
-            const hasOwnerLookupError = (error, kind) => {
-              const messages = [
-                error?.message || "",
-                ...((error?.errors || []).map((entry) => entry?.message || "")),
-              ].join(" ");
-              if (kind === "user") {
-                return messages.includes("Could not resolve to a User");
-              }
-              return messages.includes("Could not resolve to an Organization");
-            };
-
-            const loadProject = async () => {
+            const resolveProject = async (target) => {
+              let project = null;
               try {
-                const resp = await github.graphql(queryUserProject, { owner: ownerLogin, number: projectNumber });
-                if (resp.user?.projectV2) {
-                  return resp.user.projectV2;
-                }
+                const userResp = await github.graphql(queryUserProject, {
+                  owner: target.owner,
+                  number: target.number,
+                });
+                project = userResp.user?.projectV2 || null;
               } catch (error) {
-                if (!hasOwnerLookupError(error, "user")) {
+                const message = String(error?.message || "");
+                if (!message.includes("Could not resolve to a User")) {
                   throw error;
                 }
               }
 
-              try {
-                const resp = await github.graphql(queryOrgProject, { owner: ownerLogin, number: projectNumber });
-                if (resp.organization?.projectV2) {
-                  return resp.organization.projectV2;
-                }
-              } catch (error) {
-                if (!hasOwnerLookupError(error, "organization")) {
-                  throw error;
+              if (!project) {
+                try {
+                  const orgResp = await github.graphql(queryOrgProject, {
+                    owner: target.owner,
+                    number: target.number,
+                  });
+                  project = orgResp.organization?.projectV2 || null;
+                } catch (error) {
+                  const message = String(error?.message || "");
+                  if (!message.includes("Could not resolve to an Organization")) {
+                    throw error;
+                  }
                 }
               }
 
-              return null;
+              if (!project) {
+                core.warning(`Project ${target.key} not found for owner=${target.owner} number=${target.number}; skipping target.`);
+                return null;
+              }
+
+              const fieldByName = new Map();
+              const optionsByFieldName = new Map();
+              for (const field of project.fields.nodes || []) {
+                if (!field?.name || !field?.id) continue;
+                fieldByName.set(field.name, field.id);
+                if (Array.isArray(field.options)) {
+                  optionsByFieldName.set(
+                    field.name,
+                    new Map(field.options.map((option) => [option.name, option.id]))
+                  );
+                }
+              }
+
+              return {
+                ...target,
+                id: project.id,
+                fieldByName,
+                optionsByFieldName,
+              };
             };
 
-            const project = await loadProject();
-            if (!project) {
-              core.setFailed(`Project v2 not found for owner=${ownerLogin} number=${projectNumber}`);
+            const projects = {};
+            for (const target of projectTargets) {
+              const project = await resolveProject(target);
+              if (project) {
+                projects[target.key] = project;
+              }
+            }
+
+            if (Object.keys(projects).length === 0) {
+              core.setFailed("No configured projects were resolvable via token/owner/number.");
               return;
             }
 
-            const fieldByName = new Map();
-            const optionsByFieldName = new Map();
-            for (const field of project.fields.nodes || []) {
-              if (!field?.name || !field?.id) continue;
-              fieldByName.set(field.name, field.id);
-              if (Array.isArray(field.options)) {
-                optionsByFieldName.set(
-                  field.name,
-                  new Map(field.options.map((opt) => [opt.name, opt.id]))
-                );
-              }
-            }
-
-            const getProjectItemId = async (contentId) => {
+            const getProjectItemId = async (project, contentId) => {
               let after = null;
               while (true) {
                 const page = await github.graphql(`
@@ -164,9 +211,13 @@ jobs:
 
                 const items = page.node.items.nodes || [];
                 const found = items.find((item) => item.content?.id === contentId);
-                if (found) return found.id;
+                if (found) {
+                  return found.id;
+                }
 
-                if (!page.node.items.pageInfo.hasNextPage) break;
+                if (!page.node.items.pageInfo.hasNextPage) {
+                  break;
+                }
                 after = page.node.items.pageInfo.endCursor;
               }
 
@@ -181,17 +232,25 @@ jobs:
               return added.addProjectV2ItemById.item.id;
             };
 
-            const setSingleSelectByName = async (itemId, fieldName, optionName, warnOnMissingOption = true) => {
-              const fieldId = fieldByName.get(fieldName);
-              const optionId = optionsByFieldName.get(fieldName)?.get(optionName);
-              if (!fieldId) {
-                core.warning(`Missing project field mapping for ${fieldName}; skipping.`);
-                return false;
+            const resolveSingleSelectOptionName = (project, fieldName, optionName, fallbackOptions = []) => {
+              const options = project.optionsByFieldName.get(fieldName);
+              if (!options) {
+                return null;
               }
-              if (!optionId) {
-                if (warnOnMissingOption) {
-                  core.warning(`Missing project option mapping for ${fieldName}=${optionName}; skipping.`);
+              for (const candidate of [optionName, ...fallbackOptions]) {
+                if (options.has(candidate)) {
+                  return candidate;
                 }
+              }
+              return null;
+            };
+
+            const setSingleSelectByName = async (project, itemId, fieldName, optionName, fallbackOptions = []) => {
+              const fieldId = project.fieldByName.get(fieldName);
+              const resolvedOptionName = resolveSingleSelectOptionName(project, fieldName, optionName, fallbackOptions);
+              const optionId = project.optionsByFieldName.get(fieldName)?.get(resolvedOptionName);
+              if (!fieldId || !optionId) {
+                core.info(`Skipping missing field/option mapping on ${project.key}: ${fieldName}=${optionName}`);
                 return false;
               }
 
@@ -214,41 +273,6 @@ jobs:
                 fieldId,
                 optionId,
               });
-
-              return true;
-            };
-
-            const setSingleSelectByFallback = async (itemId, fieldName, optionNames) => {
-              for (let i = 0; i < optionNames.length; i += 1) {
-                const optionName = optionNames[i];
-                const didSet = await setSingleSelectByName(
-                  itemId,
-                  fieldName,
-                  optionName,
-                  i === optionNames.length - 1
-                );
-                if (didSet) {
-                  return true;
-                }
-              }
-              return false;
-            };
-
-            const setStatusByName = async (itemId, statusName) => {
-              const fallbackMap = {
-                Triage: ["Triage", "Todo"],
-                Ready: ["Ready", "Todo"],
-                "In Progress": ["In Progress"],
-                "In Review": ["In Review", "In Progress", "Todo"],
-                Blocked: ["Blocked", "In Progress", "Todo"],
-                Done: ["Done"],
-              };
-              const candidates = fallbackMap[statusName] || [statusName];
-              const didSet = await setSingleSelectByFallback(itemId, "Status", candidates);
-              if (!didSet) {
-                core.warning(`Missing project field/option mapping for Status candidates=${candidates.join(", ")}; skipping.`);
-                return false;
-              }
               return true;
             };
 
@@ -258,11 +282,58 @@ jobs:
               return mapping[label] || null;
             };
 
+            const statusFallbacks = {
+              Triage: ["Todo"],
+              Ready: ["Todo"],
+              "In Progress": [],
+              "In Review": ["In Progress"],
+              Blocked: ["In Progress", "Todo"],
+              Done: [],
+            };
+
+            const areaFieldValue = (labels) => labelsToFieldValue(labels, "area:", {
+              "area:runtime-api": "Runtime API",
+              "area:runtime-worker": "Runtime Worker",
+              "area:runtime-shared": "Runtime Shared",
+              "area:runtime-frontend": "Runtime Frontend",
+              "area:payment-crypto": "Payment Crypto",
+              "area:docs": "Docs",
+              "area:ci-cd": "CI/CD",
+              "area:infra": "Infra",
+              "area:auth": "Auth",
+              "area:observability": "Observability",
+            });
+
+            const mapEnvStage = (baseRef) => ({
+              dev: "Development",
+              staging: "Staging",
+              main: "Production",
+            }[baseRef] || null);
+
+            const parseLinkedIssueNumbers = (body) => {
+              const refs = [...(body || "").matchAll(/(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+(?:(?<owner>[A-Za-z0-9_.-]+)\/(?<repo>[A-Za-z0-9_.-]+))?#(?<issue>\d+)/ig)]
+                .map((match) => ({
+                  owner: match.groups?.owner || null,
+                  repo: match.groups?.repo || null,
+                  issueNumber: Number(match.groups?.issue),
+                }))
+                .filter((match) => Number.isFinite(match.issueNumber))
+                .filter((match) => {
+                  if (!match.owner || !match.repo) {
+                    return true;
+                  }
+                  return (
+                    match.owner.toLowerCase() === context.repo.owner.toLowerCase() &&
+                    match.repo.toLowerCase() === context.repo.repo.toLowerCase()
+                  );
+                });
+              return [...new Set(refs.map((ref) => ref.issueNumber))];
+            };
+
             if (context.eventName === "issues") {
               const issue = context.payload.issue;
               const action = context.payload.action;
-              const labels = (issue.labels || []).map((l) => typeof l === "string" ? l : l.name);
-              const itemId = await getProjectItemId(issue.node_id);
+              const labels = (issue.labels || []).map((label) => typeof label === "string" ? label : label.name);
 
               const statusFromLabel = labelsToFieldValue(labels, "status:", {
                 "status:triage": "Triage",
@@ -273,56 +344,69 @@ jobs:
                 "status:done": "Done",
               });
 
-              let statusValue = null;
-              if (statusFromLabel) {
-                statusValue = statusFromLabel;
-              } else if (action === "opened" || action === "reopened") {
-                statusValue = "Triage";
+              if (projects.workstreams) {
+                const itemId = await getProjectItemId(projects.workstreams, issue.node_id);
+
+                let statusValue = statusFromLabel;
+                if (!statusValue && ["opened", "reopened"].includes(action)) {
+                  statusValue = "Triage";
+                }
+                if (statusValue) {
+                  await setSingleSelectByName(projects.workstreams, itemId, "Status", statusValue, statusFallbacks[statusValue] || []);
+                }
+
+                const typeValue = labelsToFieldValue(labels, "type:", {
+                  "type:bug": "Bug",
+                  "type:enhancement": "Enhancement",
+                  "type:documentation": "Docs",
+                  "type:chore": "Chore",
+                  "type:security": "Security",
+                  "type:ops": "Ops",
+                });
+                if (typeValue) await setSingleSelectByName(projects.workstreams, itemId, "Type", typeValue);
+
+                const areaValue = areaFieldValue(labels);
+                if (areaValue) {
+                  await setSingleSelectByName(projects.workstreams, itemId, "Area", areaValue, [areaValue.replace("/", ""), areaValue.replace(" ", "")]);
+                }
+
+                const priorityValue = labelsToFieldValue(labels, "priority:", {
+                  "priority:p0": "P0",
+                  "priority:p1": "P1",
+                  "priority:p2": "P2",
+                  "priority:p3": "P3",
+                });
+                if (priorityValue) await setSingleSelectByName(projects.workstreams, itemId, "Priority", priorityValue);
+
+                const riskValue = labelsToFieldValue(labels, "risk:", {
+                  "risk:low": "Low",
+                  "risk:medium": "Medium",
+                  "risk:high": "High",
+                });
+                if (riskValue) await setSingleSelectByName(projects.workstreams, itemId, "Risk", riskValue);
+
+                const promotionMode = labels.includes("promotion:auto") ? "Auto" : "Manual";
+                await setSingleSelectByName(projects.workstreams, itemId, "Promotion Mode", promotionMode, [promotionMode.toLowerCase()]);
               }
-              if (statusValue) {
-                await setStatusByName(itemId, statusValue);
+
+              if (projects.command) {
+                const itemId = await getProjectItemId(projects.command, issue.node_id);
+                if (["opened", "reopened"].includes(action)) {
+                  await setSingleSelectByName(projects.command, itemId, "Claim State", "Ready");
+                  await setSingleSelectByName(projects.command, itemId, "Checkpoint", "Claim");
+                }
+
+                const areaLabels = labels.filter((label) => label.startsWith("area:"));
+                const domainLock = areaLabels.length === 1 ? "Pass" : "Fail";
+                await setSingleSelectByName(projects.command, itemId, "Domain Lock", domainLock);
+
+                const highRisk = labels.includes("risk:high") || labels.includes("type:security");
+                const sensitiveArea = ["area:auth", "area:payment-crypto", "area:ci-cd", "area:infra"].some((label) => labels.includes(label));
+                const escalationState = (highRisk || sensitiveArea) ? "Secondary Review" : "None";
+                await setSingleSelectByName(projects.command, itemId, "Escalation State", escalationState);
               }
 
-              const typeValue = labelsToFieldValue(labels, "type:", {
-                "type:bug": "Bug",
-                "type:enhancement": "Enhancement",
-                "type:documentation": "Docs",
-                "type:chore": "Chore",
-                "type:security": "Security",
-                "type:ops": "Ops",
-              });
-              if (typeValue) await setSingleSelectByName(itemId, "Type", typeValue);
-
-              const areaValue = labelsToFieldValue(labels, "area:", {
-                "area:runtime-api": "runtime-api",
-                "area:runtime-worker": "runtime-worker",
-                "area:runtime-shared": "runtime-shared",
-                "area:runtime-frontend": "runtime-frontend",
-                "area:payment-crypto": "payment-crypto",
-                "area:docs": "docs",
-                "area:ci-cd": "ci-cd",
-                "area:infra": "infra",
-                "area:auth": "auth",
-                "area:observability": "observability",
-              });
-              if (areaValue) await setSingleSelectByName(itemId, "Area", areaValue);
-
-              const priorityValue = labelsToFieldValue(labels, "priority:", {
-                "priority:p0": "P0",
-                "priority:p1": "P1",
-                "priority:p2": "P2",
-                "priority:p3": "P3",
-              });
-              if (priorityValue) await setSingleSelectByName(itemId, "Priority", priorityValue);
-
-              const riskValue = labelsToFieldValue(labels, "risk:", {
-                "risk:low": "Low",
-                "risk:medium": "Medium",
-                "risk:high": "High",
-              });
-              if (riskValue) await setSingleSelectByName(itemId, "Risk", riskValue);
-
-              core.info(`Synced issue #${issue.number} to project item ${itemId}`);
+              core.info(`Issue #${issue.number} synced to configured project targets.`);
               return;
             }
 
@@ -330,51 +414,82 @@ jobs:
               const pr = context.payload.pull_request;
               const action = context.payload.action;
               if (action === "closed" && !pr.merged) {
-                core.info(`PR #${pr.number} closed without merge; skipping linked issue status transition.`);
+                core.info(`PR #${pr.number} closed without merge; skipping board transitions.`);
                 return;
               }
+              const labels = (pr.labels || []).map((label) => typeof label === "string" ? label : label.name);
+              const linkedIssueNumbers = parseLinkedIssueNumbers(pr.body || "");
+              const stage = mapEnvStage(pr.base.ref);
 
-              const status = (action === "closed" && pr.merged) ? "Done" : "In Review";
-              const body = pr.body || "";
-              const issueRefs = [...body.matchAll(/(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+(?:(?<owner>[A-Za-z0-9_.-]+)\/(?<repo>[A-Za-z0-9_.-]+))?#(?<issue>\d+)/ig)]
-                .map((m) => ({
-                  owner: m.groups?.owner || null,
-                  repo: m.groups?.repo || null,
-                  issueNumber: Number(m.groups?.issue),
-                }))
-                .filter((m) => Number.isFinite(m.issueNumber))
-                .filter((m) => {
-                  if (!m.owner || !m.repo) {
-                    return true;
-                  }
-                  return (
-                    m.owner.toLowerCase() === context.repo.owner.toLowerCase() &&
-                    m.repo.toLowerCase() === context.repo.repo.toLowerCase()
-                  );
-                });
+              if (projects.review) {
+                const prItemId = await getProjectItemId(projects.review, pr.node_id);
+                let reviewStatus = "Ready for Review";
+                if (action === "closed" && pr.merged) {
+                  reviewStatus = "Merged";
+                } else if (pr.draft) {
+                  reviewStatus = "Changes Requested";
+                }
+                await setSingleSelectByName(projects.review, prItemId, "Review Status", reviewStatus, ["In Review", "Todo"]);
 
-              for (const issueNumber of [...new Set(issueRefs.map((m) => m.issueNumber))]) {
-                const issue = await github.rest.issues.get({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  issue_number: issueNumber,
-                });
-                const itemId = await getProjectItemId(issue.data.node_id);
-                await setStatusByName(itemId, status);
-                core.info(`Updated linked issue #${issueNumber} status=${status}`);
+                const highRisk = labels.includes("risk:high") || labels.includes("type:security");
+                const mediumRisk = labels.includes("risk:medium");
+                const sensitiveArea = ["area:auth", "area:payment-crypto", "area:ci-cd", "area:infra"].some((label) => labels.includes(label));
+                const reviewDepth = (highRisk || sensitiveArea) ? "Secondary Required" : "Standard";
+                await setSingleSelectByName(projects.review, prItemId, "Review Depth", reviewDepth);
+
+                const copilotRequired = (highRisk || mediumRisk || reviewDepth === "Secondary Required") ? "Yes" : "No";
+                await setSingleSelectByName(projects.review, prItemId, "Copilot Required", copilotRequired);
+
+                const materialState = labels.includes("copilot:material-open")
+                  ? "Material Open"
+                  : labels.includes("copilot:material-waived")
+                    ? "Material Waived"
+                    : "Clear";
+                await setSingleSelectByName(projects.review, prItemId, "Copilot Material State", materialState);
               }
-            }
 
-  config-missing:
-    name: Project Automation Config Missing
-    if: (vars.BOMINAL_WORKSTREAMS_PROJECT_OWNER == '' || vars.BOMINAL_WORKSTREAMS_PROJECT_NUMBER == '') && (vars.BOMINAL_PROJECT_OWNER == '' || vars.BOMINAL_PROJECT_NUMBER == '')
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Explain missing configuration
-        run: |
-          echo "Project automation is skipped because one or more required vars are missing."
-          echo "Configure either:"
-          echo "- vars.BOMINAL_WORKSTREAMS_PROJECT_OWNER + vars.BOMINAL_WORKSTREAMS_PROJECT_NUMBER"
-          echo "or legacy fallback:"
-          echo "- vars.BOMINAL_PROJECT_OWNER + vars.BOMINAL_PROJECT_NUMBER"
+              if (projects.workstreams && linkedIssueNumbers.length > 0) {
+                const status = (action === "closed" && pr.merged) ? "Done" : "In Review";
+                for (const issueNumber of linkedIssueNumbers) {
+                  const issue = await github.rest.issues.get({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: issueNumber,
+                  });
+                  const issueItemId = await getProjectItemId(projects.workstreams, issue.data.node_id);
+                  await setSingleSelectByName(projects.workstreams, issueItemId, "Status", status, statusFallbacks[status] || []);
+
+                  if (stage) {
+                    await setSingleSelectByName(projects.workstreams, issueItemId, "Env Stage", stage, [stage.toLowerCase()]);
+                  }
+
+                  const promotionState = (action === "closed" && pr.merged)
+                    ? (pr.base.ref === "main" ? "Released" : `Merged to ${pr.base.ref}`)
+                    : "PR Open";
+                  await setSingleSelectByName(projects.workstreams, issueItemId, "Promotion State", promotionState, ["In Review", "Active"]);
+
+                  const promotionMode = labels.includes("promotion:auto") ? "Auto" : "Manual";
+                  await setSingleSelectByName(projects.workstreams, issueItemId, "Promotion Mode", promotionMode, [promotionMode.toLowerCase()]);
+                }
+              }
+
+              if (projects.command && linkedIssueNumbers.length > 0) {
+                for (const issueNumber of linkedIssueNumbers) {
+                  const issue = await github.rest.issues.get({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: issueNumber,
+                  });
+                  const issueItemId = await getProjectItemId(projects.command, issue.data.node_id);
+                  if (action === "closed" && pr.merged) {
+                    await setSingleSelectByName(projects.command, issueItemId, "Claim State", "Draft PR Linked");
+                    await setSingleSelectByName(projects.command, issueItemId, "Checkpoint", "Draft PR");
+                  } else {
+                    await setSingleSelectByName(projects.command, issueItemId, "Claim State", "Draft PR Linked");
+                    await setSingleSelectByName(projects.command, issueItemId, "Checkpoint", "Draft PR");
+                  }
+                }
+              }
+
+              core.info(`PR #${pr.number} synced to configured project targets.`);
+            }

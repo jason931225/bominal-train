@@ -3,9 +3,13 @@ name: Workflow Lint
 on:
   pull_request:
     branches:
+      - dev
+      - staging
       - main
   push:
     branches:
+      - dev
+      - staging
       - main
   workflow_dispatch:
 

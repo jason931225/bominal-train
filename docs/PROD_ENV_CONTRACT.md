@@ -86,7 +86,6 @@ VM secret file expectation:
 
 | Key | Classification | Rationale |
 |---|---|---|
-| `AUTO_DEPLOY_MAIN` | `optional` | enables deploy on push to `main` when explicitly set to `true` |
 | `GCP_PROJECT_ID` | `required` | required for workload identity and VM target project |
 | `GCP_WORKLOAD_IDENTITY_PROVIDER` | `required` | required for OIDC federation |
 | `GCP_SERVICE_ACCOUNT` | `required` | required for federated deploy identity |
@@ -148,7 +147,6 @@ VM secret file expectation:
 | `POSTGRES_PORT` | `required` | required deploy-time Postgres port contract for self-hosted DB |
 | `POSTGRES_DB` | `required` | required deploy-time Postgres database name contract |
 | `POSTGRES_USER` | `required` | required deploy-time Postgres username contract |
-| `AUTO_DEPLOY_MAIN` | `optional` | enables deploy on push to `main` when explicitly set to `true` |
 | `DEPLOY_COMPOSE_PROJECT_NAME` | `optional` | compose project scoping when non-default naming is used |
 | `DEPLOY_ROLLBACK_STATE_PATH` | `optional` | explicit path for rollback state persistence |
 | `DEPLOY_VM_BASELINE_SCRIPT` | `optional` | override path for host baseline guard script |

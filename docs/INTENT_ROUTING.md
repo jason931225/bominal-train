@@ -15,6 +15,7 @@ Use this map to jump directly to the correct section in `docs/MANUAL.md`.
 | docs policy / docs workflow | `docs/MANUAL.md#documentation-governance` |
 | github governance / pr / labels / issues / projects / wiki / milestones / tags | `docs/MANUAL.md#github-project-management-policy` |
 | project board automation / agent dispatch / claim checkpoints / secondary review / copilot disposition | `docs/MANUAL.md#project-tracking` |
+| branch promotion flow / dev staging main / promotion command | `docs/playbooks/GITHUB_PROJECT_AUTOMATION.md` |
 | project board operating runbook | `docs/playbooks/GITHUB_PROJECT_AUTOMATION.md` |
 | project board commands / PAT bootstrap / MCP github usage | `docs/playbooks/GITHUB_PROJECT_OPERATIONS.md` |
 | missing infra / backfill | `docs/MANUAL.md#current-gap-register-and-backfill-targets` |

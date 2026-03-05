@@ -286,7 +286,7 @@ Repository automation prerequisites:
   - `BOMINAL_REVIEW_PROJECT_NUMBER`
   - `BOMINAL_COMMAND_PROJECT_OWNER`
   - `BOMINAL_COMMAND_PROJECT_NUMBER`
-- repository secret `PROJECT_AUTOMATION_TOKEN` with `project` and `repo` scopes.
+- repository secret `PROJECT_AUTOMATION_TOKEN` with `repo`, `project`, and `read:project` scopes.
 - transition compatibility while workflow migration is in progress:
   - keep legacy `BOMINAL_PROJECT_OWNER`
   - keep legacy `BOMINAL_PROJECT_NUMBER`

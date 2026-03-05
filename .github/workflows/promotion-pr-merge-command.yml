@@ -1,0 +1,157 @@
+name: Promotion PR Merge Command
+
+on:
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  contents: read
+  checks: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  promote-merge:
+    name: Merge Promotion PR on Command
+    if: startsWith(github.event.comment.body, '/promote merge')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Validate and merge promotion PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const issue = context.payload.issue;
+            const comment = context.payload.comment;
+            const commenter = comment.user?.login;
+
+            if (!issue.pull_request) {
+              core.info("/promote merge comment is not on a pull request; skipping.");
+              return;
+            }
+
+            const prNumber = issue.number;
+            const prResp = await github.rest.pulls.get({ owner, repo, pull_number: prNumber });
+            const pr = prResp.data;
+
+            const permissionResp = await github.rest.repos.getCollaboratorPermissionLevel({
+              owner,
+              repo,
+              username: commenter,
+            });
+            const permission = permissionResp.data.permission;
+            const allowed = ["admin", "maintain", "write"].includes(permission);
+            if (!allowed) {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: prNumber,
+                body: `@${commenter} is not authorized to run /promote merge (requires write/maintain/admin).`,
+              });
+              core.setFailed(`Unauthorized commenter ${commenter} (${permission})`);
+              return;
+            }
+
+            if (pr.state !== "open") {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: prNumber,
+                body: `@${commenter} PR #${prNumber} is not open; merge command ignored.`,
+              });
+              return;
+            }
+
+            const allowedPairs = new Set([
+              "dev->staging",
+              "staging->main",
+              "main->staging",
+              "staging->dev",
+            ]);
+            const pair = `${pr.head.ref}->${pr.base.ref}`;
+            if (!allowedPairs.has(pair)) {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: prNumber,
+                body: `@${commenter} merge command rejected. Branch pair ${pair} is not a promotion/back-promotion flow.`,
+              });
+              core.setFailed(`Invalid promotion pair ${pair}`);
+              return;
+            }
+
+            if (pr.mergeable === false) {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: prNumber,
+                body: `@${commenter} PR #${prNumber} is not mergeable yet (merge conflicts or branch state issues).`,
+              });
+              core.setFailed("PR is not mergeable");
+              return;
+            }
+
+            const checks = await github.rest.checks.listForRef({
+              owner,
+              repo,
+              ref: pr.head.sha,
+              per_page: 100,
+            });
+
+            const runs = (checks.data.check_runs || []).filter((run) => run.name !== "Branch Policy Gate");
+            const unfinished = runs.filter((run) => run.status !== "completed");
+            const failed = runs.filter((run) => run.status === "completed" && !["success", "neutral", "skipped"].includes(run.conclusion));
+
+            if (unfinished.length > 0 || failed.length > 0) {
+              const pendingNames = unfinished.map((run) => run.name).join(", ");
+              const failedNames = failed.map((run) => `${run.name}=${run.conclusion}`).join(", ");
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: prNumber,
+                body: `@${commenter} cannot merge yet. Pending checks: [${pendingNames || "none"}] Failed checks: [${failedNames || "none"}].`,
+              });
+              core.setFailed("Checks are not fully green");
+              return;
+            }
+
+            const reviewsResp = await github.rest.pulls.listReviews({
+              owner,
+              repo,
+              pull_number: prNumber,
+              per_page: 100,
+            });
+
+            const latestReviewByUser = new Map();
+            for (const review of reviewsResp.data) {
+              if (!review.user?.login) continue;
+              latestReviewByUser.set(review.user.login, review.state);
+            }
+            const blockingChangesRequested = [...latestReviewByUser.values()].includes("CHANGES_REQUESTED");
+            if (blockingChangesRequested) {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: prNumber,
+                body: `@${commenter} cannot merge while CHANGES_REQUESTED review state is active. Resolve or re-review first.`,
+              });
+              core.setFailed("Active CHANGES_REQUESTED review present");
+              return;
+            }
+
+            await github.rest.pulls.merge({
+              owner,
+              repo,
+              pull_number: prNumber,
+              merge_method: "squash",
+            });
+
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number: prNumber,
+              body: `Promotion merge completed by @${commenter} via /promote merge.`,
+            });

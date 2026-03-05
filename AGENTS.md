@@ -53,9 +53,12 @@ Execution rules:
 - Keep one `area:*` domain per implementation item and PR path-set (hard domain lock).
 - Follow claim checkpoints in order: `Claimed` -> `Design Note Posted` -> `Draft PR Linked`.
 - Respect area WIP cap (`1`) to avoid same-domain merge conflicts.
-- Ensure PRs use `Closes #...`, pass required checks, and resolve review conversations before merge.
+- Use branch flow strictly: implementation -> `dev`, promotion `dev -> staging -> main`, hotfix `hotfix/* -> main` then back-promote.
+- Ensure PRs use `Closes #...` (except explicit promotion/back-promotion PRs), pass required checks, and resolve review conversations before merge.
 - Ensure PR `type:*`, `area:*`, and `priority:*` labels inherit from the linked issue.
-- For policy-scoped PRs, enforce Copilot material-finding disposition (fix or maintainer waiver with risk note).
+- For policy-scoped PRs, enforce review sequence: `@copilot review` first, then `@codex review`; material findings must be fixed or explicitly waived with a maintainer risk note.
+- For project operations commands and MCP tooling, follow `docs/playbooks/GITHUB_PROJECT_AUTOMATION.md`.
+- If `gh` lacks project scopes, load `GH_PAT_FULL` from `env/dev/test.env` as documented in the playbook before board operations.
 
 ## Current Infrastructure Reality
 
