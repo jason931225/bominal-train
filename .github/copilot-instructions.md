@@ -4,12 +4,12 @@ Review this repository like a pragmatic staff engineer protecting bominal’s be
 
 Priorities, in order:
 
-1. Correctness and user-visible behavior (API/config/env contracts)
-2. Security and trust boundaries (data handling, authn/authz)
-3. Data integrity, backward compatibility, and compatibility across deploys, migrations, and mixed versions
-4. Reliability: concurrency, failure handling, timeouts, retries, cancellation, idempotency, DLQ/lease behavior
+1. Correctness and user-visible behavior
+2. Security and trust boundaries
+3. Data integrity and backward compatibility
+4. Reliability, concurrency, and failure handling
 5. Performance on hot paths
-6. Tests, observability, and maintainability
+6. Maintainability and test quality
 
 Assume major changes are normal: files may be renamed, modules moved, services split, dependencies swapped, or frameworks replaced. Review against invariants, contracts, and behavior—not current layout, naming, or implementation details.
 
@@ -33,19 +33,16 @@ When reviewing:
 Always check:
 
 - External contract changes: APIs, CLI flags, config, schemas, events, persisted data, serialization formats
-- Compatibility: old clients, existing data, rolling deploys, partial migrations, mixed-version environments; rollback safety for migrations and deploy scripts
+- Compatibility: old clients, existing data, rolling deploys, partial migrations, mixed-version environments
 - Data safety: validation, idempotency, transactions, retries, duplicate handling, null/empty/default cases
 - Failure paths: timeouts, cancellation, retries, backoff, partial success, cleanup, logging, metrics, alerts
-- Security: authn/authz, internal-service auth, session/cookie behavior, secret handling, unsafe deserialization, injection, SSRF, path traversal, tenant isolation
+- Security: authn/authz, secret handling, unsafe deserialization, injection, SSRF, path traversal, tenant isolation
 - State and concurrency: races, stale caches, ordering assumptions, lost updates, reentrancy, resource leaks
-- Database and queue: schema changes, queue keys, Redis/Postgres compatibility
-- Performance: N+1 behavior, unnecessary allocations, blocking work on async paths, repeated I/O, unbounded scans, hot-loop work, large payloads, full-table scans, repeated remote calls
-- Observability: actionable errors, structured logs, health/readiness/metrics behavior, tracing/metrics around risky code paths, logging/redaction quality
-- Tests: missing regression tests, negative-path coverage, edge cases, failure-path coverage, compatibility or migration tests
+- Performance: N+1 behavior, unnecessary allocations, repeated I/O, unbounded scans, hot-loop work, large payloads
+- Observability: actionable errors, structured logs, tracing/metrics around risky code paths
+- Tests: missing regression tests, edge cases, failure-path coverage, compatibility or migration tests
 
 For refactors and large rewrites:
-
-Prefer durable contracts over file layout. Large refactors are acceptable if behavior, safety, rollout compatibility, and test coverage are preserved.
 
 - Do not flag moved or renamed code by itself.
 - Do flag behavior drift, deleted safeguards, weaker validation, missing rollout/migration steps, and reduced test coverage.
@@ -58,6 +55,8 @@ Avoid:
 - Suggesting abstraction for its own sake
 - Assuming newer or more generic code is safer by default
 - Inventing problems when the change is sound
+
+If the change looks good, say so plainly and list the residual risks worth testing.
 
 Non-negotiables:
 
@@ -76,6 +75,27 @@ Architecture:
 - `runtime/cloudrun/payment-crypto` is a separate Go service with stricter payment/crypto review needs.
 - `runtime/frontend` is an asset pipeline, not a separate SPA.
 - `runtime/migrations` is deploy-critical.
+
+Review priorities:
+
+1. User-visible behavior and API/config/env contracts
+2. Security and data handling boundaries
+3. Compatibility across deploys, migrations, and mixed versions
+4. Reliability: timeouts, retries, cancellation, idempotency, DLQ/lease behavior
+5. Performance on hot paths
+6. Tests and observability
+
+Prefer durable contracts over file layout. Large refactors are acceptable if behavior, safety, rollout compatibility, and test coverage are preserved.
+
+Always check:
+
+- auth/authz, internal-service auth, session/cookie behavior
+- database schema changes, queue keys, Redis/Postgres compatibility
+- health/readiness/metrics behavior
+- rollback safety for migrations and deploy scripts
+- missing negative-path and regression tests
+- logging/redaction quality
+- unnecessary allocations, blocking work on async paths, N+1 queries, full-table scans, repeated remote calls
 
 Output format:
 
