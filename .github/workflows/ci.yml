@@ -69,11 +69,24 @@ jobs:
             sudo apt-get install --yes shellcheck
           fi
 
-      - name: Lint production operator scripts
-        run: shellcheck -x scripts/prod-up.sh scripts/tests/test_prod_up.sh scripts/tests/test_frontend_dist_untracked.sh
+      - name: Lint shell scripts
+        run: shellcheck -x scripts/prod-up.sh scripts/tests/test_prod_up.sh scripts/tests/test_frontend_dist_untracked.sh scripts/tests/test_runtime_api_image_smoke.sh
 
       - name: Run production operator script tests
         run: bash scripts/tests/test_prod_up.sh
+
+  runtime-api-image-smoke:
+    name: Runtime API Image Smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs:
+      - workflow-lint
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Build runtime API image from clean frontend dist
+        run: ./scripts/tests/test_runtime_api_image_smoke.sh
 
   changes:
     name: Detect Changed Paths
