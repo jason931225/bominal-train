@@ -46,7 +46,7 @@ jobs:
             const ownerLogin = process.env.PROJECT_OWNER;
             const projectNumber = Number(process.env.PROJECT_NUMBER);
 
-            const queryProject = `
+            const queryUserProject = `
             query($owner:String!, $number:Int!) {
               user(login: $owner) {
                 projectV2(number: $number) {
@@ -63,6 +63,10 @@ jobs:
                   }
                 }
               }
+            }`;
+
+            const queryOrgProject = `
+            query($owner:String!, $number:Int!) {
               organization(login: $owner) {
                 projectV2(number: $number) {
                   id
@@ -80,8 +84,29 @@ jobs:
               }
             }`;
 
-            const projectResp = await github.graphql(queryProject, { owner: ownerLogin, number: projectNumber });
-            const project = projectResp.user?.projectV2 || projectResp.organization?.projectV2;
+            let project = null;
+            try {
+              const userResp = await github.graphql(queryUserProject, { owner: ownerLogin, number: projectNumber });
+              project = userResp.user?.projectV2 || null;
+            } catch (error) {
+              const message = String(error?.message || "");
+              if (!message.includes("Could not resolve to a User")) {
+                throw error;
+              }
+            }
+
+            if (!project) {
+              try {
+                const orgResp = await github.graphql(queryOrgProject, { owner: ownerLogin, number: projectNumber });
+                project = orgResp.organization?.projectV2 || null;
+              } catch (error) {
+                const message = String(error?.message || "");
+                if (!message.includes("Could not resolve to an Organization")) {
+                  throw error;
+                }
+              }
+            }
+
             if (!project) {
               core.setFailed(`Project v2 not found for owner=${ownerLogin} number=${projectNumber}`);
               return;
