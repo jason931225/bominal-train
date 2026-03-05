@@ -1,4 +1,5 @@
 use std::{
+    path::Path,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -6,7 +7,10 @@ use std::{
 use axum::{
     Router,
     extract::{MatchedPath, Request, State},
-    http::{HeaderName, StatusCode},
+    http::{
+        HeaderName, HeaderValue, StatusCode,
+        header::{CONTENT_ENCODING, CONTENT_TYPE},
+    },
     middleware::{self, Next},
     response::{IntoResponse, Redirect, Response},
 };
@@ -45,8 +49,8 @@ const DEFAULT_HTTP_REQUEST_BODY_LIMIT_BYTES: usize = 2 * 1024 * 1024;
 const DEFAULT_HTTP_CONCURRENCY_LIMIT: usize = 32;
 
 pub(crate) fn build_router(state: Arc<AppState>) -> Router {
-    let assets_dir = std::env::var("FRONTEND_ASSETS_DIR")
-        .unwrap_or_else(|_| "runtime/frontend/dist".to_string());
+    let assets_dir =
+        std::env::var("FRONTEND_ASSETS_DIR").unwrap_or_else(|_| default_frontend_assets_dir());
     let request_timeout = Duration::from_secs(parse_u64_env(
         "HTTP_REQUEST_TIMEOUT_SECONDS",
         DEFAULT_HTTP_REQUEST_TIMEOUT_SECONDS,
@@ -113,6 +117,7 @@ pub(crate) fn build_router(state: Arc<AppState>) -> Router {
 
     let router = router
         .nest_service("/assets", ServeDir::new(assets_dir))
+        .layer(middleware::from_fn(ensure_svgz_asset_headers))
         .layer(middleware::from_fn(record_http_metrics))
         .layer(middleware::from_fn_with_state(
             state.clone(),
@@ -144,6 +149,44 @@ pub(crate) fn build_router(state: Arc<AppState>) -> Router {
                 )),
         )
         .with_state(state)
+}
+
+fn default_frontend_assets_dir() -> String {
+    resolve_frontend_assets_dir(Path::new(env!("CARGO_MANIFEST_DIR")))
+}
+
+fn resolve_frontend_assets_dir(manifest_dir: &Path) -> String {
+    let dist = manifest_dir.join("../../frontend/dist");
+    if dist.exists() {
+        return std::fs::canonicalize(&dist)
+            .unwrap_or(dist)
+            .to_string_lossy()
+            .into_owned();
+    }
+
+    let assets = manifest_dir.join("../../frontend/assets");
+    if assets.exists() {
+        return std::fs::canonicalize(&assets)
+            .unwrap_or(assets)
+            .to_string_lossy()
+            .into_owned();
+    }
+
+    dist.to_string_lossy().into_owned()
+}
+
+async fn ensure_svgz_asset_headers(request: Request, next: Next) -> Response {
+    let path = request.uri().path().to_ascii_lowercase();
+    let is_svgz_asset = path.starts_with("/assets/") && path.ends_with(".svgz");
+
+    let mut response = next.run(request).await;
+    if is_svgz_asset && response.status() == StatusCode::OK {
+        let headers = response.headers_mut();
+        headers.insert(CONTENT_ENCODING, HeaderValue::from_static("gzip"));
+        headers.insert(CONTENT_TYPE, HeaderValue::from_static("image/svg+xml"));
+    }
+
+    response
 }
 
 async fn normalize_local_auth_hosts(request: Request, next: Next) -> Response {
@@ -329,4 +372,58 @@ fn parse_usize_env(key: &str, default: usize) -> usize {
         .and_then(|raw| raw.parse::<usize>().ok())
         .filter(|value| *value > 0)
         .unwrap_or(default)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resolve_frontend_assets_dir;
+    use std::{
+        fs,
+        path::PathBuf,
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
+    fn unique_temp_dir(prefix: &str) -> PathBuf {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|value| value.as_nanos())
+            .unwrap_or(0);
+        let dir = std::env::temp_dir().join(format!("bominal-{prefix}-{stamp}"));
+        fs::create_dir_all(&dir).expect("temp dir must be creatable");
+        dir
+    }
+
+    #[test]
+    fn resolve_frontend_assets_dir_prefers_dist_when_available() {
+        let root = unique_temp_dir("assets-dir-dist");
+        let manifest_dir = root.join("runtime/crates/api");
+        fs::create_dir_all(manifest_dir.join("../../frontend/dist"))
+            .expect("dist directory must be creatable");
+        fs::create_dir_all(manifest_dir.join("../../frontend/assets"))
+            .expect("assets directory must be creatable");
+
+        let resolved = resolve_frontend_assets_dir(&manifest_dir);
+        assert!(
+            resolved.ends_with("runtime/frontend/dist"),
+            "expected dist path, got: {resolved}"
+        );
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn resolve_frontend_assets_dir_falls_back_to_assets_when_dist_missing() {
+        let root = unique_temp_dir("assets-dir-assets");
+        let manifest_dir = root.join("runtime/crates/api");
+        fs::create_dir_all(manifest_dir.join("../../frontend/assets"))
+            .expect("assets directory must be creatable");
+
+        let resolved = resolve_frontend_assets_dir(&manifest_dir);
+        assert!(
+            resolved.ends_with("runtime/frontend/assets"),
+            "expected assets path, got: {resolved}"
+        );
+
+        let _ = fs::remove_dir_all(root);
+    }
 }

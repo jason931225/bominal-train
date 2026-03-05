@@ -372,3 +372,79 @@ async fn favicon_redirects_to_static_asset() {
         .unwrap_or_default();
     assert_eq!(location, "/assets/icons/brand/favicon.svg");
 }
+
+#[tokio::test]
+async fn svgz_assets_include_gzip_and_svg_content_headers() {
+    struct CleanupFile(std::path::PathBuf);
+
+    impl Drop for CleanupFile {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(&self.0);
+        }
+    }
+
+    let mut asset_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    asset_path.push("../../frontend/dist/icons/runtime-ui");
+    if let Err(err) = std::fs::create_dir_all(&asset_path) {
+        panic!("failed to create temporary asset directory: {err}");
+    }
+
+    let unique_suffix = match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
+        Ok(duration) => duration.as_nanos(),
+        Err(_) => 0,
+    };
+    let file_name = format!(
+        "svgz-header-test-{}-{}.svgz",
+        std::process::id(),
+        unique_suffix
+    );
+    asset_path.push(&file_name);
+    if let Err(err) = std::fs::write(&asset_path, b"svgz-test-content") {
+        panic!("failed to write temporary svgz asset: {err}");
+    }
+    let _cleanup = CleanupFile(asset_path.clone());
+
+    let app = build_test_app(test_config(
+        "",
+        "",
+        "",
+        "",
+        PasskeyProvider::ServerWebauthn,
+        "localhost",
+        "http://localhost:8000",
+    ))
+    .await;
+
+    let asset_uri = format!("/assets/icons/runtime-ui/{file_name}");
+    let request = match axum::http::Request::builder()
+        .method("GET")
+        .uri(&asset_uri)
+        .body(axum::body::Body::empty())
+    {
+        Ok(request) => request,
+        Err(err) => panic!("failed to build request: {err}"),
+    };
+
+    let response = match app.oneshot(request).await {
+        Ok(response) => response,
+        Err(err) => panic!("request failed: {err}"),
+    };
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let content_encoding = response
+        .headers()
+        .get(header::CONTENT_ENCODING)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default();
+    assert_eq!(content_encoding, "gzip");
+
+    let content_type = response
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default();
+    assert!(
+        content_type.starts_with("image/svg+xml"),
+        "expected image/svg+xml content type, got: {content_type}"
+    );
+}
