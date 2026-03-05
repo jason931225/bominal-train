@@ -34,6 +34,21 @@ pub enum AdminSection {
     Audit,
 }
 
+pub fn render_compact_theme_toggle() -> String {
+    r#"<button
+        type="button"
+        class="theme-mini-switch"
+        data-theme-toggle
+        data-theme-toggle-compact
+        aria-label="Theme toggle"
+      >
+        <img class="theme-mini-icon theme-mini-icon-sun" src="/assets/icons/runtime-ui/theme-mini-sun-active.svgz" data-svgz-light="/assets/icons/runtime-ui/theme-mini-sun-active.svgz" data-svgz-dark="/assets/icons/runtime-ui/theme-mini-sun-default.svgz" alt="" aria-hidden="true" />
+        <img class="theme-mini-icon theme-mini-icon-moon" src="/assets/icons/runtime-ui/theme-mini-moon-default.svgz" data-svgz-light="/assets/icons/runtime-ui/theme-mini-moon-default.svgz" data-svgz-dark="/assets/icons/runtime-ui/theme-mini-moon-active.svgz" alt="" aria-hidden="true" />
+        <span class="theme-mini-thumb" aria-hidden="true"></span>
+      </button>"#
+        .to_string()
+}
+
 pub fn render_app_topbar(title: &str, subtitle: &str) -> String {
     render_top_bar(&TopBarProps {
         brand: "bominal",

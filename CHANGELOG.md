@@ -13,6 +13,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Changed
 
+- [0000000] Decomposed API auth handlers from a monolithic `http/auth.rs` into route-focused modules (`http/auth/{sessions,passkeys,callbacks,pages}.rs` + `http/auth/mod.rs`) while preserving existing auth/passkey/theme/locale endpoint behavior, and wired auth landing theme-toggle markup through the shared UI crate component boundary (`runtime/crates/api/src/http/auth/**`, `runtime/crates/api/src/web/auth.rs`, `runtime/crates/ui_patterns/src/lib.rs`).
 - [b572932] Fixed runtime `.svgz` static asset delivery so icon files are served with `Content-Encoding: gzip` and `Content-Type: image/svg+xml`, and resolved default asset-root pathing to be crate-relative across launch contexts (`runtime/crates/api/src/http/mod.rs`, `runtime/crates/api/tests/auth_page_test.rs`).
 - [4c10b52] Fixed provider credentials status icon behavior on the dashboard providers page to surface red error state whenever auth probe status is `error` (even when credentials are not marked ready), with regression assertion coverage (`runtime/crates/api/src/web/mod.rs`).
 - [0000000] Tightened dependency hygiene by removing unused direct Rust crate declarations (`leptos*` from `bominal-api`, `redis` from `bominal-worker`, `tracing` from `bominal-shared`) and added a path-scoped CI gate that runs `go test ./...` for `runtime/cloudrun/payment-crypto/**` changes (`runtime/crates/api/Cargo.toml`, `runtime/crates/worker/Cargo.toml`, `runtime/crates/shared/Cargo.toml`, `.github/workflows/ci.yml`).
