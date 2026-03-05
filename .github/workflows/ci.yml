@@ -39,6 +39,19 @@ jobs:
         run: |
           docker run --rm -v "$PWD":/repo -w /repo rhysd/actionlint:latest -color -oneline .github/workflows/*.yml
 
+  internal-sdk-contract:
+    name: Internal SDK Contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs:
+      - workflow-lint
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Verify internal OpenAPI and generated SDK artifacts
+        run: ./scripts/generate-internal-sdk.sh --check
+
   frontend-artifact-policy:
     name: Frontend Artifact Policy
     runs-on: ubuntu-latest

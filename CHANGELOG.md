@@ -13,6 +13,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Changed
 
+- [0000000] Added a versioned internal API contract artifact (`sdk/openapi/bominal-internal.v1.json`), generated internal TypeScript SDK client surface for internal provider/auth/job routes (`sdk/ts/internal/*`), and a CI-enforced generation drift check via `scripts/generate-internal-sdk.sh --check` (`.github/workflows/ci.yml`).
 - [13bee67] Fixed `Project Automation` for user-owned projects by replacing combined user/organization GraphQL lookup with safe owner-type fallback, and added template-compatible status fallbacks (`Triage`/`Ready` -> `Todo`, `In Review` -> `In Progress`) so automation works against default GitHub project-board status options (`.github/workflows/project-automation.yml`).
 - [0000000] Split `runtime/crates/api/src/services/provider_jobs_service.rs` into `runtime/crates/api/src/services/provider_jobs/{mod,commands,queries,mapping,state}.rs` with command/query/state/mapping responsibilities separated, while preserving existing route/service callsites via `services/mod.rs` re-export alias (`provider_jobs` as `provider_jobs_service`).
 - [0000000] Split worker runtime executor by moving `runtime/crates/worker/src/runtime/executor.rs` to `runtime/crates/worker/src/runtime/executor/mod.rs` and introducing `planner`, `dispatcher`, `state_machine`, `provider_runner`, and `result_mapper` modules while preserving existing runtime behavior and tests.

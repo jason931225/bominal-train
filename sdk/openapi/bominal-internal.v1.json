@@ -1,0 +1,599 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "bominal Internal API",
+    "version": "v1",
+    "description": "Versioned internal API contract for trusted service-to-service integrations."
+  },
+  "servers": [
+    {
+      "url": "/",
+      "description": "Relative runtime origin"
+    }
+  ],
+  "security": [
+    {
+      "InternalServiceToken": []
+    }
+  ],
+  "paths": {
+    "/internal/v1/provider-jobs": {
+      "post": {
+        "operationId": "createProviderJob",
+        "summary": "Create provider job",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateProviderJobRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Provider job accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateProviderJobResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ApiError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ApiError"
+          },
+          "500": {
+            "$ref": "#/components/responses/ApiError"
+          }
+        }
+      }
+    },
+    "/internal/v1/provider-jobs/{job_id}": {
+      "get": {
+        "operationId": "getProviderJob",
+        "summary": "Get provider job",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Provider job",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderJobResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ApiError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ApiError"
+          },
+          "500": {
+            "$ref": "#/components/responses/ApiError"
+          }
+        }
+      }
+    },
+    "/internal/v1/provider-jobs/{job_id}/events": {
+      "get": {
+        "operationId": "listProviderJobEvents",
+        "summary": "List provider job events",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Provider job events page",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderJobEventsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ApiError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ApiError"
+          },
+          "500": {
+            "$ref": "#/components/responses/ApiError"
+          }
+        }
+      }
+    },
+    "/internal/v1/providers/{provider}/credentials": {
+      "put": {
+        "operationId": "putProviderCredentials",
+        "summary": "Store provider credentials envelope",
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PutProviderCredentialsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Provider credentials accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PutProviderCredentialsResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ApiError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ApiError"
+          },
+          "500": {
+            "$ref": "#/components/responses/ApiError"
+          }
+        }
+      }
+    },
+    "/internal/v1/providers/{provider}/payment-method": {
+      "put": {
+        "operationId": "putProviderPaymentMethod",
+        "summary": "Store provider payment method envelope",
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PutProviderPaymentMethodRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Provider payment method accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PutProviderPaymentMethodResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ApiError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ApiError"
+          },
+          "500": {
+            "$ref": "#/components/responses/ApiError"
+          }
+        }
+      }
+    },
+    "/internal/v1/auth/invites": {
+      "post": {
+        "operationId": "createInvite",
+        "summary": "Create auth invite",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateInviteRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Invite created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateInviteResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ApiError"
+          },
+          "401": {
+            "$ref": "#/components/responses/ApiError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ApiError"
+          },
+          "500": {
+            "$ref": "#/components/responses/ApiError"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "InternalServiceToken": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "x-bominal-service-token"
+      }
+    },
+    "responses": {
+      "ApiError": {
+        "description": "Standard API error envelope",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "ApiError": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "request_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ]
+      },
+      "CreateProviderJobRequest": {
+        "type": "object",
+        "properties": {
+          "provider": {
+            "type": "string"
+          },
+          "operation": {
+            "type": "string"
+          },
+          "idempotency_key": {
+            "type": "string"
+          },
+          "payload": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "provider",
+          "operation",
+          "payload"
+        ]
+      },
+      "CreateProviderJobResult": {
+        "type": "object",
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          },
+          "job_id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "accepted",
+          "job_id",
+          "status"
+        ]
+      },
+      "ProviderJobResult": {
+        "type": "object",
+        "properties": {
+          "job_id": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "operation": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id",
+          "provider",
+          "operation",
+          "status"
+        ]
+      },
+      "ProviderJobEvent": {
+        "type": "object",
+        "properties": {
+          "sequence": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "event_type": {
+            "type": "string"
+          },
+          "occurred_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "detail": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "sequence",
+          "event_type",
+          "occurred_at",
+          "detail"
+        ]
+      },
+      "CursorPage": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer"
+          },
+          "has_more": {
+            "type": "boolean"
+          },
+          "next_cursor": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "limit",
+          "has_more"
+        ]
+      },
+      "ProviderJobEventsResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProviderJobEvent"
+            }
+          },
+          "page": {
+            "$ref": "#/components/schemas/CursorPage"
+          }
+        },
+        "required": [
+          "items",
+          "page"
+        ]
+      },
+      "PutProviderCredentialsRequest": {
+        "type": "object",
+        "properties": {
+          "subject_ref": {
+            "type": "string"
+          },
+          "identity_ciphertext": {
+            "type": "string"
+          },
+          "password_ciphertext": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "identity_ciphertext",
+          "password_ciphertext"
+        ]
+      },
+      "PutProviderCredentialsResult": {
+        "type": "object",
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "credential_ref": {
+            "type": "string"
+          },
+          "contract": {
+            "type": "string"
+          },
+          "auth_probe_status": {
+            "type": "string"
+          },
+          "auth_probe_message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "accepted",
+          "provider",
+          "credential_ref",
+          "contract",
+          "auth_probe_status",
+          "auth_probe_message"
+        ]
+      },
+      "PutProviderPaymentMethodRequest": {
+        "type": "object",
+        "properties": {
+          "owner_ref": {
+            "type": "string"
+          },
+          "payment_method_ref": {
+            "type": "string"
+          },
+          "card_brand": {
+            "type": "string"
+          },
+          "card_last4": {
+            "type": "string"
+          },
+          "pan_ciphertext": {
+            "type": "string"
+          },
+          "expiry_month_ciphertext": {
+            "type": "string"
+          },
+          "expiry_year_ciphertext": {
+            "type": "string"
+          },
+          "birth_or_business_number_ciphertext": {
+            "type": "string"
+          },
+          "card_password_two_digits_ciphertext": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "card_last4",
+          "pan_ciphertext",
+          "expiry_month_ciphertext",
+          "expiry_year_ciphertext",
+          "birth_or_business_number_ciphertext",
+          "card_password_two_digits_ciphertext"
+        ]
+      },
+      "PutProviderPaymentMethodResult": {
+        "type": "object",
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "payment_method_ref": {
+            "type": "string"
+          },
+          "contract": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "accepted",
+          "provider",
+          "payment_method_ref",
+          "contract"
+        ]
+      },
+      "CreateInviteRequest": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "expires_in_seconds": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "email"
+        ]
+      },
+      "CreateInviteResponse": {
+        "type": "object",
+        "properties": {
+          "invite_url": {
+            "type": "string"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "invite_url",
+          "expires_at"
+        ]
+      }
+    }
+  }
+}
