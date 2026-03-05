@@ -239,6 +239,55 @@ jobs:
           if [ "${missing}" -ne 0 ]; then
             exit 1
           fi
+          for path_like in \
+            DEPLOY_WORKDIR \
+            DEPLOY_SCRIPT_PATH \
+            DEPLOY_HEALTHCHECK_SCRIPT_PATH \
+            DEPLOY_ROLLBACK_SCRIPT_PATH \
+            VM_SECRET_ENV_FILE \
+            DEPLOY_RUNTIME_ENV_FILE \
+            DEPLOY_COMPOSE_FILE \
+            DEPLOY_MIGRATIONS_DIR; do
+            value="${!path_like}"
+            if ! [[ "${value}" =~ ^/[A-Za-z0-9._/-]+$ ]]; then
+              echo "::error::${path_like} must be an absolute safe path (no spaces)"
+              exit 1
+            fi
+            if [[ "${value}" == *".."* ]]; then
+              echo "::error::${path_like} must not contain path traversal segments"
+              exit 1
+            fi
+          done
+          for optional_path in DEPLOY_ROLLBACK_STATE_PATH DEPLOY_VM_BASELINE_SCRIPT; do
+            value="${!optional_path:-}"
+            if [ -z "${value}" ]; then
+              continue
+            fi
+            if ! [[ "${value}" =~ ^/[A-Za-z0-9._/-]+$ ]]; then
+              echo "::error::${optional_path} must be an absolute safe path (no spaces)"
+              exit 1
+            fi
+            if [[ "${value}" == *".."* ]]; then
+              echo "::error::${optional_path} must not contain path traversal segments"
+              exit 1
+            fi
+          done
+          if [ -n "${DEPLOY_COMPOSE_PROJECT_NAME:-}" ] && ! [[ "${DEPLOY_COMPOSE_PROJECT_NAME}" =~ ^[A-Za-z0-9._-]+$ ]]; then
+            echo "::error::DEPLOY_COMPOSE_PROJECT_NAME must match ^[A-Za-z0-9._-]+$"
+            exit 1
+          fi
+          if [ -n "${DEPLOY_HEALTHCHECK_RETRIES:-}" ] && ! [[ "${DEPLOY_HEALTHCHECK_RETRIES}" =~ ^[0-9]+$ ]]; then
+            echo "::error::DEPLOY_HEALTHCHECK_RETRIES must be numeric"
+            exit 1
+          fi
+          if [ -n "${DEPLOY_HEALTHCHECK_DELAY_SECONDS:-}" ] && ! [[ "${DEPLOY_HEALTHCHECK_DELAY_SECONDS}" =~ ^[0-9]+$ ]]; then
+            echo "::error::DEPLOY_HEALTHCHECK_DELAY_SECONDS must be numeric"
+            exit 1
+          fi
+          if ! [[ "${POSTGRES_PORT}" =~ ^[0-9]+$ ]]; then
+            echo "::error::POSTGRES_PORT must be numeric"
+            exit 1
+          fi
 
       - name: Authenticate to Google Cloud (OIDC)
         uses: google-github-actions/auth@v2

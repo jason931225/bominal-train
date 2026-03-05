@@ -17,6 +17,9 @@ jobs:
     if: startsWith(github.event.comment.body, '/promote merge')
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    concurrency:
+      group: promotion-merge-${{ github.event.issue.number }}
+      cancel-in-progress: false
     steps:
       - name: Validate and merge promotion PR
         uses: actions/github-script@v7
@@ -83,12 +86,12 @@ jobs:
               return;
             }
 
-            if (pr.mergeable === false) {
+            if (pr.mergeable !== true) {
               await github.rest.issues.createComment({
                 owner,
                 repo,
                 issue_number: prNumber,
-                body: `@${commenter} PR #${prNumber} is not mergeable yet (merge conflicts or branch state issues).`,
+                body: `@${commenter} PR #${prNumber} is not mergeable yet (conflicts, branch state, or mergeability still computing — please retry shortly).`,
               });
               core.setFailed("PR is not mergeable");
               return;

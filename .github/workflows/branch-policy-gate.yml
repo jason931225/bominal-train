@@ -68,7 +68,7 @@ jobs:
               return;
             }
 
-            const maxMinutes = 30;
+            const maxMinutes = 25;
             const intervalSeconds = 20;
             const deadlineMs = Date.now() + maxMinutes * 60 * 1000;
             const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
