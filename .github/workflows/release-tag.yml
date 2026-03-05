@@ -133,7 +133,6 @@ jobs:
                 target_commitish: "main",
                 draft: false,
                 prerelease: false,
-                generate_release_notes: true,
               });
             }
 

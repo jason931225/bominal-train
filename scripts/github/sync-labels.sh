@@ -35,10 +35,6 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ -z "$repo" ]]; then
-  repo="$(gh repo view --json nameWithOwner -q .nameWithOwner)"
-fi
-
 if [[ ! -f "$labels_file" ]]; then
   echo "labels file not found: $labels_file" >&2
   exit 1
@@ -55,6 +51,10 @@ fi
 if ! command -v ruby >/dev/null 2>&1; then
   echo "ruby is required" >&2
   exit 1
+fi
+
+if [[ -z "$repo" ]]; then
+  repo="$(gh repo view --json nameWithOwner -q .nameWithOwner)"
 fi
 
 labels_json="$(ruby -ryaml -rjson -e 'data = YAML.load_file(ARGV[0]); labels = data.fetch("labels"); puts JSON.generate(labels)' "$labels_file")"

@@ -44,7 +44,9 @@ jobs:
               per_page: 100,
             });
 
-            const docsOnly = files.length > 0 && files.every((f) => f.filename.startsWith("docs/") || f.filename.endsWith(".md"));
+            // Keep docs-only classification in sync with branch-policy-gate.yml.
+            const isDocsFile = (name) => name.startsWith("docs/") || (name.endsWith(".md") && !name.startsWith(".github/"));
+            const docsOnly = files.length > 0 && files.every((f) => isDocsFile(f.filename));
             const changedPaths = files.map((f) => f.filename);
 
             const prefixed = (prefix) => labels.filter((name) => name.startsWith(prefix));

@@ -46,7 +46,8 @@ jobs:
               "Station Catalog Snapshot Validation",
             ];
 
-            const isDocsFile = (path) => path.startsWith("docs/") || path.endsWith(".md");
+            // Keep docs-only classification in sync with pr-governance.yml.
+            const isDocsFile = (path) => path.startsWith("docs/") || (path.endsWith(".md") && !path.startsWith(".github/"));
 
             const files = await github.paginate(github.rest.pulls.listFiles, {
               owner,

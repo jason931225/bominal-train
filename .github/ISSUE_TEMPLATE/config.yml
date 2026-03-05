@@ -1,6 +1,6 @@
 blank_issues_enabled: false
 contact_links:
-  - name: Bominal Manual
+  - name: bominal Manual
     url: https://github.com/jason931225/bominal/blob/main/docs/MANUAL.md
     about: Read canonical policy and operations standards before opening an issue.
   - name: Intent Routing

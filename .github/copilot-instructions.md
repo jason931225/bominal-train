@@ -2,86 +2,65 @@
 
 Review this repository like a pragmatic staff engineer protecting bominal’s behavior through refactors, migrations, and deployment changes.
 
-Priorities, in order:
+Non-negotiables:
+- Preserve the product name `bominal`.
+- Treat `third_party/**` as read-only reference material.
+- Keep train-provider behavior source-aligned with `third_party/srtgo/srtgo/srt.py` and `third_party/srtgo/srtgo/ktx.py`.
+- Never approve logging, serializing, queuing, returning, or persisting secrets, passwords, tokens, PAN/CVV, raw provider payloads, or decrypted payment data.
+- Preserve session-cookie security behavior: `HttpOnly`, `SameSite=Lax`, `Secure` only in production.
+- Preserve fail-closed provider/internal API auth, the `www.bominal.com` vs `ops.bominal.com` boundary, and the `/health`, `/ready`, and admin metrics contracts.
+- Preserve the committed station-catalog snapshot model in `runtime/data/train/`; do not introduce a production live-fetch dependency.
+- Treat `runtime/frontend/dist/**` as generated-only.
 
+Architecture:
+- `runtime/crates/api`: Axum + Leptos SSR app and API surface.
+- `runtime/crates/worker`: Tokio background loops.
+- `runtime/crates/shared`: shared contracts, providers, telemetry, config, and repo helpers.
+- `runtime/migrations`: deploy-critical schema changes.
+- `runtime/cloudrun/payment-crypto`: separate Go Cloud Run service with KMS-backed payment handling.
+- `runtime/frontend`: asset pipeline, not a separate SPA.
+
+Priorities, in order:
 1. Correctness and user-visible behavior
 2. Security and trust boundaries
-3. Data integrity and backward compatibility
-4. Reliability, concurrency, and failure handling
+3. Backward compatibility across deploys, migrations, and mixed versions
+4. Reliability: timeouts, retries, cancellation, idempotency, duplicate handling
 5. Performance on hot paths
-6. Maintainability and test quality
+6. Tests and observability
 
-Assume major changes are normal: files may be renamed, modules moved, services split, dependencies swapped, or frameworks replaced. Review against invariants, contracts, and behavior—not current layout, naming, or implementation details.
+Assume major changes are normal. Review against contracts, invariants, and behavior—not current file layout, naming, or framework choices.
 
-Infer intended behavior from public contracts and durable sources in this order:
-
-1. Tests that describe behavior
-2. API/schema/CLI/config contracts
-3. Migration or compatibility notes
+Infer intended behavior from:
+1. Behavior tests
+2. API/schema/CLI/config/env contracts
+3. Migration and compatibility notes
 4. README/docs/comments
 
-If these conflict, treat executable behavior and explicit contracts as more important than naming or comments.
-
 When reviewing:
-
-- Start with a 1–3 sentence summary of what changed and the main risk areas.
+- Start with a 1–3 sentence summary and the main risk areas.
 - Group findings as Blocking, Important, Optional.
 - Only raise an issue when you can explain the failure mode or maintenance risk.
 - For each issue, name the scenario, why it matters, and the smallest safe fix.
 - Prefer targeted patches, assertions, or tests over broad rewrites.
 
 Always check:
+- auth/authz, internal-service auth, cookie/session behavior, tenant isolation
+- migrations, old/new code compatibility, persisted data and serialization changes
+- blocking work on async paths, race conditions, stale state, lost updates, resource leaks
+- N+1 queries, repeated remote calls, full-table scans, large payloads, unnecessary allocations
+- rollback safety for deploy scripts and migrations
+- negative-path, regression, compatibility, and failure-path tests
+- structured logging, redaction, metrics, and tracing around risky paths
 
-- External contract changes: APIs, CLI flags, config, schemas, events, persisted data, serialization formats
-- Compatibility: old clients, existing data, rolling deploys, partial migrations, mixed-version environments, database schema/queue-key compatibility, rollback safety for migrations/deploy scripts
-- Data safety: validation, idempotency, transactions, retries, duplicate handling, null/empty/default cases
-- Failure paths: timeouts, cancellation, retries, backoff, partial success, cleanup, logging, metrics, alerts
-- Security: authn/authz, secret handling, unsafe deserialization, injection, SSRF, path traversal, tenant isolation
-- State and concurrency: races, stale caches, ordering assumptions, lost updates, reentrancy, resource leaks
-- Performance: N+1 behavior, unnecessary allocations, repeated I/O, unbounded scans, hot-loop work, large payloads
-- Observability: actionable errors, structured logs, tracing/metrics, and health/readiness behavior around risky code paths
-- Tests: missing regression tests, edge cases, failure-path coverage, compatibility or migration tests
+For `runtime/cloudrun/payment-crypto/**`, review conservatively: never widen exposure, weaken auth, weaken KMS assumptions, or allow decrypted payment data to leak.
 
-For refactors and large rewrites:
+Avoid style-only nitpicks, abstraction-for-its-own-sake, and invented issues.
 
-- Do not flag moved or renamed code by itself.
-- Do flag behavior drift, deleted safeguards, weaker validation, missing rollout/migration steps, and reduced test coverage.
-- Treat removed docs/specs/comments as a risk signal only when they make behavior harder to verify.
-- Prefer preserving public contracts unless the diff clearly includes versioning, migration notes, or compatibility handling.
-
-Avoid:
-
-- Style-only nitpicks unless they hide a bug or ambiguity
-- Suggesting abstraction for its own sake
-- Assuming newer or more generic code is safer by default
-- Inventing problems when the change is sound
-
-If the change looks good, say so plainly and list the residual risks worth testing.
-
-Non-negotiables:
-
-- Preserve the product name `bominal`.
-- Treat `third_party/**` as read-only reference material.
-- Keep train-provider behavior source-aligned with `third_party/srtgo/srtgo/srt.py` and `third_party/srtgo/srtgo/ktx.py`.
-- Never approve logging, queuing, serializing, or persisting secrets, passwords, raw provider payloads, PAN/CVV, or decrypted payment data.
-- Preserve session-cookie behavior: `HttpOnly`, `SameSite=Lax`, `Secure` only in production.
-
-Architecture:
-
-- Primary implementation is Rust-first under `runtime/`.
-- `runtime/crates/api` is the Axum + Leptos SSR app and API surface.
-- `runtime/crates/worker` is the async background task runtime.
-- `runtime/crates/shared` contains contracts, providers, queue logic, telemetry, config, and repository helpers.
-- `runtime/cloudrun/payment-crypto` is a separate Go service with stricter payment/crypto review needs.
-- `runtime/frontend` is an asset pipeline, not a separate SPA.
-- `runtime/migrations` is deploy-critical.
-
-Prefer durable contracts over file layout. Large refactors are acceptable if behavior, safety, rollout compatibility, and test coverage are preserved.
-
-Output format:
-
+Output:
 1. Summary
 2. Blocking issues
 3. Important issues
 4. Optional improvements
 5. Suggested tests
+
+If the change looks sound, say so clearly and list residual risks worth testing.

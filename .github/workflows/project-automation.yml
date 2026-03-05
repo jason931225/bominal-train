@@ -178,10 +178,10 @@ jobs:
 
             if (context.eventName === "issues") {
               const issue = context.payload.issue;
+              const action = context.payload.action;
               const labels = (issue.labels || []).map((l) => typeof l === "string" ? l : l.name);
               const itemId = await getProjectItemId(issue.node_id);
 
-              let statusValue = "Triage";
               const statusFromLabel = labelsToFieldValue(labels, "status:", {
                 "status:triage": "Triage",
                 "status:ready": "Ready",
@@ -190,9 +190,16 @@ jobs:
                 "status:blocked": "Blocked",
                 "status:done": "Done",
               });
-              if (statusFromLabel) statusValue = statusFromLabel;
 
-              await setSingleSelectByName(itemId, "Status", statusValue);
+              let statusValue = null;
+              if (statusFromLabel) {
+                statusValue = statusFromLabel;
+              } else if (action === "opened" || action === "reopened") {
+                statusValue = "Triage";
+              }
+              if (statusValue) {
+                await setSingleSelectByName(itemId, "Status", statusValue);
+              }
 
               const typeValue = labelsToFieldValue(labels, "type:", {
                 "type:bug": "Bug",
@@ -225,13 +232,32 @@ jobs:
 
             if (context.eventName === "pull_request") {
               const pr = context.payload.pull_request;
-              const status = (context.payload.action === "closed" && pr.merged) ? "Done" : "In Review";
-              const body = pr.body || "";
-              const issueRefs = [...body.matchAll(/(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+(?:[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)?#(\d+)/ig)]
-                .map((m) => Number(m[1]))
-                .filter((n) => Number.isFinite(n));
+              const action = context.payload.action;
+              if (action === "closed" && !pr.merged) {
+                core.info(`PR #${pr.number} closed without merge; skipping linked issue status transition.`);
+                return;
+              }
 
-              for (const issueNumber of [...new Set(issueRefs)]) {
+              const status = (action === "closed" && pr.merged) ? "Done" : "In Review";
+              const body = pr.body || "";
+              const issueRefs = [...body.matchAll(/(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+(?:(?<owner>[A-Za-z0-9_.-]+)\/(?<repo>[A-Za-z0-9_.-]+))?#(?<issue>\d+)/ig)]
+                .map((m) => ({
+                  owner: m.groups?.owner || null,
+                  repo: m.groups?.repo || null,
+                  issueNumber: Number(m.groups?.issue),
+                }))
+                .filter((m) => Number.isFinite(m.issueNumber))
+                .filter((m) => {
+                  if (!m.owner || !m.repo) {
+                    return true;
+                  }
+                  return (
+                    m.owner.toLowerCase() === context.repo.owner.toLowerCase() &&
+                    m.repo.toLowerCase() === context.repo.repo.toLowerCase()
+                  );
+                });
+
+              for (const issueNumber of [...new Set(issueRefs.map((m) => m.issueNumber))]) {
                 const issue = await github.rest.issues.get({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
