@@ -3,6 +3,7 @@ members = [
     "crates/api",
     "crates/worker",
     "crates/shared",
+    "crates/ui",
     "crates/ui_primitives",
     "crates/ui_patterns",
 ]

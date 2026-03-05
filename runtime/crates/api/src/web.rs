@@ -1,9 +1,8 @@
-use bominal_ui_patterns::{
+use bominal_ui::{
     AdminSection, DashboardSection, SettingsTab, render_admin_bottom_nav, render_admin_sidebar,
     render_app_topbar, render_dashboard_bottom_nav, render_dashboard_sidebar,
-    render_dev_ui_showcase, render_settings_tabs,
+    render_dev_ui_showcase, render_settings_tabs, html_escape as primitive_html_escape,
 };
-use bominal_ui_primitives::html_escape as primitive_html_escape;
 
 fn html_escape(value: &str) -> String {
     primitive_html_escape(value)
