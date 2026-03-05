@@ -1,0 +1,61 @@
+name: Chore / Maintenance
+description: Track non-feature maintenance work.
+title: "chore: "
+labels:
+  - type:chore
+  - priority:p2
+body:
+  - type: textarea
+    id: problem_statement
+    attributes:
+      label: Problem Statement
+      description: What maintenance problem are we addressing?
+    validations:
+      required: true
+  - type: textarea
+    id: expected_outcome
+    attributes:
+      label: Expected Outcome
+      description: What will be improved once complete?
+    validations:
+      required: true
+  - type: textarea
+    id: scope_in
+    attributes:
+      label: In Scope
+      description: Explicitly list included tasks.
+    validations:
+      required: true
+  - type: textarea
+    id: scope_out
+    attributes:
+      label: Out Of Scope
+      description: Explicitly list excluded tasks.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance_criteria
+    attributes:
+      label: Acceptance Criteria
+      description: Objective completion checklist.
+    validations:
+      required: true
+  - type: dropdown
+    id: risk_class
+    attributes:
+      label: Risk Class
+      options:
+        - READ
+        - WRITE
+        - SECURITY
+        - DESTRUCTIVE
+        - PRODUCTION
+    validations:
+      required: true
+  - type: textarea
+    id: verification_plan
+    attributes:
+      label: Verification Plan
+      description: Commands/tests/checks required for completion.
+    validations:
+      required: true

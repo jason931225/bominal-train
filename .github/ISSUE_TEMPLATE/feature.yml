@@ -1,0 +1,68 @@
+name: Feature Request
+description: Propose a scoped enhancement to bominal.
+title: "feat: "
+labels:
+  - type:enhancement
+  - priority:p2
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for behavior expansion. Keep scope small and decision-complete.
+  - type: textarea
+    id: problem_statement
+    attributes:
+      label: Problem Statement
+      description: What user or operator problem does this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: expected_outcome
+    attributes:
+      label: Expected Outcome
+      description: What concrete outcome should this feature deliver?
+    validations:
+      required: true
+  - type: textarea
+    id: scope_in
+    attributes:
+      label: In Scope
+      description: Explicitly list included work.
+      placeholder: "1. ...\n2. ..."
+    validations:
+      required: true
+  - type: textarea
+    id: scope_out
+    attributes:
+      label: Out Of Scope
+      description: Explicitly list excluded work.
+      placeholder: "1. ...\n2. ..."
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance_criteria
+    attributes:
+      label: Acceptance Criteria
+      description: Objective completion checklist.
+      placeholder: "- [ ] ...\n- [ ] ..."
+    validations:
+      required: true
+  - type: dropdown
+    id: risk_class
+    attributes:
+      label: Risk Class
+      options:
+        - READ
+        - WRITE
+        - SECURITY
+        - DESTRUCTIVE
+        - PRODUCTION
+    validations:
+      required: true
+  - type: textarea
+    id: verification_plan
+    attributes:
+      label: Verification Plan
+      description: Required test and validation steps.
+    validations:
+      required: true

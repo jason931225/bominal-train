@@ -2,6 +2,7 @@
 
 Canonical documentation:
 - `docs/MANUAL.md` - single source of policy, quality, operations, and target-state CI/CD controls.
+- `docs/MANUAL.md#github-project-management-policy` - canonical GitHub governance contract (labels, issue/PR policy, project tracking, wiki linkage, milestones/tags, and branch protection baseline).
 - `docs/START_HERE.md` - entrypoint for humans and agents.
 - `docs/INTENT_ROUTING.md` - keyword router into manual sections.
 - `docs/GUARDRAIL.MD` - explicit immutable boundary: `third_party/**` is read-only.
@@ -13,6 +14,7 @@ Preserved reference set:
 Repository-level governance entrypoints:
 - `AGENTS.md` - mandatory constraints for automated contributors.
 - `CHANGELOG.md` - commit-based change log.
+- GitHub Wiki - active operational/onboarding/project coordination pages that must reference canonical policy anchors in `docs/MANUAL.md`.
 
 Active implementation plans:
 - `docs/plans/2026-03-02-runtime-test-backfill-srt-parity.md` - runtime test backfill and SRT parity rewrite plan.

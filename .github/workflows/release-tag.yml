@@ -1,0 +1,139 @@
+name: Release Tag
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: SemVer tag (for example v0.2.0)
+        required: true
+        type: string
+      milestone:
+        description: Closed milestone title (for example v0.2.0)
+        required: true
+        type: string
+      release_notes:
+        description: Release notes summary (markdown)
+        required: false
+        type: string
+      create_release:
+        description: Publish a GitHub Release
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+  issues: read
+  pull-requests: read
+
+jobs:
+  tag-and-release:
+    name: Release Tag
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Validate tag format
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          if ! [[ "${TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Tag must match vMAJOR.MINOR.PATCH"
+            exit 1
+          fi
+
+      - name: Verify milestone is closed
+        uses: actions/github-script@v7
+        env:
+          MILESTONE_TITLE: ${{ inputs.milestone }}
+        with:
+          script: |
+            const title = process.env.MILESTONE_TITLE;
+            const milestones = await github.paginate(github.rest.issues.listMilestones, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "all",
+              per_page: 100,
+            });
+
+            const milestone = milestones.find((m) => m.title === title);
+            if (!milestone) {
+              core.setFailed(`Milestone not found: ${title}`);
+              return;
+            }
+            if (milestone.state !== "closed") {
+              core.setFailed(`Milestone ${title} is not closed`);
+              return;
+            }
+
+            core.info(`Milestone ${title} is closed.`);
+
+      - name: Create annotated tag and optional release
+        uses: actions/github-script@v7
+        env:
+          TAG: ${{ inputs.tag }}
+          RELEASE_NOTES: ${{ inputs.release_notes }}
+          CREATE_RELEASE: ${{ inputs.create_release }}
+          MILESTONE_TITLE: ${{ inputs.milestone }}
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const tag = process.env.TAG;
+            const createRelease = process.env.CREATE_RELEASE === "true";
+            const notes = (process.env.RELEASE_NOTES || "").trim();
+            const milestoneTitle = process.env.MILESTONE_TITLE;
+
+            try {
+              await github.rest.git.getRef({ owner, repo, ref: `tags/${tag}` });
+              core.setFailed(`Tag already exists: ${tag}`);
+              return;
+            } catch (error) {
+              if (error.status !== 404) {
+                throw error;
+              }
+            }
+
+            const tagObject = await github.rest.git.createTag({
+              owner,
+              repo,
+              tag,
+              message: `Release ${tag} (milestone ${milestoneTitle})`,
+              object: context.sha,
+              type: "commit",
+              tagger: {
+                name: "github-actions[bot]",
+                email: "41898282+github-actions[bot]@users.noreply.github.com",
+                date: new Date().toISOString(),
+              },
+            });
+
+            await github.rest.git.createRef({
+              owner,
+              repo,
+              ref: `refs/tags/${tag}`,
+              sha: tagObject.data.sha,
+            });
+
+            if (createRelease) {
+              const body = notes.length > 0
+                ? notes
+                : `Release ${tag}\n\nMilestone: ${milestoneTitle}`;
+              await github.rest.repos.createRelease({
+                owner,
+                repo,
+                tag_name: tag,
+                name: tag,
+                body,
+                target_commitish: "main",
+                draft: false,
+                prerelease: false,
+              });
+            }
+
+            core.info(`Created tag ${tag}${createRelease ? " and release" : ""}.`);
