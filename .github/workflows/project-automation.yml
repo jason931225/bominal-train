@@ -166,12 +166,32 @@ jobs:
               return added.addProjectV2ItemById.item.id;
             };
 
-            const setSingleSelectByName = async (itemId, fieldName, optionName) => {
+            const resolveSingleSelectOptionName = (fieldName, optionName, fallbackOptions = []) => {
+              const options = optionsByFieldName.get(fieldName);
+              if (!options) {
+                return null;
+              }
+
+              for (const candidate of [optionName, ...fallbackOptions]) {
+                if (options.has(candidate)) {
+                  return candidate;
+                }
+              }
+
+              return null;
+            };
+
+            const setSingleSelectByName = async (itemId, fieldName, optionName, fallbackOptions = []) => {
               const fieldId = fieldByName.get(fieldName);
-              const optionId = optionsByFieldName.get(fieldName)?.get(optionName);
+              const resolvedOptionName = resolveSingleSelectOptionName(fieldName, optionName, fallbackOptions);
+              const optionId = optionsByFieldName.get(fieldName)?.get(resolvedOptionName);
               if (!fieldId || !optionId) {
-                core.warning(`Missing project field/option mapping for ${fieldName}=${optionName}; skipping.`);
-                return;
+                const availableOptions = [...(optionsByFieldName.get(fieldName)?.keys() || [])].join(", ");
+                core.warning(
+                  `Missing project field/option mapping for ${fieldName}=${optionName}; ` +
+                  `fallbacks=[${fallbackOptions.join(", ")}], available=[${availableOptions}].`
+                );
+                return false;
               }
 
               await github.graphql(`
@@ -193,6 +213,16 @@ jobs:
                 fieldId,
                 optionId,
               });
+              return true;
+            };
+
+            const statusFallbacks = {
+              "Triage": ["Todo"],
+              "Ready": ["Todo"],
+              "In Progress": [],
+              "In Review": ["In Progress"],
+              "Blocked": ["In Progress", "Todo"],
+              "Done": [],
             };
 
             const labelsToFieldValue = (labels, prefix, mapping) => {
@@ -223,7 +253,7 @@ jobs:
                 statusValue = "Triage";
               }
               if (statusValue) {
-                await setSingleSelectByName(itemId, "Status", statusValue);
+                await setSingleSelectByName(itemId, "Status", statusValue, statusFallbacks[statusValue] || []);
               }
 
               const typeValue = labelsToFieldValue(labels, "type:", {
@@ -289,7 +319,7 @@ jobs:
                   issue_number: issueNumber,
                 });
                 const itemId = await getProjectItemId(issue.data.node_id);
-                await setSingleSelectByName(itemId, "Status", status);
+                await setSingleSelectByName(itemId, "Status", status, statusFallbacks[status] || []);
                 core.info(`Updated linked issue #${issueNumber} status=${status}`);
               }
             }
