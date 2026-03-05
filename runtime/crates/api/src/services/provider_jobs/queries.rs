@@ -1,7 +1,5 @@
 use bominal_shared::crypto::{RedactionMode, redact_json};
 use chrono::{DateTime, Utc};
-use serde_json::Value;
-use sqlx::PgPool;
 use tracing::error;
 
 use crate::AppState;
