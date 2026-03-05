@@ -1,3 +1,7 @@
+---
+applyTo: ".github/**,docs/**,AGENTS.md,CHANGELOG.md"
+---
+
 # GitHub Project Automation Instructions
 
 Applies to all repository work planning and PR lifecycle updates.

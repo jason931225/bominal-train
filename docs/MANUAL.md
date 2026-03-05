@@ -199,7 +199,7 @@ Additional PR rules:
 ### Copilot Review
 
 - Copilot review is required for:
-  - `risk:medium` and `risk:high` PRs,
+  - PRs linked to work items with `Risk=Medium` or `Risk=High`,
   - any PR classified as `Review Depth=Secondary Required`.
 - Copilot findings are classified as:
   - `Material`: security/auth/payment/session/data-loss/deploy/test-gap scope,

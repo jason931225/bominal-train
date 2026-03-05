@@ -92,7 +92,7 @@ Set `Review Depth=Secondary Required` when any trigger matches:
 
 ### Copilot Required
 - Required for:
-  - `risk:medium` and `risk:high` PRs
+  - PRs linked to work items with `Risk=Medium` or `Risk=High`
   - any PR with `Review Depth=Secondary Required`
 
 ### Material Classification
