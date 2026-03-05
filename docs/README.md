@@ -27,5 +27,17 @@ Operational playbooks:
 - `docs/playbooks/GITHUB_PROJECT_AUTOMATION.md` - board topology, agent dispatch checkpoints, secondary-review triggers, and Copilot material-finding disposition workflow.
 - `docs/playbooks/GITHUB_PROJECT_OPERATIONS.md` - tested PAT/MCP project-board operations runbook, automation validation flow, and secondary-review command policy (`@codex review`, risk-based `@copilot review`).
 
+Architecture decisions:
+- `docs/adr/0001-ssr-component-model.md` - SSR-first rendering and UI crate boundary.
+- `docs/adr/0002-frontend-artifact-policy.md` - generated frontend artifact ownership and Docker build source-of-truth.
+- `docs/adr/0003-provider-sdk-boundary.md` - provider integration contract boundaries.
+- `docs/adr/0004-internal-api-schema.md` - versioned internal API schema and generated SDK policy.
+
+Runbooks:
+- `docs/runbooks/deploy.md` - production deploy execution procedure.
+- `docs/runbooks/rollback.md` - rollback triggers and execution procedure.
+- `docs/runbooks/provider-degradation.md` - provider outage/degradation operations.
+- `docs/runbooks/queue-backlog.md` - queue growth diagnosis and mitigation.
+
 Note:
-- Legacy split docs trees (governance/humans/agents/playbooks/plans/etc.) were intentionally removed from canonical usage.
+- Legacy split docs trees were intentionally removed from canonical usage; active docs are `MANUAL` + pointers + targeted `playbooks/`, `adr/`, and `runbooks/`.

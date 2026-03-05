@@ -17,5 +17,9 @@ Use this map to jump directly to the correct section in `docs/MANUAL.md`.
 | project board automation / agent dispatch / claim checkpoints / secondary review / copilot disposition | `docs/MANUAL.md#project-tracking` |
 | project board operating runbook | `docs/playbooks/GITHUB_PROJECT_AUTOMATION.md` |
 | project board commands / PAT bootstrap / MCP github usage | `docs/playbooks/GITHUB_PROJECT_OPERATIONS.md` |
+| deploy runbook | `docs/runbooks/deploy.md` |
+| rollback runbook | `docs/runbooks/rollback.md` |
+| provider outage / degradation | `docs/runbooks/provider-degradation.md` |
+| queue backlog / stuck jobs | `docs/runbooks/queue-backlog.md` |
 | missing infra / backfill | `docs/MANUAL.md#current-gap-register-and-backfill-targets` |
 | external provider handoff | `docs/handoff/README.md` |
