@@ -165,6 +165,16 @@ Optional labels:
 
 Canonical label definitions MUST be kept in `.github/labels.yml`.
 
+Priority scope classification:
+- `priority:p0`: active incident, security emergency, data-integrity risk, or release-blocking production risk.
+- `priority:p1`: high-impact, near-term committed work with meaningful user/operator risk.
+- `priority:p2`: planned standard backlog delivery without immediate service risk.
+- `priority:p3`: exploratory or deferred backlog work.
+
+PR label inheritance:
+- PR `type:*`, `area:*`, and `priority:*` labels MUST inherit from the primary linked issue (`Closes #...`).
+- Label mismatches between PR and linked issue are merge-blocking governance failures.
+
 ### Issue Governance
 
 Issue intake MUST use repository issue forms (`.github/ISSUE_TEMPLATE/*.yml`) and include:
@@ -198,7 +208,11 @@ Additional PR rules:
 
 ### Secondary AI Review
 
-- Every PR MUST request a secondary Codex review comment after labels/body/checks are ready:
+- Every non-trivial PR SHOULD request both AI reviews when scope/risk warrants it; Copilot-first then Codex cross-check is the default sequence:
+  1. `@copilot review`
+  2. resolve/waive material Copilot findings
+  3. `@codex review`
+- Every PR MUST request at least a secondary Codex review comment after labels/body/checks are ready:
   - `@codex review`
 - For material-risk changes (`SECURITY`, `PRODUCTION`, `DESTRUCTIVE`) or high-complexity refactors, also request:
   - `@copilot review`
@@ -248,6 +262,11 @@ Operational runbooks:
 - `Conflict State`: `None`, `Rebase Required`
 - `Escalation State`: `None`, `Secondary Review`, `Policy Exception`
 
+Template adoption strategy:
+- Full adoption: iterative development + kanban flow on `bominal Workstreams`.
+- Partial adoption: feature-release, bug-tracker, and product-launch templates as saved views/filters over the same canonical issues (not separate duplicate issue systems).
+- Non-adoption: avoid template mechanics that duplicate labeling/project state outside canonical issue fields.
+
 Automation expectations:
 - new issues are auto-added to `bominal Workstreams` with `Status=Triage`,
 - implementation starts only from `Ready` issues with required labels/acceptance/verification metadata,
@@ -276,6 +295,16 @@ Agent policy:
 - agents MUST pull work from `bominal Agent Command` queue state, not ad-hoc branch choice,
 - no implementation PR without a linked issue (`Closes #...`),
 - secondary review is required when risk/sensitive scope or large-diff policy is triggered.
+
+Orchestrator policy:
+- orchestrator agents MUST create or update a GitHub issue before dispatching execution agents.
+- orchestrator-created issues MUST include:
+  - explicit `type:*`, `area:*`, `priority:*`, and `risk:*` labels,
+  - scope (`in-scope`, `out-of-scope`),
+  - domain constraints (security/auth/payment/deploy boundaries),
+  - acceptance criteria and verification plan,
+  - rollback note and dependency context,
+  - clear implementation instructions and non-goals.
 
 ### Wiki Governance
 

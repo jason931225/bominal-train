@@ -10,12 +10,16 @@ Use this 3-board model:
 - `#2 bominal Review` (review state and secondary-review tracking)
 - `#3 bominal Agent Command` (agent queue/claim/checkpoint operations)
 
-Template usage:
-- Iterative development: Workstreams board, grouped by `Status`, filtered `type:enhancement`.
-- Kanban: Workstreams board default (`Todo` -> `In Progress` -> `Done`).
-- Bug tracker: Workstreams board filtered `type:bug`, sorted by `Priority` then `Risk`.
-- Feature release: Workstreams board filtered by `Target Release` milestone value.
-- Product launch: Workstreams board filtered `priority:p0|p1` + `area:ci-cd|infra|auth`.
+Template adoption:
+- Full adoption:
+  - Iterative development: Workstreams grouped by `Status`.
+  - Kanban: default Workstreams lane flow (`Todo` -> `In Progress` -> `Done`).
+- Partial adoption:
+  - Bug tracker: Workstreams saved view filtered `type:bug`, sorted `Priority` then `Risk`.
+  - Feature release: Workstreams saved view grouped by `Target Release`.
+  - Product launch: Workstreams saved view filtered `priority:p0|p1` + `area:ci-cd|infra|auth`.
+- Non-adoption:
+  - Do not create duplicate issue systems outside canonical GitHub issues + board fields.
 
 ## Auth Bootstrap For Agents
 
@@ -85,6 +89,7 @@ Behavior:
 - Falls back to legacy `BOMINAL_PROJECT_OWNER/NUMBER`.
 - Syncs issues and linked PR status to Workstreams board.
 - Handles personal-owner projects safely (user/org GraphQL lookup without hard failure).
+- PR governance enforces `type:*`, `area:*`, and `priority:*` inheritance from linked issue.
 - Supports status fallback mapping when board uses default options:
   - `Triage` -> `Todo`
   - `Ready` -> `Todo`
@@ -99,6 +104,11 @@ Validated with dummy issues `#78`-`#82` and PR `#83` on 2026-03-05:
 - Issue-event failures observed on `main` before this patch confirm the old owner-query bug.
 
 ## Secondary Review Policy (Mandatory)
+
+Review order when dual review is warranted:
+1. Post `@copilot review`
+2. Resolve or explicitly waive material Copilot findings
+3. Post `@codex review` for independent cross-check
 
 After labels/body/checks are ready, request secondary AI review in PR comments:
 
@@ -115,3 +125,23 @@ When risk is material (`SECURITY`, `PRODUCTION`, `DESTRUCTIVE`, or high-complexi
 Merge only after:
 - required human approval policy is satisfied,
 - material Codex/Copilot findings are resolved or explicitly waived with rationale.
+
+## Orchestrator Agent Contract
+
+Orchestrator agents must open/update a GitHub issue before dispatching work.
+Preferred intake form: `.github/ISSUE_TEMPLATE/orchestrator-job.yml`.
+
+Required issue payload:
+- Labels: exactly one `type:*`, one `area:*`, one `priority:*`, plus `risk:*` and `status:*`.
+- Scope block: `Problem`, `Expected Outcome`, `In Scope`, `Out Of Scope`.
+- Risk/domain block: auth/security/payment/deploy boundaries and forbidden paths.
+- Delivery block: acceptance criteria, verification plan, rollback note, dependencies.
+- Assignment block: execution instructions, non-goals, and completion evidence expectations.
+
+Minimum CLI sequence:
+
+```bash
+gh issue create --repo jason931225/bominal --title "<type>: <scope>" --body-file <issue.md> \
+  --label type:<...> --label area:<...> --label priority:<...> --label risk:<...> --label status:ready
+gh project item-add 1 --owner @me --url https://github.com/jason931225/bominal/issues/<issue_number>
+```
