@@ -3,7 +3,7 @@ use std::sync::Arc;
 use axum::{
     Router,
     http::HeaderMap,
-    routing::{delete, get, post},
+    routing::{get, post},
 };
 use bominal_shared::error::{ApiError, ApiErrorCode, ApiErrorStatus};
 
