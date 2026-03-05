@@ -112,6 +112,11 @@ Required pipeline stages:
 - smoke checks
 - rollback trigger evaluation
 
+Change-scope routing policy:
+- Docs-only deltas MUST bypass heavy CI/CD stages (build, runtime test, artifact publish, deploy).
+- Docs-only means changes under `docs/**` or markdown-only file updates.
+- Deploy workflows MUST NOT trigger from markdown-only changes even when they occur under otherwise deploy-scoped paths (for example `runtime/**` or `env/prod/**`).
+
 Mandatory artifacts:
 - build metadata,
 - test and coverage reports,

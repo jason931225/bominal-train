@@ -8,6 +8,8 @@ on:
       - runtime/**
       - env/prod/**
       - .github/workflows/cd.yml
+      - '!**/*.md'
+      - '!docs/**'
   workflow_dispatch:
     inputs:
       deploy:
