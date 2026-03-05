@@ -75,7 +75,7 @@ gh api repos/<owner>/<repo>/branches/<branch>/protection/required_pull_request_r
 ```
 
 ### Baseline Notes
-- PR required before merge: `<yes/no>`
+- PR required before merge (`required_pull_request_reviews != null`): `<yes/no>`
 - Required approving reviews: `<number>`
 - Dismiss stale approvals on new commit: `<yes/no>`
 - Code owner review required: `<yes/no>`
