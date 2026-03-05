@@ -13,7 +13,6 @@ This playbook is the deterministic path to hard-cut traffic to Rust `api` + `wor
 
 Required keys consumed by `.github/workflows/cd.yml`:
 
-- `AUTO_DEPLOY_MAIN`
 - `GCP_PROJECT_ID`
 - `GCP_WORKLOAD_IDENTITY_PROVIDER`
 - `GCP_SERVICE_ACCOUNT`
@@ -92,7 +91,7 @@ Required files:
 
 ## 5) Execute Cutover
 
-- Trigger `CD` workflow on `main` with `deploy=true`, or push to `main` with `AUTO_DEPLOY_MAIN=true`.
+- Trigger `CD` workflow on `main` with `deploy=true` (manual gate).
 - Confirm sequence in logs:
   - image build/push + digest refs
   - remote deploy script

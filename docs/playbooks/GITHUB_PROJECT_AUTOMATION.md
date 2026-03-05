@@ -1,19 +1,35 @@
 # GitHub Project Automation
 
-This playbook operationalizes the canonical policy in `docs/MANUAL.md#project-tracking`.
+This playbook operationalizes `docs/MANUAL.md#project-tracking` and the protected branch model (`dev -> staging -> main`).
 
 ## Board Topology
 
 Maintain three active GitHub Project v2 boards:
 
 1. `bominal Workstreams`
-- Purpose: issue intake, prioritization, delivery status.
+- Purpose: issue intake, prioritization, release-stage and promotion tracking.
 
 2. `bominal Review`
-- Purpose: PR review-depth, Copilot disposition, merge readiness.
+- Purpose: PR review-depth, Copilot/Codex disposition, merge readiness.
 
 3. `bominal Agent Command`
-- Purpose: automation control-plane for dispatch, claim checkpoints, domain-lock enforcement, and escalations.
+- Purpose: deterministic agent dispatch queue, checkpoint tracking, domain-lock and escalations.
+
+## Template Adoption Matrix
+
+Adopt board template ideas by partial composition:
+
+- `Kanban` (adopted): status flow (`Triage -> Ready -> In Progress -> In Review -> Done`) is the backbone.
+- `Iterative development` (adopted): queue checkpoints and incremental PR milestones.
+- `Bug tracker` (partially adopted): severity/risk handling through `priority:*` + `risk:*` labels.
+- `Feature release` (partially adopted): `Target Release`, `Env Stage`, `Promotion State` fields.
+- `Product launch` (selective adoption): release-calendar/milestone alignment; no marketing pipeline coupling.
+
+Priority scope contract:
+- `priority:p0`: service-impacting, security-critical, or release-blocking.
+- `priority:p1`: high-value near-term delivery.
+- `priority:p2`: normal planned backlog.
+- `priority:p3`: low urgency or exploratory maintenance.
 
 ## Required Field Model
 
@@ -23,6 +39,9 @@ Maintain three active GitHub Project v2 boards:
 - `Area`: label-aligned `area:*`
 - `Priority`: `P0`, `P1`, `P2`, `P3`
 - `Risk`: `Low`, `Medium`, `High`
+- `Env Stage`: `Development`, `Staging`, `Production`
+- `Promotion State`: `PR Open`, `Merged to dev`, `Merged to staging`, `Released`
+- `Promotion Mode`: `Manual`, `Auto`
 - `Target Release`
 - `Due Date`
 - `Linked PR`
@@ -42,102 +61,90 @@ Maintain three active GitHub Project v2 boards:
 - `Conflict State`: `None`, `Rebase Required`
 - `Escalation State`: `None`, `Secondary Review`, `Policy Exception`
 
-## Automation Contract
+## Branch Promotion Lifecycle
 
-### Intake and Readiness
-- Auto-add every new issue to `bominal Workstreams` with `Status=Triage`.
-- Transition to `Ready` only when issue includes:
-  - required labels (`type:*`, `area:*`, `priority:*`),
-  - acceptance criteria,
-  - verification plan,
-  - risk class.
+Branch and promotion policy:
+- implementation branches -> `dev`
+- `dev` -> `staging`
+- `staging` -> `main`
+- `hotfix/*` -> `main` then back-promote (`main -> staging -> dev`)
 
-### Agent Dispatch
-- Source of truth for pickup order: `bominal Agent Command`.
-- Pickup order: highest `priority:*` first, then FIFO oldest `Ready`.
-- Agents may claim only items in `Claim State=Ready`.
-- Claim checkpoints are mandatory and ordered:
-  1. `Claimed`
-  2. `Design Note Posted`
-  3. `Draft PR Linked`
+Automation rules:
+- issue label `promotion:auto` enables automatic PR creation after merge:
+  - merged PR into `dev` opens `dev -> staging`
+  - merged PR into `staging` opens `staging -> main`
+- promotion PR merge remains maintainer-controlled via `/promote merge` command.
+- merged hotfix PR to `main` opens `main -> staging` back-promotion PR.
 
-### Domain Lock and Parallelism
-- Hard lock: one implementation item maps to one `area:*`.
-- Hard lock: PR changed-path set must remain inside that area's allowed path map.
-- Area WIP cap is `1` active implementation item.
-- On conflicting same-area merge, active claim moves to `Blocked` with `Conflict State=Rebase Required`.
+## Review Sequencing
 
-### Review and Merge
-- Linked PR enters `bominal Review`.
-- Linked issue status moves to `In Review` when PR is review-ready.
-- Linked issue status moves to `Done` when PR is merged.
-- Merge is blocked unless all are true:
-  - linked issue exists (`Closes #...`),
-  - required labels are present,
-  - required checks are green,
-  - all review conversations are resolved,
-  - required review depth is satisfied,
-  - material Copilot findings are fixed or maintainer-waived.
+When secondary review is required:
+1. Request `@copilot review`.
+2. Resolve material findings or maintainers explicitly waive with risk note.
+3. Request `@codex review` for cross-check.
+4. Merge only after checks are green and conversations are resolved.
 
-## Secondary Review Trigger Matrix
+## Orchestrator Issue Authoring Contract
 
-Set `Review Depth=Secondary Required` when any trigger matches:
-- `risk:high`
-- `type:security`
-- `area:auth`, `area:payment-crypto`, `area:ci-cd`, `area:infra`
-- Sensitive paths changed (auth/session/payment/deploy/migrations/security)
-- Large-diff threshold exceeded (policy-defined file/line threshold)
+Orchestrator-posted issues MUST include:
+- objective and user/operator outcome,
+- exact `area:*` domain and allowed path-set,
+- risk class, sensitive boundaries, rollback plan,
+- in-scope/out-of-scope,
+- acceptance criteria,
+- verification command checklist,
+- agent dispatch instructions (claim/design-note/draft-PR/review sequence).
 
-## Copilot Disposition Policy
+Use `.github/ISSUE_TEMPLATE/orchestrator-task.yml` for this.
 
-### Copilot Required
-- Required for:
-  - PRs linked to work items with `Risk=Medium` or `Risk=High`
-  - any PR with `Review Depth=Secondary Required`
+## Tested Agent Bootstrap Commands
 
-### Material Classification
-- Material by default if finding touches:
-  - security boundaries
-  - auth/session behavior
-  - payment or secret handling
-  - data-loss or rollback safety
-  - deploy/infra safety
-  - missing negative-path tests in risk-sensitive scope
+GitHub CLI bootstrap (session start):
+```bash
+gh auth status
+gh repo view jason931225/bominal --json name,defaultBranchRef
+```
 
-### Waiver
-- Only maintainers may waive material findings.
-- Waiver must include:
-  - reason,
-  - risk note,
-  - follow-up issue if deferring remediation.
+If the default CLI token is missing `read:project`, bootstrap with the local full-scope PAT:
+```bash
+set -a
+source env/dev/test.env
+set +a
+export GH_TOKEN="$GH_PAT_FULL"
+gh project list --owner @me
+```
 
-## Agent Operating Protocol
+Create and queue a work item:
+```bash
+gh issue create --repo jason931225/bominal --title "chore: dummy project automation check" --body "Policy smoke test issue" --label type:chore --label area:ci-cd --label priority:p3 --label status:ready
+gh project item-add "$BOMINAL_WORKSTREAMS_PROJECT_NUMBER" --owner "$BOMINAL_WORKSTREAMS_PROJECT_OWNER" --url "<ISSUE_URL>"
+```
 
-1. Pull next item from `bominal Agent Command` queue.
-2. Confirm issue is linked and `Ready`.
-3. Post short design note on issue before opening draft PR.
-4. Open draft PR with `Closes #...`.
-5. Keep board fields current while progressing checkpoints.
-6. Do not bypass `Blocked`/`Escalated` states; resolve gating conditions first.
+Promotion-review commands:
+```bash
+gh pr review <PR_NUMBER> --repo jason931225/bominal --comment --body "@copilot review"
+gh pr review <PR_NUMBER> --repo jason931225/bominal --comment --body "@codex review"
+gh pr comment <PR_NUMBER> --repo jason931225/bominal --body "/promote merge"
+```
 
-## Setup Checklist
+GitHub MCP equivalents (preferred in agent automation):
+- queue/read issues: `list_issues`, `issue_read`, `issue_write`
+- PR lifecycle: `list_pull_requests`, `pull_request_read`, `update_pull_request`, `merge_pull_request`
+- review operations: `request_copilot_review`, `add_issue_comment`, `pull_request_review_write`
+- repo governance checks: `get_me`, `list_branches`, `list_releases`
 
-Repository variables:
-- `BOMINAL_WORKSTREAMS_PROJECT_OWNER`
-- `BOMINAL_WORKSTREAMS_PROJECT_NUMBER`
-- `BOMINAL_REVIEW_PROJECT_OWNER`
-- `BOMINAL_REVIEW_PROJECT_NUMBER`
-- `BOMINAL_COMMAND_PROJECT_OWNER`
-- `BOMINAL_COMMAND_PROJECT_NUMBER`
-- Transition compatibility while workflow migration is in progress:
-  - `BOMINAL_PROJECT_OWNER`
-  - `BOMINAL_PROJECT_NUMBER`
+## Auth And Scope Requirements
 
-Repository secret:
-- `PROJECT_AUTOMATION_TOKEN` (`repo`, `read:project`)
+Required scopes for CLI PAT fallback (if GitHub App/session auth is unavailable):
+- `repo`
+- `project`
+- `read:project`
+- `workflow`
+
+`PROJECT_AUTOMATION_TOKEN` secret must support Project v2 GraphQL reads/writes for configured boards.
 
 ## Exception Handling
 
-- Policy violation: move to `Escalated`, label `status:blocked`, post corrective checklist.
-- Emergency ops hotfix: permit temporary bypass only with explicit maintainer approval and post-merge incident note.
-- Any manual override must leave an auditable comment trail on issue/PR.
+- Policy violation: move to `Escalated`, apply `status:blocked`, post corrective checklist.
+- Emergency hotfix: temporary bypass requires explicit maintainer approval and post-merge incident note.
+- Manual override always requires an auditable issue/PR comment trail.

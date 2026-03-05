@@ -3,6 +3,8 @@ name: Branch Policy Gate
 on:
   pull_request:
     branches:
+      - dev
+      - staging
       - main
 
 permissions:
@@ -42,12 +44,14 @@ jobs:
 
             const optionalIfPresent = [
               "Dependency Review",
+              "Dependency Review Policy",
               "Frontend Asset Gate",
+              "Payment Crypto Go Tests",
               "Station Catalog Snapshot Validation",
             ];
 
             // Keep docs-only classification in sync with pr-governance.yml and ci.yml path ignores.
-            const isDocsFile = (path) => path.startsWith("docs/") || path.endsWith(".md");
+            const isDocsFile = (path) => path.startsWith("docs/") || (path.endsWith(".md") && !path.startsWith(".github/"));
 
             const files = await github.paginate(github.rest.pulls.listFiles, {
               owner,

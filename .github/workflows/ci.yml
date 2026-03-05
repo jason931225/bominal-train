@@ -3,12 +3,16 @@ name: CI
 on:
   pull_request:
     branches:
+      - dev
+      - staging
       - main
     paths-ignore:
       - docs/**
       - "**/*.md"
   push:
     branches:
+      - dev
+      - staging
       - main
     paths-ignore:
       - docs/**

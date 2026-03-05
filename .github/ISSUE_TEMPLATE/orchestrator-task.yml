@@ -1,0 +1,101 @@
+name: Orchestrator Work Item
+description: Structured issue template for agent dispatch from the command queue.
+title: "orchestrator: "
+labels:
+  - type:chore
+  - area:ci-cd
+  - priority:p1
+  - status:ready
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template when posting a queue item for implementation agents.
+        Include complete scope, risk, domain lock, and verification instructions.
+  - type: textarea
+    id: objective
+    attributes:
+      label: Objective
+      description: What outcome must this work item produce?
+      placeholder: One clear result statement.
+    validations:
+      required: true
+  - type: dropdown
+    id: target_branch
+    attributes:
+      label: Target Branch Stage
+      description: Branch where this issue should land first.
+      options:
+        - dev
+        - staging
+        - main
+    validations:
+      required: true
+  - type: textarea
+    id: domain_scope
+    attributes:
+      label: Domain And Path Lock
+      description: One `area:*` domain and allowed file/path scope for this item.
+      placeholder: |
+        area:runtime-api
+        allowed paths:
+        - runtime/crates/api/**
+    validations:
+      required: true
+  - type: textarea
+    id: risk_assessment
+    attributes:
+      label: Risk Assessment
+      description: Include risk class, sensitive boundaries, rollback plan, and blast radius.
+      placeholder: |
+        Risk class: WRITE
+        Sensitive scope: auth/session
+        Rollback: revert PR and redeploy previous digest
+    validations:
+      required: true
+  - type: textarea
+    id: scope_in
+    attributes:
+      label: In Scope
+      description: Explicit work to perform.
+      placeholder: "1. ...\n2. ..."
+    validations:
+      required: true
+  - type: textarea
+    id: scope_out
+    attributes:
+      label: Out Of Scope
+      description: Explicit non-goals to prevent drift.
+      placeholder: "1. ...\n2. ..."
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance_criteria
+    attributes:
+      label: Acceptance Criteria
+      description: Merge criteria and runtime/behavior conditions.
+      placeholder: "- [ ] ...\n- [ ] ..."
+    validations:
+      required: true
+  - type: textarea
+    id: verification_plan
+    attributes:
+      label: Verification Plan
+      description: Exact commands/tests/checks to run before PR.
+      placeholder: |
+        - cargo test -p bominal-api
+        - ./infra/scripts/local-check.sh
+    validations:
+      required: true
+  - type: textarea
+    id: agent_instructions
+    attributes:
+      label: Agent Dispatch Notes
+      description: Required sequence for agent checkpoints and review requests.
+      placeholder: |
+        - Claim in Agent Command board
+        - Post design note
+        - Open draft PR (Closes #...)
+        - Request @copilot review then @codex review
+    validations:
+      required: true
