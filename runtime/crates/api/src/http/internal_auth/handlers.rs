@@ -1,30 +1,16 @@
 use std::sync::Arc;
 
 use axum::{
-    Json, Router,
+    Json,
     extract::State,
     http::{HeaderMap, StatusCode},
     response::IntoResponse,
-    routing::post,
 };
 use bominal_shared::error::{ApiError, ApiErrorCode, ApiErrorStatus};
 
-use super::super::{AppState, request_id_from_headers, services::auth_service};
+use super::super::super::{AppState, request_id_from_headers, services::auth_service};
 
-pub(super) fn register(
-    router: Router<Arc<AppState>>,
-    mount_aliases: bool,
-) -> Router<Arc<AppState>> {
-    let router = router.route("/internal/v1/auth/invites", post(create_invite));
-
-    if mount_aliases {
-        return router.route("/api/internal/auth/invites", post(create_invite));
-    }
-
-    router
-}
-
-async fn create_invite(
+pub(super) async fn create_invite(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     Json(payload): Json<auth_service::CreateInviteRequest>,

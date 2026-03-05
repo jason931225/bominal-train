@@ -36,7 +36,6 @@ mod auth;
 mod dashboard;
 mod internal;
 mod internal_auth;
-mod internal_auth_invites;
 mod internal_provider_jobs;
 mod internal_providers;
 mod modules;
@@ -296,7 +295,7 @@ fn register_internal_api(
     let internal_router = Router::<Arc<AppState>>::new();
     let internal_router = internal_providers::register(internal_router, mount_aliases);
     let internal_router = internal_provider_jobs::register(internal_router, mount_aliases);
-    let internal_router = internal_auth_invites::register(internal_router, mount_aliases);
+    let internal_router = internal_auth::register_invites(internal_router, mount_aliases);
     let internal_router = internal_router.layer(middleware::from_fn_with_state(
         state,
         internal_auth::require_service_jwt,
