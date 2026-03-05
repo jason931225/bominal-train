@@ -1,4 +1,5 @@
 use std::{
+    path::PathBuf,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -6,7 +7,10 @@ use std::{
 use axum::{
     Router,
     extract::{MatchedPath, Request, State},
-    http::{HeaderName, StatusCode},
+    http::{
+        HeaderName, HeaderValue, StatusCode,
+        header::{CONTENT_ENCODING, CONTENT_TYPE},
+    },
     middleware::{self, Next},
     response::{IntoResponse, Redirect, Response},
 };
@@ -45,8 +49,8 @@ const DEFAULT_HTTP_REQUEST_BODY_LIMIT_BYTES: usize = 2 * 1024 * 1024;
 const DEFAULT_HTTP_CONCURRENCY_LIMIT: usize = 32;
 
 pub(crate) fn build_router(state: Arc<AppState>) -> Router {
-    let assets_dir = std::env::var("FRONTEND_ASSETS_DIR")
-        .unwrap_or_else(|_| "runtime/frontend/dist".to_string());
+    let assets_dir =
+        std::env::var("FRONTEND_ASSETS_DIR").unwrap_or_else(|_| default_frontend_assets_dir());
     let request_timeout = Duration::from_secs(parse_u64_env(
         "HTTP_REQUEST_TIMEOUT_SECONDS",
         DEFAULT_HTTP_REQUEST_TIMEOUT_SECONDS,
@@ -113,6 +117,7 @@ pub(crate) fn build_router(state: Arc<AppState>) -> Router {
 
     let router = router
         .nest_service("/assets", ServeDir::new(assets_dir))
+        .layer(middleware::from_fn(ensure_svgz_asset_headers))
         .layer(middleware::from_fn(record_http_metrics))
         .layer(middleware::from_fn_with_state(
             state.clone(),
@@ -144,6 +149,26 @@ pub(crate) fn build_router(state: Arc<AppState>) -> Router {
                 )),
         )
         .with_state(state)
+}
+
+fn default_frontend_assets_dir() -> String {
+    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    path.push("../../frontend/dist");
+    path.to_string_lossy().into_owned()
+}
+
+async fn ensure_svgz_asset_headers(request: Request, next: Next) -> Response {
+    let path = request.uri().path().to_ascii_lowercase();
+    let is_svgz_asset = path.starts_with("/assets/") && path.ends_with(".svgz");
+
+    let mut response = next.run(request).await;
+    if is_svgz_asset && response.status() == StatusCode::OK {
+        let headers = response.headers_mut();
+        headers.insert(CONTENT_ENCODING, HeaderValue::from_static("gzip"));
+        headers.insert(CONTENT_TYPE, HeaderValue::from_static("image/svg+xml"));
+    }
+
+    response
 }
 
 async fn normalize_local_auth_hosts(request: Request, next: Next) -> Response {

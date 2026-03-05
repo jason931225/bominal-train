@@ -372,3 +372,48 @@ async fn favicon_redirects_to_static_asset() {
         .unwrap_or_default();
     assert_eq!(location, "/assets/icons/brand/favicon.svg");
 }
+
+#[tokio::test]
+async fn svgz_assets_include_gzip_and_svg_content_headers() {
+    let app = build_test_app(test_config(
+        "",
+        "",
+        "",
+        "",
+        PasskeyProvider::ServerWebauthn,
+        "localhost",
+        "http://localhost:8000",
+    ))
+    .await;
+    let request = match axum::http::Request::builder()
+        .method("GET")
+        .uri("/assets/icons/runtime-ui/auth-hero-passkey-light.svgz")
+        .body(axum::body::Body::empty())
+    {
+        Ok(request) => request,
+        Err(err) => panic!("failed to build request: {err}"),
+    };
+
+    let response = match app.oneshot(request).await {
+        Ok(response) => response,
+        Err(err) => panic!("request failed: {err}"),
+    };
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let content_encoding = response
+        .headers()
+        .get(header::CONTENT_ENCODING)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default();
+    assert_eq!(content_encoding, "gzip");
+
+    let content_type = response
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default();
+    assert!(
+        content_type.starts_with("image/svg+xml"),
+        "expected image/svg+xml content type, got: {content_type}"
+    );
+}
