@@ -13,5 +13,6 @@ Use this map to jump directly to the correct section in `docs/MANUAL.md`.
 | deploy / rollback | `docs/MANUAL.md#deployment-and-rollback-standard` |
 | incident / ops triage | `docs/MANUAL.md#operations-runbook-core` |
 | docs policy / docs workflow | `docs/MANUAL.md#documentation-governance` |
+| pr / pull request / labels / duplicate | `docs/MANUAL.md#pull-request-governance` |
 | missing infra / backfill | `docs/MANUAL.md#current-gap-register-and-backfill-targets` |
 | external provider handoff | `docs/handoff/README.md` |

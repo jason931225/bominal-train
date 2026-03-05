@@ -2,7 +2,6 @@
 
 Canonical documentation:
 - `docs/MANUAL.md` - single source of policy, quality, operations, and target-state CI/CD controls.
-- `docs/MANUAL.md#pull-request-governance` - pull request handling standards: labels, duplicate PR treatment, and optional Copilot review protocol.
 - `docs/START_HERE.md` - entrypoint for humans and agents.
 - `docs/INTENT_ROUTING.md` - keyword router into manual sections.
 - `docs/GUARDRAIL.MD` - explicit immutable boundary: `third_party/**` is read-only.
