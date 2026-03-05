@@ -3,6 +3,7 @@
 Canonical documentation:
 - `docs/MANUAL.md` - single source of policy, quality, operations, and target-state CI/CD controls.
 - `docs/MANUAL.md#github-project-management-policy` - canonical GitHub governance contract (labels, issue/PR policy, project tracking, wiki linkage, milestones/tags, and branch protection baseline).
+- `docs/MANUAL.md#project-tracking` - canonical three-board operating model (`bominal Workstreams`, `bominal Review`, `bominal Agent Command`) and automation expectations.
 - `docs/START_HERE.md` - entrypoint for humans and agents.
 - `docs/INTENT_ROUTING.md` - keyword router into manual sections.
 - `docs/GUARDRAIL.MD` - explicit immutable boundary: `third_party/**` is read-only.
@@ -23,6 +24,7 @@ Active implementation plans:
 
 Operational playbooks:
 - `docs/playbooks/RUST_PRODUCTION_CUTOVER.md` - hard-cutover + rollback checklist for Rust production deploy.
+- `docs/playbooks/GITHUB_PROJECT_AUTOMATION.md` - board topology, agent dispatch checkpoints, secondary-review triggers, and Copilot material-finding disposition workflow.
 
 Note:
 - Legacy split docs trees (governance/humans/agents/playbooks/plans/etc.) were intentionally removed from canonical usage.

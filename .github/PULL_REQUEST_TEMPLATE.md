@@ -18,6 +18,10 @@
 
 - Risk class: READ / WRITE / SECURITY / DESTRUCTIVE / PRODUCTION
 - Rollback plan:
+- Review depth: Standard / Secondary Required
+- Secondary-review trigger (if required):
+- Copilot required by policy? Yes / No
+- Material Copilot findings disposition (fixed / maintainer-waived with reason):
 
 ## Verification Evidence
 
@@ -33,6 +37,7 @@
 - Docs updated:
 - Wiki page updates required:
 - Canonical manual anchors referenced:
+- Project board policy impact (`Workstreams` / `Review` / `Agent Command`):
 
 ## Changelog Impact
 

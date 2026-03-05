@@ -14,5 +14,7 @@ Use this map to jump directly to the correct section in `docs/MANUAL.md`.
 | incident / ops triage | `docs/MANUAL.md#operations-runbook-core` |
 | docs policy / docs workflow | `docs/MANUAL.md#documentation-governance` |
 | github governance / pr / labels / issues / projects / wiki / milestones / tags | `docs/MANUAL.md#github-project-management-policy` |
+| project board automation / agent dispatch / claim checkpoints / secondary review / copilot disposition | `docs/MANUAL.md#project-tracking` |
+| project board operating runbook | `docs/playbooks/GITHUB_PROJECT_AUTOMATION.md` |
 | missing infra / backfill | `docs/MANUAL.md#current-gap-register-and-backfill-targets` |
 | external provider handoff | `docs/handoff/README.md` |

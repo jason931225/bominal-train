@@ -38,6 +38,21 @@ Preserved external reference docs:
 - Treat critical-path areas (auth, security, payment boundary, deployment) as high-rigor paths.
 - Do not perform destructive or production/security boundary operations without explicit human approval.
 
+## GitHub Project Operating Policy (Mandatory)
+
+Agents MUST follow the three-board model documented in:
+- `docs/MANUAL.md#project-tracking`
+- `docs/playbooks/GITHUB_PROJECT_AUTOMATION.md`
+
+Execution rules:
+- Pull work from `bominal Agent Command` queue state, not ad-hoc branch-first selection.
+- Do not implement without a linked issue in `Ready` state.
+- Keep one `area:*` domain per implementation item and PR path-set (hard domain lock).
+- Follow claim checkpoints in order: `Claimed` -> `Design Note Posted` -> `Draft PR Linked`.
+- Respect area WIP cap (`1`) to avoid same-domain merge conflicts.
+- Ensure PRs use `Closes #...`, pass required checks, and resolve review conversations before merge.
+- For policy-scoped PRs, enforce Copilot material-finding disposition (fix or maintainer waiver with risk note).
+
 ## Current Infrastructure Reality
 
 Infrastructure automation is being rebuilt. Policy is prescriptive and target-state in `docs/MANUAL.md`, while some CI/CD/deploy tooling is currently absent from tracked repo files.
