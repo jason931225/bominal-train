@@ -70,10 +70,12 @@ jobs:
           fi
 
       - name: Lint shell scripts
-        run: shellcheck -x scripts/prod-up.sh scripts/tests/test_prod_up.sh scripts/tests/test_frontend_dist_untracked.sh scripts/tests/test_runtime_api_image_smoke.sh
+        run: shellcheck -x scripts/prod-up.sh scripts/clean-runtime-debug.sh scripts/tests/*.sh
 
       - name: Run production operator script tests
-        run: bash scripts/tests/test_prod_up.sh
+        run: |
+          bash scripts/tests/test_prod_up.sh
+          bash scripts/tests/test_clean_runtime_debug.sh
 
   runtime-api-image-smoke:
     name: Runtime API Image Smoke

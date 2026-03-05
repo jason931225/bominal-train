@@ -91,8 +91,12 @@ impl ReqwestKtxClient {
     }
 
     pub fn live(base_url: impl Into<String>) -> Self {
+        Self::live_with_timeout(base_url, Duration::from_secs(15))
+    }
+
+    pub fn live_with_timeout(base_url: impl Into<String>, timeout: Duration) -> Self {
         let client = BlockingClient::builder()
-            .timeout(Duration::from_secs(15))
+            .timeout(timeout)
             .build()
             .unwrap_or_else(|_| BlockingClient::new());
         Self {

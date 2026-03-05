@@ -1151,10 +1151,8 @@ fn hash_session_id(state: &AppState, session_id: &str) -> String {
 }
 
 fn headers_client_ip(headers: Option<&HeaderMap>) -> Option<String> {
-    let Some(headers) = headers else {
-        return None;
-    };
-    let ip = headers
+    let headers = headers?;
+    headers
         .get("x-forwarded-for")
         .and_then(|value| value.to_str().ok())
         .and_then(|value| value.split(',').next())
@@ -1168,14 +1166,11 @@ fn headers_client_ip(headers: Option<&HeaderMap>) -> Option<String> {
                 .map(str::trim)
                 .filter(|value| !value.is_empty())
                 .map(ToOwned::to_owned)
-        });
-    ip
+        })
 }
 
 fn headers_user_agent(headers: Option<&HeaderMap>) -> Option<String> {
-    let Some(headers) = headers else {
-        return None;
-    };
+    let headers = headers?;
     headers
         .get("user-agent")
         .and_then(|value| value.to_str().ok())

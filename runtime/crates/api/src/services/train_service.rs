@@ -2456,33 +2456,35 @@ fn extract_error_message_from_events(events: &[sqlx::postgres::PgRow]) -> Option
         let Ok(payload) = row.try_get::<Value, _>("event_payload") else {
             continue;
         };
-
-        let message = payload
-            .get("message")
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(ToOwned::to_owned);
-        if message.is_some() {
-            return message;
-        }
-
-        if let Some(reason) = extract_error_reason(&payload)
-            && let Some(message) = map_error_reason_to_message(reason)
-        {
-            return Some(message.to_string());
-        }
-
-        let fallback = payload
-            .get("state")
-            .and_then(Value::as_str)
-            .map(|value| format!("provider job {value}"));
-        if fallback.is_some() {
-            return fallback;
+        if let Some(message) = extract_error_message_from_payload(&payload) {
+            return Some(message);
         }
     }
 
     None
+}
+
+fn extract_error_message_from_payload(payload: &Value) -> Option<String> {
+    if let Some(reason) = extract_error_reason(payload)
+        && let Some(message) = map_error_reason_to_message(reason)
+    {
+        return Some(message.to_string());
+    }
+
+    let message = payload
+        .get("message")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned);
+    if message.is_some() {
+        return message;
+    }
+
+    payload
+        .get("state")
+        .and_then(Value::as_str)
+        .map(|value| format!("provider job {value}"))
 }
 
 fn value_as_string(value: &Value, key: &str) -> String {
@@ -2543,7 +2545,7 @@ fn aggregate_status<'a>(statuses: impl Iterator<Item = &'a str>) -> &'static str
         return "completed";
     }
 
-    let any_completed = collected.iter().any(|status| *status == "completed");
+    let any_completed = collected.contains(&"completed");
     let any_running = collected
         .iter()
         .any(|status| matches!(*status, "running" | "queued"));
@@ -2798,5 +2800,17 @@ mod tests {
             Some("provider rate limited")
         );
         assert_eq!(map_error_reason_to_message("fatal"), None);
+    }
+
+    #[test]
+    fn error_reason_message_takes_precedence_over_generic_payload_message() {
+        let payload = serde_json::json!({
+            "message": "non-retryable execution failure",
+            "error_reason": "auth_secret_missing"
+        });
+        assert_eq!(
+            extract_error_message_from_payload(&payload),
+            Some("provider credentials are missing or invalid".to_string())
+        );
     }
 }

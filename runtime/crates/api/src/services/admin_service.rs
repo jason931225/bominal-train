@@ -853,12 +853,12 @@ pub(crate) async fn create_incident(
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(|value| value.to_string());
-    if let Some(value) = summary.as_ref() {
-        if value.len() > 600 {
-            return Err(AdminServiceError::InvalidRequest(
-                "incident summary too long",
-            ));
-        }
+    if let Some(value) = summary.as_ref()
+        && value.len() > 600
+    {
+        return Err(AdminServiceError::InvalidRequest(
+            "incident summary too long",
+        ));
     }
     let actor_uuid = match created_by {
         Some(value) => Some(
@@ -930,12 +930,12 @@ pub(crate) async fn update_incident_status(
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(|value| value.to_string());
-    if let Some(value) = summary.as_ref() {
-        if value.len() > 600 {
-            return Err(AdminServiceError::InvalidRequest(
-                "incident summary too long",
-            ));
-        }
+    if let Some(value) = summary.as_ref()
+        && value.len() > 600
+    {
+        return Err(AdminServiceError::InvalidRequest(
+            "incident summary too long",
+        ));
     }
     let pool = state
         .db_pool
@@ -1058,16 +1058,20 @@ pub(crate) fn redacted_config_snapshot(state: &AppState) -> BTreeMap<String, ser
     out
 }
 
+pub(crate) struct AppendAdminAuditInput<'a> {
+    pub(crate) actor_user_id: Option<&'a str>,
+    pub(crate) actor_email: &'a str,
+    pub(crate) action: &'a str,
+    pub(crate) target_type: &'a str,
+    pub(crate) target_id: &'a str,
+    pub(crate) reason: &'a str,
+    pub(crate) request_id: &'a str,
+    pub(crate) metadata: serde_json::Value,
+}
+
 pub(crate) async fn append_admin_audit(
     state: &AppState,
-    actor_user_id: Option<&str>,
-    actor_email: &str,
-    action: &str,
-    target_type: &str,
-    target_id: &str,
-    reason: &str,
-    request_id: &str,
-    metadata: serde_json::Value,
+    input: AppendAdminAuditInput<'_>,
 ) -> Result<(), AdminServiceError> {
     let pool = state
         .db_pool
@@ -1075,7 +1079,9 @@ pub(crate) async fn append_admin_audit(
         .ok_or(AdminServiceError::ServiceUnavailable(
             "database unavailable",
         ))?;
-    let actor_uuid = actor_user_id.and_then(|value| Uuid::parse_str(value).ok());
+    let actor_uuid = input
+        .actor_user_id
+        .and_then(|value| Uuid::parse_str(value).ok());
     sqlx::query(
         "insert into admin_audit_log
          (id, actor_user_id, actor_email, action, target_type, target_id, reason, request_id, metadata, created_at)
@@ -1083,13 +1089,13 @@ pub(crate) async fn append_admin_audit(
     )
     .bind(Uuid::new_v4())
     .bind(actor_uuid)
-    .bind(actor_email)
-    .bind(action)
-    .bind(target_type)
-    .bind(target_id)
-    .bind(reason.trim())
-    .bind(request_id)
-    .bind(metadata)
+    .bind(input.actor_email)
+    .bind(input.action)
+    .bind(input.target_type)
+    .bind(input.target_id)
+    .bind(input.reason.trim())
+    .bind(input.request_id)
+    .bind(input.metadata)
     .execute(pool)
     .await
     .map_err(|_| AdminServiceError::Internal)?;

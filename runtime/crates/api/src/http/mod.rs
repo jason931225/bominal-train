@@ -216,11 +216,9 @@ async fn enforce_canonical_hosts(
         return Redirect::permanent(&format!("https://{}{}", admin_host, path_and_query))
             .into_response();
     }
-    if matches!(path, "/" | "/auth") || path.starts_with("/dashboard") {
-        if host == admin_host {
-            return Redirect::permanent(&format!("https://{}{}", user_host, path_and_query))
-                .into_response();
-        }
+    if (matches!(path, "/" | "/auth") || path.starts_with("/dashboard")) && host == admin_host {
+        return Redirect::permanent(&format!("https://{}{}", user_host, path_and_query))
+            .into_response();
     }
 
     next.run(request).await

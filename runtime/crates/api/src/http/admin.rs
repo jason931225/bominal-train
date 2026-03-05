@@ -641,14 +641,16 @@ async fn update_user_role(
     }
     let _ = admin_service::append_admin_audit(
         state.as_ref(),
-        Some(&session.user_id),
-        &session.email,
-        "user_role_update",
-        "user",
-        &user_id,
-        &payload.reason,
-        &request_id_from_headers(&headers),
-        serde_json::json!({"role": payload.role}),
+        admin_service::AppendAdminAuditInput {
+            actor_user_id: Some(&session.user_id),
+            actor_email: &session.email,
+            action: "user_role_update",
+            target_type: "user",
+            target_id: &user_id,
+            reason: &payload.reason,
+            request_id: &request_id_from_headers(&headers),
+            metadata: serde_json::json!({"role": payload.role}),
+        },
     )
     .await;
     StatusCode::NO_CONTENT.into_response()
@@ -683,14 +685,16 @@ async fn update_user_access(
     }
     let _ = admin_service::append_admin_audit(
         state.as_ref(),
-        Some(&session.user_id),
-        &session.email,
-        "user_access_update",
-        "user",
-        &user_id,
-        &payload.reason,
-        &request_id_from_headers(&headers),
-        serde_json::json!({"access_enabled": payload.access_enabled}),
+        admin_service::AppendAdminAuditInput {
+            actor_user_id: Some(&session.user_id),
+            actor_email: &session.email,
+            action: "user_access_update",
+            target_type: "user",
+            target_id: &user_id,
+            reason: &payload.reason,
+            request_id: &request_id_from_headers(&headers),
+            metadata: serde_json::json!({"access_enabled": payload.access_enabled}),
+        },
     )
     .await;
     StatusCode::NO_CONTENT.into_response()
@@ -819,14 +823,16 @@ async fn revoke_user_sessions(
         Ok(rows) => {
             let _ = admin_service::append_admin_audit(
                 state.as_ref(),
-                Some(&session.user_id),
-                &session.email,
-                "sessions_revoke",
-                "user",
-                &user_id,
-                &payload.reason,
-                &request_id_from_headers(&headers),
-                serde_json::json!({"revoked_rows": rows}),
+                admin_service::AppendAdminAuditInput {
+                    actor_user_id: Some(&session.user_id),
+                    actor_email: &session.email,
+                    action: "sessions_revoke",
+                    target_type: "user",
+                    target_id: &user_id,
+                    reason: &payload.reason,
+                    request_id: &request_id_from_headers(&headers),
+                    metadata: serde_json::json!({"revoked_rows": rows}),
+                },
             )
             .await;
             (StatusCode::OK, Json(serde_json::json!({ "revoked": rows }))).into_response()
@@ -1149,14 +1155,16 @@ async fn retry_runtime_job(
     }
     let _ = admin_service::append_admin_audit(
         state.as_ref(),
-        Some(&session.user_id),
-        &session.email,
-        "runtime_retry",
-        "runtime_job",
-        &job_id,
-        &payload.reason,
-        &request_id_from_headers(&headers),
-        serde_json::json!({}),
+        admin_service::AppendAdminAuditInput {
+            actor_user_id: Some(&session.user_id),
+            actor_email: &session.email,
+            action: "runtime_retry",
+            target_type: "runtime_job",
+            target_id: &job_id,
+            reason: &payload.reason,
+            request_id: &request_id_from_headers(&headers),
+            metadata: serde_json::json!({}),
+        },
     )
     .await;
     StatusCode::NO_CONTENT.into_response()
@@ -1184,14 +1192,16 @@ async fn requeue_runtime_job(
     }
     let _ = admin_service::append_admin_audit(
         state.as_ref(),
-        Some(&session.user_id),
-        &session.email,
-        "runtime_requeue",
-        "runtime_job",
-        &job_id,
-        &payload.reason,
-        &request_id_from_headers(&headers),
-        serde_json::json!({}),
+        admin_service::AppendAdminAuditInput {
+            actor_user_id: Some(&session.user_id),
+            actor_email: &session.email,
+            action: "runtime_requeue",
+            target_type: "runtime_job",
+            target_id: &job_id,
+            reason: &payload.reason,
+            request_id: &request_id_from_headers(&headers),
+            metadata: serde_json::json!({}),
+        },
     )
     .await;
     StatusCode::NO_CONTENT.into_response()
@@ -1219,14 +1229,16 @@ async fn cancel_runtime_job(
     }
     let _ = admin_service::append_admin_audit(
         state.as_ref(),
-        Some(&session.user_id),
-        &session.email,
-        "runtime_cancel",
-        "runtime_job",
-        &job_id,
-        &payload.reason,
-        &request_id_from_headers(&headers),
-        serde_json::json!({}),
+        admin_service::AppendAdminAuditInput {
+            actor_user_id: Some(&session.user_id),
+            actor_email: &session.email,
+            action: "runtime_cancel",
+            target_type: "runtime_job",
+            target_id: &job_id,
+            reason: &payload.reason,
+            request_id: &request_id_from_headers(&headers),
+            metadata: serde_json::json!({}),
+        },
     )
     .await;
     StatusCode::NO_CONTENT.into_response()
@@ -1275,14 +1287,16 @@ async fn update_kill_switch(
     }
     let _ = admin_service::append_admin_audit(
         state.as_ref(),
-        Some(&session.user_id),
-        &session.email,
-        "kill_switch_update",
-        "kill_switch",
-        &flag,
-        &payload.reason,
-        &request_id_from_headers(&headers),
-        serde_json::json!({ "enabled": payload.enabled }),
+        admin_service::AppendAdminAuditInput {
+            actor_user_id: Some(&session.user_id),
+            actor_email: &session.email,
+            action: "kill_switch_update",
+            target_type: "kill_switch",
+            target_id: &flag,
+            reason: &payload.reason,
+            request_id: &request_id_from_headers(&headers),
+            metadata: serde_json::json!({ "enabled": payload.enabled }),
+        },
     )
     .await;
     StatusCode::NO_CONTENT.into_response()
@@ -1561,14 +1575,16 @@ async fn create_incident(
     };
     let _ = admin_service::append_admin_audit(
         state.as_ref(),
-        Some(&session.user_id),
-        &session.email,
-        "incident_create",
-        "incident",
-        &incident.id,
-        reason,
-        &request_id_from_headers(&headers),
-        serde_json::json!({"severity": incident.severity, "status": incident.status}),
+        admin_service::AppendAdminAuditInput {
+            actor_user_id: Some(&session.user_id),
+            actor_email: &session.email,
+            action: "incident_create",
+            target_type: "incident",
+            target_id: &incident.id,
+            reason,
+            request_id: &request_id_from_headers(&headers),
+            metadata: serde_json::json!({"severity": incident.severity, "status": incident.status}),
+        },
     )
     .await;
     (StatusCode::CREATED, Json(incident)).into_response()
@@ -1604,14 +1620,16 @@ async fn update_incident_status(
     };
     let _ = admin_service::append_admin_audit(
         state.as_ref(),
-        Some(&session.user_id),
-        &session.email,
-        "incident_status_update",
-        "incident",
-        &incident_id,
-        &payload.reason,
-        &request_id_from_headers(&headers),
-        serde_json::json!({"status": updated.status}),
+        admin_service::AppendAdminAuditInput {
+            actor_user_id: Some(&session.user_id),
+            actor_email: &session.email,
+            action: "incident_status_update",
+            target_type: "incident",
+            target_id: &incident_id,
+            reason: &payload.reason,
+            request_id: &request_id_from_headers(&headers),
+            metadata: serde_json::json!({"status": updated.status}),
+        },
     )
     .await;
     (StatusCode::OK, Json(updated)).into_response()

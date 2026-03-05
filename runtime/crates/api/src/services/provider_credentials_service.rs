@@ -8,10 +8,13 @@ use bominal_shared::{
         LoginAccountType, LoginRequest, ReqwestSrtClient, SecretString, SrtProviderAdapter,
         SrtProviderError,
     },
-    repo::{UpsertProviderAuthSecretParams, upsert_provider_auth_secret_query},
+    repo::{
+        UpsertProviderAuthSecretParams, update_provider_auth_secret_metadata_query,
+        upsert_provider_auth_secret_query,
+    },
 };
 use chrono::Utc;
-use tracing::error;
+use tracing::{error, warn};
 use uuid::Uuid;
 
 use super::super::AppState;
@@ -67,28 +70,22 @@ pub(crate) async fn put_provider_credentials(
         .map(ToOwned::to_owned)
         .unwrap_or_else(|| format!("{provider}-subject-{}", Uuid::new_v4()));
 
+    let credential_kind = "login";
     let aad = EnvelopeAad {
         payload_kind: PayloadKind::ProviderAuth,
         provider: Some(provider.to_string()),
         subject_id: Some(subject_ref.clone()),
         scope: format!("{provider}:credentials:login"),
-        metadata: BTreeMap::from([("credential_kind".to_string(), "login".to_string())]),
+        metadata: BTreeMap::from([("credential_kind".to_string(), credential_kind.to_string())]),
     };
+    let identity_ciphertext = payload.identity_ciphertext.as_str();
+    let password_ciphertext = payload.password_ciphertext.as_str();
 
     let plaintext = serde_json::to_vec(&serde_json::json!({
-        "identity_ciphertext": payload.identity_ciphertext,
-        "password_ciphertext": payload.password_ciphertext
+        "identity_ciphertext": identity_ciphertext,
+        "password_ciphertext": password_ciphertext
     }))
     .map_err(|_| PutProviderCredentialsError::ValidationFailed)?;
-
-    let probe_result = probe_provider_login_once(
-        &state.config.app_env,
-        provider_auth_probe_enabled(),
-        provider,
-        payload.identity_ciphertext.as_str(),
-        payload.password_ciphertext.as_str(),
-    )
-    .await;
 
     let cipher = build_envelope_cipher_from_env(state)?;
     let encrypted = cipher
@@ -99,19 +96,22 @@ pub(crate) async fn put_provider_credentials(
     let key_version = i32::try_from(encrypted.key_version)
         .map_err(|_| PutProviderCredentialsError::CryptoUnavailable)?;
     let now = Utc::now();
-    let redacted_metadata = serde_json::json!({
-        "provider": provider,
-        "credential_kind": "login",
-        "contract": "ciphertext-only-v1",
-        "auth_probe_status": probe_result.status,
-        "auth_probe_message": probe_result.message,
-        "auth_probe_checked_at": now,
-    });
+    let initial_probe = AuthProbeResult::skipped(
+        provider,
+        "Authentication probe pending. Credentials were saved.",
+    );
+    let redacted_metadata = build_probe_metadata(
+        provider,
+        credential_kind,
+        initial_probe.status,
+        initial_probe.message.as_str(),
+        now,
+    );
 
     let params = UpsertProviderAuthSecretParams {
         provider,
         subject_ref: subject_ref.as_str(),
-        credential_kind: "login",
+        credential_kind,
         secret_envelope_ciphertext: encrypted.ciphertext.as_slice(),
         secret_envelope_dek_ciphertext: &encrypted.nonce,
         secret_envelope_kek_version: key_version,
@@ -130,6 +130,39 @@ pub(crate) async fn put_provider_credentials(
     {
         error!(error = %err, "failed to persist provider auth secret");
         return Err(PutProviderCredentialsError::PersistenceFailure);
+    }
+
+    let probe_result = probe_provider_login_once(
+        &state.config.app_env,
+        provider_auth_probe_enabled(),
+        provider,
+        identity_ciphertext,
+        password_ciphertext,
+    )
+    .await;
+    let probe_checked_at = Utc::now();
+    let probe_metadata = build_probe_metadata(
+        provider,
+        credential_kind,
+        probe_result.status,
+        probe_result.message.as_str(),
+        probe_checked_at,
+    );
+    if let Err(err) = update_provider_auth_secret_metadata_query(
+        provider,
+        subject_ref.as_str(),
+        credential_kind,
+        &probe_metadata,
+        probe_checked_at,
+    )
+    .execute(pool)
+    .await
+    {
+        warn!(
+            error = %err,
+            provider,
+            "failed to persist provider auth probe metadata"
+        );
     }
 
     Ok(PutProviderCredentialsResult {
@@ -319,6 +352,23 @@ fn parse_probe_enabled(raw: Option<String>) -> bool {
         .unwrap_or(true)
 }
 
+fn build_probe_metadata(
+    provider: &str,
+    credential_kind: &str,
+    auth_probe_status: &str,
+    auth_probe_message: &str,
+    checked_at: chrono::DateTime<Utc>,
+) -> serde_json::Value {
+    serde_json::json!({
+        "provider": provider,
+        "credential_kind": credential_kind,
+        "contract": "ciphertext-only-v1",
+        "auth_probe_status": auth_probe_status,
+        "auth_probe_message": auth_probe_message,
+        "auth_probe_checked_at": checked_at,
+    })
+}
+
 async fn probe_provider_login_once(
     app_env: &str,
     probe_enabled: bool,
@@ -341,6 +391,7 @@ async fn probe_provider_login_once(
         );
     }
 
+    let timeout = Duration::from_secs(PROVIDER_AUTH_PROBE_TIMEOUT_SECONDS);
     let provider_owned = provider.to_string();
     let account_owned = account_identifier.to_string();
     let password_owned = password.to_string();
@@ -349,22 +400,14 @@ async fn probe_provider_login_once(
             provider_owned.as_str(),
             account_owned.as_str(),
             password_owned.as_str(),
+            timeout,
         )
     });
-    match tokio::time::timeout(
-        Duration::from_secs(PROVIDER_AUTH_PROBE_TIMEOUT_SECONDS),
-        handle,
-    )
-    .await
-    {
-        Ok(Ok(result)) => result,
-        Ok(Err(_)) => AuthProbeResult::error(
-            provider,
-            "Authentication probe failed. Credentials were saved.",
-        ),
+    match handle.await {
+        Ok(result) => result,
         Err(_) => AuthProbeResult::error(
             provider,
-            "Authentication probe timed out after 4 seconds. Credentials were saved.",
+            "Authentication probe failed. Credentials were saved.",
         ),
     }
 }
@@ -373,6 +416,7 @@ fn probe_provider_login_blocking(
     provider: &str,
     account_identifier: &str,
     password: &str,
+    timeout: Duration,
 ) -> AuthProbeResult {
     let request = LoginRequest {
         account_type: LoginAccountType::MembershipNumber,
@@ -382,11 +426,17 @@ fn probe_provider_login_blocking(
 
     let outcome = match provider {
         "srt" => {
-            let mut adapter = SrtProviderAdapter::new(ReqwestSrtClient::live_default());
+            let mut adapter = SrtProviderAdapter::new(ReqwestSrtClient::live_with_timeout(
+                "https://app.srail.or.kr",
+                timeout,
+            ));
             adapter.login(request)
         }
         "ktx" => {
-            let mut adapter = KtxProviderAdapter::new(ReqwestKtxClient::live_default());
+            let mut adapter = KtxProviderAdapter::new(ReqwestKtxClient::live_with_timeout(
+                "https://smart.letskorail.com",
+                timeout,
+            ));
             adapter.login(request)
         }
         _ => return AuthProbeResult::error(provider, "Authentication probe unsupported"),
@@ -408,6 +458,11 @@ fn probe_error_message(error: &SrtProviderError) -> String {
         }
         SrtProviderError::Transport { message } | SrtProviderError::OperationFailed { message } => {
             let trimmed = message.trim();
+            let lower = trimmed.to_ascii_lowercase();
+            if lower.contains("timed out") || lower.contains("timeout") {
+                return "Authentication probe timed out after 4 seconds. Credentials were saved."
+                    .to_string();
+            }
             if trimmed.is_empty() {
                 "Authentication probe failed".to_string()
             } else {

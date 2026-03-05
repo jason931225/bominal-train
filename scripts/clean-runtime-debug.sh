@@ -20,7 +20,7 @@ fail() {
 dir_size_human() {
   local path="$1"
   if command -v du >/dev/null 2>&1; then
-    du -sh "${path}" 2>/dev/null | awk '{print $1}'
+    du -sh "${path}" 2>/dev/null | awk '{print $1}' || true
   fi
 }
 
