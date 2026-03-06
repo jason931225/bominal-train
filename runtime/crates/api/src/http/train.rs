@@ -1,19 +1,25 @@
 use std::sync::Arc;
 
+use async_stream::stream;
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
-    response::IntoResponse,
+    response::{
+        IntoResponse,
+        sse::{Event, KeepAlive, Sse},
+    },
     routing::{get, post},
 };
 use bominal_shared::error::{ApiError, ApiErrorCode, ApiErrorStatus};
+use std::{convert::Infallible, time::Duration};
 use tracing::{error, warn};
 
 use super::super::{
     AppState, request_id_from_headers,
     services::{auth_service, payment_method_service, train_service},
 };
+use super::sse as canonical_sse;
 
 pub(super) fn register(router: Router<Arc<AppState>>) -> Router<Arc<AppState>> {
     router
@@ -25,6 +31,23 @@ pub(super) fn register(router: Router<Arc<AppState>>) -> Router<Arc<AppState>> {
             post(create_search).get(list_search_history),
         )
         .route("/api/train/search/{search_id}", get(get_search))
+        .route(
+            "/api/train/providers/{provider}/search",
+            post(search_provider_direct),
+        )
+        .route(
+            "/api/train/tasks",
+            post(create_train_task).get(list_train_tasks),
+        )
+        .route("/api/train/tasks/{task_id}", get(get_train_task))
+        .route(
+            "/api/train/tasks/{task_id}/state",
+            post(update_train_task_state),
+        )
+        .route(
+            "/api/train/tasks/{task_id}/stream",
+            get(stream_train_task_events),
+        )
         .route(
             "/api/train/providers/{provider}/credentials",
             get(get_provider_credentials)
@@ -120,6 +143,209 @@ async fn get_search(
         Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(err) => map_train_error(err, &headers).into_response(),
     }
+}
+
+async fn search_provider_direct(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(provider): Path<String>,
+    Json(payload): Json<train_service::DirectTrainSearchRequest>,
+) -> impl IntoResponse {
+    let session = match auth_service::require_session_state(state.as_ref(), &headers).await {
+        Ok(session) => session,
+        Err(err) => return map_auth_error(err, &headers).into_response(),
+    };
+
+    match train_service::search_provider_direct(
+        state.as_ref(),
+        &session.user_id,
+        &provider,
+        payload,
+    )
+    .await
+    {
+        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
+        Err(err) => map_train_error(err, &headers).into_response(),
+    }
+}
+
+async fn create_train_task(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(payload): Json<train_service::CreateTrainTaskRequest>,
+) -> impl IntoResponse {
+    let session = match auth_service::require_session_state(state.as_ref(), &headers).await {
+        Ok(session) => session,
+        Err(err) => return map_auth_error(err, &headers).into_response(),
+    };
+    match train_service::create_train_task(state.as_ref(), &session.user_id, payload).await {
+        Ok(result) => (StatusCode::ACCEPTED, Json(result)).into_response(),
+        Err(err) => map_train_error(err, &headers).into_response(),
+    }
+}
+
+async fn list_train_tasks(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Query(query): Query<SearchHistoryQuery>,
+) -> impl IntoResponse {
+    let session = match auth_service::require_session_state(state.as_ref(), &headers).await {
+        Ok(session) => session,
+        Err(err) => return map_auth_error(err, &headers).into_response(),
+    };
+    let limit = query.limit.unwrap_or(20);
+    match train_service::list_train_tasks(state.as_ref(), &session.user_id, limit).await {
+        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
+        Err(err) => map_train_error(err, &headers).into_response(),
+    }
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct SearchHistoryQuery {
+    #[serde(default)]
+    limit: Option<usize>,
+}
+
+async fn get_train_task(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(task_id): Path<String>,
+) -> impl IntoResponse {
+    let session = match auth_service::require_session_state(state.as_ref(), &headers).await {
+        Ok(session) => session,
+        Err(err) => return map_auth_error(err, &headers).into_response(),
+    };
+    match train_service::get_train_task(state.as_ref(), &session.user_id, &task_id).await {
+        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
+        Err(err) => map_train_error(err, &headers).into_response(),
+    }
+}
+
+async fn update_train_task_state(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(task_id): Path<String>,
+    Json(payload): Json<train_service::TrainTaskStateUpdateRequest>,
+) -> impl IntoResponse {
+    let session = match auth_service::require_session_state(state.as_ref(), &headers).await {
+        Ok(session) => session,
+        Err(err) => return map_auth_error(err, &headers).into_response(),
+    };
+    match train_service::update_train_task_state(
+        state.as_ref(),
+        &session.user_id,
+        &task_id,
+        &payload.action,
+    )
+    .await
+    {
+        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
+        Err(err) => map_train_error(err, &headers).into_response(),
+    }
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct TaskEventStreamQuery {
+    #[serde(default)]
+    after_id: Option<i64>,
+    #[serde(default)]
+    limit: Option<usize>,
+}
+
+async fn stream_train_task_events(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(task_id): Path<String>,
+    Query(query): Query<TaskEventStreamQuery>,
+) -> impl IntoResponse {
+    let session = match auth_service::require_session_state(state.as_ref(), &headers).await {
+        Ok(session) => session,
+        Err(err) => return map_auth_error(err, &headers).into_response(),
+    };
+    let snapshot =
+        match train_service::get_train_task(state.as_ref(), &session.user_id, &task_id).await {
+            Ok(task) => task,
+            Err(err) => return map_train_error(err, &headers).into_response(),
+        };
+    let after_id = query.after_id.unwrap_or(0).max(0);
+    let limit = query.limit.unwrap_or(100).clamp(1, 200);
+    let session_user_id = session.user_id;
+    let event_stream = stream! {
+        let sync_id = uuid::Uuid::new_v4().to_string();
+        let mut seq: u64 = 0;
+        let mut cursor = after_id;
+        yield Ok::<Event, Infallible>(
+            canonical_sse::sync_event(
+                "train.task_events",
+                "train_task",
+                task_id.as_str(),
+                &sync_id,
+                seq,
+                "train_task.v1",
+                serde_json::json!({
+                    "task": snapshot,
+                    "events": [],
+                }),
+            ),
+        );
+        loop {
+            match train_service::list_train_task_events_page(
+                state.as_ref(),
+                &session_user_id,
+                &task_id,
+                cursor,
+                limit,
+            )
+            .await {
+                Ok(events) => {
+                    if !events.is_empty() {
+                        if let Some(last) = events.last() {
+                            cursor = last.id;
+                        }
+                        match train_service::get_train_task(state.as_ref(), &session_user_id, &task_id).await {
+                            Ok(task) => {
+                                seq = seq.saturating_add(1);
+                                let mut ops = vec![canonical_sse::op_upsert("/task", serde_json::json!(task))];
+                                for event in events {
+                                    ops.push(canonical_sse::op_append("/events", serde_json::json!(event)));
+                                }
+                                yield Ok::<Event, Infallible>(
+                                    canonical_sse::delta_event(
+                                        "train.task_events",
+                                        "train_task",
+                                        task_id.as_str(),
+                                        &sync_id,
+                                        seq,
+                                        "train_task.v1",
+                                        ops,
+                                    ),
+                                );
+                            }
+                            Err(_) => {
+                                yield Ok::<Event, Infallible>(
+                                    canonical_sse::error_event("train task stream snapshot unavailable"),
+                                );
+                            }
+                        }
+                    }
+                }
+                Err(_) => {
+                    yield Ok::<Event, Infallible>(
+                        canonical_sse::error_event("train task stream temporarily unavailable"),
+                    );
+                }
+            }
+            tokio::time::sleep(Duration::from_secs(2)).await;
+        }
+    };
+
+    Sse::new(event_stream)
+        .keep_alive(
+            KeepAlive::new()
+                .interval(Duration::from_secs(15))
+                .text("heartbeat"),
+        )
+        .into_response()
 }
 
 async fn list_search_history(

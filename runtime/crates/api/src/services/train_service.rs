@@ -1,14 +1,30 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     path::Path,
     sync::OnceLock,
+    time::Duration,
 };
 
 use bominal_shared::station_catalog;
-use chrono::{DateTime, NaiveDate, Utc};
+use bominal_shared::{
+    crypto::{
+        EncryptedEnvelope, EnvelopeAad, EnvelopeAlgorithm, EnvelopeCipher, PayloadKind,
+        ServerEnvelopeCipher, StaticKeyring,
+    },
+    providers::ProviderAdapter,
+    providers::ProviderError,
+    providers::ktx::{KtxProviderAdapter, ReqwestKtxClient},
+    providers::model::{
+        LoginAccountType, LoginRequest, Passenger, PassengerKind, ProviderOperationRequest,
+        ProviderOperationResponse, SearchTrainRequest, SecretString,
+    },
+    providers::srt::ReqwestSrtClient,
+};
+use chrono::{DateTime, FixedOffset, NaiveDate, NaiveDateTime, TimeZone, Utc};
 use redis::AsyncCommands;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use sha2::Digest;
 use sqlx::{PgPool, Row};
 use tokio::sync::Mutex;
 use tracing::{error, warn};
@@ -19,6 +35,16 @@ use super::{
     payment_method_service, provider_credentials_service, provider_jobs_service, station_search,
 };
 const STATION_CACHE_TTL_SECONDS: u64 = 300;
+const TEST_MASTER_KEY_B64_FALLBACK: &str = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
+const TRAIN_TASK_SCHEMA_VERSION: &str = "train_task.v1";
+const TRAIN_TASK_STATE_QUEUED: i16 = 0;
+const TRAIN_TASK_STATE_RUNNING: i16 = 1;
+const TRAIN_TASK_STATE_PAUSED: i16 = 2;
+const TRAIN_TASK_STATE_AWAITING_PAYMENT: i16 = 3;
+const TRAIN_TASK_STATE_COMPLETED: i16 = 4;
+const TRAIN_TASK_STATE_FAILED: i16 = 5;
+const TRAIN_TASK_STATE_CANCELLED: i16 = 6;
+const TRAIN_TASK_STATE_EXPIRED: i16 = 7;
 
 #[derive(Debug)]
 pub(crate) enum TrainServiceError {
@@ -221,6 +247,141 @@ pub(crate) struct TrainSearchRequestEcho {
     pub(crate) passengers: Vec<TrainPassengerCount>,
     pub(crate) passenger_count: i32,
     pub(crate) available_only: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct DirectTrainSearchRequest {
+    pub(crate) dep_station_code: String,
+    pub(crate) arr_station_code: String,
+    #[serde(default)]
+    pub(crate) dep_date: Option<String>,
+    #[serde(default)]
+    pub(crate) dep_time: Option<String>,
+    #[serde(default)]
+    pub(crate) passengers: Option<Vec<TrainPassengerCount>>,
+    #[serde(default)]
+    pub(crate) passenger_count: Option<u8>,
+    #[serde(default)]
+    pub(crate) available_only: Option<bool>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct DirectTrainSearchResponse {
+    pub(crate) provider_scope: String,
+    pub(crate) request: TrainSearchRequestEcho,
+    pub(crate) schedules: Vec<DirectTrainSchedule>,
+    pub(crate) errors: Vec<TrainProviderError>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct DirectTrainSchedule {
+    pub(crate) provider: String,
+    pub(crate) train_code: String,
+    pub(crate) train_number: String,
+    pub(crate) dep_station_code: String,
+    pub(crate) arr_station_code: String,
+    pub(crate) dep_date: String,
+    pub(crate) dep_time: String,
+    pub(crate) arr_date: String,
+    pub(crate) arr_time: String,
+    pub(crate) general_seat_available: bool,
+    pub(crate) special_seat_available: bool,
+    pub(crate) standby_available: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct CreateTrainTaskRequest {
+    pub(crate) provider: String,
+    pub(crate) dep_station_code: String,
+    pub(crate) arr_station_code: String,
+    pub(crate) dep_date: String,
+    pub(crate) dep_time: String,
+    #[serde(default)]
+    pub(crate) passengers: Option<Vec<TrainPassengerCount>>,
+    #[serde(default)]
+    pub(crate) passenger_count: Option<u8>,
+    pub(crate) candidates: Vec<TrainTaskCandidateInput>,
+    #[serde(default)]
+    pub(crate) auto_pay: Option<bool>,
+    #[serde(default)]
+    pub(crate) notify_email: Option<bool>,
+    #[serde(default)]
+    pub(crate) retry_on_expiry: Option<bool>,
+    #[serde(default)]
+    pub(crate) seat_preference: Option<String>,
+    #[serde(default)]
+    pub(crate) payment_method_ref: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub(crate) struct TrainTaskCandidateInput {
+    #[serde(default)]
+    pub(crate) priority_index: Option<i32>,
+    pub(crate) schedule: DirectTrainSchedule,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct TrainTaskStateUpdateRequest {
+    pub(crate) action: String,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct TrainTaskListResponse {
+    pub(crate) tasks: Vec<TrainTaskSnapshot>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct TrainTaskSnapshot {
+    pub(crate) task_id: String,
+    pub(crate) user_id: String,
+    pub(crate) provider: String,
+    pub(crate) state_code: i16,
+    pub(crate) state_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) state_reason_code: Option<i16>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) state_reason_name: Option<String>,
+    pub(crate) dep_station_code: String,
+    pub(crate) arr_station_code: String,
+    pub(crate) dep_date: String,
+    pub(crate) dep_time: String,
+    pub(crate) departure_at: DateTime<Utc>,
+    pub(crate) passengers: Vec<TrainPassengerCount>,
+    pub(crate) auto_pay: bool,
+    pub(crate) notify_email: bool,
+    pub(crate) retry_on_expiry: bool,
+    pub(crate) retry_count: i32,
+    pub(crate) max_retry_count: i32,
+    pub(crate) payment_method_ref: Option<String>,
+    pub(crate) created_at: DateTime<Utc>,
+    pub(crate) updated_at: DateTime<Utc>,
+    pub(crate) completed_at: Option<DateTime<Utc>>,
+    pub(crate) last_tried_unix_ms: Option<i64>,
+    pub(crate) last_search_tried_unix_ms: Option<i64>,
+    pub(crate) last_reservation_tried_unix_ms: Option<i64>,
+    pub(crate) last_payment_tried_unix_ms: Option<i64>,
+    pub(crate) pay_by_unix_ms: Option<i64>,
+    pub(crate) next_poll_unix_ms: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) selected_train: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) reservation: Option<Value>,
+    pub(crate) candidates: Vec<TrainTaskCandidateView>,
+    pub(crate) schema: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct TrainTaskCandidateView {
+    pub(crate) priority_index: i32,
+    pub(crate) schedule: Value,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct TrainTaskEventRecord {
+    pub(crate) id: i64,
+    pub(crate) event_type: String,
+    pub(crate) event_payload: Value,
+    pub(crate) created_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -850,6 +1011,398 @@ pub(crate) async fn create_search(
     })
 }
 
+pub(crate) async fn search_provider_direct(
+    state: &AppState,
+    user_id: &str,
+    provider_scope: &str,
+    payload: DirectTrainSearchRequest,
+) -> Result<DirectTrainSearchResponse, TrainServiceError> {
+    ensure_valid_user_id(user_id)?;
+    ensure_station_catalog_loaded(state).await?;
+
+    let dep_station_code = normalize_station_code(&payload.dep_station_code)?;
+    let arr_station_code = normalize_station_code(&payload.arr_station_code)?;
+    if dep_station_code == arr_station_code {
+        return Err(TrainServiceError::InvalidRequest(
+            "departure and arrival stations must differ".to_string(),
+        ));
+    }
+    let dep_date = normalize_dep_date(payload.dep_date.as_deref())?;
+    let dep_time = normalize_dep_time(payload.dep_time.as_deref())?;
+    let passengers = normalize_passengers(payload.passengers, payload.passenger_count)?;
+    let passenger_count = passengers
+        .iter()
+        .map(|item| i32::from(item.count))
+        .sum::<i32>();
+    let available_only = payload.available_only.unwrap_or(true);
+
+    let pool = require_pool(state)?;
+    let raw_scope = parse_provider_scope(Some(provider_scope))?;
+    let mut scope = Vec::new();
+    for provider in raw_scope {
+        if provider_authenticated(pool, provider, user_id).await? {
+            scope.push(provider);
+        }
+    }
+    if scope.is_empty() {
+        return Err(TrainServiceError::InvalidRequest(
+            "no authenticated providers available for search".to_string(),
+        ));
+    }
+
+    let mut schedules = Vec::new();
+    let mut errors = Vec::new();
+    for provider in scope {
+        match execute_direct_provider_search(
+            provider,
+            user_id,
+            dep_station_code.as_str(),
+            arr_station_code.as_str(),
+            dep_date.as_str(),
+            dep_time.as_str(),
+            passengers.as_slice(),
+            available_only,
+            pool,
+            state,
+        )
+        .await
+        {
+            Ok(mut provider_schedules) => schedules.append(&mut provider_schedules),
+            Err(err) => {
+                errors.push(TrainProviderError {
+                    provider: provider.to_string(),
+                    runtime_job_id: String::new(),
+                    status: "failed".to_string(),
+                    message: train_service_error_message(&err),
+                });
+            }
+        }
+    }
+
+    schedules.sort_by(|left, right| {
+        left.dep_date
+            .cmp(&right.dep_date)
+            .then_with(|| left.dep_time.cmp(&right.dep_time))
+            .then_with(|| left.provider.cmp(&right.provider))
+            .then_with(|| left.train_number.cmp(&right.train_number))
+    });
+
+    Ok(DirectTrainSearchResponse {
+        provider_scope: provider_scope.trim().to_ascii_lowercase(),
+        request: TrainSearchRequestEcho {
+            dep_station_code,
+            arr_station_code,
+            dep_date,
+            dep_time,
+            passengers,
+            passenger_count,
+            available_only,
+        },
+        schedules,
+        errors,
+    })
+}
+
+pub(crate) async fn create_train_task(
+    state: &AppState,
+    user_id: &str,
+    payload: CreateTrainTaskRequest,
+) -> Result<TrainTaskSnapshot, TrainServiceError> {
+    ensure_valid_user_id(user_id)?;
+    let pool = require_pool(state)?;
+    let provider = normalize_train_provider(payload.provider.as_str())?;
+    if !provider_authenticated(pool, provider, user_id).await? {
+        return Err(TrainServiceError::InvalidRequest(
+            "provider is not authenticated".to_string(),
+        ));
+    }
+    if payload.candidates.is_empty() {
+        return Err(TrainServiceError::InvalidRequest(
+            "at least one train candidate is required".to_string(),
+        ));
+    }
+
+    let dep_station_code = normalize_station_code(&payload.dep_station_code)?;
+    let arr_station_code = normalize_station_code(&payload.arr_station_code)?;
+    let dep_date = normalize_dep_date(Some(payload.dep_date.as_str()))?;
+    let dep_time = normalize_dep_time(Some(payload.dep_time.as_str()))?;
+    let departure_at = parse_departure_at_kst(dep_date.as_str(), dep_time.as_str())?;
+    let passengers = normalize_passengers(payload.passengers, payload.passenger_count)?;
+    let passengers_json =
+        serde_json::to_value(&passengers).map_err(|_| TrainServiceError::Internal)?;
+    let task_id = Uuid::new_v4().to_string();
+    let now = Utc::now();
+    let auto_pay = payload.auto_pay.unwrap_or(false);
+    let notify_email = payload.notify_email.unwrap_or(true);
+    let retry_on_expiry = payload.retry_on_expiry.unwrap_or(false);
+    let seat_preference = normalize_seat_preference(payload.seat_preference.as_deref());
+
+    sqlx::query(
+        "insert into train_tasks (
+            task_id, user_id, provider, state_code, state_name,
+            dep_station_code, arr_station_code, dep_date, dep_time, departure_at,
+            passengers_json, seat_preference, auto_pay, notify_email, retry_on_expiry,
+            retry_count, max_retry_count, payment_method_ref, next_poll_at, created_at, updated_at
+        ) values (
+            $1, $2, $3, $4, $5,
+            $6, $7, $8, $9, $10,
+            cast($11 as jsonb), $12, $13, $14, $15,
+            0, 3, $16, $17, $17, $17
+        )",
+    )
+    .bind(&task_id)
+    .bind(user_id)
+    .bind(provider)
+    .bind(TRAIN_TASK_STATE_QUEUED)
+    .bind(state_name(TRAIN_TASK_STATE_QUEUED))
+    .bind(&dep_station_code)
+    .bind(&arr_station_code)
+    .bind(&dep_date)
+    .bind(&dep_time)
+    .bind(departure_at)
+    .bind(passengers_json)
+    .bind(seat_preference)
+    .bind(auto_pay)
+    .bind(notify_email)
+    .bind(retry_on_expiry)
+    .bind(payload.payment_method_ref.as_deref())
+    .bind(now)
+    .execute(pool)
+    .await
+    .map_err(|err| {
+        error!(error = %err, task_id = %task_id, "failed to insert train task");
+        TrainServiceError::Internal
+    })?;
+
+    let mut indexed = payload
+        .candidates
+        .into_iter()
+        .enumerate()
+        .map(|(idx, candidate)| {
+            let priority_index = candidate
+                .priority_index
+                .unwrap_or(i32::try_from(idx + 1).unwrap_or(1))
+                .max(1);
+            (priority_index, candidate.schedule)
+        })
+        .collect::<Vec<_>>();
+    indexed.sort_by(|left, right| left.0.cmp(&right.0));
+    for (priority_index, schedule) in indexed {
+        let candidate_payload =
+            serde_json::to_value(schedule).map_err(|_| TrainServiceError::Internal)?;
+        let departs_at = parse_departure_at_kst_from_schedule(&candidate_payload).ok();
+        sqlx::query(
+            "insert into train_task_candidates (task_id, priority_index, provider, candidate_json, departs_at, created_at)
+             values ($1, $2, $3, cast($4 as jsonb), $5, $6)",
+        )
+        .bind(&task_id)
+        .bind(priority_index)
+        .bind(provider)
+        .bind(candidate_payload)
+        .bind(departs_at)
+        .bind(now)
+        .execute(pool)
+        .await
+        .map_err(|err| {
+            error!(error = %err, task_id = %task_id, "failed to insert train task candidate");
+            TrainServiceError::Internal
+        })?;
+    }
+
+    insert_train_task_event(
+        pool,
+        task_id.as_str(),
+        "task_created",
+        json!({
+            "state_code": TRAIN_TASK_STATE_QUEUED,
+            "state_name": state_name(TRAIN_TASK_STATE_QUEUED),
+        }),
+    )
+    .await?;
+
+    get_train_task(state, user_id, task_id.as_str()).await
+}
+
+pub(crate) async fn list_train_tasks(
+    state: &AppState,
+    user_id: &str,
+    limit: usize,
+) -> Result<TrainTaskListResponse, TrainServiceError> {
+    ensure_valid_user_id(user_id)?;
+    let pool = require_pool(state)?;
+    let limit = i64::try_from(limit.clamp(1, 100)).unwrap_or(20);
+    let rows = sqlx::query(
+        "select task_id
+         from train_tasks
+         where user_id = $1
+         order by created_at desc
+         limit $2",
+    )
+    .bind(user_id)
+    .bind(limit)
+    .fetch_all(pool)
+    .await
+    .map_err(|_| TrainServiceError::Internal)?;
+
+    let mut tasks = Vec::with_capacity(rows.len());
+    for row in rows {
+        let task_id: String = row
+            .try_get("task_id")
+            .map_err(|_| TrainServiceError::Internal)?;
+        tasks.push(load_train_task_snapshot(pool, user_id, task_id.as_str()).await?);
+    }
+    Ok(TrainTaskListResponse { tasks })
+}
+
+pub(crate) async fn get_train_task(
+    state: &AppState,
+    user_id: &str,
+    task_id: &str,
+) -> Result<TrainTaskSnapshot, TrainServiceError> {
+    ensure_valid_user_id(user_id)?;
+    let pool = require_pool(state)?;
+    load_train_task_snapshot(pool, user_id, task_id).await
+}
+
+pub(crate) async fn update_train_task_state(
+    state: &AppState,
+    user_id: &str,
+    task_id: &str,
+    action: &str,
+) -> Result<TrainTaskSnapshot, TrainServiceError> {
+    ensure_valid_user_id(user_id)?;
+    let pool = require_pool(state)?;
+    let now = Utc::now();
+    let action = action.trim().to_ascii_lowercase();
+    let current = load_train_task_snapshot(pool, user_id, task_id).await?;
+    let mut completed_at = current.completed_at;
+    let mut next_poll_at = current.next_poll_unix_ms.map(unix_ms_to_utc);
+
+    let (next_state, next_reason_code, next_reason_name): (i16, Option<i16>, Option<String>) =
+        match action.as_str() {
+            "pause" => {
+                if current.state_code == TRAIN_TASK_STATE_QUEUED
+                    || current.state_code == TRAIN_TASK_STATE_RUNNING
+                    || current.state_code == TRAIN_TASK_STATE_AWAITING_PAYMENT
+                {
+                    (TRAIN_TASK_STATE_PAUSED, None, None)
+                } else {
+                    return Err(TrainServiceError::InvalidRequest(
+                        "task cannot be paused in current state".to_string(),
+                    ));
+                }
+            }
+            "resume" => {
+                if current.state_code == TRAIN_TASK_STATE_PAUSED {
+                    next_poll_at = Some(now);
+                    (TRAIN_TASK_STATE_RUNNING, None, None)
+                } else {
+                    return Err(TrainServiceError::InvalidRequest(
+                        "task cannot be resumed in current state".to_string(),
+                    ));
+                }
+            }
+            "cancel" => {
+                if !is_terminal_task_state(current.state_code) {
+                    completed_at = Some(now);
+                    (TRAIN_TASK_STATE_CANCELLED, None, None)
+                } else {
+                    return Err(TrainServiceError::InvalidRequest(
+                        "task is already terminal".to_string(),
+                    ));
+                }
+            }
+            _ => {
+                return Err(TrainServiceError::InvalidRequest(
+                    "action must be one of: pause, resume, cancel".to_string(),
+                ));
+            }
+        };
+    let next_reason_name_ref: Option<&str> = next_reason_name.as_deref();
+
+    sqlx::query(
+        "update train_tasks
+         set state_code = $3,
+             state_name = $4,
+             state_reason_code = $5,
+             state_reason_name = $6,
+             completed_at = $7,
+             next_poll_at = coalesce($8, next_poll_at),
+             updated_at = $9
+         where task_id = $1 and user_id = $2",
+    )
+    .bind(task_id)
+    .bind(user_id)
+    .bind(next_state)
+    .bind(state_name(next_state))
+    .bind(next_reason_code)
+    .bind(next_reason_name_ref)
+    .bind(completed_at)
+    .bind(next_poll_at)
+    .bind(now)
+    .execute(pool)
+    .await
+    .map_err(|_| TrainServiceError::Internal)?;
+
+    insert_train_task_event(
+        pool,
+        task_id,
+        "state_changed",
+        json!({
+            "action": action,
+            "state_code": next_state,
+            "state_name": state_name(next_state),
+            "state_reason_code": next_reason_code,
+            "state_reason_name": next_reason_name,
+        }),
+    )
+    .await?;
+
+    load_train_task_snapshot(pool, user_id, task_id).await
+}
+
+pub(crate) async fn list_train_task_events_page(
+    state: &AppState,
+    user_id: &str,
+    task_id: &str,
+    after_id: i64,
+    limit: usize,
+) -> Result<Vec<TrainTaskEventRecord>, TrainServiceError> {
+    ensure_valid_user_id(user_id)?;
+    let pool = require_pool(state)?;
+    let _ = load_train_task_snapshot(pool, user_id, task_id).await?;
+    let limit = i64::try_from(limit.clamp(1, 200)).unwrap_or(100);
+    let rows = sqlx::query(
+        "select id, event_type, event_payload, created_at
+         from train_task_events
+         where task_id = $1 and id > $2
+         order by id asc
+         limit $3",
+    )
+    .bind(task_id)
+    .bind(after_id.max(0))
+    .bind(limit)
+    .fetch_all(pool)
+    .await
+    .map_err(|_| TrainServiceError::Internal)?;
+    let mut items = Vec::with_capacity(rows.len());
+    for row in rows {
+        items.push(TrainTaskEventRecord {
+            id: row.try_get("id").map_err(|_| TrainServiceError::Internal)?,
+            event_type: row
+                .try_get("event_type")
+                .map_err(|_| TrainServiceError::Internal)?,
+            event_payload: row
+                .try_get("event_payload")
+                .map_err(|_| TrainServiceError::Internal)?,
+            created_at: row
+                .try_get("created_at")
+                .map_err(|_| TrainServiceError::Internal)?,
+        });
+    }
+    Ok(items)
+}
+
 pub(crate) async fn get_search(
     state: &AppState,
     user_id: &str,
@@ -1123,7 +1676,10 @@ pub(crate) async fn get_provider_credentials_for_user(
         provider: row
             .try_get("provider")
             .map_err(|_| TrainServiceError::Internal)?,
-        credentials_ready: true,
+        credentials_ready: row
+            .try_get::<Option<String>, _>("auth_probe_status")
+            .map_err(|_| TrainServiceError::Internal)?
+            .is_some_and(|value| value.trim().eq_ignore_ascii_case("success")),
         auth_probe_status: row
             .try_get::<Option<String>, _>("auth_probe_status")
             .map_err(|_| TrainServiceError::Internal)?
@@ -2254,7 +2810,10 @@ async fn provider_preflight(
     user_id: &str,
 ) -> Result<TrainProviderPreflight, TrainServiceError> {
     let auth_probe = provider_auth_probe(pool, provider, user_id).await?;
-    let credentials_ready = auth_probe.is_some();
+    let credentials_ready = auth_probe
+        .as_ref()
+        .and_then(|value| value.status.as_deref())
+        .is_some_and(|value| value.eq_ignore_ascii_case("success"));
     let payment_method_ref = latest_payment_method_ref(pool, provider, user_id).await?;
     let payment_ready = payment_method_ref.is_some();
 
@@ -2324,8 +2883,12 @@ async fn credentials_ready(
     provider: &str,
     user_id: &str,
 ) -> Result<bool, TrainServiceError> {
-    let exists = sqlx::query_scalar::<_, i32>(
-        "select 1 from provider_auth_secrets where provider = $1 and subject_ref = $2 and credential_kind = 'login' and revoked_at is null limit 1",
+    let status = sqlx::query_scalar::<_, Option<String>>(
+        "select redacted_metadata ->> 'auth_probe_status'
+         from provider_auth_secrets
+         where provider = $1 and subject_ref = $2 and credential_kind = 'login' and revoked_at is null
+         order by updated_at desc
+         limit 1",
     )
     .bind(provider)
     .bind(user_id)
@@ -2339,9 +2902,11 @@ async fn credentials_ready(
         );
         TrainServiceError::Internal
     })?
-    .is_some();
+    .flatten()
+    .map(|value| value.trim().to_ascii_lowercase())
+    .is_some_and(|value| value == "success");
 
-    Ok(exists)
+    Ok(status)
 }
 
 async fn latest_payment_method_ref(
@@ -2420,6 +2985,581 @@ async fn resolve_ready_providers(
         providers.push("ktx");
     }
     Ok(providers)
+}
+
+async fn provider_authenticated(
+    pool: &PgPool,
+    provider: &str,
+    user_id: &str,
+) -> Result<bool, TrainServiceError> {
+    credentials_ready(pool, provider, user_id).await
+}
+
+async fn execute_direct_provider_search(
+    provider: &str,
+    user_id: &str,
+    dep_station_code: &str,
+    arr_station_code: &str,
+    dep_date: &str,
+    dep_time: &str,
+    passengers: &[TrainPassengerCount],
+    available_only: bool,
+    pool: &PgPool,
+    state: &AppState,
+) -> Result<Vec<DirectTrainSchedule>, TrainServiceError> {
+    let login_request = load_provider_login_material(pool, state, provider, user_id).await?;
+    let search_request = SearchTrainRequest {
+        dep_station_code: dep_station_code.to_string(),
+        arr_station_code: arr_station_code.to_string(),
+        dep_date: dep_date.to_string(),
+        dep_time: dep_time.to_string(),
+        time_limit: None,
+        passengers: passengers
+            .iter()
+            .map(|passenger| Passenger {
+                kind: match passenger.kind {
+                    TrainPassengerKind::Adult => PassengerKind::Adult,
+                    TrainPassengerKind::Child => PassengerKind::Child,
+                    TrainPassengerKind::Senior => PassengerKind::Senior,
+                    TrainPassengerKind::Disability1To3 => PassengerKind::Disability1To3,
+                    TrainPassengerKind::Disability4To6 => PassengerKind::Disability4To6,
+                },
+                count: passenger.count,
+            })
+            .collect::<Vec<_>>(),
+        available_only,
+    };
+
+    let provider_owned = provider.to_string();
+    let handle =
+        tokio::task::spawn_blocking(move || -> Result<Vec<DirectTrainSchedule>, ProviderError> {
+            if provider_owned == "srt" {
+                let mut adapter = bominal_shared::providers::srt::SrtProviderAdapter::new(
+                    ReqwestSrtClient::live_with_timeout(
+                        "https://app.srail.or.kr",
+                        Duration::from_secs(6),
+                    ),
+                );
+                adapter.login(login_request.clone())?;
+                let response = adapter.search_train(search_request.clone())?;
+                return Ok(response
+                    .trains
+                    .into_iter()
+                    .map(|train| DirectTrainSchedule {
+                        provider: "srt".to_string(),
+                        train_code: train.train_code,
+                        train_number: train.train_number,
+                        dep_station_code: train.dep_station_code,
+                        arr_station_code: train.arr_station_code,
+                        dep_date: train.dep_date,
+                        dep_time: train.dep_time,
+                        arr_date: train.arr_date,
+                        arr_time: train.arr_time,
+                        general_seat_available: train.general_seat_available,
+                        special_seat_available: train.special_seat_available,
+                        standby_available: train.standby_available,
+                    })
+                    .collect());
+            }
+
+            let mut adapter = KtxProviderAdapter::new(ReqwestKtxClient::live_with_timeout(
+                "https://smart.letskorail.com",
+                Duration::from_secs(6),
+            ));
+            adapter.login(login_request)?;
+            let response =
+                match adapter.dispatch(ProviderOperationRequest::SearchTrain(search_request))? {
+                    ProviderOperationResponse::SearchTrain(value) => value,
+                    _ => {
+                        return Err(ProviderError::UnsupportedOperation {
+                            operation: "search_train",
+                        });
+                    }
+                };
+            Ok(response
+                .trains
+                .into_iter()
+                .map(|train| DirectTrainSchedule {
+                    provider: "ktx".to_string(),
+                    train_code: train.train_code,
+                    train_number: train.train_number,
+                    dep_station_code: train.dep_station_code,
+                    arr_station_code: train.arr_station_code,
+                    dep_date: train.dep_date,
+                    dep_time: train.dep_time,
+                    arr_date: train.arr_date,
+                    arr_time: train.arr_time,
+                    general_seat_available: train.general_seat_available,
+                    special_seat_available: train.special_seat_available,
+                    standby_available: train.standby_available,
+                })
+                .collect())
+        });
+
+    match handle.await {
+        Ok(Ok(schedules)) => Ok(schedules),
+        Ok(Err(error)) => Err(TrainServiceError::InvalidRequest(provider_error_message(
+            error,
+        ))),
+        Err(_) => Err(TrainServiceError::ServiceUnavailable(
+            "provider search execution failed".to_string(),
+        )),
+    }
+}
+
+async fn load_provider_login_material(
+    pool: &PgPool,
+    state: &AppState,
+    provider: &str,
+    subject_ref: &str,
+) -> Result<LoginRequest, TrainServiceError> {
+    let row = sqlx::query(
+        "select
+            secret_envelope_ciphertext,
+            secret_envelope_dek_ciphertext,
+            secret_envelope_kek_version,
+            secret_envelope_aad_scope,
+            secret_envelope_aad_hash
+         from provider_auth_secrets
+         where provider = $1 and subject_ref = $2 and credential_kind = 'login' and revoked_at is null
+         order by updated_at desc
+         limit 1",
+    )
+    .bind(provider)
+    .bind(subject_ref)
+    .fetch_optional(pool)
+    .await
+    .map_err(|_| TrainServiceError::Internal)?
+    .ok_or_else(|| {
+        TrainServiceError::InvalidRequest("provider credentials are missing".to_string())
+    })?;
+
+    let ciphertext: Vec<u8> = row
+        .try_get("secret_envelope_ciphertext")
+        .map_err(|_| TrainServiceError::Internal)?;
+    let nonce: Vec<u8> = row
+        .try_get("secret_envelope_dek_ciphertext")
+        .map_err(|_| TrainServiceError::Internal)?;
+    let key_version: i32 = row
+        .try_get("secret_envelope_kek_version")
+        .map_err(|_| TrainServiceError::Internal)?;
+    let aad_scope: String = row
+        .try_get("secret_envelope_aad_scope")
+        .map_err(|_| TrainServiceError::Internal)?;
+    let aad_hash: Vec<u8> = row
+        .try_get("secret_envelope_aad_hash")
+        .map_err(|_| TrainServiceError::Internal)?;
+
+    let aad = EnvelopeAad {
+        payload_kind: PayloadKind::ProviderAuth,
+        provider: Some(provider.to_string()),
+        subject_id: Some(subject_ref.to_string()),
+        scope: aad_scope,
+        metadata: BTreeMap::from([("credential_kind".to_string(), "login".to_string())]),
+    };
+    validate_aad_hash(aad_hash.as_slice(), &aad)?;
+
+    let nonce_array: [u8; 12] = nonce.try_into().map_err(|_| {
+        TrainServiceError::ServiceUnavailable("credential envelope invalid".to_string())
+    })?;
+    let encrypted = EncryptedEnvelope {
+        algorithm: EnvelopeAlgorithm::Aes256Gcm,
+        key_version: u32::try_from(key_version).map_err(|_| TrainServiceError::Internal)?,
+        aad_context: aad.clone(),
+        nonce: nonce_array,
+        ciphertext,
+    };
+    let cipher = build_envelope_cipher_from_env(state)?;
+    let plaintext = cipher.decrypt(&encrypted, &aad).map_err(|_| {
+        TrainServiceError::ServiceUnavailable("credential decrypt failed".to_string())
+    })?;
+    let decoded: Value =
+        serde_json::from_slice(plaintext.as_slice()).map_err(|_| TrainServiceError::Internal)?;
+    let account_identifier = decoded
+        .get("identity_ciphertext")
+        .and_then(Value::as_str)
+        .or_else(|| decoded.get("account_identifier").and_then(Value::as_str))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            TrainServiceError::InvalidRequest("provider credentials are invalid".to_string())
+        })?;
+    let password = decoded
+        .get("password_ciphertext")
+        .and_then(Value::as_str)
+        .or_else(|| decoded.get("password").and_then(Value::as_str))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            TrainServiceError::InvalidRequest("provider credentials are invalid".to_string())
+        })?;
+    Ok(LoginRequest {
+        account_type: LoginAccountType::MembershipNumber,
+        account_identifier: account_identifier.to_string(),
+        password: SecretString::new(password.to_string().into_boxed_str()),
+    })
+}
+
+fn validate_aad_hash(expected_hash: &[u8], aad: &EnvelopeAad) -> Result<(), TrainServiceError> {
+    let encoded = serde_json::to_vec(aad).map_err(|_| TrainServiceError::Internal)?;
+    let computed = sha2::Sha256::digest(encoded.as_slice());
+    let matches_legacy_plain = expected_hash == encoded.as_slice();
+    let matches_hashed = expected_hash == computed.as_slice();
+    if !matches_legacy_plain && !matches_hashed {
+        return Err(TrainServiceError::ServiceUnavailable(
+            "credential integrity validation failed".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn build_envelope_cipher_from_env(
+    state: &AppState,
+) -> Result<ServerEnvelopeCipher, TrainServiceError> {
+    let key_version = std::env::var("KEK_VERSION")
+        .ok()
+        .and_then(|value| value.trim().parse::<u32>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(1);
+    let encoded_master_key = std::env::var("MASTER_KEY_OVERRIDE")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .or_else(|| {
+            std::env::var("MASTER_KEY")
+                .ok()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+        })
+        .or_else(|| {
+            if state.config.app_env.eq_ignore_ascii_case("test") {
+                Some(TEST_MASTER_KEY_B64_FALLBACK.to_string())
+            } else {
+                None
+            }
+        })
+        .ok_or_else(|| {
+            TrainServiceError::ServiceUnavailable("credential cipher is unavailable".to_string())
+        })?;
+    let key_bytes = decode_base64(encoded_master_key.as_str())?;
+    if key_bytes.len() != 32 {
+        return Err(TrainServiceError::ServiceUnavailable(
+            "credential cipher is unavailable".to_string(),
+        ));
+    }
+    let mut keys = BTreeMap::new();
+    keys.insert(key_version, key_bytes);
+    let keyring = StaticKeyring::new(key_version, keys).map_err(|_| TrainServiceError::Internal)?;
+    Ok(ServerEnvelopeCipher::new(keyring))
+}
+
+fn decode_base64(input: &str) -> Result<Vec<u8>, TrainServiceError> {
+    let mut out = Vec::with_capacity((input.len() * 3) / 4 + 3);
+    let mut buffer = 0u32;
+    let mut bits = 0usize;
+    let mut seen_padding = false;
+    for byte in input.bytes() {
+        if byte.is_ascii_whitespace() {
+            continue;
+        }
+        if byte == b'=' {
+            seen_padding = true;
+            continue;
+        }
+        if seen_padding {
+            return Err(TrainServiceError::Internal);
+        }
+        let sextet = match byte {
+            b'A'..=b'Z' => (byte - b'A') as u32,
+            b'a'..=b'z' => (byte - b'a' + 26) as u32,
+            b'0'..=b'9' => (byte - b'0' + 52) as u32,
+            b'+' | b'-' => 62,
+            b'/' | b'_' => 63,
+            _ => return Err(TrainServiceError::Internal),
+        };
+        buffer = (buffer << 6) | sextet;
+        bits += 6;
+        while bits >= 8 {
+            bits -= 8;
+            out.push(((buffer >> bits) & 0xff) as u8);
+            buffer &= (1u32 << bits) - 1;
+        }
+    }
+    if bits > 0 && (buffer & ((1u32 << bits) - 1)) != 0 {
+        return Err(TrainServiceError::Internal);
+    }
+    Ok(out)
+}
+
+fn provider_error_message(error: ProviderError) -> String {
+    match error {
+        ProviderError::Unauthorized | ProviderError::SessionExpired => {
+            "provider authentication failed".to_string()
+        }
+        ProviderError::NotLoggedIn | ProviderError::ReloginUnavailable => {
+            "provider login session unavailable".to_string()
+        }
+        ProviderError::Transport { message } | ProviderError::OperationFailed { message } => {
+            let trimmed = message.trim();
+            if trimmed.is_empty() {
+                "provider request failed".to_string()
+            } else {
+                trimmed.to_string()
+            }
+        }
+        ProviderError::UnsupportedOperation { operation } => {
+            format!("provider operation is unsupported: {operation}")
+        }
+    }
+}
+
+async fn insert_train_task_event(
+    pool: &PgPool,
+    task_id: &str,
+    event_type: &str,
+    event_payload: Value,
+) -> Result<(), TrainServiceError> {
+    sqlx::query(
+        "insert into train_task_events (task_id, event_type, event_payload, created_at)
+         values ($1, $2, cast($3 as jsonb), now())",
+    )
+    .bind(task_id)
+    .bind(event_type)
+    .bind(event_payload)
+    .execute(pool)
+    .await
+    .map_err(|_| TrainServiceError::Internal)?;
+    Ok(())
+}
+
+async fn load_train_task_snapshot(
+    pool: &PgPool,
+    user_id: &str,
+    task_id: &str,
+) -> Result<TrainTaskSnapshot, TrainServiceError> {
+    let row = sqlx::query(
+        "select
+            task_id, user_id, provider, state_code, state_name, state_reason_code, state_reason_name,
+            dep_station_code, arr_station_code, dep_date, dep_time, departure_at, passengers_json,
+            auto_pay, notify_email, retry_on_expiry, retry_count, max_retry_count, payment_method_ref,
+            selected_train_json, reservation_json,
+            last_tried_at, last_search_tried_at, last_reservation_tried_at, last_payment_tried_at,
+            pay_by_at, next_poll_at, created_at, updated_at, completed_at
+         from train_tasks
+         where task_id = $1 and user_id = $2
+         limit 1",
+    )
+    .bind(task_id.trim())
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|_| TrainServiceError::Internal)?
+    .ok_or_else(|| TrainServiceError::NotFound("task not found".to_string()))?;
+
+    let candidates_rows = sqlx::query(
+        "select priority_index, candidate_json
+         from train_task_candidates
+         where task_id = $1
+         order by priority_index asc",
+    )
+    .bind(task_id.trim())
+    .fetch_all(pool)
+    .await
+    .map_err(|_| TrainServiceError::Internal)?;
+
+    let mut candidates = Vec::with_capacity(candidates_rows.len());
+    for candidate in candidates_rows {
+        candidates.push(TrainTaskCandidateView {
+            priority_index: candidate
+                .try_get("priority_index")
+                .map_err(|_| TrainServiceError::Internal)?,
+            schedule: candidate
+                .try_get("candidate_json")
+                .map_err(|_| TrainServiceError::Internal)?,
+        });
+    }
+
+    let passengers_json: Value = row
+        .try_get("passengers_json")
+        .map_err(|_| TrainServiceError::Internal)?;
+    let passengers = parse_passengers_from_json(&passengers_json, 1);
+
+    let last_tried_at: Option<DateTime<Utc>> = row
+        .try_get("last_tried_at")
+        .map_err(|_| TrainServiceError::Internal)?;
+    let last_search_tried_at: Option<DateTime<Utc>> = row
+        .try_get("last_search_tried_at")
+        .map_err(|_| TrainServiceError::Internal)?;
+    let last_reservation_tried_at: Option<DateTime<Utc>> = row
+        .try_get("last_reservation_tried_at")
+        .map_err(|_| TrainServiceError::Internal)?;
+    let last_payment_tried_at: Option<DateTime<Utc>> = row
+        .try_get("last_payment_tried_at")
+        .map_err(|_| TrainServiceError::Internal)?;
+    let pay_by_at: Option<DateTime<Utc>> = row
+        .try_get("pay_by_at")
+        .map_err(|_| TrainServiceError::Internal)?;
+    let next_poll_at: Option<DateTime<Utc>> = row
+        .try_get("next_poll_at")
+        .map_err(|_| TrainServiceError::Internal)?;
+
+    Ok(TrainTaskSnapshot {
+        task_id: row
+            .try_get("task_id")
+            .map_err(|_| TrainServiceError::Internal)?,
+        user_id: row
+            .try_get("user_id")
+            .map_err(|_| TrainServiceError::Internal)?,
+        provider: row
+            .try_get("provider")
+            .map_err(|_| TrainServiceError::Internal)?,
+        state_code: row
+            .try_get("state_code")
+            .map_err(|_| TrainServiceError::Internal)?,
+        state_name: row
+            .try_get("state_name")
+            .map_err(|_| TrainServiceError::Internal)?,
+        state_reason_code: row
+            .try_get("state_reason_code")
+            .map_err(|_| TrainServiceError::Internal)?,
+        state_reason_name: row
+            .try_get("state_reason_name")
+            .map_err(|_| TrainServiceError::Internal)?,
+        dep_station_code: row
+            .try_get("dep_station_code")
+            .map_err(|_| TrainServiceError::Internal)?,
+        arr_station_code: row
+            .try_get("arr_station_code")
+            .map_err(|_| TrainServiceError::Internal)?,
+        dep_date: row
+            .try_get("dep_date")
+            .map_err(|_| TrainServiceError::Internal)?,
+        dep_time: row
+            .try_get("dep_time")
+            .map_err(|_| TrainServiceError::Internal)?,
+        departure_at: row
+            .try_get("departure_at")
+            .map_err(|_| TrainServiceError::Internal)?,
+        passengers,
+        auto_pay: row
+            .try_get("auto_pay")
+            .map_err(|_| TrainServiceError::Internal)?,
+        notify_email: row
+            .try_get("notify_email")
+            .map_err(|_| TrainServiceError::Internal)?,
+        retry_on_expiry: row
+            .try_get("retry_on_expiry")
+            .map_err(|_| TrainServiceError::Internal)?,
+        retry_count: row
+            .try_get("retry_count")
+            .map_err(|_| TrainServiceError::Internal)?,
+        max_retry_count: row
+            .try_get("max_retry_count")
+            .map_err(|_| TrainServiceError::Internal)?,
+        payment_method_ref: row
+            .try_get("payment_method_ref")
+            .map_err(|_| TrainServiceError::Internal)?,
+        created_at: row
+            .try_get("created_at")
+            .map_err(|_| TrainServiceError::Internal)?,
+        updated_at: row
+            .try_get("updated_at")
+            .map_err(|_| TrainServiceError::Internal)?,
+        completed_at: row
+            .try_get("completed_at")
+            .map_err(|_| TrainServiceError::Internal)?,
+        last_tried_unix_ms: last_tried_at.map(|value| value.timestamp_millis()),
+        last_search_tried_unix_ms: last_search_tried_at.map(|value| value.timestamp_millis()),
+        last_reservation_tried_unix_ms: last_reservation_tried_at
+            .map(|value| value.timestamp_millis()),
+        last_payment_tried_unix_ms: last_payment_tried_at.map(|value| value.timestamp_millis()),
+        pay_by_unix_ms: pay_by_at.map(|value| value.timestamp_millis()),
+        next_poll_unix_ms: next_poll_at.map(|value| value.timestamp_millis()),
+        selected_train: row
+            .try_get("selected_train_json")
+            .map_err(|_| TrainServiceError::Internal)?,
+        reservation: row
+            .try_get("reservation_json")
+            .map_err(|_| TrainServiceError::Internal)?,
+        candidates,
+        schema: TRAIN_TASK_SCHEMA_VERSION,
+    })
+}
+
+fn state_name(code: i16) -> &'static str {
+    match code {
+        TRAIN_TASK_STATE_QUEUED => "queued",
+        TRAIN_TASK_STATE_RUNNING => "running",
+        TRAIN_TASK_STATE_PAUSED => "paused",
+        TRAIN_TASK_STATE_AWAITING_PAYMENT => "awaiting_payment",
+        TRAIN_TASK_STATE_COMPLETED => "completed",
+        TRAIN_TASK_STATE_FAILED => "failed",
+        TRAIN_TASK_STATE_CANCELLED => "cancelled",
+        TRAIN_TASK_STATE_EXPIRED => "expired",
+        _ => "failed",
+    }
+}
+
+fn is_terminal_task_state(code: i16) -> bool {
+    matches!(
+        code,
+        TRAIN_TASK_STATE_COMPLETED
+            | TRAIN_TASK_STATE_FAILED
+            | TRAIN_TASK_STATE_CANCELLED
+            | TRAIN_TASK_STATE_EXPIRED
+    )
+}
+
+fn normalize_seat_preference(raw: Option<&str>) -> &'static str {
+    match raw
+        .map(|value| value.trim().to_ascii_lowercase())
+        .as_deref()
+        .unwrap_or("general_first")
+    {
+        "general_only" => "general_only",
+        "special_first" => "special_first",
+        "special_only" => "special_only",
+        _ => "general_first",
+    }
+}
+
+fn parse_departure_at_kst(
+    dep_date: &str,
+    dep_time: &str,
+) -> Result<DateTime<Utc>, TrainServiceError> {
+    let hour_minute = dep_time.get(0..4).unwrap_or("0000");
+    let naive =
+        NaiveDateTime::parse_from_str(format!("{dep_date}{hour_minute}").as_str(), "%Y%m%d%H%M")
+            .map_err(|_| {
+                TrainServiceError::InvalidRequest("invalid departure date/time".to_string())
+            })?;
+    let kst = FixedOffset::east_opt(9 * 3600).ok_or(TrainServiceError::Internal)?;
+    let with_tz = kst.from_local_datetime(&naive).single().ok_or_else(|| {
+        TrainServiceError::InvalidRequest("invalid departure date/time".to_string())
+    })?;
+    Ok(with_tz.with_timezone(&Utc))
+}
+
+fn parse_departure_at_kst_from_schedule(
+    schedule: &Value,
+) -> Result<DateTime<Utc>, TrainServiceError> {
+    let dep_date = schedule
+        .get("dep_date")
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            TrainServiceError::InvalidRequest("candidate dep_date is required".to_string())
+        })?;
+    let dep_time = schedule
+        .get("dep_time")
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            TrainServiceError::InvalidRequest("candidate dep_time is required".to_string())
+        })?;
+    parse_departure_at_kst(dep_date, dep_time)
+}
+
+fn unix_ms_to_utc(value: i64) -> DateTime<Utc> {
+    DateTime::<Utc>::from_timestamp_millis(value).unwrap_or_else(Utc::now)
 }
 
 async fn station_pair_supported_for_provider(

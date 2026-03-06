@@ -41,6 +41,7 @@ mod internal_providers;
 mod modules;
 mod runtime_event_cursor;
 mod runtime_queue;
+mod sse;
 mod train;
 
 const DEFAULT_HTTP_REQUEST_TIMEOUT_SECONDS: u64 = 30;

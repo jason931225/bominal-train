@@ -5,6 +5,7 @@ use bominal_shared::{
     repo::{UpsertPaymentMethodSecretParams, upsert_payment_method_secret_query},
 };
 use chrono::Utc;
+use sha2::Digest;
 use tracing::{error, warn};
 use uuid::Uuid;
 
@@ -158,8 +159,9 @@ pub(crate) async fn put_provider_payment_method(
     let encrypted = cipher
         .encrypt(&plaintext, aad.clone())
         .map_err(|_| PutProviderPaymentMethodError::CryptoUnavailable)?;
-    let aad_hash =
+    let aad_bytes =
         serde_json::to_vec(&aad).map_err(|_| PutProviderPaymentMethodError::CryptoUnavailable)?;
+    let aad_hash = sha2::Sha256::digest(aad_bytes.as_slice());
     let key_version = i32::try_from(encrypted.key_version)
         .map_err(|_| PutProviderPaymentMethodError::CryptoUnavailable)?;
     let now = Utc::now();

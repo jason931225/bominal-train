@@ -458,13 +458,7 @@ export const renderObservabilitySection = async (ctx) => {
       return;
     }
 
-    eventsStream.addEventListener("observability_events", (event) => {
-      let payload = null;
-      try {
-        payload = JSON.parse(event.data || "{}");
-      } catch (_error) {
-        return;
-      }
+    const applyItems = (incomingItems) => {
       if (
         state.events.filters.q ||
         state.events.filters.source ||
@@ -473,7 +467,7 @@ export const renderObservabilitySection = async (ctx) => {
       ) {
         return;
       }
-      const incoming = Array.isArray(payload.items) ? payload.items : [];
+      const incoming = Array.isArray(incomingItems) ? incomingItems : [];
       if (!incoming.length) return;
       const seen = new Set();
       const merged = [...incoming, ...state.events.items].filter((item) => {
@@ -484,6 +478,33 @@ export const renderObservabilitySection = async (ctx) => {
       });
       state.events.items = merged.slice(0, EVENT_LIMIT);
       render();
+    };
+
+    eventsStream.addEventListener("sync", (event) => {
+      let payload = null;
+      try {
+        payload = JSON.parse(event.data || "{}");
+      } catch (_error) {
+        return;
+      }
+      const snapshot = payload && typeof payload.snapshot === "object" ? payload.snapshot : {};
+      applyItems(snapshot.items);
+    });
+
+    eventsStream.addEventListener("delta", (event) => {
+      let payload = null;
+      try {
+        payload = JSON.parse(event.data || "{}");
+      } catch (_error) {
+        return;
+      }
+      const ops = Array.isArray(payload.ops) ? payload.ops : [];
+      ops.forEach((op) => {
+        if (!op || typeof op !== "object") return;
+        if (op.op === "upsert" && op.path === "/items") {
+          applyItems(op.value);
+        }
+      });
     });
 
     eventsStream.addEventListener("error", () => {

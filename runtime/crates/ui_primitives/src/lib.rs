@@ -268,7 +268,7 @@ pub fn render_bottom_nav(props: &BottomNavProps<'_>) -> String {
         .collect::<Vec<_>>()
         .join("\n  ");
 
-    format!(r#"<nav class="bottom-nav">\n  {}\n</nav>"#, links)
+    format!("<nav class=\"bottom-nav\">\n  {}\n</nav>", links)
 }
 
 fn button_height_class(size: ButtonSize) -> &'static str {
@@ -495,4 +495,32 @@ pub fn render_modal_dialog(props: &ModalDialogProps<'_>) -> String {
         html_escape(props.message),
         actions,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{BottomNavProps, NavItem, render_bottom_nav};
+
+    #[test]
+    fn render_bottom_nav_does_not_emit_literal_newline_escape_sequences() {
+        let items = [
+            NavItem {
+                label: "Home",
+                href: "/dashboard",
+                active: false,
+            },
+            NavItem {
+                label: "Train",
+                href: "/dashboard/train",
+                active: true,
+            },
+        ];
+
+        let html = render_bottom_nav(&BottomNavProps { items: &items });
+
+        assert!(
+            !html.contains("\\n"),
+            "bottom nav should render actual whitespace, not literal escape sequences: {html}"
+        );
+    }
 }
