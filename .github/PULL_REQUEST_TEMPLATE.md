@@ -54,7 +54,7 @@
 
 - Docs updated:
 - Wiki page updates required:
-- Canonical manual anchors referenced:
+- Canonical policy anchors referenced (`docs/GITHUB_GOVERNANCE.md`, `docs/CI_CD_POLICY.md`, `docs/MANUAL.md` as applicable):
 - Project board policy impact (`Workstreams` / `Review` / `Agent Command`):
 
 ## Changelog Impact

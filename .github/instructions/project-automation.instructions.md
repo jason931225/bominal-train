@@ -14,8 +14,7 @@ Use canonical three-board policy:
 - `bominal Agent Command`
 
 Reference:
-- `docs/MANUAL.md#project-tracking`
-- `docs/playbooks/GITHUB_PROJECT_AUTOMATION.md`
+- `docs/GITHUB_GOVERNANCE.md#project-tracking`
 
 ## Execution Rules
 
@@ -53,6 +52,6 @@ Gate commands are processed in `.github/workflows/promotion-gate-commands.yml`.
 
 ## Commands And Tooling
 
-- Use tested command set in `docs/playbooks/GITHUB_PROJECT_AUTOMATION.md`.
+- Use tested command set in `docs/GITHUB_GOVERNANCE.md#tested-commands-for-agents`.
 - Prefer GitHub MCP tools for automation (`issue_write`, `list_issues`, `pull_request_read`, `request_copilot_review`, `merge_pull_request`) and CLI fallback only when needed.
 - If CLI project scope is missing, bootstrap with `GH_PAT_FULL` from `env/dev/test.env` before board commands.

@@ -1,5 +1,8 @@
 blank_issues_enabled: false
 contact_links:
+  - name: GitHub Governance Policy
+    url: https://github.com/jason931225/bominal/blob/main/docs/GITHUB_GOVERNANCE.md
+    about: Read issue/PR/project/release governance policy before opening an issue.
   - name: bominal Manual
     url: https://github.com/jason931225/bominal/blob/main/docs/MANUAL.md
     about: Read canonical policy and operations standards before opening an issue.
