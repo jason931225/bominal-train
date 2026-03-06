@@ -7,14 +7,6 @@ on:
         description: "Target runtime base URL (for example https://www.bominal.com)"
         required: true
         type: string
-      service_token:
-        description: "Internal service token for /internal/v1 endpoints"
-        required: true
-        type: string
-      admin_cookie:
-        description: "Optional admin session cookie for /api/admin perf probes"
-        required: false
-        type: string
 
 permissions:
   contents: read
@@ -31,11 +23,20 @@ jobs:
       - name: Create perf output directory
         run: mkdir -p perf/out
 
+      - name: Validate perf secrets
+        env:
+          K6_SERVICE_TOKEN: ${{ secrets.PERF_INTERNAL_SERVICE_TOKEN }}
+        run: |
+          if [[ -z "${K6_SERVICE_TOKEN}" ]]; then
+            echo "PERF_INTERNAL_SERVICE_TOKEN secret is required" >&2
+            exit 1
+          fi
+
       - name: Run k6 baseline probes
         env:
           K6_BASE_URL: ${{ inputs.base_url }}
-          K6_SERVICE_TOKEN: ${{ inputs.service_token }}
-          K6_ADMIN_COOKIE: ${{ inputs.admin_cookie }}
+          K6_SERVICE_TOKEN: ${{ secrets.PERF_INTERNAL_SERVICE_TOKEN }}
+          K6_ADMIN_COOKIE: ${{ secrets.PERF_ADMIN_COOKIE }}
         run: |
           docker run --rm \
             -e K6_BASE_URL \

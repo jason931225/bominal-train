@@ -182,7 +182,7 @@ function internalHeaders() {
   return {
     "content-type": "application/json",
     accept: "application/json",
-    "x-bominal-service-token": serviceToken,
+    "x-internal-service-token": serviceToken,
   };
 }
 
