@@ -9,7 +9,7 @@ use axum::{
         IntoResponse,
         sse::{Event, KeepAlive, Sse},
     },
-    routing::{get, post},
+    routing::{get, post, put},
 };
 use bominal_shared::error::{ApiError, ApiErrorCode, ApiErrorStatus};
 use std::{convert::Infallible, time::Duration};
@@ -26,6 +26,10 @@ pub(super) fn register(router: Router<Arc<AppState>>) -> Router<Arc<AppState>> {
         .route("/api/train/preflight", get(get_preflight))
         .route("/api/train/stations/regions", get(get_station_regions))
         .route("/api/train/stations/suggest", get(get_station_suggestions))
+        .route(
+            "/api/train/stations/favorites",
+            put(update_station_favorites),
+        )
         .route(
             "/api/train/search",
             post(create_search).get(list_search_history),
@@ -103,11 +107,29 @@ async fn get_station_regions(
     headers: HeaderMap,
     Query(query): Query<train_service::StationRegionsQuery>,
 ) -> impl IntoResponse {
-    if let Err(err) = auth_service::require_session_state(state.as_ref(), &headers).await {
-        return map_auth_error(err, &headers).into_response();
-    }
+    let session = match auth_service::require_session_state(state.as_ref(), &headers).await {
+        Ok(session) => session,
+        Err(err) => return map_auth_error(err, &headers).into_response(),
+    };
 
-    match train_service::load_station_regions(state.as_ref(), query).await {
+    match train_service::load_station_regions(state.as_ref(), &session.user_id, query).await {
+        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
+        Err(err) => map_train_error(err, &headers).into_response(),
+    }
+}
+
+async fn update_station_favorites(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(payload): Json<train_service::UpdateStationFavoritesRequest>,
+) -> impl IntoResponse {
+    let session = match auth_service::require_session_state(state.as_ref(), &headers).await {
+        Ok(session) => session,
+        Err(err) => return map_auth_error(err, &headers).into_response(),
+    };
+
+    match train_service::replace_station_favorites(state.as_ref(), &session.user_id, payload).await
+    {
         Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(err) => map_train_error(err, &headers).into_response(),
     }
