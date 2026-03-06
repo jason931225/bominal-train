@@ -841,11 +841,7 @@ pub(crate) async fn create_search(
 
     let dep_station_code = normalize_station_code(&payload.dep_station_code)?;
     let arr_station_code = normalize_station_code(&payload.arr_station_code)?;
-    if dep_station_code == arr_station_code {
-        return Err(TrainServiceError::InvalidRequest(
-            "departure and arrival stations must differ".to_string(),
-        ));
-    }
+    ensure_distinct_station_codes(dep_station_code.as_str(), arr_station_code.as_str())?;
 
     let dep_date = normalize_dep_date(payload.dep_date.as_deref())?;
     let dep_time = normalize_dep_time(payload.dep_time.as_deref())?;
@@ -1098,6 +1094,7 @@ pub(crate) async fn create_train_task(
 
     let dep_station_code = normalize_station_code(&payload.dep_station_code)?;
     let arr_station_code = normalize_station_code(&payload.arr_station_code)?;
+    ensure_distinct_station_codes(dep_station_code.as_str(), arr_station_code.as_str())?;
     let dep_date = normalize_dep_date(Some(payload.dep_date.as_str()))?;
     let dep_time = normalize_dep_time(Some(payload.dep_time.as_str()))?;
     let departure_at = parse_departure_at_kst(dep_date.as_str(), dep_time.as_str())?;
@@ -1110,6 +1107,11 @@ pub(crate) async fn create_train_task(
     let notify_email = payload.notify_email.unwrap_or(true);
     let retry_on_expiry = payload.retry_on_expiry.unwrap_or(false);
     let seat_preference = normalize_seat_preference(payload.seat_preference.as_deref());
+
+    let mut tx = pool.begin().await.map_err(|err| {
+        error!(error = %err, task_id = %task_id, "failed to begin train task transaction");
+        TrainServiceError::Internal
+    })?;
 
     sqlx::query(
         "insert into train_tasks (
@@ -1141,7 +1143,7 @@ pub(crate) async fn create_train_task(
     .bind(retry_on_expiry)
     .bind(payload.payment_method_ref.as_deref())
     .bind(now)
-    .execute(pool)
+    .execute(&mut *tx)
     .await
     .map_err(|err| {
         error!(error = %err, task_id = %task_id, "failed to insert train task");
@@ -1175,7 +1177,7 @@ pub(crate) async fn create_train_task(
         .bind(candidate_payload)
         .bind(departs_at)
         .bind(now)
-        .execute(pool)
+        .execute(&mut *tx)
         .await
         .map_err(|err| {
             error!(error = %err, task_id = %task_id, "failed to insert train task candidate");
@@ -1183,16 +1185,27 @@ pub(crate) async fn create_train_task(
         })?;
     }
 
-    insert_train_task_event(
-        pool,
-        task_id.as_str(),
-        "task_created",
-        json!({
-            "state_code": TRAIN_TASK_STATE_QUEUED,
-            "state_name": state_name(TRAIN_TASK_STATE_QUEUED),
-        }),
+    sqlx::query(
+        "insert into train_task_events (task_id, event_type, event_payload, created_at)
+         values ($1, $2, cast($3 as jsonb), now())",
     )
-    .await?;
+    .bind(task_id.as_str())
+    .bind("task_created")
+    .bind(json!({
+        "state_code": TRAIN_TASK_STATE_QUEUED,
+        "state_name": state_name(TRAIN_TASK_STATE_QUEUED),
+    }))
+    .execute(&mut *tx)
+    .await
+    .map_err(|err| {
+        error!(error = %err, task_id = %task_id, "failed to insert train task event");
+        TrainServiceError::Internal
+    })?;
+
+    tx.commit().await.map_err(|err| {
+        error!(error = %err, task_id = %task_id, "failed to commit train task transaction");
+        TrainServiceError::Internal
+    })?;
 
     get_train_task(state, user_id, task_id.as_str()).await
 }
@@ -1269,7 +1282,8 @@ pub(crate) async fn update_train_task_state(
             "resume" => {
                 if current.state_code == TRAIN_TASK_STATE_PAUSED {
                     next_poll_at = Some(now);
-                    (TRAIN_TASK_STATE_RUNNING, None, None)
+                    let resumed_state = resume_state_for_paused_task(&current);
+                    (resumed_state, None, None)
                 } else {
                     return Err(TrainServiceError::InvalidRequest(
                         "task cannot be resumed in current state".to_string(),
@@ -2973,11 +2987,32 @@ fn ensure_valid_user_id(user_id: &str) -> Result<(), TrainServiceError> {
     Ok(())
 }
 
+fn ensure_distinct_station_codes(
+    dep_station_code: &str,
+    arr_station_code: &str,
+) -> Result<(), TrainServiceError> {
+    if dep_station_code == arr_station_code {
+        return Err(TrainServiceError::InvalidRequest(
+            "departure and arrival stations must differ".to_string(),
+        ));
+    }
+
+    Ok(())
+}
+
 fn require_pool(state: &AppState) -> Result<&PgPool, TrainServiceError> {
     state
         .db_pool
         .as_ref()
         .ok_or_else(|| TrainServiceError::ServiceUnavailable("database unavailable".to_string()))
+}
+
+fn resume_state_for_paused_task(task: &TrainTaskSnapshot) -> i16 {
+    if task.pay_by_unix_ms.is_some() {
+        TRAIN_TASK_STATE_AWAITING_PAYMENT
+    } else {
+        TRAIN_TASK_STATE_RUNNING
+    }
 }
 
 async fn provider_preflight(
@@ -2986,10 +3021,7 @@ async fn provider_preflight(
     user_id: &str,
 ) -> Result<TrainProviderPreflight, TrainServiceError> {
     let auth_probe = provider_auth_probe(pool, provider, user_id).await?;
-    let credentials_ready = auth_probe
-        .as_ref()
-        .and_then(|value| value.status.as_deref())
-        .is_some_and(|value| value.eq_ignore_ascii_case("success"));
+    let credentials_ready = credentials_ready_from_auth_probe(auth_probe.as_ref());
     let payment_method_ref = latest_payment_method_ref(pool, provider, user_id).await?;
     let payment_ready = payment_method_ref.is_some();
 
@@ -3059,30 +3091,21 @@ async fn credentials_ready(
     provider: &str,
     user_id: &str,
 ) -> Result<bool, TrainServiceError> {
-    let status = sqlx::query_scalar::<_, Option<String>>(
-        "select redacted_metadata ->> 'auth_probe_status'
-         from provider_auth_secrets
-         where provider = $1 and subject_ref = $2 and credential_kind = 'login' and revoked_at is null
-         order by updated_at desc
-         limit 1",
-    )
-    .bind(provider)
-    .bind(user_id)
-    .fetch_optional(pool)
-    .await
-    .map_err(|err| {
-        error!(
-            error = %err,
-            provider = %provider,
-            "train preflight credentials_ready query failed"
-        );
-        TrainServiceError::Internal
-    })?
-    .flatten()
-    .map(|value| value.trim().to_ascii_lowercase())
-    .is_some_and(|value| value == "success");
+    let auth_probe = provider_auth_probe(pool, provider, user_id).await?;
+    Ok(credentials_ready_from_auth_probe(auth_probe.as_ref()))
+}
 
-    Ok(status)
+fn credentials_ready_from_auth_probe(auth_probe: Option<&ProviderAuthProbe>) -> bool {
+    let Some(auth_probe) = auth_probe else {
+        return false;
+    };
+
+    match auth_probe.status.as_deref() {
+        None => true,
+        Some(status) if status.eq_ignore_ascii_case("success") => true,
+        Some(status) if status.eq_ignore_ascii_case("skipped") => true,
+        _ => false,
+    }
 }
 
 async fn latest_payment_method_ref(
@@ -3274,12 +3297,27 @@ async fn execute_direct_provider_search(
 
     match handle.await {
         Ok(Ok(schedules)) => Ok(schedules),
-        Ok(Err(error)) => Err(TrainServiceError::InvalidRequest(provider_error_message(
-            error,
-        ))),
+        Ok(Err(error)) => Err(map_direct_provider_search_error(error)),
         Err(_) => Err(TrainServiceError::ServiceUnavailable(
             "provider search execution failed".to_string(),
         )),
+    }
+}
+
+fn map_direct_provider_search_error(error: ProviderError) -> TrainServiceError {
+    match error {
+        ProviderError::Unauthorized
+        | ProviderError::SessionExpired
+        | ProviderError::NotLoggedIn
+        | ProviderError::ReloginUnavailable => {
+            TrainServiceError::Unauthorized(provider_error_message(error))
+        }
+        ProviderError::Transport { .. } | ProviderError::OperationFailed { .. } => {
+            TrainServiceError::ServiceUnavailable(provider_error_message(error))
+        }
+        ProviderError::UnsupportedOperation { .. } => {
+            TrainServiceError::InvalidRequest(provider_error_message(error))
+        }
     }
 }
 
@@ -4245,6 +4283,106 @@ mod tests {
         assert!(pg_error_code_is_undefined_table(Some("42P01")));
         assert!(!pg_error_code_is_undefined_table(Some("23505")));
         assert!(!pg_error_code_is_undefined_table(None));
+    }
+
+    #[test]
+    fn ensure_distinct_station_codes_rejects_identical_pairs() {
+        let result = ensure_distinct_station_codes("0551", "0551");
+        assert!(matches!(result, Err(TrainServiceError::InvalidRequest(_))));
+    }
+
+    #[test]
+    fn paused_payment_tasks_resume_to_awaiting_payment() {
+        let snapshot = TrainTaskSnapshot {
+            task_id: "task-1".to_string(),
+            user_id: "user-1".to_string(),
+            provider: "srt".to_string(),
+            state_code: TRAIN_TASK_STATE_PAUSED,
+            state_name: "paused".to_string(),
+            state_reason_code: None,
+            state_reason_name: None,
+            dep_station_code: "0551".to_string(),
+            arr_station_code: "0001".to_string(),
+            dep_date: "2026-03-06".to_string(),
+            dep_time: "120000".to_string(),
+            departure_at: Utc::now(),
+            passengers: vec![TrainPassengerCount {
+                kind: TrainPassengerKind::Adult,
+                count: 1,
+            }],
+            auto_pay: false,
+            notify_email: true,
+            retry_on_expiry: false,
+            retry_count: 0,
+            max_retry_count: 3,
+            payment_method_ref: None,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            completed_at: None,
+            last_tried_unix_ms: None,
+            last_search_tried_unix_ms: None,
+            last_reservation_tried_unix_ms: None,
+            last_payment_tried_unix_ms: None,
+            pay_by_unix_ms: Some(Utc::now().timestamp_millis() + 60_000),
+            next_poll_unix_ms: Some(Utc::now().timestamp_millis()),
+            selected_train: None,
+            reservation: Some(json!({"reservation_id": "rsv-1"})),
+            candidates: Vec::new(),
+            schema: TRAIN_TASK_SCHEMA_VERSION,
+        };
+
+        assert_eq!(
+            resume_state_for_paused_task(&snapshot),
+            TRAIN_TASK_STATE_AWAITING_PAYMENT
+        );
+    }
+
+    #[test]
+    fn credentials_ready_treats_skipped_probe_as_present() {
+        assert!(credentials_ready_from_auth_probe(Some(
+            &ProviderAuthProbe {
+                status: Some("skipped".to_string()),
+                message: Some("probe skipped".to_string()),
+            }
+        )));
+    }
+
+    #[test]
+    fn credentials_ready_treats_missing_probe_status_as_present_when_secret_exists() {
+        assert!(credentials_ready_from_auth_probe(Some(
+            &ProviderAuthProbe {
+                status: None,
+                message: Some("saved without probe".to_string()),
+            }
+        )));
+    }
+
+    #[test]
+    fn direct_provider_search_maps_auth_failures_to_unauthorized() {
+        assert!(matches!(
+            map_direct_provider_search_error(ProviderError::Unauthorized),
+            TrainServiceError::Unauthorized(_)
+        ));
+        assert!(matches!(
+            map_direct_provider_search_error(ProviderError::NotLoggedIn),
+            TrainServiceError::Unauthorized(_)
+        ));
+    }
+
+    #[test]
+    fn direct_provider_search_maps_transport_failures_to_service_unavailable() {
+        assert!(matches!(
+            map_direct_provider_search_error(ProviderError::Transport {
+                message: "upstream timed out".to_string(),
+            }),
+            TrainServiceError::ServiceUnavailable(_)
+        ));
+        assert!(matches!(
+            map_direct_provider_search_error(ProviderError::OperationFailed {
+                message: "upstream 500".to_string(),
+            }),
+            TrainServiceError::ServiceUnavailable(_)
+        ));
     }
 
     #[test]
