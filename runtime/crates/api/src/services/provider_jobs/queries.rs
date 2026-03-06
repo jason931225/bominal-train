@@ -2,7 +2,7 @@ use bominal_shared::crypto::{RedactionMode, redact_json};
 use chrono::{DateTime, Utc};
 use tracing::error;
 
-use crate::AppState;
+use super::super::super::AppState;
 
 use super::{
     ProviderJobEvent, ProviderJobEventsPage, ProviderJobResult, ProviderJobsError,
