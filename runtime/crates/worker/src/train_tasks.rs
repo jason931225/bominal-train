@@ -19,6 +19,7 @@ const STATE_EXPIRED: i16 = 7;
 
 const REASON_NONPAYMENT: i16 = 1;
 const REASON_EOL: i16 = 2;
+const SCHEDULER_STALE_RUNNING_TIMEOUT_MINUTES: i64 = 15;
 
 #[derive(Debug)]
 struct TrainTaskRow {
@@ -839,12 +840,13 @@ async fn claim_due_scheduler_task(
     pool: &PgPool,
     now: DateTime<Utc>,
 ) -> Result<Option<(i64, String, String)>> {
+    let stale_running_before = scheduler_stale_running_before(now);
     let row = sqlx::query(
         "with candidate as (
             select id
             from worker_scheduled_tasks
-            where status = 'queued'
-              and run_at <= $1
+            where (status = 'queued' and run_at <= $1)
+               or (status = 'running' and updated_at <= $2)
             order by run_at asc
             limit 1
             for update skip locked
@@ -857,6 +859,7 @@ async fn claim_due_scheduler_task(
          returning t.id, t.task_key, t.task_type",
     )
     .bind(now)
+    .bind(stale_running_before)
     .fetch_optional(pool)
     .await?;
 
@@ -937,10 +940,26 @@ async fn run_provider_auth_recheck(pool: &PgPool, config: &RuntimeExecutionConfi
     Ok(())
 }
 
+fn scheduler_stale_running_before(now: DateTime<Utc>) -> DateTime<Utc> {
+    now - Duration::minutes(SCHEDULER_STALE_RUNNING_TIMEOUT_MINUTES)
+}
+
 fn next_midnight_utc(now: DateTime<Utc>) -> DateTime<Utc> {
     let date = now.date_naive();
     let next = date.succ_opt().unwrap_or(date);
     Utc.with_ymd_and_hms(next.year(), next.month(), next.day(), 0, 0, 0)
         .single()
         .unwrap_or_else(Utc::now)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scheduler_stale_running_before_uses_timeout_window() {
+        let now = Utc.with_ymd_and_hms(2026, 3, 6, 12, 0, 0).single().unwrap();
+        let cutoff = scheduler_stale_running_before(now);
+        assert_eq!(cutoff, now - Duration::minutes(15));
+    }
 }
