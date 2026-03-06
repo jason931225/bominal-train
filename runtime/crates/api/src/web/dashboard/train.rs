@@ -67,7 +67,14 @@ fn render_train_search_section() -> String {
           <span class="text-[11px] uppercase tracking-[0.08em] txt-supporting" data-i18n="search.departure">Departure</span>
           <div id="dep-station-display" class="mt-1 truncate text-sm font-semibold txt-strong" data-i18n="search.select_station">Select station</div>
         </button>
-        <button id="station-swap" type="button" class="btn-ghost h-14 w-11 shrink-0 p-0" aria-label="Swap stations" data-i18n-aria-label="search.swap_stations">↔</button>
+        <button id="station-swap" type="button" class="btn-ghost h-11 w-11 shrink-0 rounded-full p-0" aria-label="Swap stations" data-i18n-aria-label="search.swap_stations">
+          <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" data-station-swap-icon>
+            <path d="M7 7h10"></path>
+            <path d="m13 3 4 4-4 4"></path>
+            <path d="M17 17H7"></path>
+            <path d="m11 13-4 4 4 4"></path>
+          </svg>
+        </button>
         <button id="arr-station-open" type="button" class="summary-card min-w-0 h-14 text-left">
           <span class="text-[11px] uppercase tracking-[0.08em] txt-supporting" data-i18n="search.arrival">Arrival</span>
           <div id="arr-station-display" class="mt-1 truncate text-sm font-semibold txt-strong" data-i18n="search.select_station">Select station</div>
@@ -81,11 +88,11 @@ fn render_train_search_section() -> String {
         <div class="summary-card">
           <span class="text-[11px] uppercase tracking-[0.08em] txt-supporting" data-i18n="search.passengers">Passengers</span>
           <div class="mt-2 grid grid-cols-[44px_minmax(0,1fr)_44px] gap-2">
-            <button id="passenger-minus" type="button" class="btn-ghost h-11 w-11 p-0" aria-label="Decrease passengers">−</button>
+            <button id="passenger-minus" type="button" class="btn-ghost h-10 w-10 rounded-full p-0 text-lg" aria-label="Decrease passengers">−</button>
             <button id="passenger-open" type="button" class="summary-row h-11 min-w-0 justify-center px-3 text-center" aria-label="Passenger details">
               <span id="passenger-display" class="truncate text-sm font-semibold txt-strong">1</span>
             </button>
-            <button id="passenger-plus" type="button" class="btn-ghost h-11 w-11 p-0" aria-label="Increase passengers">＋</button>
+            <button id="passenger-plus" type="button" class="btn-ghost h-10 w-10 rounded-full p-0 text-lg" aria-label="Increase passengers">＋</button>
           </div>
         </div>
       </div>
@@ -212,9 +219,10 @@ fn render_train_picker_modals() -> String {
     <div id="station-picker-correction" class="mt-2 hidden"></div>
     <div id="station-picker-suggestions" class="mt-3 max-h-[220px] space-y-1 overflow-y-auto"></div>
     <div class="mt-3 flex flex-wrap gap-2">
-      <button type="button" id="station-tab-major" class="btn-primary h-9 px-3" data-i18n="station.tab_major">Major stations</button>
+      <button type="button" id="station-tab-favorites" class="btn-primary h-9 px-3" data-i18n="station.tab_favorites">Favorites</button>
       <button type="button" id="station-tab-region" class="btn-ghost h-9 px-3" data-i18n="station.tab_region">By region</button>
     </div>
+    <div id="station-picker-help" class="mt-2 text-xs txt-supporting"></div>
     <div id="station-picker-regions" class="mt-3 flex flex-wrap gap-2"></div>
     <div id="station-picker-list" class="mt-3 max-h-[240px] space-y-1 overflow-y-auto"></div>
   </div>
@@ -269,6 +277,14 @@ mod tests {
             !html.contains(r#"row-span-2"#),
             "swap control should no longer span two mobile rows: {html}"
         );
+        assert!(
+            html.contains(r#"id="station-swap""#) && html.contains("data-station-swap-icon"),
+            "station swap control should use the circular rotating-arrow icon button: {html}"
+        );
+        assert!(
+            !html.contains(">↔</button>"),
+            "station swap control should no longer render the raw arrow glyph: {html}"
+        );
     }
 
     #[test]
@@ -308,6 +324,10 @@ mod tests {
             train_js.contains("passenger-picker-modal"),
             "train frontend should still support the granular passenger modal"
         );
+        assert!(
+            train_js.contains("passenger.summary.adult"),
+            "quick passenger summary should include the adult-specific label path"
+        );
     }
 
     #[test]
@@ -329,6 +349,66 @@ mod tests {
         assert!(
             !html.contains(r#"id="task-auto-pay" type="checkbox""#),
             "legacy auto pay checkbox should be removed once icon toggles are in place: {html}"
+        );
+    }
+
+    #[test]
+    fn train_frontend_capitalizes_english_station_labels() {
+        let train_js = include_str!("../../../../../frontend/assets/js/dashboard/train.js");
+
+        assert!(
+            train_js.contains("capitalizeEnglishStationName"),
+            "expected english station-name capitalization helper in train frontend"
+        );
+        assert!(
+            train_js.contains("replace(/\\b[a-z]/g"),
+            "expected english station labels to capitalize the first letter of each word"
+        );
+    }
+
+    #[test]
+    fn train_page_uses_favorites_tab_instead_of_major_stations() {
+        let html = render_dashboard_train("admin@bominal.local");
+        let train_js = include_str!("../../../../../frontend/assets/js/dashboard/train.js");
+
+        assert!(
+            html.contains(r#"id="station-tab-favorites""#),
+            "expected favorites station tab in picker markup: {html}"
+        );
+        assert!(
+            !html.contains(r#"id="station-tab-major""#),
+            "legacy major stations tab should be removed from picker markup: {html}"
+        );
+        assert!(
+            train_js.contains("station.tab_favorites"),
+            "expected favorites tab translation key in train frontend"
+        );
+        assert!(
+            !train_js.contains("station.tab_major"),
+            "legacy major stations translation key should be removed from train frontend"
+        );
+        assert!(
+            train_js.contains("empty.favorites"),
+            "expected dedicated empty favorites copy in train frontend"
+        );
+    }
+
+    #[test]
+    fn train_page_disables_search_until_required_fields_are_valid() {
+        let html = render_dashboard_train("admin@bominal.local");
+        let train_js = include_str!("../../../../../frontend/assets/js/dashboard/train.js");
+
+        assert!(
+            html.contains(r#"id="train-search-submit""#),
+            "search submit should be present in train form markup: {html}"
+        );
+        assert!(
+            train_js.contains("syncSearchSubmitState"),
+            "train frontend should actively sync search button validity state"
+        );
+        assert!(
+            train_js.contains("searchValidationMessage"),
+            "train frontend should surface a local validation error before provider search"
         );
     }
 }

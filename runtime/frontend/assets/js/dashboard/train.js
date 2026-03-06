@@ -1,6 +1,7 @@
 (() => {
   const preflightNode = document.getElementById('train-preflight');
   const form = document.getElementById('train-search-form');
+  const searchSubmitButton = document.getElementById('train-search-submit');
   const statusNode = document.getElementById('train-search-status');
   const depStationOpen = document.getElementById('dep-station-open');
   const arrStationOpen = document.getElementById('arr-station-open');
@@ -27,8 +28,9 @@
   const stationQuery = document.getElementById('station-picker-query');
   const stationCorrection = document.getElementById('station-picker-correction');
   const stationSuggestions = document.getElementById('station-picker-suggestions');
-  const stationTabMajor = document.getElementById('station-tab-major');
+  const stationTabFavorites = document.getElementById('station-tab-favorites');
   const stationTabRegion = document.getElementById('station-tab-region');
+  const stationPickerHelp = document.getElementById('station-picker-help');
   const stationRegionsNode = document.getElementById('station-picker-regions');
   const stationListNode = document.getElementById('station-picker-list');
   const dateModal = document.getElementById('date-picker-modal');
@@ -69,11 +71,14 @@
   let modalLayerCounter = 0;
   const MODAL_BASE = 70;
   let stationPickerTarget = 'dep';
-  let stationTab = 'major';
+  let stationTab = 'favorites';
   let stationRegionsData = null;
+  let stationFavorites = [];
+  let stationSearchResults = [];
   let stationQueryCounter = 0;
   let stationSuggestDebounceTimer = null;
   let activeRegionKey = 'seoul';
+  let favoriteDragState = null;
   let passengerCommitted = { adult: 1, child: 0, senior: 0, disability_1_to_3: 0, disability_4_to_6: 0 };
   let passengerDraft = { ...passengerCommitted };
   let taskAutoPay = false;
@@ -102,8 +107,12 @@
       'station.modal_title': 'Station picker',
       'station.search_label': 'Search station',
       'station.search_placeholder': 'Search station name or initials (Seoul, ㅅㅇ)',
-      'station.tab_major': 'Major stations',
+      'station.tab_favorites': 'Favorites',
       'station.tab_region': 'By region',
+      'station.favorite_add': 'Add to favorites',
+      'station.favorite_remove': 'Remove from favorites',
+      'station.favorites_hint': 'Star stations from any result. Drag the handle to reorder favorites.',
+      'station.drag_handle': 'Drag to reorder',
       'station.correction_prompt': 'Did you mean {query}?',
       'date.modal_title': 'Departure date',
       'date.label': 'Date',
@@ -116,6 +125,11 @@
       'passenger.senior': 'Senior (65+)',
       'passenger.disability_1_to_3': 'Disability (level 1-3)',
       'passenger.disability_4_to_6': 'Disability (level 4-6)',
+      'passenger.summary.adult': '{count} Adult(s)',
+      'passenger.summary.child': '{count} Child(ren)',
+      'passenger.summary.senior': '{count} Senior(s)',
+      'passenger.summary.disability_1_to_3': '{count} Disability 1-3',
+      'passenger.summary.disability_4_to_6': '{count} Disability 4-6',
       'passenger.count.one': '{count} passenger',
       'passenger.count.other': '{count} passengers',
       'common.close': 'Close',
@@ -124,6 +138,7 @@
       'empty.provider_jobs': 'No provider jobs for this search.',
       'empty.results': 'No trains returned yet.',
       'empty.history': 'No searches yet.',
+      'empty.favorites': 'No favorite stations yet. Star stations from search results to save them here.',
       'empty.stations': 'No stations in this view.',
       'status.general_available': 'General ✓',
       'status.general_unavailable': 'General ✕',
@@ -136,9 +151,11 @@
       'error.load_preflight': 'Failed to load preflight.',
       'error.load_station_catalog': 'Could not load station catalog.',
       'error.station_lookup': 'Station lookup failed.',
+      'error.favorite_save': 'Could not save favorite stations.',
       'error.date_required': 'Departure date is required.',
       'error.passenger_required': 'At least one passenger is required.',
       'error.station_required': 'Choose departure and arrival stations.',
+      'error.station_distinct': 'Departure and arrival stations must differ.',
       'error.search_failed': 'Search request failed.',
       'success.search_accepted': 'Search {searchId} accepted.',
       'provider.payment': 'Payment',
@@ -169,8 +186,12 @@
       'station.modal_title': '역 선택',
       'station.search_label': '역 검색',
       'station.search_placeholder': '역 이름 또는 초성 검색 (서울, ㅅㅇ)',
-      'station.tab_major': '주요역',
+      'station.tab_favorites': '즐겨찾기',
       'station.tab_region': '지역별',
+      'station.favorite_add': '즐겨찾기에 추가',
+      'station.favorite_remove': '즐겨찾기에서 제거',
+      'station.favorites_hint': '검색 결과에서 별표로 추가하고, 핸들을 드래그해 순서를 바꿀 수 있습니다.',
+      'station.drag_handle': '순서 변경',
       'station.correction_prompt': '{query} 역을 찾으셨나요?',
       'date.modal_title': '출발일 선택',
       'date.label': '날짜',
@@ -183,6 +204,11 @@
       'passenger.senior': '경로(65세 이상)',
       'passenger.disability_1_to_3': '중증 장애인',
       'passenger.disability_4_to_6': '경증 장애인',
+      'passenger.summary.adult': '어른 {count}명',
+      'passenger.summary.child': '어린이 {count}명',
+      'passenger.summary.senior': '경로 {count}명',
+      'passenger.summary.disability_1_to_3': '중증 장애 {count}명',
+      'passenger.summary.disability_4_to_6': '경증 장애 {count}명',
       'passenger.count.one': '총 {count}명',
       'passenger.count.other': '총 {count}명',
       'common.close': '닫기',
@@ -191,6 +217,7 @@
       'empty.provider_jobs': '공급자 작업이 없습니다.',
       'empty.results': '조회된 열차가 없습니다.',
       'empty.history': '조회 이력이 없습니다.',
+      'empty.favorites': '아직 즐겨찾기 역이 없습니다. 검색 결과의 별표로 추가하세요.',
       'empty.stations': '표시할 역이 없습니다.',
       'status.general_available': '일반석 가능',
       'status.general_unavailable': '일반석 불가',
@@ -203,9 +230,11 @@
       'error.load_preflight': '준비 상태를 불러오지 못했습니다.',
       'error.load_station_catalog': '역 목록을 불러오지 못했습니다.',
       'error.station_lookup': '역 검색에 실패했습니다.',
+      'error.favorite_save': '즐겨찾기 역을 저장하지 못했습니다.',
       'error.date_required': '출발일이 필요합니다.',
       'error.passenger_required': '최소 1명의 승객이 필요합니다.',
       'error.station_required': '출발역과 도착역을 선택하세요.',
+      'error.station_distinct': '출발역과 도착역은 서로 달라야 합니다.',
       'error.search_failed': '조회 요청에 실패했습니다.',
       'success.search_accepted': '조회 {searchId} 요청이 접수되었습니다.',
       'provider.payment': '결제',
@@ -236,8 +265,12 @@
       'station.modal_title': '駅選択',
       'station.search_label': '駅検索',
       'station.search_placeholder': '駅名または頭子音で検索 (ソウル, ㅅㅇ)',
-      'station.tab_major': '主要駅',
+      'station.tab_favorites': 'お気に入り',
       'station.tab_region': '地域別',
+      'station.favorite_add': 'お気に入りに追加',
+      'station.favorite_remove': 'お気に入りから削除',
+      'station.favorites_hint': '検索結果から星で追加し、ハンドルをドラッグして順番を変更できます。',
+      'station.drag_handle': '並び替え',
       'station.correction_prompt': '{query} をお探しですか？',
       'date.modal_title': '出発日',
       'date.label': '日付',
@@ -250,6 +283,11 @@
       'passenger.senior': 'シニア (65歳以上)',
       'passenger.disability_1_to_3': '障害 (1-3級)',
       'passenger.disability_4_to_6': '障害 (4-6級)',
+      'passenger.summary.adult': '大人 {count}名',
+      'passenger.summary.child': 'こども {count}名',
+      'passenger.summary.senior': 'シニア {count}名',
+      'passenger.summary.disability_1_to_3': '障害 1-3級 {count}名',
+      'passenger.summary.disability_4_to_6': '障害 4-6級 {count}名',
       'passenger.count.one': '合計 {count}名',
       'passenger.count.other': '合計 {count}名',
       'common.close': '閉じる',
@@ -258,6 +296,7 @@
       'empty.provider_jobs': 'この検索のプロバイダージョブはありません。',
       'empty.results': '列車結果がありません。',
       'empty.history': '検索履歴がありません。',
+      'empty.favorites': 'お気に入り駅はまだありません。検索結果から星を付けて追加してください。',
       'empty.stations': 'この表示に駅はありません。',
       'status.general_available': '普通席 ✓',
       'status.general_unavailable': '普通席 ✕',
@@ -270,9 +309,11 @@
       'error.load_preflight': '準備状態を読み込めませんでした。',
       'error.load_station_catalog': '駅カタログを読み込めませんでした。',
       'error.station_lookup': '駅検索に失敗しました。',
+      'error.favorite_save': 'お気に入り駅を保存できませんでした。',
       'error.date_required': '出発日が必要です。',
       'error.passenger_required': '少なくとも1人の乗客が必要です。',
       'error.station_required': '出発駅と到着駅を選択してください。',
+      'error.station_distinct': '出発駅と到着駅は異なる必要があります。',
       'error.search_failed': '検索リクエストに失敗しました。',
       'success.search_accepted': '検索 {searchId} を受け付けました。',
       'provider.payment': '支払い',
@@ -390,10 +431,25 @@
     const key = count === 1 ? 'passenger.count.one' : 'passenger.count.other';
     return t(key, { count });
   };
+  const formatQuickPassengerSummary = (payload) => {
+    const rows = passengerKinds
+      .map((kind) => ({ kind: kind.key, count: Number(payload?.[kind.key] || 0) }))
+      .filter((item) => item.count > 0);
+    if (rows.length === 1) {
+      const only = rows[0];
+      const summaryKey = `passenger.summary.${only.kind}`;
+      return t(summaryKey, { count: only.count });
+    }
+    return formatPassengerCount(totalPassengers(payload));
+  };
 
   const passengerPayload = () => passengerKinds
     .map((kind) => ({ kind: kind.key, count: Number(passengerCommitted[kind.key] || 0) }))
     .filter((item) => item.count > 0);
+
+  const capitalizeEnglishStationName = (value) => String(value || '')
+    .toLowerCase()
+    .replace(/\b[a-z]/g, (char) => char.toUpperCase());
 
   const normalizeProvider = (value) => {
     const token = String(value || '').trim().toLowerCase();
@@ -416,7 +472,7 @@
 
   const stationLocalizedName = (station) => {
     if (activeLocale === 'ja' && station.station_name_ja_katakana) return String(station.station_name_ja_katakana);
-    if (activeLocale === 'en' && station.station_name_en) return String(station.station_name_en);
+    if (activeLocale === 'en' && station.station_name_en) return capitalizeEnglishStationName(station.station_name_en);
     return String(station.station_name_ko || '');
   };
 
@@ -426,6 +482,83 @@
     const localized = stationLocalizedName(station).trim();
     if (!localized || localized === koName) return koName;
     return `${localized} (${koName})`;
+  };
+
+  const cloneStation = (station) => ({
+    station_code: String(station?.station_code || '').trim(),
+    station_name_ko: String(station?.station_name_ko || '').trim(),
+    station_name_en: station?.station_name_en ? String(station.station_name_en).trim() : '',
+    station_name_ja_katakana: String(station?.station_name_ja_katakana || '').trim(),
+    supported_providers: Array.isArray(station?.supported_providers)
+      ? station.supported_providers.map((value) => String(value || '').trim()).filter(Boolean)
+      : [],
+  });
+
+  const cloneStationList = (stations) => Array.isArray(stations)
+    ? stations.map((station) => cloneStation(station)).filter((station) => station.station_code)
+    : [];
+
+  const favoriteStationCodes = () => new Set(
+    stationFavorites.map((station) => String(station.station_code || '').trim()).filter(Boolean),
+  );
+
+  const isFavoriteStation = (stationCode) => favoriteStationCodes().has(String(stationCode || '').trim());
+
+  const setStationFavorites = (stations) => {
+    stationFavorites = cloneStationList(stations);
+    if (stationRegionsData && typeof stationRegionsData === 'object') {
+      stationRegionsData.favorites = cloneStationList(stationFavorites);
+      stationRegionsData.quick = cloneStationList(stationFavorites);
+    }
+  };
+
+  const stationByCode = (stationCode) => {
+    const code = String(stationCode || '').trim();
+    if (!code) return null;
+    const sources = [
+      stationFavorites,
+      stationSearchResults,
+      Array.isArray(stationRegionsData?.regions)
+        ? stationRegionsData.regions.flatMap((region) => Array.isArray(region?.stations) ? region.stations : [])
+        : [],
+    ];
+    for (const source of sources) {
+      const match = Array.isArray(source)
+        ? source.find((station) => String(station?.station_code || '').trim() === code)
+        : null;
+      if (match) return cloneStation(match);
+    }
+    return null;
+  };
+
+  const stationPickerHasQuery = () => Boolean(String(stationQuery?.value || '').trim());
+
+  const updateStationPickerHelp = () => {
+    if (!stationPickerHelp) return;
+    if (stationTab === 'favorites') {
+      stationPickerHelp.textContent = t('station.favorites_hint');
+      return;
+    }
+    stationPickerHelp.textContent = '';
+  };
+
+  const searchValidationMessage = () => {
+    if (!depSelection || !arrSelection) return t('error.station_required');
+    if (String(depSelection.station_code || '') === String(arrSelection.station_code || '')) {
+      return t('error.station_distinct');
+    }
+    if (!String(depDate || '').trim()) return t('error.date_required');
+    if (totalPassengers(passengerCommitted) < 1) return t('error.passenger_required');
+    return '';
+  };
+
+  const syncSearchSubmitState = () => {
+    if (!searchSubmitButton) return;
+    const valid = !searchValidationMessage();
+    searchSubmitButton.setAttribute('aria-disabled', valid ? 'false' : 'true');
+    searchSubmitButton.classList.toggle('opacity-60', !valid);
+    searchSubmitButton.classList.toggle('cursor-not-allowed', !valid);
+    searchSubmitButton.dataset.searchReady = valid ? 'true' : 'false';
   };
 
   const updateDisplays = () => {
@@ -438,7 +571,8 @@
     depStationDisplay.textContent = depLabel;
     arrStationDisplay.textContent = arrLabel;
     dateDisplay.textContent = depDate || t('search.select_date');
-    passengerDisplay.textContent = formatPassengerCount(totalPassengers(passengerCommitted));
+    passengerDisplay.textContent = formatQuickPassengerSummary(passengerCommitted);
+    syncSearchSubmitState();
   };
 
   const setTaskToggleState = (button, selected) => {
@@ -849,39 +983,223 @@
     renderPreflight(response.body || {});
   };
 
-  const renderStationList = (stations) => {
-    if (!stations || !stations.length) {
-      stationListNode.innerHTML = `<div class="empty-card">${escapeHtml(t('empty.stations'))}</div>`;
+  const favoriteStarIcon = (selected) => `
+    <svg class="h-4 w-4" viewBox="0 0 24 24" ${selected ? 'fill="currentColor"' : 'fill="none"'} stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="m12 3.5 2.63 5.33 5.88.86-4.25 4.14 1 5.85L12 17l-5.26 2.68 1-5.85-4.25-4.14 5.88-.86L12 3.5Z"></path>
+    </svg>
+  `;
+
+  const favoriteDragHandleIcon = () => `
+    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <circle cx="9" cy="7" r="1.35"></circle>
+      <circle cx="15" cy="7" r="1.35"></circle>
+      <circle cx="9" cy="12" r="1.35"></circle>
+      <circle cx="15" cy="12" r="1.35"></circle>
+      <circle cx="9" cy="17" r="1.35"></circle>
+      <circle cx="15" cy="17" r="1.35"></circle>
+    </svg>
+  `;
+
+  const stationRowMarkup = (station, options) => {
+    const favorite = isFavoriteStation(station.station_code);
+    const showDragHandle = Boolean(options?.reorderable);
+    const favoriteLabel = favorite ? t('station.favorite_remove') : t('station.favorite_add');
+    return `
+      <div class="summary-row gap-2" ${showDragHandle ? `data-favorite-item="${escapeHtml(station.station_code)}"` : ''}>
+        ${showDragHandle ? `
+          <button
+            type="button"
+            class="btn-ghost h-10 w-10 shrink-0 rounded-full p-0 txt-supporting"
+            data-favorite-drag-handle="${escapeHtml(station.station_code)}"
+            aria-label="${escapeHtml(t('station.drag_handle'))}"
+            title="${escapeHtml(t('station.drag_handle'))}"
+          >
+            ${favoriteDragHandleIcon()}
+          </button>
+        ` : ''}
+        <button
+          type="button"
+          class="min-w-0 flex-1 text-left"
+          data-station-pick="${escapeHtml(station.station_code)}"
+        >
+          <span class="block truncate">${escapeHtml(stationLabel(station))} · ${escapeHtml(station.station_code)}</span>
+          <span class="mt-0.5 block text-xs txt-supporting">${escapeHtml(providerBullets(station))}</span>
+        </button>
+        <button
+          type="button"
+          class="btn-ghost h-10 w-10 shrink-0 rounded-full p-0 ${favorite ? 'txt-accent' : 'txt-supporting'}"
+          data-favorite-toggle="${escapeHtml(station.station_code)}"
+          aria-pressed="${favorite ? 'true' : 'false'}"
+          aria-label="${escapeHtml(favoriteLabel)}"
+          title="${escapeHtml(favoriteLabel)}"
+        >
+          ${favoriteStarIcon(favorite)}
+        </button>
+      </div>
+    `;
+  };
+
+  const clearFavoriteDropIndicators = () => {
+    Array.from(stationListNode.querySelectorAll('[data-favorite-item]')).forEach((node) => {
+      node.style.removeProperty('box-shadow');
+      node.style.removeProperty('opacity');
+    });
+  };
+
+  const moveFavoriteStation = (stations, draggedCode, targetCode, insertAfter) => {
+    const next = cloneStationList(stations);
+    const fromIndex = next.findIndex((station) => station.station_code === draggedCode);
+    const targetIndex = next.findIndex((station) => station.station_code === targetCode);
+    if (fromIndex === -1 || targetIndex === -1 || fromIndex === targetIndex) return next;
+    const [dragged] = next.splice(fromIndex, 1);
+    const adjustedTarget = next.findIndex((station) => station.station_code === targetCode);
+    const insertIndex = insertAfter ? adjustedTarget + 1 : adjustedTarget;
+    next.splice(insertIndex, 0, dragged);
+    return next;
+  };
+
+  const persistStationFavorites = async (nextStations) => {
+    const previous = cloneStationList(stationFavorites);
+    setStationFavorites(nextStations);
+    refreshStationPickerView();
+    const response = await requestJson('/api/train/stations/favorites', 'PUT', {
+      station_codes: stationFavorites.map((station) => station.station_code),
+    });
+    if (!response.ok) {
+      setStationFavorites(previous);
+      refreshStationPickerView();
+      showStatus('error', apiErrorMessage(response, t('error.favorite_save')));
+      return false;
+    }
+    setStationFavorites(Array.isArray(response.body?.favorites) ? response.body.favorites : nextStations);
+    refreshStationPickerView();
+    return true;
+  };
+
+  const toggleFavoriteStation = async (stationCode) => {
+    const code = String(stationCode || '').trim();
+    if (!code) return;
+    const current = cloneStationList(stationFavorites);
+    const existingIndex = current.findIndex((station) => station.station_code === code);
+    if (existingIndex >= 0) {
+      current.splice(existingIndex, 1);
+      await persistStationFavorites(current);
       return;
     }
-    stationListNode.innerHTML = stations.map((station) => `
-      <button type="button" class="summary-row w-full text-left" data-station-code="${escapeHtml(station.station_code)}">
-        <span>${escapeHtml(stationLabel(station))} · ${escapeHtml(station.station_code)}</span>
-        <span class="text-xs txt-supporting">${escapeHtml(providerBullets(station))}</span>
-      </button>
-    `).join('');
-    Array.from(stationListNode.querySelectorAll('[data-station-code]')).forEach((button) => {
+    const station = stationByCode(code);
+    if (!station) return;
+    current.push(station);
+    await persistStationFavorites(current);
+  };
+
+  const endFavoriteDrag = async () => {
+    if (!favoriteDragState) return;
+    const state = favoriteDragState;
+    favoriteDragState = null;
+    window.removeEventListener('pointermove', onFavoriteDragMove);
+    window.removeEventListener('pointerup', onFavoriteDragEnd);
+    window.removeEventListener('pointercancel', onFavoriteDragEnd);
+    clearFavoriteDropIndicators();
+    if (!state.targetCode || state.targetCode === state.draggedCode) {
+      refreshStationPickerView();
+      return;
+    }
+    const reordered = moveFavoriteStation(
+      stationFavorites,
+      state.draggedCode,
+      state.targetCode,
+      state.insertAfter,
+    );
+    const sameOrder = reordered.every(
+      (station, index) => station.station_code === stationFavorites[index]?.station_code,
+    );
+    if (!sameOrder) {
+      await persistStationFavorites(reordered);
+      return;
+    }
+    refreshStationPickerView();
+  };
+
+  function onFavoriteDragMove(event) {
+    if (!favoriteDragState) return;
+    const activeRow = Array.from(stationListNode.querySelectorAll('[data-favorite-item]'))
+      .find((node) => node.getAttribute('data-favorite-item') === favoriteDragState.draggedCode);
+    clearFavoriteDropIndicators();
+    if (activeRow) activeRow.style.opacity = '0.58';
+    const targetNode = event.target instanceof Element
+      ? event.target
+      : document.elementFromPoint(event.clientX, event.clientY);
+    const row = targetNode?.closest?.('[data-favorite-item]');
+    const targetCode = row?.getAttribute?.('data-favorite-item') || '';
+    if (!targetCode || targetCode === favoriteDragState.draggedCode) {
+      favoriteDragState.targetCode = '';
+      return;
+    }
+    const rect = row.getBoundingClientRect();
+    const insertAfter = event.clientY > (rect.top + (rect.height / 2));
+    favoriteDragState.targetCode = targetCode;
+    favoriteDragState.insertAfter = insertAfter;
+    row.style.boxShadow = insertAfter
+      ? '0 2px 0 0 rgba(129, 140, 248, 0.95)'
+      : '0 -2px 0 0 rgba(129, 140, 248, 0.95)';
+  }
+
+  function onFavoriteDragEnd() {
+    endFavoriteDrag().catch(() => {});
+  }
+
+  const bindStationListEvents = () => {
+    Array.from(stationListNode.querySelectorAll('[data-station-pick]')).forEach((button) => {
       button.addEventListener('click', () => {
-        const stationCode = button.getAttribute('data-station-code');
-        if (!stationCode || !stationRegionsData) return;
-        const station = stationRegionsData.regions
-          .flatMap((region) => region.stations || [])
-          .find((item) => String(item.station_code) === stationCode);
+        const stationCode = button.getAttribute('data-station-pick');
+        const station = stationByCode(stationCode);
         if (!station) return;
         if (stationPickerTarget === 'dep') {
           depSelection = station;
         } else {
           arrSelection = station;
         }
+        clearStatus();
         updateDisplays();
         modalClose(stationModal);
       });
     });
+    Array.from(stationListNode.querySelectorAll('[data-favorite-toggle]')).forEach((button) => {
+      button.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        toggleFavoriteStation(button.getAttribute('data-favorite-toggle')).catch(() => {});
+      });
+    });
+    Array.from(stationListNode.querySelectorAll('[data-favorite-drag-handle]')).forEach((button) => {
+      button.addEventListener('pointerdown', (event) => {
+        if (event.button !== undefined && event.button !== 0) return;
+        const draggedCode = button.getAttribute('data-favorite-drag-handle');
+        if (!draggedCode) return;
+        event.preventDefault();
+        favoriteDragState = { draggedCode, targetCode: '', insertAfter: false };
+        window.addEventListener('pointermove', onFavoriteDragMove);
+        window.addEventListener('pointerup', onFavoriteDragEnd);
+        window.addEventListener('pointercancel', onFavoriteDragEnd);
+      });
+    });
+  };
+
+  const renderStationList = (stations, options) => {
+    const emptyKey = options?.emptyKey || 'empty.stations';
+    if (!stations || !stations.length) {
+      stationListNode.innerHTML = `<div class="empty-card">${escapeHtml(t(emptyKey))}</div>`;
+      return;
+    }
+    stationListNode.innerHTML = stations
+      .map((station) => stationRowMarkup(station, options))
+      .join('');
+    bindStationListEvents();
   };
 
   const renderRegionChips = () => {
     if (!stationRegionsData) return;
-    const regions = (stationRegionsData.regions || []).filter((region) => region.key !== 'major' && region.key !== 'all');
+    const regions = (stationRegionsData.regions || []).filter((region) => region.key !== 'all');
     stationRegionsNode.innerHTML = regions.map((region) => `
       <button type="button" class="${region.key === activeRegionKey ? 'btn-primary h-9 px-3' : 'btn-ghost h-9 px-3'}" data-region-key="${escapeHtml(region.key)}">${escapeHtml(region.label)}</button>
     `).join('');
@@ -894,20 +1212,28 @@
       });
     });
     const region = regions.find((value) => value.key === activeRegionKey) || regions[0];
-    renderStationList(region ? region.stations : []);
+    renderStationList(region ? region.stations : [], { emptyKey: 'empty.stations' });
   };
 
   const renderStationTab = () => {
     if (!stationRegionsData) return;
-    stationTabMajor.className = stationTab === 'major' ? 'btn-primary h-9 px-3' : 'btn-ghost h-9 px-3';
+    updateStationPickerHelp();
+    stationTabFavorites.className = stationTab === 'favorites' ? 'btn-primary h-9 px-3' : 'btn-ghost h-9 px-3';
     stationTabRegion.className = stationTab === 'region' ? 'btn-primary h-9 px-3' : 'btn-ghost h-9 px-3';
-    if (stationTab === 'major') {
-      const major = (stationRegionsData.regions || []).find((region) => region.key === 'major');
+    if (stationTab === 'favorites') {
       stationRegionsNode.innerHTML = '';
-      renderStationList(major ? major.stations : []);
+      renderStationList(stationFavorites, { emptyKey: 'empty.favorites', reorderable: true });
       return;
     }
     renderRegionChips();
+  };
+
+  const refreshStationPickerView = () => {
+    if (stationPickerHasQuery()) {
+      renderStationList(stationSearchResults, { emptyKey: 'empty.stations' });
+      return;
+    }
+    renderStationTab();
   };
 
   const clearStationCorrection = () => {
@@ -971,6 +1297,7 @@
       return null;
     }
     stationRegionsData = response.body || { quick: [], regions: [] };
+    setStationFavorites(Array.isArray(stationRegionsData?.favorites) ? stationRegionsData.favorites : []);
     return stationRegionsData;
   };
 
@@ -1005,12 +1332,14 @@
         }
       }
     }
-    renderStationList(Array.from(merged.values()));
+    stationSearchResults = Array.from(merged.values()).map((station) => cloneStation(station));
+    renderStationList(stationSearchResults, { emptyKey: 'empty.stations' });
   };
 
   const openStationPicker = async (target) => {
     stationPickerTarget = target;
     stationQuery.value = '';
+    stationSearchResults = [];
     clearStationCorrection();
     stationSuggestions.innerHTML = '';
     stationQueryCounter += 1;
@@ -1020,7 +1349,7 @@
     }
     const loaded = await loadStationRegions();
     if (!loaded) return;
-    renderStationTab();
+    refreshStationPickerView();
     modalOpen(stationModal);
     stationQuery.focus();
   };
@@ -1031,9 +1360,9 @@
       <div class="summary-row">
         <span>${escapeHtml(kind.label)}</span>
         <span class="inline-flex items-center gap-2">
-          <button type="button" class="btn-ghost h-8 w-8 p-0" data-passenger-op="minus" data-passenger-kind="${escapeHtml(kind.key)}" aria-label="Decrease ${escapeHtml(kind.label)}">−</button>
+          <button type="button" class="btn-ghost h-9 w-9 rounded-full p-0 text-base" data-passenger-op="minus" data-passenger-kind="${escapeHtml(kind.key)}" aria-label="Decrease ${escapeHtml(kind.label)}">−</button>
           <span class="w-6 text-center">${escapeHtml(String(passengerDraft[kind.key] || 0))}</span>
-          <button type="button" class="btn-ghost h-8 w-8 p-0" data-passenger-op="plus" data-passenger-kind="${escapeHtml(kind.key)}">＋</button>
+          <button type="button" class="btn-ghost h-9 w-9 rounded-full p-0 text-base" data-passenger-op="plus" data-passenger-kind="${escapeHtml(kind.key)}">＋</button>
         </span>
       </div>
     `).join('');
@@ -1094,8 +1423,8 @@
   dateCancel.addEventListener('click', () => modalClose(dateModal));
   passengerCancel.addEventListener('click', () => modalClose(passengerModal));
 
-  stationTabMajor.addEventListener('click', () => {
-    stationTab = 'major';
+  stationTabFavorites.addEventListener('click', () => {
+    stationTab = 'favorites';
     renderStationTab();
   });
   stationTabRegion.addEventListener('click', () => {
@@ -1106,13 +1435,14 @@
   stationQuery.addEventListener('input', async () => {
     const value = stationQuery.value.trim();
     if (!value) {
+      stationSearchResults = [];
       stationQueryCounter += 1;
       clearStationCorrection();
       if (stationSuggestDebounceTimer) {
         clearTimeout(stationSuggestDebounceTimer);
         stationSuggestDebounceTimer = null;
       }
-      renderStationTab();
+      refreshStationPickerView();
       return;
     }
     if (stationSuggestDebounceTimer) {
@@ -1156,12 +1486,10 @@
     event.preventDefault();
     clearStatus();
     clearTaskStatus();
-    if (!depSelection || !arrSelection) {
-      showStatus('error', t('error.station_required'));
-      return;
-    }
-    if (totalPassengers(passengerCommitted) < 1) {
-      showStatus('error', t('error.passenger_required'));
+    const validationMessage = searchValidationMessage();
+    if (validationMessage) {
+      showStatus('error', validationMessage);
+      syncSearchSubmitState();
       return;
     }
     const depDateCompact = String(depDate || '').replaceAll('-', '');

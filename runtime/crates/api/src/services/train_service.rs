@@ -94,8 +94,14 @@ pub(crate) struct StationSuggestResponse {
 
 #[derive(Debug, Serialize)]
 pub(crate) struct StationRegionsResponse {
+    pub(crate) favorites: Vec<StationRegionStation>,
     pub(crate) quick: Vec<StationRegionStation>,
     pub(crate) regions: Vec<StationRegionGroup>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct StationFavoritesResponse {
+    pub(crate) favorites: Vec<StationRegionStation>,
 }
 
 #[derive(Debug, Serialize)]
@@ -466,6 +472,12 @@ pub(crate) struct StationRegionsQuery {
     pub(crate) provider: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+pub(crate) struct UpdateStationFavoritesRequest {
+    #[serde(default)]
+    pub(crate) station_codes: Vec<String>,
+}
+
 #[derive(Debug)]
 struct SearchSessionRow {
     search_id: String,
@@ -493,6 +505,17 @@ struct StationCatalogEntry {
     order_index: i32,
     normalized_name: String,
     normalized_remark: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct AggregatedStation {
+    station_code: String,
+    station_name_ko: String,
+    station_name_en: Option<String>,
+    station_name_ja_katakana: String,
+    selected: bool,
+    order_index: i32,
+    supported_providers: Vec<String>,
 }
 
 static STATION_REFRESH_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -749,112 +772,63 @@ pub(crate) async fn suggest_stations(
 
 pub(crate) async fn load_station_regions(
     state: &AppState,
+    user_id: &str,
     query: StationRegionsQuery,
 ) -> Result<StationRegionsResponse, TrainServiceError> {
+    ensure_valid_user_id(user_id)?;
     ensure_station_catalog_loaded(state).await?;
+
     let provider_scope = parse_provider_scope(query.provider.as_deref())?;
+    let stations = load_aggregated_station_catalog(state, &provider_scope).await?;
+    let favorite_codes = load_user_favorite_station_codes(require_pool(state)?, user_id).await?;
 
-    #[derive(Debug, Clone)]
-    struct AggregatedStation {
-        station_code: String,
-        station_name_ko: String,
-        station_name_en: Option<String>,
-        station_name_ja_katakana: String,
-        selected: bool,
-        order_index: i32,
-        supported_providers: Vec<String>,
-    }
+    Ok(build_station_regions_response(&stations, &favorite_codes))
+}
 
-    let mut merged: HashMap<String, AggregatedStation> = HashMap::new();
-    for provider in provider_scope {
-        let stations = load_station_catalog_for_provider(state, provider).await?;
-        for station in stations {
-            let provider_name = provider.to_ascii_uppercase();
-            let key = station.station_code.clone();
-            match merged.get_mut(&key) {
-                Some(existing) => {
-                    if !existing
-                        .supported_providers
-                        .iter()
-                        .any(|value| value == &provider_name)
-                    {
-                        existing.supported_providers.push(provider_name.clone());
-                    }
-                    existing.selected = existing.selected || station.selected;
-                    if station.order_index < existing.order_index {
-                        existing.order_index = station.order_index;
-                    }
-                    if existing.station_name_en.is_none() && station.station_name_en.is_some() {
-                        existing.station_name_en = station.station_name_en.clone();
-                    }
-                }
-                None => {
-                    merged.insert(
-                        key,
-                        AggregatedStation {
-                            station_code: station.station_code,
-                            station_name_ko: station.station_name_ko,
-                            station_name_en: station.station_name_en,
-                            station_name_ja_katakana: station.station_name_ja_katakana,
-                            selected: station.selected,
-                            order_index: station.order_index,
-                            supported_providers: vec![provider_name],
-                        },
-                    );
-                }
-            }
-        }
-    }
+pub(crate) async fn replace_station_favorites(
+    state: &AppState,
+    user_id: &str,
+    payload: UpdateStationFavoritesRequest,
+) -> Result<StationFavoritesResponse, TrainServiceError> {
+    ensure_valid_user_id(user_id)?;
+    ensure_station_catalog_loaded(state).await?;
 
-    let mut values = merged.into_values().collect::<Vec<_>>();
-    values.sort_by(|left, right| {
-        right
-            .selected
-            .cmp(&left.selected)
-            .then_with(|| left.order_index.cmp(&right.order_index))
-            .then_with(|| left.station_name_ko.cmp(&right.station_name_ko))
-    });
-
-    let mut regions_map: HashMap<&'static str, Vec<StationRegionStation>> = HashMap::new();
-    let mut quick = Vec::new();
-    for station in values {
-        let region = curated_region_for_station(station.station_name_ko.as_str());
-        let station_view = StationRegionStation {
-            station_code: station.station_code,
-            station_name_ko: station.station_name_ko,
-            station_name_en: station.station_name_en,
-            station_name_ja_katakana: station.station_name_ja_katakana,
-            supported_providers: ordered_provider_labels(&station.supported_providers),
-        };
-        regions_map
-            .entry(region)
-            .or_default()
-            .push(station_view.clone());
-        if station.selected && quick.len() < 10 {
-            quick.push(station_view);
-        }
-    }
-
-    let mut all = Vec::new();
-    for value in regions_map.values() {
-        all.extend(value.iter().cloned());
-    }
-    all.sort_by(|left, right| left.station_name_ko.cmp(&right.station_name_ko));
-    all.dedup_by(|left, right| left.station_code == right.station_code);
-    regions_map.insert("all", all);
-
-    regions_map.insert("major", quick.clone());
-
-    let regions = curated_region_order()
+    let provider_scope = parse_provider_scope(None)?;
+    let stations = load_aggregated_station_catalog(state, &provider_scope).await?;
+    let station_lookup = stations
         .iter()
-        .map(|(key, label)| StationRegionGroup {
-            key: (*key).to_string(),
-            label: (*label).to_string(),
-            stations: regions_map.remove(*key).unwrap_or_default(),
-        })
-        .collect::<Vec<_>>();
+        .map(|station| (station.station_code.as_str(), station))
+        .collect::<HashMap<_, _>>();
+    let station_codes = normalize_favorite_station_codes(payload.station_codes, &station_lookup)?;
+    let pool = require_pool(state)?;
+    let mut tx = pool
+        .begin()
+        .await
+        .map_err(|_| TrainServiceError::Internal)?;
 
-    Ok(StationRegionsResponse { quick, regions })
+    sqlx::query("delete from train_station_favorites where user_id = $1")
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(map_station_favorites_storage_error)?;
+
+    for (index, station_code) in station_codes.iter().enumerate() {
+        sqlx::query(
+            "insert into train_station_favorites (user_id, station_code, position) values ($1, $2, $3)",
+        )
+        .bind(user_id)
+        .bind(station_code)
+        .bind(i32::try_from(index + 1).unwrap_or(i32::MAX))
+        .execute(&mut *tx)
+        .await
+        .map_err(map_station_favorites_storage_error)?;
+    }
+
+    tx.commit().await.map_err(|_| TrainServiceError::Internal)?;
+
+    Ok(StationFavoritesResponse {
+        favorites: favorite_station_views(&stations, &station_codes),
+    })
 }
 
 pub(crate) async fn create_search(
@@ -2222,6 +2196,109 @@ async fn load_station_catalog_for_provider(
     Ok(stations)
 }
 
+async fn load_aggregated_station_catalog(
+    state: &AppState,
+    provider_scope: &[&'static str],
+) -> Result<Vec<AggregatedStation>, TrainServiceError> {
+    let mut merged: HashMap<String, AggregatedStation> = HashMap::new();
+    for &provider in provider_scope {
+        let stations = load_station_catalog_for_provider(state, provider).await?;
+        for station in stations {
+            let provider_name = provider.to_ascii_uppercase();
+            let key = station.station_code.clone();
+            match merged.get_mut(&key) {
+                Some(existing) => {
+                    if !existing
+                        .supported_providers
+                        .iter()
+                        .any(|value| value == &provider_name)
+                    {
+                        existing.supported_providers.push(provider_name.clone());
+                    }
+                    existing.selected = existing.selected || station.selected;
+                    if station.order_index < existing.order_index {
+                        existing.order_index = station.order_index;
+                    }
+                    if existing.station_name_en.is_none() && station.station_name_en.is_some() {
+                        existing.station_name_en = station.station_name_en.clone();
+                    }
+                }
+                None => {
+                    merged.insert(
+                        key,
+                        AggregatedStation {
+                            station_code: station.station_code,
+                            station_name_ko: station.station_name_ko,
+                            station_name_en: station.station_name_en,
+                            station_name_ja_katakana: station.station_name_ja_katakana,
+                            selected: station.selected,
+                            order_index: station.order_index,
+                            supported_providers: vec![provider_name],
+                        },
+                    );
+                }
+            }
+        }
+    }
+
+    let mut values = merged.into_values().collect::<Vec<_>>();
+    values.sort_by(|left, right| {
+        right
+            .selected
+            .cmp(&left.selected)
+            .then_with(|| left.order_index.cmp(&right.order_index))
+            .then_with(|| left.station_name_ko.cmp(&right.station_name_ko))
+    });
+    Ok(values)
+}
+
+async fn load_user_favorite_station_codes(
+    pool: &PgPool,
+    user_id: &str,
+) -> Result<Vec<String>, TrainServiceError> {
+    let rows = match sqlx::query(
+        "select station_code from train_station_favorites where user_id = $1 order by position asc, station_code asc",
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await
+    {
+        Ok(rows) => rows,
+        Err(err) if is_undefined_table_error(&err) => {
+            warn!("train_station_favorites table missing; returning empty favorites");
+            return Ok(Vec::new());
+        }
+        Err(_) => return Err(TrainServiceError::Internal),
+    };
+
+    rows.into_iter()
+        .map(|row| {
+            row.try_get("station_code")
+                .map_err(|_| TrainServiceError::Internal)
+        })
+        .collect()
+}
+
+fn is_undefined_table_error(error: &sqlx::Error) -> bool {
+    let code = error
+        .as_database_error()
+        .and_then(|db| db.code().map(|value| value.into_owned()));
+    pg_error_code_is_undefined_table(code.as_deref())
+}
+
+fn pg_error_code_is_undefined_table(code: Option<&str>) -> bool {
+    matches!(code, Some("42P01"))
+}
+
+fn map_station_favorites_storage_error(error: sqlx::Error) -> TrainServiceError {
+    if is_undefined_table_error(&error) {
+        return TrainServiceError::ServiceUnavailable(
+            "station favorites are unavailable until database migrations are applied".to_string(),
+        );
+    }
+    TrainServiceError::Internal
+}
+
 fn station_cache_key(provider: &str) -> String {
     format!("train:station-catalog:{provider}:v1")
 }
@@ -2344,9 +2421,108 @@ fn ordered_provider_labels(raw: &[String]) -> Vec<String> {
     labels
 }
 
+fn station_region_view(station: &AggregatedStation) -> StationRegionStation {
+    StationRegionStation {
+        station_code: station.station_code.clone(),
+        station_name_ko: station.station_name_ko.clone(),
+        station_name_en: station.station_name_en.clone(),
+        station_name_ja_katakana: station.station_name_ja_katakana.clone(),
+        supported_providers: ordered_provider_labels(&station.supported_providers),
+    }
+}
+
+fn favorite_station_views(
+    stations: &[AggregatedStation],
+    favorite_codes: &[String],
+) -> Vec<StationRegionStation> {
+    let station_lookup = stations
+        .iter()
+        .map(|station| (station.station_code.as_str(), station))
+        .collect::<HashMap<_, _>>();
+    let mut favorites = Vec::new();
+    let mut seen = HashSet::new();
+    for station_code in favorite_codes {
+        let code = station_code.trim();
+        if code.is_empty() || !seen.insert(code.to_string()) {
+            continue;
+        }
+        if let Some(station) = station_lookup.get(code) {
+            favorites.push(station_region_view(station));
+        }
+    }
+    favorites
+}
+
+fn build_station_regions_response(
+    stations: &[AggregatedStation],
+    favorite_codes: &[String],
+) -> StationRegionsResponse {
+    let favorites = favorite_station_views(stations, favorite_codes);
+    let mut regions_map: HashMap<&'static str, Vec<StationRegionStation>> = HashMap::new();
+    for station in stations {
+        let region = curated_region_for_station(station.station_name_ko.as_str());
+        regions_map
+            .entry(region)
+            .or_default()
+            .push(station_region_view(station));
+    }
+
+    let mut all = Vec::new();
+    for value in regions_map.values() {
+        all.extend(value.iter().cloned());
+    }
+    all.sort_by(|left, right| left.station_name_ko.cmp(&right.station_name_ko));
+    all.dedup_by(|left, right| left.station_code == right.station_code);
+    regions_map.insert("all", all);
+
+    let regions = curated_region_order()
+        .iter()
+        .map(|(key, label)| StationRegionGroup {
+            key: (*key).to_string(),
+            label: (*label).to_string(),
+            stations: regions_map.remove(*key).unwrap_or_default(),
+        })
+        .collect::<Vec<_>>();
+
+    StationRegionsResponse {
+        favorites: favorites.clone(),
+        quick: favorites,
+        regions,
+    }
+}
+
+const TRAIN_STATION_FAVORITE_LIMIT: usize = 20;
+
+fn normalize_favorite_station_codes(
+    station_codes: Vec<String>,
+    station_lookup: &HashMap<&str, &AggregatedStation>,
+) -> Result<Vec<String>, TrainServiceError> {
+    let mut normalized = Vec::new();
+    let mut seen = HashSet::new();
+
+    for raw in station_codes {
+        let station_code = normalize_station_code(raw.as_str())?;
+        if !seen.insert(station_code.clone()) {
+            continue;
+        }
+        if !station_lookup.contains_key(station_code.as_str()) {
+            return Err(TrainServiceError::InvalidRequest(format!(
+                "unknown station code: {station_code}"
+            )));
+        }
+        normalized.push(station_code);
+        if normalized.len() > TRAIN_STATION_FAVORITE_LIMIT {
+            return Err(TrainServiceError::InvalidRequest(format!(
+                "favorites must contain at most {TRAIN_STATION_FAVORITE_LIMIT} stations"
+            )));
+        }
+    }
+
+    Ok(normalized)
+}
+
 fn curated_region_order() -> &'static [(&'static str, &'static str)] {
     &[
-        ("major", "주요역"),
         ("seoul", "서울"),
         ("gyeonggi", "경기"),
         ("gangwon", "강원"),
@@ -3997,6 +4173,78 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn curated_region_order_no_longer_exposes_major_bucket() {
+        let keys = curated_region_order()
+            .iter()
+            .map(|(key, _)| *key)
+            .collect::<Vec<_>>();
+
+        assert!(
+            !keys.contains(&"major"),
+            "station regions should not expose the legacy major bucket once favorites owns the first tab: {keys:?}"
+        );
+    }
+
+    #[test]
+    fn build_station_regions_response_defaults_favorites_to_empty() {
+        let response = build_station_regions_response(
+            &[AggregatedStation {
+                station_code: "0551".to_string(),
+                station_name_ko: "수서".to_string(),
+                station_name_en: Some("suseo".to_string()),
+                station_name_ja_katakana: "スソ".to_string(),
+                selected: true,
+                order_index: 1,
+                supported_providers: vec!["SRT".to_string()],
+            }],
+            &[],
+        );
+
+        assert!(response.favorites.is_empty());
+        assert!(response.regions.iter().all(|region| region.key != "major"));
+    }
+
+    #[test]
+    fn favorite_station_views_preserve_saved_order() {
+        let views = favorite_station_views(
+            &[
+                AggregatedStation {
+                    station_code: "0551".to_string(),
+                    station_name_ko: "수서".to_string(),
+                    station_name_en: Some("suseo".to_string()),
+                    station_name_ja_katakana: "スソ".to_string(),
+                    selected: true,
+                    order_index: 1,
+                    supported_providers: vec!["SRT".to_string()],
+                },
+                AggregatedStation {
+                    station_code: "0001".to_string(),
+                    station_name_ko: "서울".to_string(),
+                    station_name_en: Some("seoul".to_string()),
+                    station_name_ja_katakana: "ソウル".to_string(),
+                    selected: true,
+                    order_index: 2,
+                    supported_providers: vec!["KTX".to_string()],
+                },
+            ],
+            &["0001".to_string(), "0551".to_string()],
+        );
+
+        let station_codes = views
+            .iter()
+            .map(|station| station.station_code.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(station_codes, vec!["0001", "0551"]);
+    }
+
+    #[test]
+    fn pg_error_code_is_undefined_table_recognizes_postgres_code() {
+        assert!(pg_error_code_is_undefined_table(Some("42P01")));
+        assert!(!pg_error_code_is_undefined_table(Some("23505")));
+        assert!(!pg_error_code_is_undefined_table(None));
     }
 
     #[test]
