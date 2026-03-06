@@ -1,166 +1,96 @@
-# Rust Production Cutover Playbook
+# Rust Production Runtime and Future Cloud Run Cutover
 
-This playbook is the deterministic path to run the Rust API/SSR service on Cloud Run while keeping the Rust worker, Redis, and Postgres on the Compute Engine VM.
+This playbook separates the active VM deployment path from the future Cloud Run API cutover path.
+Current production remains VM-first.
 
-## Preconditions
+## Current Active Production Path
 
-- GitHub `production` environment exists.
-- VM host is reachable via IAP SSH.
-- VM has Docker available.
-- VM has repo checkout at `/opt/bominal/repo` (or adjust paths consistently).
+- API + worker + Postgres + Redis run on the VM.
+- `.github/workflows/cd.yml` targets only this path.
+- Operator entrypoint remains `./scripts/prod-up.sh`.
 
-## 1) Set GitHub Production Variables
+## Current VM Bootstrap
 
-Required keys consumed by `.github/workflows/cd.yml`:
+Generate the active VM env files:
 
-- `AUTO_DEPLOY_MAIN`
-- `GCP_PROJECT_ID`
-- `GCP_REGION`
-- `GCP_WORKLOAD_IDENTITY_PROVIDER`
-- `GCP_SERVICE_ACCOUNT`
-- `ARTIFACT_REGISTRY_REPOSITORY`
-- `CLOUDRUN_API_SERVICE`
-- `CLOUDRUN_API_SERVICE_ACCOUNT`
-- `CLOUDRUN_API_VPC_NETWORK`
-- `CLOUDRUN_API_VPC_SUBNET`
-- `USER_APP_HOST`
-- `ADMIN_APP_HOST`
-- `SESSION_COOKIE_DOMAIN`
-- `INVITE_BASE_URL`
-- `EMAIL_FROM_ADDRESS`
-- `WEBAUTHN_RP_ID`
-- `WEBAUTHN_RP_ORIGIN`
-- `DEPLOY_VM_NAME`
-- `DEPLOY_VM_ZONE`
-- `DEPLOY_WORKDIR`
-- `DEPLOY_SCRIPT_PATH`
-- `DEPLOY_HEALTHCHECK_SCRIPT_PATH`
-- `DEPLOY_ROLLBACK_SCRIPT_PATH`
-- `VM_SECRET_ENV_FILE`
-- `DEPLOY_RUNTIME_ENV_FILE`
-- `DEPLOY_COMPOSE_FILE`
-- `DEPLOY_MIGRATIONS_DIR`
-- `DEPLOY_WORKER_SERVICE`
-- `POSTGRES_HOST`
-- `POSTGRES_PORT`
-- `POSTGRES_DB`
-- `POSTGRES_USER`
+```bash
+./scripts/bootstrap-prod.sh --interactive
+```
 
-Optional keys:
+Current active outputs:
+- `env/prod/runtime.env`
+- `env/prod/caddy.env`
+- `env/prod/deploy.env`
+- `env/prod/vm-secrets.env`
 
-- `CLOUDRUN_API_VPC_NETWORK_TAGS`
-- `DEPLOY_COMPOSE_PROJECT_NAME`
-- `DEPLOY_ROLLBACK_STATE_PATH`
-- `DEPLOY_VM_BASELINE_SCRIPT`
-- `DEPLOY_HEALTHCHECK_RETRIES`
-- `DEPLOY_HEALTHCHECK_DELAY_SECONDS`
+Runtime and deploy steps remain unchanged:
 
-## 2) Prepare Cloud Run Secret Manager State
+```bash
+cd /opt/bominal/repo
+./scripts/prod-up.sh deploy --yes
+./scripts/prod-up.sh rollback --yes
+```
 
-Create these Secret Manager secrets in the deploy project. The checked-in Cloud Run service definition expects these exact names:
+## Future Cloud Run API Cutover Prep
 
+Goal:
+- move only API/SSR to Cloud Run
+- keep worker + Postgres + Redis on the VM
+- make cutover an env switch plus a bootstrap/render step
+
+### 1) Generate the Future Cloud Run Env
+
+```bash
+./scripts/bootstrap-prod.sh --only cloudrun-api --interactive
+```
+
+This writes:
+- `env/prod/cloudrun-api.env`
+
+### 2) Respect the Secret Boundary
+
+Future Cloud Run GSM secrets are capped at `5` total:
 - `DATABASE_URL`
-- `REDIS_URL`
 - `SESSION_SECRET`
 - `INTERNAL_IDENTITY_SECRET`
 - `MASTER_KEY`
 - `RESEND_API_KEY`
 
-## 3) Prepare VM Runtime Env
+Rules:
+- adding one GSM secret requires removing another
+- `REDIS_URL` stays plain Cloud Run env by default
+- active VM runtime secrets remain on the VM and out of git
 
-Create and lock down runtime env file:
-
-```bash
-sudo install -d -m 0755 /opt/bominal/repo/env/prod
-sudo touch /opt/bominal/repo/env/prod/runtime.env
-sudo chown root:root /opt/bominal/repo/env/prod/runtime.env
-sudo chmod 0600 /opt/bominal/repo/env/prod/runtime.env
-```
-
-Populate keys from `env/prod/runtime.env.example` for the worker/VM runtime:
-
-- required worker/database keys: `DATABASE_URL`, `WORKER_DB_POOL_MAX_CONNECTIONS`, `DB_POOL_*`
-- required cache/runtime keys: `REDIS_URL`, `RUNTIME_QUEUE_*`, `RUNTIME_LEASE_PREFIX`, `RUNTIME_RATE_LIMIT_PREFIX`
-- required auth/crypto/provider keys shared with worker flows: `INTERNAL_IDENTITY_SECRET`, `MASTER_KEY`, `EMAIL_FROM_ADDRESS`, `RESEND_API_KEY`
-- recommended worker cadence keys: `WORKER_POLL_SECONDS=1`, `WORKER_RECONCILE_SECONDS=30`, `WORKER_WATCH_SECONDS=60`
-
-## 4) Prepare VM Secret Env File
-
-Create and lock down secret file expected by deploy scripts (recommended; deploy script can auto-create it if path is writable):
+### 3) Render the Cloud Run Service YAML
 
 ```bash
-sudo install -d -m 0755 /opt/bominal/env/prod
-sudo touch /opt/bominal/env/prod/vm-secrets.env
-sudo chown root:root /opt/bominal/env/prod/vm-secrets.env
-sudo chmod 0600 /opt/bominal/env/prod/vm-secrets.env
+./runtime/cloudrun/api/bootstrap.sh --env-file env/prod/cloudrun-api.env
 ```
 
-Set one database secret mode:
+This renders:
+- `runtime/cloudrun/api/rendered/<service>.yaml`
 
-- `BOMINAL_DATABASE_URL=postgresql://...`
-- or `BOMINAL_POSTGRES_PASSWORD=...`
+The script prints the next `gcloud run services replace ...` command, but does not deploy anything.
 
-## 5) Validate On-Host Artifacts
+### 4) Worker/VM Alignment for Eventual Cutover
 
-Required files:
+When cutover time arrives, apply the smaller runtime guardrails intentionally:
+- `API_DB_POOL_MAX_CONNECTIONS`
+- `WORKER_DB_POOL_MAX_CONNECTIONS`
+- `DB_POOL_ACQUIRE_TIMEOUT_SECONDS`
+- `DB_POOL_IDLE_TIMEOUT_SECONDS`
+- `DB_POOL_MAX_LIFETIME_SECONDS`
+- `WORKER_POLL_SECONDS`
+- `WORKER_WATCH_SECONDS`
 
-- `/opt/bominal/repo/runtime/compose.prod.yml`
-- `/opt/bominal/repo/runtime/cloudrun/api/service.yaml`
-- `/opt/bominal/repo/scripts/prod/deploy-runtime.sh`
-- `/opt/bominal/repo/scripts/prod/apply-migrations.sh`
-- `/opt/bominal/repo/scripts/prod/healthcheck-runtime.sh`
-- `/opt/bominal/repo/scripts/prod/rollback-runtime.sh`
-- `/opt/bominal/repo/runtime/migrations/*.sql`
+Those knobs exist now so the cutover does not require code changes.
 
-## 6) Execute Cutover
+## Verification Checklist
 
-- Trigger `CD` workflow on `main` with `deploy=true`, or push to `main` with `AUTO_DEPLOY_MAIN=true`.
-- Confirm sequence in logs:
-  - image build/push + digest refs
-  - API image copy from GHCR to Artifact Registry
-  - Cloud Run service replace + public invoker binding
-  - Cloud Run smoke checks (`/health`, `/ready`)
-  - remote worker deploy script
-  - migration application
-  - worker restart
-  - final worker + API health checks
+Current VM path:
+- `./scripts/prod-up.sh health`
+- `docker compose -f /opt/bominal/repo/runtime/compose.prod.yml ps`
 
-VM-local manual fallback (explicit):
-
-```bash
-cd /opt/bominal/repo
-export BOMINAL_HEALTHCHECK_LIVE_URL="$(gcloud run services describe bominal-api --region us-central1 --format='value(status.url)')/health"
-export BOMINAL_HEALTHCHECK_READY_URL="$(gcloud run services describe bominal-api --region us-central1 --format='value(status.url)')/ready"
-./scripts/prod-up.sh deploy --yes
-```
-
-## 7) Rollback Procedure
-
-Automatic rollback behavior:
-
-- Cloud Run traffic rolls back to the previous ready revision if the post-deploy Cloud Run smoke test fails.
-- VM worker rollback runs if the final worker health-check step fails after the worker deploy.
-
-Manual rollback command:
-
-```bash
-cd /opt/bominal/repo
-export BOMINAL_HEALTHCHECK_LIVE_URL="$(gcloud run services describe bominal-api --region us-central1 --format='value(status.url)')/health"
-export BOMINAL_HEALTHCHECK_READY_URL="$(gcloud run services describe bominal-api --region us-central1 --format='value(status.url)')/ready"
-./scripts/prod-up.sh rollback --yes
-```
-
-## 8) Post-Cutover Verification
-
-- API liveness: `curl -fsS "$(gcloud run services describe bominal-api --region us-central1 --format='value(status.url)')/health"`
-- API readiness: `curl -fsS "$(gcloud run services describe bominal-api --region us-central1 --format='value(status.url)')/ready"`
-- Worker service: `docker compose -f /opt/bominal/repo/runtime/compose.prod.yml ps worker`
-
-Day-2 operator checks:
-
-```bash
-cd /opt/bominal/repo
-./scripts/prod-up.sh status
-./scripts/prod-up.sh health
-./scripts/prod-up.sh logs -f --since 30m --service worker
-```
+Future Cloud Run prep path:
+- `./scripts/bootstrap-prod.sh --only cloudrun-api --dry-run`
+- `./runtime/cloudrun/api/bootstrap.sh --env-file env/prod/cloudrun-api.env --dry-run`

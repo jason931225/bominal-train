@@ -11,6 +11,7 @@ DRY_RUN=0
 SELECT_RUNTIME=0
 SELECT_CADDY=0
 SELECT_DEPLOY=0
+SELECT_CLOUDRUN_API=0
 SELECT_ANY=0
 
 OVERRIDE_KEYS=()
@@ -32,7 +33,7 @@ Options:
   --interactive           Force interactive prompts.
   --non-interactive       Disable prompts (CI-safe fail-closed mode).
   --set KEY=VALUE         Provide/override a value (repeatable).
-  --only TARGET           Limit output target: runtime | caddy | deploy (repeatable).
+  --only TARGET           Limit output target: runtime | caddy | deploy | cloudrun-api (repeatable).
   --force                 Overwrite existing target files without prompt.
   --dry-run               Print rendered files to stdout, do not write.
   --help                  Show this help.
@@ -46,6 +47,13 @@ Examples:
     --set DEPLOY_VM_ZONE=us-central1-a \\
     --set DEPLOY_WORKDIR=/opt/bominal/repo \\
     --set DEPLOY_MIGRATIONS_DIR=/opt/bominal/repo/runtime/migrations
+
+  ./scripts/bootstrap-prod.sh --non-interactive --force \\
+    --only cloudrun-api \\
+    --set CLOUDRUN_API_IMAGE=us-central1-docker.pkg.dev/my-project/runtime/bominal-api:sha \\
+    --set CLOUDRUN_API_SERVICE_ACCOUNT=bominal-api@my-project.iam.gserviceaccount.com \\
+    --set CLOUDRUN_API_VPC_NETWORK=default \\
+    --set CLOUDRUN_API_VPC_SUBNET=serverless-us-central1
 EOF
 }
 
@@ -284,8 +292,9 @@ select_target() {
     runtime) SELECT_RUNTIME=1 ;;
     caddy) SELECT_CADDY=1 ;;
     deploy) SELECT_DEPLOY=1 ;;
+    cloudrun-api) SELECT_CLOUDRUN_API=1 ;;
     *)
-      echo "invalid --only target: ${target} (expected runtime|caddy|deploy)" >&2
+      echo "invalid --only target: ${target} (expected runtime|caddy|deploy|cloudrun-api)" >&2
       exit 1
       ;;
   esac
@@ -399,6 +408,16 @@ main() {
     log "reminder: configure GitHub production variables used by .github/workflows/cd.yml."
     log "reminder: deploy bootstrap will create VM secret env file if missing and persist BOMINAL_DATABASE_URL."
     log "reminder: deploy script enforces VM baseline swap/sysctl guard by default."
+  fi
+
+  if [ "${SELECT_CLOUDRUN_API}" = "1" ]; then
+    process_template \
+      "cloudrun-api" \
+      "${PROD_ENV_DIR}/cloudrun-api.env.example" \
+      "${PROD_ENV_DIR}/cloudrun-api.env"
+
+    log "reminder: runtime/cloudrun/api/bootstrap.sh renders the Cloud Run service YAML from env/prod/cloudrun-api.env."
+    log "reminder: Cloud Run prep is opt-in; current production deployment remains VM-first."
   fi
 
   log "bootstrap-prod complete"

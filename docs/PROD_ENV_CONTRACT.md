@@ -1,206 +1,159 @@
 # Production Env Contract
 
-This document defines the production-safe environment-variable contract using key names only (no secret values inspected).
+This document defines the production-safe environment-variable contract using key names only.
+It also separates current VM deployment reality from future Cloud Run cutover prep so placement is explicit.
 
-## Classification
+## Architecture Boundary
 
-- `required`: must be set for production.
-- `optional`: feature- or tuning-dependent.
-- `secret-manager-only`: value must be injected from secret storage at runtime/CI; do not commit plaintext.
-- `must-be-false-in-prod`: must be disabled in production; paired values must remain empty.
-- `public-safe`: intentionally exposed to clients; must never carry secret material.
+- Active production path: API + worker + Postgres + Redis on the VM.
+- Future prep-only path: API on Cloud Run, worker + Postgres + Redis still on the VM.
+- Current `.github/workflows/cd.yml` deploys only the VM path.
+- Future Cloud Run prep lives under `runtime/cloudrun/api/*` and is not consumed automatically.
 
-## Scope
+## Placement Boundary
 
-- `env/prod/runtime.env` and `env/prod/runtime.env.example`
-- `env/prod/deploy.env.example`
-- `env/prod/caddy.env` and `env/prod/caddy.env.example`
-- GitHub Actions production environment variables used by `.github/workflows/cd.yml`
+- Git-tracked examples:
+  - `env/prod/*.example`
+  - placeholders only, never real secrets
+- VM repo env / on-host files:
+  - `env/prod/runtime.env`
+  - `env/prod/deploy.env`
+  - `env/prod/caddy.env`
+  - `env/prod/vm-secrets.env`
+- Future Cloud Run plain env:
+  - hostnames, routing values, Redis URL, and runtime guardrail values
+- Future Google Secret Manager:
+  - max `5` active secrets at all times
+  - adding one requires removing another
+  - default future set:
+    - `DATABASE_URL`
+    - `SESSION_SECRET`
+    - `INTERNAL_IDENTITY_SECRET`
+    - `MASTER_KEY`
+    - `RESEND_API_KEY`
+  - `REDIS_URL` stays plain env by default to preserve the 5-secret policy
 
 ## Runtime API/Worker Env (`env/prod/runtime.env*`)
 
-| Key | Classification | Rationale |
-|---|---|---|
-| `APP_ENV` | `required` | core production runtime setting |
-| `LOG_JSON` | `optional` | defaults internally when unset; explicit value recommended for operability |
-| `FRONTEND_ASSETS_DIR` | `optional` | defaults internally when unset; explicit value recommended for deploy consistency |
-| `SESSION_COOKIE_DOMAIN` | `optional` | enables shared session cookie scope across subdomains (for `www` + `ops`) |
-| `STEP_UP_TTL_SECONDS` | `optional` | passkey step-up freshness window for sensitive admin mutations (defaults to 600s) |
-| `PROVIDER_AUTH_PROBE_ENABLED` | `optional` | toggles live provider login probe on credential save; default `true` (set `false` to skip probe and persist credentials with `skipped` status) |
-| `USER_APP_HOST` | `required` | canonical user-app host for route separation and redirects |
-| `ADMIN_APP_HOST` | `required` | canonical admin-app host for strict admin route/API host enforcement |
-| `UI_THEME_COOKIE_NAME` | `optional` | cookie key used for user theme preference (`system`, `light`, `dark`) |
-| `STATION_CATALOG_JSON_PATH` | `required` | local path to committed station-catalog snapshot consumed by train-service runtime (`repo_only` source mode) |
-| `STATION_CATALOG_SOURCE_MODE` | `required` | station catalog source-mode contract; production must be `repo_only` |
-| `HTTP_REQUEST_TIMEOUT_SECONDS` | `optional` | API request timeout guardrail tuning (defaults to 30s) |
-| `HTTP_REQUEST_BODY_LIMIT_BYTES` | `optional` | API max request body guardrail tuning (defaults to 2 MiB) |
-| `HTTP_CONCURRENCY_LIMIT` | `optional` | API request concurrency guardrail tuning (Cloud Run production baseline is `4`) |
-| `ADMIN_EMAILS` | `optional` | comma-separated admin allowlist for maintenance dashboard and metrics access |
-| `INVITE_BASE_URL` | `required` | required for invite and auth-link generation |
-| `SESSION_SECRET` | `secret-manager-only` | session signing secret; must never use default in production |
-| `DATABASE_URL` | `secret-manager-only` | contains secret-bearing value or connection credential |
-| `API_DB_POOL_MAX_CONNECTIONS` | `optional` | Cloud Run API DB pool ceiling; production should stay small for the shared VM backend |
-| `WORKER_DB_POOL_MAX_CONNECTIONS` | `optional` | worker DB pool ceiling for the shared VM backend |
-| `DB_POOL_ACQUIRE_TIMEOUT_SECONDS` | `optional` | shared DB acquire-timeout guardrail for API + worker pools |
-| `DB_POOL_IDLE_TIMEOUT_SECONDS` | `optional` | shared DB idle-timeout guardrail for API + worker pools |
-| `DB_POOL_MAX_LIFETIME_SECONDS` | `optional` | shared DB connection lifetime cap for API + worker pools |
-| `REDIS_URL` | `secret-manager-only` | contains secret-bearing value or connection credential |
-| `RUNTIME_QUEUE_KEY` | `required` | core runtime queue contract |
-| `RUNTIME_QUEUE_DLQ_KEY` | `required` | core runtime dead-letter queue contract |
-| `RUNTIME_LEASE_PREFIX` | `required` | core runtime lease key contract |
-| `RUNTIME_RATE_LIMIT_PREFIX` | `required` | core runtime rate-limit key contract |
-| `INTERNAL_IDENTITY_SECRET` | `secret-manager-only` | signing/verification secret for internal service identity token |
-| `INTERNAL_IDENTITY_ISSUER` | `required` | core production runtime setting |
-| `PASSKEY_PROVIDER` | `required` | passkey strategy selector; production must be explicit |
-| `WEBAUTHN_RP_ID` | `required` | passkey relying-party ID |
-| `WEBAUTHN_RP_ORIGIN` | `required` | passkey relying-party origin |
-| `WEBAUTHN_RP_NAME` | `required` | passkey relying-party display name |
-| `WEBAUTHN_CHALLENGE_TTL_SECONDS` | `optional` | passkey challenge TTL tuning |
-| `KEK_VERSION` | `required` | core production runtime setting |
-| `MASTER_KEY` | `secret-manager-only` | contains secret-bearing value or connection credential |
-| `MASTER_KEY_OVERRIDE` | `secret-manager-only` | optional override channel for envelope key injection |
-| `EMAIL_FROM_ADDRESS` | `required` | core production runtime setting |
-| `RESEND_API_KEY` | `secret-manager-only` | contains secret-bearing value or connection credential |
-| `RESEND_BASE_URL` | `optional` | optional runtime tuning/override |
-| `EVERVAULT_RELAY_BASE_URL` | `optional` | optional runtime tuning/override |
-| `EVERVAULT_APP_ID` | `optional` | non-secret provider identifier used by runtime features |
-| `WORKER_POLL_SECONDS` | `required` | core worker cadence setting (production baseline is `1`) |
-| `WORKER_RECONCILE_SECONDS` | `required` | core worker cadence setting |
-| `WORKER_WATCH_SECONDS` | `required` | core worker cadence setting (production baseline is `60`) |
-| `KEY_ROTATION_SECONDS` | `required` | core worker cadence setting |
+Active use:
+- current VM deployment reads this file directly
+
+Future use:
+- non-secret runtime keys can also feed Cloud Run
+- current `runtime.env.example` remains VM-friendly
+- future Cloud Run overrides live in `env/prod/cloudrun-api.env.example`
+
+Key additions kept for future cutover:
+
+| Key | Classification | Placement | Rationale |
+|---|---|---|---|
+| `API_DB_POOL_MAX_CONNECTIONS` | `optional` | VM repo env now; Cloud Run plain env later | API pool ceiling override for constrained backends |
+| `WORKER_DB_POOL_MAX_CONNECTIONS` | `optional` | VM repo env | worker pool ceiling override |
+| `DB_POOL_ACQUIRE_TIMEOUT_SECONDS` | `optional` | VM repo env now; Cloud Run plain env later | shared DB acquire-timeout guardrail |
+| `DB_POOL_IDLE_TIMEOUT_SECONDS` | `optional` | VM repo env now; Cloud Run plain env later | shared DB idle-timeout guardrail |
+| `DB_POOL_MAX_LIFETIME_SECONDS` | `optional` | VM repo env now; Cloud Run plain env later | shared DB connection lifetime cap |
+
+Placement rules for sensitive runtime keys:
+
+| Key | Active placement | Future Cloud Run placement | Notes |
+|---|---|---|---|
+| `DATABASE_URL` | VM repo env | GSM | credential-bearing |
+| `SESSION_SECRET` | VM repo env | GSM | signing secret |
+| `INTERNAL_IDENTITY_SECRET` | VM repo env | GSM | internal auth secret |
+| `MASTER_KEY` | VM repo env | GSM | envelope key |
+| `RESEND_API_KEY` | VM repo env | GSM | provider secret |
+| `REDIS_URL` | VM repo env | Cloud Run plain env | stays outside GSM unless credentials force a tradeoff |
 
 ## Deploy Env (`env/prod/deploy.env.example`)
 
-Reference-only mirror of the GitHub `production` environment deploy controls.
-Canonical values must be maintained in GitHub environment variables, not committed env files.
+Reference-only mirror of the active VM deploy controls.
+Canonical values are maintained in GitHub environment variables, not committed env files.
 
-Cloud Run expectation:
-- API/SSR deploys to one public Cloud Run service in `us-central1`.
-- API service uses Direct VPC egress with `private-ranges-only`.
-- Secret Manager must contain runtime secrets named exactly:
-  - `DATABASE_URL`
-  - `REDIS_URL`
-  - `SESSION_SECRET`
-  - `INTERNAL_IDENTITY_SECRET`
-  - `MASTER_KEY`
-  - `RESEND_API_KEY`
-
-VM baseline expectation (performed by deploy script or one-time host prep):
-- active `/swapfile` at `2G`,
-- persisted `vm.swappiness=10`,
-- persisted `vm.vfs_cache_pressure=50`.
+VM baseline expectation:
+- active `/swapfile` at `2G`
+- persisted `vm.swappiness=10`
+- persisted `vm.vfs_cache_pressure=50`
 
 VM secret file expectation:
-- `VM_SECRET_ENV_FILE` points to an on-host `0600` env file.
-- Deploy script creates this file when missing and persists `BOMINAL_DATABASE_URL`.
-- Deploy script reads optional GHCR credentials from this file for private image pulls.
-- File should include one of:
-  - `BOMINAL_DATABASE_URL=...`
-  - `BOMINAL_POSTGRES_PASSWORD=...`
-  - `GHCR_USERNAME=...` (required when GHCR images are private)
-  - `GHCR_TOKEN=...` (required when GHCR images are private)
+- `VM_SECRET_ENV_FILE` points to an on-host `0600` env file
+- deploy script creates this file when missing and persists `BOMINAL_DATABASE_URL`
+- deploy script reads optional GHCR credentials from this file for private image pulls
 
-| Key | Classification | Rationale |
-|---|---|---|
-| `AUTO_DEPLOY_MAIN` | `optional` | enables deploy on push to `main` when explicitly set to `true` |
-| `GCP_PROJECT_ID` | `required` | required for workload identity, Artifact Registry, Cloud Run, and VM target project |
-| `GCP_REGION` | `required` | required Cloud Run and Artifact Registry region (`us-central1`) |
-| `GCP_WORKLOAD_IDENTITY_PROVIDER` | `required` | required for OIDC federation |
-| `GCP_SERVICE_ACCOUNT` | `required` | required for federated deploy identity |
-| `ARTIFACT_REGISTRY_REPOSITORY` | `required` | target Artifact Registry repo used for the Cloud Run API image copy |
-| `CLOUDRUN_API_SERVICE` | `required` | Cloud Run API/SSR service name |
-| `CLOUDRUN_API_SERVICE_ACCOUNT` | `required` | runtime service account for the Cloud Run API |
-| `CLOUDRUN_API_VPC_NETWORK` | `required` | Direct VPC egress network name |
-| `CLOUDRUN_API_VPC_SUBNET` | `required` | Direct VPC egress subnet name |
-| `CLOUDRUN_API_VPC_NETWORK_TAGS` | `optional` | optional Cloud Run network tags used for firewall targeting |
-| `USER_APP_HOST` | `required` | canonical public app host passed to the Cloud Run API |
-| `ADMIN_APP_HOST` | `required` | canonical admin host passed to the Cloud Run API |
-| `SESSION_COOKIE_DOMAIN` | `required` | shared cookie-domain contract for `www` + `ops` |
-| `INVITE_BASE_URL` | `required` | invite/auth-link base URL passed to the Cloud Run API |
-| `EMAIL_FROM_ADDRESS` | `required` | runtime mail-from identity passed to the Cloud Run API |
-| `WEBAUTHN_RP_ID` | `required` | passkey relying-party ID passed to the Cloud Run API |
-| `WEBAUTHN_RP_ORIGIN` | `required` | passkey relying-party origin passed to the Cloud Run API |
-| `DEPLOY_VM_NAME` | `required` | required VM target |
-| `DEPLOY_VM_ZONE` | `required` | required VM zone |
-| `DEPLOY_WORKDIR` | `required` | required working directory for remote execution |
-| `DEPLOY_SCRIPT_PATH` | `required` | fail-closed deploy script entrypoint |
-| `DEPLOY_HEALTHCHECK_SCRIPT_PATH` | `required` | fail-closed post-deploy verification entrypoint |
-| `DEPLOY_ROLLBACK_SCRIPT_PATH` | `required` | rollback entrypoint used when healthcheck fails |
-| `VM_SECRET_ENV_FILE` | `required` | on-host secret env path for database credential material |
-| `DEPLOY_RUNTIME_ENV_FILE` | `required` | runtime env file updated by deploy script |
-| `DEPLOY_COMPOSE_FILE` | `required` | compose file used for pull/up and health verification |
-| `DEPLOY_MIGRATIONS_DIR` | `required` | migration directory consumed during deploy before service restart |
-| `DEPLOY_WORKER_SERVICE` | `required` | compose service identifier for the VM worker |
-| `POSTGRES_HOST` | `required` | required deploy-time Postgres host contract for self-hosted DB |
-| `POSTGRES_PORT` | `required` | required deploy-time Postgres port contract for self-hosted DB |
-| `POSTGRES_DB` | `required` | required deploy-time Postgres database name contract |
-| `POSTGRES_USER` | `required` | required deploy-time Postgres username contract |
-| `DEPLOY_COMPOSE_PROJECT_NAME` | `optional` | compose project scoping when non-default naming is used |
-| `DEPLOY_ROLLBACK_STATE_PATH` | `optional` | explicit path for rollback state persistence |
-| `DEPLOY_VM_BASELINE_SCRIPT` | `optional` | override path for host baseline guard script |
-| `DEPLOY_HEALTHCHECK_RETRIES` | `optional` | retry budget for healthcheck script |
-| `DEPLOY_HEALTHCHECK_DELAY_SECONDS` | `optional` | delay between healthcheck retries |
+| Key | Classification | Placement | Rationale |
+|---|---|---|---|
+| `AUTO_DEPLOY_MAIN` | `optional` | GitHub production env | enables deploy on push to `main` when explicitly `true` |
+| `GCP_PROJECT_ID` | `required` | GitHub production env | required for workload identity and VM target project |
+| `GCP_WORKLOAD_IDENTITY_PROVIDER` | `required` | GitHub production env | required for OIDC federation |
+| `GCP_SERVICE_ACCOUNT` | `required` | GitHub production env | required for federated deploy identity |
+| `DEPLOY_VM_NAME` | `required` | GitHub production env | required VM target |
+| `DEPLOY_VM_ZONE` | `required` | GitHub production env | required VM zone |
+| `DEPLOY_WORKDIR` | `required` | GitHub production env | required working directory for remote execution |
+| `DEPLOY_SCRIPT_PATH` | `required` | GitHub production env | fail-closed deploy script entrypoint |
+| `DEPLOY_HEALTHCHECK_SCRIPT_PATH` | `required` | GitHub production env | fail-closed post-deploy verification entrypoint |
+| `DEPLOY_ROLLBACK_SCRIPT_PATH` | `required` | GitHub production env | rollback entrypoint used when healthcheck fails |
+| `VM_SECRET_ENV_FILE` | `required` | GitHub production env | on-host secret env path for DB credential material |
+| `DEPLOY_RUNTIME_ENV_FILE` | `required` | GitHub production env | runtime env file updated by deploy script |
+| `DEPLOY_COMPOSE_FILE` | `required` | GitHub production env | compose file used for pull/up and health verification |
+| `DEPLOY_MIGRATIONS_DIR` | `required` | GitHub production env | migration directory consumed during deploy before service restart |
+| `DEPLOY_API_SERVICE` | `required` | GitHub production env | compose service identifier for API |
+| `DEPLOY_WORKER_SERVICE` | `required` | GitHub production env | compose service identifier for worker |
+| `DEPLOY_HEALTHCHECK_LIVE_URL` | `required` | GitHub production env | live endpoint checked after deploy |
+| `DEPLOY_HEALTHCHECK_READY_URL` | `required` | GitHub production env | ready endpoint checked after deploy |
+| `POSTGRES_HOST` | `required` | GitHub production env | deploy-time Postgres host contract |
+| `POSTGRES_PORT` | `required` | GitHub production env | deploy-time Postgres port contract |
+| `POSTGRES_DB` | `required` | GitHub production env | deploy-time Postgres DB name contract |
+| `POSTGRES_USER` | `required` | GitHub production env | deploy-time Postgres username contract |
+
+## Future Cloud Run Bootstrap Env (`env/prod/cloudrun-api.env.example`)
+
+Active use:
+- none; this is future cutover prep only
+
+Bootstrap flow:
+- generate `env/prod/cloudrun-api.env` with `./scripts/bootstrap-prod.sh --only cloudrun-api`
+- render a service manifest with `./runtime/cloudrun/api/bootstrap.sh --env-file env/prod/cloudrun-api.env`
+
+Plain env values that belong in `cloudrun-api.env`:
+- `USER_APP_HOST`
+- `ADMIN_APP_HOST`
+- `SESSION_COOKIE_DOMAIN`
+- `INVITE_BASE_URL`
+- `EMAIL_FROM_ADDRESS`
+- `WEBAUTHN_RP_ID`
+- `WEBAUTHN_RP_ORIGIN`
+- `REDIS_URL`
+- `HTTP_REQUEST_TIMEOUT_SECONDS`
+- `HTTP_REQUEST_BODY_LIMIT_BYTES`
+- `HTTP_CONCURRENCY_LIMIT`
+- `PASSWORD_HASH_CONCURRENCY`
+- `API_DB_POOL_MAX_CONNECTIONS`
+- `DB_POOL_ACQUIRE_TIMEOUT_SECONDS`
+- `DB_POOL_IDLE_TIMEOUT_SECONDS`
+- `DB_POOL_MAX_LIFETIME_SECONDS`
+
+GSM secret names that belong in `cloudrun-api.env`:
+- `GSM_DATABASE_URL_SECRET`
+- `GSM_SESSION_SECRET_SECRET`
+- `GSM_INTERNAL_IDENTITY_SECRET_SECRET`
+- `GSM_MASTER_KEY_SECRET`
+- `GSM_RESEND_API_KEY_SECRET`
 
 ## Caddy Env (`env/prod/caddy.env*`)
 
-| Key | Classification | Rationale |
-|---|---|---|
-| `CADDY_ACME_EMAIL` | `required` | required for TLS site and ACME identity |
-| `CADDY_SITE_ADDRESS` | `required` | required for TLS site and ACME identity |
+| Key | Classification | Placement | Rationale |
+|---|---|---|---|
+| `CADDY_ACME_EMAIL` | `required` | VM repo env | required for TLS site and ACME identity |
+| `CADDY_SITE_ADDRESS` | `required` | VM repo env | required for TLS site and ACME identity |
 
 ## GitHub Actions Production Environment Vars (`.github/workflows/cd.yml`)
 
-`cd.yml` consumes these keys from the protected `production` environment.
-
-| Key | Classification | Rationale |
-|---|---|---|
-| `GCP_PROJECT_ID` | `required` | required for workload identity, Artifact Registry, Cloud Run, and VM target project |
-| `GCP_REGION` | `required` | required Cloud Run and Artifact Registry region (`us-central1`) |
-| `GCP_WORKLOAD_IDENTITY_PROVIDER` | `required` | required for OIDC federation |
-| `GCP_SERVICE_ACCOUNT` | `required` | required for federated deploy identity |
-| `ARTIFACT_REGISTRY_REPOSITORY` | `required` | target Artifact Registry repo used for the Cloud Run API image copy |
-| `CLOUDRUN_API_SERVICE` | `required` | Cloud Run API/SSR service name |
-| `CLOUDRUN_API_SERVICE_ACCOUNT` | `required` | runtime service account for the Cloud Run API |
-| `CLOUDRUN_API_VPC_NETWORK` | `required` | Direct VPC egress network name |
-| `CLOUDRUN_API_VPC_SUBNET` | `required` | Direct VPC egress subnet name |
-| `CLOUDRUN_API_VPC_NETWORK_TAGS` | `optional` | optional Cloud Run network tags used for firewall targeting |
-| `USER_APP_HOST` | `required` | canonical public app host passed to the Cloud Run API |
-| `ADMIN_APP_HOST` | `required` | canonical admin host passed to the Cloud Run API |
-| `SESSION_COOKIE_DOMAIN` | `required` | shared cookie-domain contract for `www` + `ops` |
-| `INVITE_BASE_URL` | `required` | invite/auth-link base URL passed to the Cloud Run API |
-| `EMAIL_FROM_ADDRESS` | `required` | runtime mail-from identity passed to the Cloud Run API |
-| `WEBAUTHN_RP_ID` | `required` | passkey relying-party ID passed to the Cloud Run API |
-| `WEBAUTHN_RP_ORIGIN` | `required` | passkey relying-party origin passed to the Cloud Run API |
-| `DEPLOY_VM_NAME` | `required` | required VM target |
-| `DEPLOY_VM_ZONE` | `required` | required VM zone |
-| `DEPLOY_WORKDIR` | `required` | required working directory for remote execution |
-| `DEPLOY_SCRIPT_PATH` | `required` | fail-closed deploy script entrypoint |
-| `DEPLOY_HEALTHCHECK_SCRIPT_PATH` | `required` | fail-closed post-deploy verification entrypoint |
-| `DEPLOY_ROLLBACK_SCRIPT_PATH` | `required` | rollback entrypoint used when healthcheck fails |
-| `VM_SECRET_ENV_FILE` | `required` | on-host secret env path for database credential material |
-| `DEPLOY_RUNTIME_ENV_FILE` | `required` | runtime env file updated by deploy script |
-| `DEPLOY_COMPOSE_FILE` | `required` | compose file used for pull/up and health verification |
-| `DEPLOY_MIGRATIONS_DIR` | `required` | migration directory consumed during deploy before service restart |
-| `DEPLOY_WORKER_SERVICE` | `required` | compose service identifier for the VM worker |
-| `POSTGRES_HOST` | `required` | required deploy-time Postgres host contract for self-hosted DB |
-| `POSTGRES_PORT` | `required` | required deploy-time Postgres port contract for self-hosted DB |
-| `POSTGRES_DB` | `required` | required deploy-time Postgres database name contract |
-| `POSTGRES_USER` | `required` | required deploy-time Postgres username contract |
-| `AUTO_DEPLOY_MAIN` | `optional` | enables deploy on push to `main` when explicitly set to `true` |
-| `DEPLOY_COMPOSE_PROJECT_NAME` | `optional` | compose project scoping when non-default naming is used |
-| `DEPLOY_ROLLBACK_STATE_PATH` | `optional` | explicit path for rollback state persistence |
-| `DEPLOY_VM_BASELINE_SCRIPT` | `optional` | override path for host baseline guard script |
-| `DEPLOY_HEALTHCHECK_RETRIES` | `optional` | retry budget for healthcheck script |
-| `DEPLOY_HEALTHCHECK_DELAY_SECONDS` | `optional` | delay between healthcheck retries |
-
-## GitHub Actions Production Environment Secrets (`.github/workflows/cd.yml`)
-
-No custom production-environment secrets are read directly by `cd.yml`.
-Cloud Run runtime secrets are resolved by Cloud Run from Secret Manager, while database credential material and optional GHCR pull credentials are read on-VM via `VM_SECRET_ENV_FILE`.
+`cd.yml` currently consumes only the active VM deploy keys listed in `env/prod/deploy.env.example`.
+It does not read future Cloud Run bootstrap variables.
 
 ## Mandatory Production Guards
 
-- Keep all `must-be-false-in-prod` keys disabled.
-- Keep all `secret-manager-only` values out of git and plaintext env files.
-- Treat all `public-safe` keys as fully public data.
+- Keep all git-tracked env examples placeholder-only.
+- Keep active VM secrets out of git and logs.
+- Keep future Cloud Run within the `5`-secret GSM policy.
+- If `REDIS_URL` ever needs GSM because it starts carrying credentials, remove another GSM secret first.
 - Protect deploy variables in GitHub `production` environment and require reviewer approval.

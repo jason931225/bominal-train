@@ -158,30 +158,12 @@ jobs:
     permissions:
       contents: read
       id-token: write
-      packages: read
     steps:
-      - name: Checkout
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-
       - name: Validate deployment variables
         env:
           GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
-          GCP_REGION: ${{ vars.GCP_REGION }}
           GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           GCP_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
-          ARTIFACT_REGISTRY_REPOSITORY: ${{ vars.ARTIFACT_REGISTRY_REPOSITORY }}
-          CLOUDRUN_API_SERVICE: ${{ vars.CLOUDRUN_API_SERVICE }}
-          CLOUDRUN_API_SERVICE_ACCOUNT: ${{ vars.CLOUDRUN_API_SERVICE_ACCOUNT }}
-          CLOUDRUN_API_VPC_NETWORK: ${{ vars.CLOUDRUN_API_VPC_NETWORK }}
-          CLOUDRUN_API_VPC_SUBNET: ${{ vars.CLOUDRUN_API_VPC_SUBNET }}
-          CLOUDRUN_API_VPC_NETWORK_TAGS: ${{ vars.CLOUDRUN_API_VPC_NETWORK_TAGS }}
-          USER_APP_HOST: ${{ vars.USER_APP_HOST }}
-          ADMIN_APP_HOST: ${{ vars.ADMIN_APP_HOST }}
-          SESSION_COOKIE_DOMAIN: ${{ vars.SESSION_COOKIE_DOMAIN }}
-          INVITE_BASE_URL: ${{ vars.INVITE_BASE_URL }}
-          EMAIL_FROM_ADDRESS: ${{ vars.EMAIL_FROM_ADDRESS }}
-          WEBAUTHN_RP_ID: ${{ vars.WEBAUTHN_RP_ID }}
-          WEBAUTHN_RP_ORIGIN: ${{ vars.WEBAUTHN_RP_ORIGIN }}
           DEPLOY_VM_NAME: ${{ vars.DEPLOY_VM_NAME }}
           DEPLOY_VM_ZONE: ${{ vars.DEPLOY_VM_ZONE }}
           DEPLOY_WORKDIR: ${{ vars.DEPLOY_WORKDIR }}
@@ -195,7 +177,10 @@ jobs:
           DEPLOY_COMPOSE_PROJECT_NAME: ${{ vars.DEPLOY_COMPOSE_PROJECT_NAME }}
           DEPLOY_ROLLBACK_STATE_PATH: ${{ vars.DEPLOY_ROLLBACK_STATE_PATH }}
           DEPLOY_VM_BASELINE_SCRIPT: ${{ vars.DEPLOY_VM_BASELINE_SCRIPT }}
+          DEPLOY_API_SERVICE: ${{ vars.DEPLOY_API_SERVICE }}
           DEPLOY_WORKER_SERVICE: ${{ vars.DEPLOY_WORKER_SERVICE }}
+          DEPLOY_HEALTHCHECK_LIVE_URL: ${{ vars.DEPLOY_HEALTHCHECK_LIVE_URL }}
+          DEPLOY_HEALTHCHECK_READY_URL: ${{ vars.DEPLOY_HEALTHCHECK_READY_URL }}
           DEPLOY_HEALTHCHECK_RETRIES: ${{ vars.DEPLOY_HEALTHCHECK_RETRIES }}
           DEPLOY_HEALTHCHECK_DELAY_SECONDS: ${{ vars.DEPLOY_HEALTHCHECK_DELAY_SECONDS }}
           POSTGRES_HOST: ${{ vars.POSTGRES_HOST }}
@@ -207,21 +192,8 @@ jobs:
           missing=0
           for name in \
             GCP_PROJECT_ID \
-            GCP_REGION \
             GCP_WORKLOAD_IDENTITY_PROVIDER \
             GCP_SERVICE_ACCOUNT \
-            ARTIFACT_REGISTRY_REPOSITORY \
-            CLOUDRUN_API_SERVICE \
-            CLOUDRUN_API_SERVICE_ACCOUNT \
-            CLOUDRUN_API_VPC_NETWORK \
-            CLOUDRUN_API_VPC_SUBNET \
-            USER_APP_HOST \
-            ADMIN_APP_HOST \
-            SESSION_COOKIE_DOMAIN \
-            INVITE_BASE_URL \
-            EMAIL_FROM_ADDRESS \
-            WEBAUTHN_RP_ID \
-            WEBAUTHN_RP_ORIGIN \
             DEPLOY_VM_NAME \
             DEPLOY_VM_ZONE \
             DEPLOY_WORKDIR \
@@ -232,7 +204,10 @@ jobs:
             DEPLOY_RUNTIME_ENV_FILE \
             DEPLOY_COMPOSE_FILE \
             DEPLOY_MIGRATIONS_DIR \
+            DEPLOY_API_SERVICE \
             DEPLOY_WORKER_SERVICE \
+            DEPLOY_HEALTHCHECK_LIVE_URL \
+            DEPLOY_HEALTHCHECK_READY_URL \
             POSTGRES_HOST \
             POSTGRES_PORT \
             POSTGRES_DB \
@@ -306,147 +281,6 @@ jobs:
         with:
           project_id: ${{ vars.GCP_PROJECT_ID }}
 
-      - name: Capture current Cloud Run revision
-        id: previous-cloudrun
-        env:
-          GCP_REGION: ${{ vars.GCP_REGION }}
-          CLOUDRUN_API_SERVICE: ${{ vars.CLOUDRUN_API_SERVICE }}
-        run: |
-          set -euo pipefail
-          if gcloud run services describe "${CLOUDRUN_API_SERVICE}" --region "${GCP_REGION}" >/dev/null 2>&1; then
-            prev_revision="$(gcloud run services describe "${CLOUDRUN_API_SERVICE}" --region "${GCP_REGION}" --format='value(status.latestReadyRevisionName)')"
-          else
-            prev_revision=""
-          fi
-          echo "prev_revision=${prev_revision}" >> "${GITHUB_OUTPUT}"
-
-      - name: Log in to GHCR
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Configure Artifact Registry Docker auth
-        env:
-          GCP_REGION: ${{ vars.GCP_REGION }}
-        run: |
-          set -euo pipefail
-          gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
-
-      - name: Publish API image to Artifact Registry
-        id: api-artifact
-        env:
-          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
-          GCP_REGION: ${{ vars.GCP_REGION }}
-          ARTIFACT_REGISTRY_REPOSITORY: ${{ vars.ARTIFACT_REGISTRY_REPOSITORY }}
-          SOURCE_API_IMAGE: ${{ needs.build-and-publish.outputs.api_image_ref }}
-        run: |
-          set -euo pipefail
-          artifact_image="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${ARTIFACT_REGISTRY_REPOSITORY}/bominal-api:${GITHUB_SHA}"
-          docker pull "${SOURCE_API_IMAGE}"
-          docker tag "${SOURCE_API_IMAGE}" "${artifact_image}"
-          docker push "${artifact_image}"
-          echo "api_image=${artifact_image}" >> "${GITHUB_OUTPUT}"
-
-      - name: Render Cloud Run service definition
-        id: render-cloudrun
-        env:
-          CLOUDRUN_API_SERVICE: ${{ vars.CLOUDRUN_API_SERVICE }}
-          CLOUDRUN_API_IMAGE: ${{ steps.api-artifact.outputs.api_image }}
-          CLOUDRUN_API_SERVICE_ACCOUNT: ${{ vars.CLOUDRUN_API_SERVICE_ACCOUNT }}
-          CLOUDRUN_API_VPC_NETWORK: ${{ vars.CLOUDRUN_API_VPC_NETWORK }}
-          CLOUDRUN_API_VPC_SUBNET: ${{ vars.CLOUDRUN_API_VPC_SUBNET }}
-          CLOUDRUN_API_VPC_NETWORK_TAGS: ${{ vars.CLOUDRUN_API_VPC_NETWORK_TAGS }}
-          USER_APP_HOST: ${{ vars.USER_APP_HOST }}
-          ADMIN_APP_HOST: ${{ vars.ADMIN_APP_HOST }}
-          SESSION_COOKIE_DOMAIN: ${{ vars.SESSION_COOKIE_DOMAIN }}
-          INVITE_BASE_URL: ${{ vars.INVITE_BASE_URL }}
-          EMAIL_FROM_ADDRESS: ${{ vars.EMAIL_FROM_ADDRESS }}
-          WEBAUTHN_RP_ID: ${{ vars.WEBAUTHN_RP_ID }}
-          WEBAUTHN_RP_ORIGIN: ${{ vars.WEBAUTHN_RP_ORIGIN }}
-        run: |
-          set -euo pipefail
-          rendered_service="${RUNNER_TEMP}/bominal-api-service.yaml"
-          cp runtime/cloudrun/api/service.yaml "${rendered_service}"
-
-          network_interfaces="$(printf '[{\"network\":\"%s\",\"subnetwork\":\"%s\"' "${CLOUDRUN_API_VPC_NETWORK}" "${CLOUDRUN_API_VPC_SUBNET}")"
-          if [ -n "${CLOUDRUN_API_VPC_NETWORK_TAGS:-}" ]; then
-            network_interfaces="$(printf '%s,\"tags\":\"%s\"' "${network_interfaces}" "${CLOUDRUN_API_VPC_NETWORK_TAGS}")"
-          fi
-          network_interfaces="${network_interfaces}}]"
-          export CLOUDRUN_NETWORK_INTERFACES="${network_interfaces}"
-
-          perl -0pi -e '
-            s#__CLOUDRUN_API_SERVICE__#$ENV{CLOUDRUN_API_SERVICE}#g;
-            s#__CLOUDRUN_API_IMAGE__#$ENV{CLOUDRUN_API_IMAGE}#g;
-            s#__CLOUDRUN_API_SERVICE_ACCOUNT__#$ENV{CLOUDRUN_API_SERVICE_ACCOUNT}#g;
-            s#__CLOUDRUN_NETWORK_INTERFACES__#$ENV{CLOUDRUN_NETWORK_INTERFACES}#g;
-            s#__USER_APP_HOST__#$ENV{USER_APP_HOST}#g;
-            s#__ADMIN_APP_HOST__#$ENV{ADMIN_APP_HOST}#g;
-            s#__SESSION_COOKIE_DOMAIN__#$ENV{SESSION_COOKIE_DOMAIN}#g;
-            s#__INVITE_BASE_URL__#$ENV{INVITE_BASE_URL}#g;
-            s#__EMAIL_FROM_ADDRESS__#$ENV{EMAIL_FROM_ADDRESS}#g;
-            s#__WEBAUTHN_RP_ID__#$ENV{WEBAUTHN_RP_ID}#g;
-            s#__WEBAUTHN_RP_ORIGIN__#$ENV{WEBAUTHN_RP_ORIGIN}#g;
-          ' "${rendered_service}"
-
-          echo "service_path=${rendered_service}" >> "${GITHUB_OUTPUT}"
-
-      - name: Deploy Cloud Run API service
-        env:
-          GCP_REGION: ${{ vars.GCP_REGION }}
-          SERVICE_PATH: ${{ steps.render-cloudrun.outputs.service_path }}
-        run: |
-          set -euo pipefail
-          gcloud run services replace "${SERVICE_PATH}" --region "${GCP_REGION}"
-
-      - name: Allow unauthenticated Cloud Run invocations
-        env:
-          GCP_REGION: ${{ vars.GCP_REGION }}
-          CLOUDRUN_API_SERVICE: ${{ vars.CLOUDRUN_API_SERVICE }}
-        run: |
-          set -euo pipefail
-          gcloud run services add-iam-policy-binding "${CLOUDRUN_API_SERVICE}" \
-            --region "${GCP_REGION}" \
-            --member="allUsers" \
-            --role="roles/run.invoker"
-
-      - name: Resolve Cloud Run service URL
-        id: cloudrun-url
-        env:
-          GCP_REGION: ${{ vars.GCP_REGION }}
-          CLOUDRUN_API_SERVICE: ${{ vars.CLOUDRUN_API_SERVICE }}
-        run: |
-          set -euo pipefail
-          service_url="$(gcloud run services describe "${CLOUDRUN_API_SERVICE}" --region "${GCP_REGION}" --format='value(status.url)')"
-          if [ -z "${service_url}" ]; then
-            echo "::error::Cloud Run service URL was empty"
-            exit 1
-          fi
-          echo "service_url=${service_url}" >> "${GITHUB_OUTPUT}"
-
-      - name: Smoke test Cloud Run API
-        id: smoke-cloudrun
-        env:
-          CLOUDRUN_SERVICE_URL: ${{ steps.cloudrun-url.outputs.service_url }}
-        run: |
-          set -euo pipefail
-          curl -fsS --retry 10 --retry-delay 3 --retry-all-errors "${CLOUDRUN_SERVICE_URL}/health" >/dev/null
-          curl -fsS --retry 10 --retry-delay 3 --retry-all-errors "${CLOUDRUN_SERVICE_URL}/ready" >/dev/null
-
-      - name: Roll back Cloud Run after failed smoke test
-        if: failure() && steps.smoke-cloudrun.outcome == 'failure' && steps.previous-cloudrun.outputs.prev_revision != ''
-        env:
-          GCP_REGION: ${{ vars.GCP_REGION }}
-          CLOUDRUN_API_SERVICE: ${{ vars.CLOUDRUN_API_SERVICE }}
-          PREVIOUS_REVISION: ${{ steps.previous-cloudrun.outputs.prev_revision }}
-        run: |
-          set -euo pipefail
-          gcloud run services update-traffic "${CLOUDRUN_API_SERVICE}" \
-            --region "${GCP_REGION}" \
-            --to-revisions "${PREVIOUS_REVISION}=100"
-
       - name: Run remote deploy script
         env:
           GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
@@ -461,17 +295,20 @@ jobs:
           DEPLOY_COMPOSE_PROJECT_NAME: ${{ vars.DEPLOY_COMPOSE_PROJECT_NAME }}
           DEPLOY_ROLLBACK_STATE_PATH: ${{ vars.DEPLOY_ROLLBACK_STATE_PATH }}
           DEPLOY_VM_BASELINE_SCRIPT: ${{ vars.DEPLOY_VM_BASELINE_SCRIPT }}
+          DEPLOY_API_SERVICE: ${{ vars.DEPLOY_API_SERVICE }}
           DEPLOY_WORKER_SERVICE: ${{ vars.DEPLOY_WORKER_SERVICE }}
           POSTGRES_HOST: ${{ vars.POSTGRES_HOST }}
           POSTGRES_PORT: ${{ vars.POSTGRES_PORT }}
           POSTGRES_DB: ${{ vars.POSTGRES_DB }}
           POSTGRES_USER: ${{ vars.POSTGRES_USER }}
+          API_IMAGE: ${{ needs.build-and-publish.outputs.api_image_ref }}
           WORKER_IMAGE: ${{ needs.build-and-publish.outputs.worker_image_ref }}
         run: |
           set -euo pipefail
           printf -v remote_command \
-            'set -euo pipefail; cd %q; export BOMINAL_WORKER_IMAGE=%q; export BOMINAL_POSTGRES_HOST=%q; export BOMINAL_POSTGRES_PORT=%q; export BOMINAL_POSTGRES_DB=%q; export BOMINAL_POSTGRES_USER=%q; export BOMINAL_VM_SECRET_ENV_FILE=%q; export BOMINAL_RUNTIME_ENV_PATH=%q; export BOMINAL_COMPOSE_FILE=%q; export BOMINAL_MIGRATIONS_DIR=%q; export BOMINAL_COMPOSE_PROJECT_NAME=%q; export BOMINAL_ROLLBACK_STATE_PATH=%q; export BOMINAL_VM_BASELINE_SCRIPT=%q; export BOMINAL_WORKER_SERVICE=%q; %q' \
+            'set -euo pipefail; cd %q; export BOMINAL_API_IMAGE=%q; export BOMINAL_WORKER_IMAGE=%q; export BOMINAL_POSTGRES_HOST=%q; export BOMINAL_POSTGRES_PORT=%q; export BOMINAL_POSTGRES_DB=%q; export BOMINAL_POSTGRES_USER=%q; export BOMINAL_VM_SECRET_ENV_FILE=%q; export BOMINAL_RUNTIME_ENV_PATH=%q; export BOMINAL_COMPOSE_FILE=%q; export BOMINAL_MIGRATIONS_DIR=%q; export BOMINAL_COMPOSE_PROJECT_NAME=%q; export BOMINAL_ROLLBACK_STATE_PATH=%q; export BOMINAL_VM_BASELINE_SCRIPT=%q; export BOMINAL_API_SERVICE=%q; export BOMINAL_WORKER_SERVICE=%q; %q' \
             "${DEPLOY_WORKDIR}" \
+            "${API_IMAGE}" \
             "${WORKER_IMAGE}" \
             "${POSTGRES_HOST}" \
             "${POSTGRES_PORT}" \
@@ -484,6 +321,7 @@ jobs:
             "${DEPLOY_COMPOSE_PROJECT_NAME}" \
             "${DEPLOY_ROLLBACK_STATE_PATH}" \
             "${DEPLOY_VM_BASELINE_SCRIPT}" \
+            "${DEPLOY_API_SERVICE}" \
             "${DEPLOY_WORKER_SERVICE}" \
             "${DEPLOY_SCRIPT_PATH}"
 
@@ -504,23 +342,24 @@ jobs:
           DEPLOY_RUNTIME_ENV_FILE: ${{ vars.DEPLOY_RUNTIME_ENV_FILE }}
           DEPLOY_COMPOSE_FILE: ${{ vars.DEPLOY_COMPOSE_FILE }}
           DEPLOY_COMPOSE_PROJECT_NAME: ${{ vars.DEPLOY_COMPOSE_PROJECT_NAME }}
+          DEPLOY_API_SERVICE: ${{ vars.DEPLOY_API_SERVICE }}
           DEPLOY_WORKER_SERVICE: ${{ vars.DEPLOY_WORKER_SERVICE }}
-          CLOUDRUN_SERVICE_URL: ${{ steps.cloudrun-url.outputs.service_url }}
+          DEPLOY_HEALTHCHECK_LIVE_URL: ${{ vars.DEPLOY_HEALTHCHECK_LIVE_URL }}
+          DEPLOY_HEALTHCHECK_READY_URL: ${{ vars.DEPLOY_HEALTHCHECK_READY_URL }}
           DEPLOY_HEALTHCHECK_RETRIES: ${{ vars.DEPLOY_HEALTHCHECK_RETRIES }}
           DEPLOY_HEALTHCHECK_DELAY_SECONDS: ${{ vars.DEPLOY_HEALTHCHECK_DELAY_SECONDS }}
         run: |
           set -euo pipefail
-          live_url="${CLOUDRUN_SERVICE_URL}/health"
-          ready_url="${CLOUDRUN_SERVICE_URL}/ready"
           printf -v remote_command \
-            'set -euo pipefail; cd %q; export BOMINAL_RUNTIME_ENV_PATH=%q; export BOMINAL_COMPOSE_FILE=%q; export BOMINAL_COMPOSE_PROJECT_NAME=%q; export BOMINAL_WORKER_SERVICE=%q; export BOMINAL_HEALTHCHECK_LIVE_URL=%q; export BOMINAL_HEALTHCHECK_READY_URL=%q; export BOMINAL_HEALTHCHECK_RETRIES=%q; export BOMINAL_HEALTHCHECK_DELAY_SECONDS=%q; %q' \
+            'set -euo pipefail; cd %q; export BOMINAL_RUNTIME_ENV_PATH=%q; export BOMINAL_COMPOSE_FILE=%q; export BOMINAL_COMPOSE_PROJECT_NAME=%q; export BOMINAL_API_SERVICE=%q; export BOMINAL_WORKER_SERVICE=%q; export BOMINAL_HEALTHCHECK_LIVE_URL=%q; export BOMINAL_HEALTHCHECK_READY_URL=%q; export BOMINAL_HEALTHCHECK_RETRIES=%q; export BOMINAL_HEALTHCHECK_DELAY_SECONDS=%q; %q' \
             "${DEPLOY_WORKDIR}" \
             "${DEPLOY_RUNTIME_ENV_FILE}" \
             "${DEPLOY_COMPOSE_FILE}" \
             "${DEPLOY_COMPOSE_PROJECT_NAME}" \
+            "${DEPLOY_API_SERVICE}" \
             "${DEPLOY_WORKER_SERVICE}" \
-            "${live_url}" \
-            "${ready_url}" \
+            "${DEPLOY_HEALTHCHECK_LIVE_URL}" \
+            "${DEPLOY_HEALTHCHECK_READY_URL}" \
             "${DEPLOY_HEALTHCHECK_RETRIES}" \
             "${DEPLOY_HEALTHCHECK_DELAY_SECONDS}" \
             "${DEPLOY_HEALTHCHECK_SCRIPT_PATH}"
@@ -543,16 +382,18 @@ jobs:
           DEPLOY_COMPOSE_FILE: ${{ vars.DEPLOY_COMPOSE_FILE }}
           DEPLOY_COMPOSE_PROJECT_NAME: ${{ vars.DEPLOY_COMPOSE_PROJECT_NAME }}
           DEPLOY_ROLLBACK_STATE_PATH: ${{ vars.DEPLOY_ROLLBACK_STATE_PATH }}
+          DEPLOY_API_SERVICE: ${{ vars.DEPLOY_API_SERVICE }}
           DEPLOY_WORKER_SERVICE: ${{ vars.DEPLOY_WORKER_SERVICE }}
         run: |
           set -euo pipefail
           printf -v remote_command \
-            'set -euo pipefail; cd %q; export BOMINAL_RUNTIME_ENV_PATH=%q; export BOMINAL_COMPOSE_FILE=%q; export BOMINAL_COMPOSE_PROJECT_NAME=%q; export BOMINAL_ROLLBACK_STATE_PATH=%q; export BOMINAL_WORKER_SERVICE=%q; %q' \
+            'set -euo pipefail; cd %q; export BOMINAL_RUNTIME_ENV_PATH=%q; export BOMINAL_COMPOSE_FILE=%q; export BOMINAL_COMPOSE_PROJECT_NAME=%q; export BOMINAL_ROLLBACK_STATE_PATH=%q; export BOMINAL_API_SERVICE=%q; export BOMINAL_WORKER_SERVICE=%q; %q' \
             "${DEPLOY_WORKDIR}" \
             "${DEPLOY_RUNTIME_ENV_FILE}" \
             "${DEPLOY_COMPOSE_FILE}" \
             "${DEPLOY_COMPOSE_PROJECT_NAME}" \
             "${DEPLOY_ROLLBACK_STATE_PATH}" \
+            "${DEPLOY_API_SERVICE}" \
             "${DEPLOY_WORKER_SERVICE}" \
             "${DEPLOY_ROLLBACK_SCRIPT_PATH}"
 

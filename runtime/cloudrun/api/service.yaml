@@ -8,15 +8,15 @@ spec:
   template:
     metadata:
       annotations:
-        autoscaling.knative.dev/minScale: "0"
-        autoscaling.knative.dev/maxScale: "1"
+        autoscaling.knative.dev/minScale: "__CLOUDRUN_API_MIN_INSTANCES__"
+        autoscaling.knative.dev/maxScale: "__CLOUDRUN_API_MAX_INSTANCES__"
         run.googleapis.com/cpu-throttling: "true"
-        run.googleapis.com/startup-cpu-boost: "true"
+        run.googleapis.com/startup-cpu-boost: "__CLOUDRUN_API_STARTUP_CPU_BOOST__"
         run.googleapis.com/vpc-access-egress: private-ranges-only
         run.googleapis.com/network-interfaces: '__CLOUDRUN_NETWORK_INTERFACES__'
     spec:
-      containerConcurrency: 4
-      timeoutSeconds: 35
+      containerConcurrency: __CLOUDRUN_API_CONTAINER_CONCURRENCY__
+      timeoutSeconds: __CLOUDRUN_API_TIMEOUT_SECONDS__
       serviceAccountName: __CLOUDRUN_API_SERVICE_ACCOUNT__
       containers:
         - image: __CLOUDRUN_API_IMAGE__
@@ -25,8 +25,8 @@ spec:
               containerPort: 8080
           resources:
             limits:
-              cpu: "1"
-              memory: 512Mi
+              cpu: "__CLOUDRUN_API_CPU__"
+              memory: "__CLOUDRUN_API_MEMORY__"
           env:
             - name: APP_ENV
               value: production
@@ -43,66 +43,63 @@ spec:
             - name: STATION_CATALOG_SOURCE_MODE
               value: repo_only
             - name: USER_APP_HOST
-              value: __USER_APP_HOST__
+              value: "__USER_APP_HOST__"
             - name: ADMIN_APP_HOST
-              value: __ADMIN_APP_HOST__
+              value: "__ADMIN_APP_HOST__"
             - name: SESSION_COOKIE_DOMAIN
-              value: __SESSION_COOKIE_DOMAIN__
+              value: "__SESSION_COOKIE_DOMAIN__"
             - name: INVITE_BASE_URL
-              value: __INVITE_BASE_URL__
+              value: "__INVITE_BASE_URL__"
             - name: EMAIL_FROM_ADDRESS
-              value: __EMAIL_FROM_ADDRESS__
+              value: "__EMAIL_FROM_ADDRESS__"
             - name: PASSKEY_PROVIDER
               value: server_webauthn
             - name: WEBAUTHN_RP_ID
-              value: __WEBAUTHN_RP_ID__
+              value: "__WEBAUTHN_RP_ID__"
             - name: WEBAUTHN_RP_ORIGIN
-              value: __WEBAUTHN_RP_ORIGIN__
+              value: "__WEBAUTHN_RP_ORIGIN__"
             - name: WEBAUTHN_RP_NAME
               value: bominal
             - name: HTTP_REQUEST_TIMEOUT_SECONDS
-              value: "30"
+              value: "__HTTP_REQUEST_TIMEOUT_SECONDS__"
             - name: HTTP_REQUEST_BODY_LIMIT_BYTES
-              value: "2097152"
+              value: "__HTTP_REQUEST_BODY_LIMIT_BYTES__"
             - name: HTTP_CONCURRENCY_LIMIT
-              value: "4"
+              value: "__HTTP_CONCURRENCY_LIMIT__"
             - name: PASSWORD_HASH_CONCURRENCY
-              value: "1"
+              value: "__PASSWORD_HASH_CONCURRENCY__"
+            - name: REDIS_URL
+              value: "__REDIS_URL__"
             - name: API_DB_POOL_MAX_CONNECTIONS
-              value: "4"
+              value: "__API_DB_POOL_MAX_CONNECTIONS__"
             - name: DB_POOL_ACQUIRE_TIMEOUT_SECONDS
-              value: "2"
+              value: "__DB_POOL_ACQUIRE_TIMEOUT_SECONDS__"
             - name: DB_POOL_IDLE_TIMEOUT_SECONDS
-              value: "60"
+              value: "__DB_POOL_IDLE_TIMEOUT_SECONDS__"
             - name: DB_POOL_MAX_LIFETIME_SECONDS
-              value: "300"
+              value: "__DB_POOL_MAX_LIFETIME_SECONDS__"
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: DATABASE_URL
-                  key: latest
-            - name: REDIS_URL
-              valueFrom:
-                secretKeyRef:
-                  name: REDIS_URL
+                  name: __GSM_DATABASE_URL_SECRET__
                   key: latest
             - name: SESSION_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: SESSION_SECRET
+                  name: __GSM_SESSION_SECRET_SECRET__
                   key: latest
             - name: INTERNAL_IDENTITY_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: INTERNAL_IDENTITY_SECRET
+                  name: __GSM_INTERNAL_IDENTITY_SECRET_SECRET__
                   key: latest
             - name: MASTER_KEY
               valueFrom:
                 secretKeyRef:
-                  name: MASTER_KEY
+                  name: __GSM_MASTER_KEY_SECRET__
                   key: latest
             - name: RESEND_API_KEY
               valueFrom:
                 secretKeyRef:
-                  name: RESEND_API_KEY
+                  name: __GSM_RESEND_API_KEY_SECRET__
                   key: latest
