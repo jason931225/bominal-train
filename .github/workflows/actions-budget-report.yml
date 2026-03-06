@@ -1,0 +1,92 @@
+name: Actions Budget Report
+
+on:
+  schedule:
+    - cron: '17 13 * * *'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+
+jobs:
+  budget-policy:
+    name: Actions Budget Snapshot
+    uses: ./.github/workflows/actions-budget-governor.yml
+
+  report:
+    name: Publish Budget Report
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs:
+      - budget-policy
+    env:
+      ACTIONS_BUDGET_REPORT_ISSUE_NUMBER: ${{ vars.ACTIONS_BUDGET_REPORT_ISSUE_NUMBER }}
+    steps:
+      - name: Post/update monthly budget report
+        uses: actions/github-script@v7
+        env:
+          GLOBAL_MODE: ${{ needs.budget-policy.outputs.global_mode }}
+          NONCD_MODE: ${{ needs.budget-policy.outputs.noncd_mode }}
+          GLOBAL_USED: ${{ needs.budget-policy.outputs.global_used_minutes }}
+          CD_USED: ${{ needs.budget-policy.outputs.cd_used_minutes }}
+          NONCD_USED: ${{ needs.budget-policy.outputs.noncd_used_minutes }}
+          GLOBAL_REMAINING: ${{ needs.budget-policy.outputs.global_remaining_minutes }}
+          NONCD_REMAINING: ${{ needs.budget-policy.outputs.noncd_remaining_minutes }}
+          PROJECTED_NONCD_END: ${{ needs.budget-policy.outputs.projected_noncd_month_end_minutes }}
+          ACTIONS_MINUTES_MONTHLY_BUDGET: ${{ vars.ACTIONS_MINUTES_MONTHLY_BUDGET }}
+          ACTIONS_CD_RESERVED_MINUTES: ${{ vars.ACTIONS_CD_RESERVED_MINUTES }}
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const issueNumber = Number(process.env.ACTIONS_BUDGET_REPORT_ISSUE_NUMBER || 0);
+            if (!Number.isFinite(issueNumber) || issueNumber <= 0) {
+              core.info("ACTIONS_BUDGET_REPORT_ISSUE_NUMBER not set; skipping issue report.");
+              return;
+            }
+
+            const monthlyBudget = Number(process.env.ACTIONS_MINUTES_MONTHLY_BUDGET || 3000);
+            const reservedCd = Number(process.env.ACTIONS_CD_RESERVED_MINUTES || 300);
+            const noncdCap = monthlyBudget - reservedCd;
+            const now = new Date().toISOString().slice(0, 10);
+
+            const marker = "<!-- actions-budget-report -->";
+            const body = [
+              marker,
+              `## Actions Budget Report (${now})`,
+              "",
+              `- Global mode: \`${process.env.GLOBAL_MODE}\``,
+              `- Non-CD mode: \`${process.env.NONCD_MODE}\``,
+              `- Global used: \`${process.env.GLOBAL_USED} / ${monthlyBudget}\` min`,
+              `- CD used: \`${process.env.CD_USED} / ${reservedCd}\` reserved min`,
+              `- Non-CD used: \`${process.env.NONCD_USED} / ${noncdCap}\` cap min`,
+              `- Global remaining: \`${process.env.GLOBAL_REMAINING}\` min`,
+              `- Non-CD remaining: \`${process.env.NONCD_REMAINING}\` min`,
+              `- Projected non-CD month end: \`${process.env.PROJECTED_NONCD_END}\` min`,
+            ].join("\n");
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number: issueNumber,
+              per_page: 100,
+            });
+
+            const existing = comments.find((comment) => comment.user?.type === "Bot" && comment.body?.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: issueNumber,
+                body,
+              });
+            }

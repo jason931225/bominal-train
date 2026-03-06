@@ -1,0 +1,153 @@
+name: Orchestrator Work Item
+description: Structured issue template for deterministic agent dispatch and promotion-gate readiness.
+title: "orchestrator: "
+labels:
+  - type:chore
+  - area:ci-cd
+  - priority:p1
+  - status:ready
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template for orchestrator-posted implementation jobs.
+        Include complete scope/risk/domain constraints so agents can execute without policy drift.
+  - type: textarea
+    id: objective
+    attributes:
+      label: Objective
+      description: Outcome this work item must produce.
+      placeholder: One clear, testable result statement.
+    validations:
+      required: true
+  - type: dropdown
+    id: target_branch
+    attributes:
+      label: Target Branch Stage
+      description: Branch where implementation lands first.
+      options:
+        - dev
+        - staging
+        - main
+    validations:
+      required: true
+  - type: input
+    id: milestone
+    attributes:
+      label: Milestone Or Release Target
+      description: Milestone required for sequencing and promotion tracking.
+      placeholder: v0.2.0
+    validations:
+      required: true
+  - type: textarea
+    id: domain_scope
+    attributes:
+      label: Domain And Path Lock
+      description: One `area:*` domain and allowed path set.
+      placeholder: |
+        area:runtime-api
+        allowed paths:
+        - runtime/crates/api/**
+    validations:
+      required: true
+  - type: textarea
+    id: risk_assessment
+    attributes:
+      label: Risk Assessment
+      description: Include risk class, sensitive boundaries, rollback plan, and blast radius.
+      placeholder: |
+        Risk class: WRITE
+        Sensitive scope: auth/session
+        Blast radius: dashboard login path
+        Rollback: revert PR and redeploy previous digest
+    validations:
+      required: true
+  - type: dropdown
+    id: bundle_mode
+    attributes:
+      label: Bundle Mode
+      description: Choose single-item or sequenced bundle execution.
+      options:
+        - Single Item
+        - Sequenced Bundle
+    validations:
+      required: true
+  - type: textarea
+    id: bundle_manifest
+    attributes:
+      label: Bundle Manifest (Machine-Readable)
+      description: Required for sequenced bundles and promotion governance validation.
+      value: |
+        <!-- promotion-gate-manifest:start -->
+        bundle_id: bundle-<milestone>-<area>-<issue>
+        milestone: <milestone-title>
+        area: area:<domain>
+        risk: low|medium|high
+        ordered_prs:
+          - 0
+        depends_on:
+          - issue: 0
+        release_summary_required: true
+        <!-- promotion-gate-manifest:end -->
+    validations:
+      required: true
+  - type: textarea
+    id: merge_order_notes
+    attributes:
+      label: Merge Order Notes
+      description: Canonical merge order and dependency notes (no ambiguity).
+      placeholder: |
+        - PR #101 depends on PR #99
+        - Merge order: #99 -> #101 -> #105
+        - Do not merge #105 until smoke tests pass on #101
+    validations:
+      required: true
+  - type: textarea
+    id: scope_in
+    attributes:
+      label: In Scope
+      description: Explicit work to perform.
+      placeholder: "1. ...\n2. ..."
+    validations:
+      required: true
+  - type: textarea
+    id: scope_out
+    attributes:
+      label: Out Of Scope
+      description: Explicit non-goals to prevent drift.
+      placeholder: "1. ...\n2. ..."
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance_criteria
+    attributes:
+      label: Acceptance Criteria
+      description: Merge and runtime behavior criteria.
+      placeholder: "- [ ] ...\n- [ ] ..."
+    validations:
+      required: true
+  - type: textarea
+    id: verification_plan
+    attributes:
+      label: Verification Plan
+      description: Exact commands/tests/checks before PR.
+      placeholder: |
+        - cargo test -p bominal-api
+        - ./infra/scripts/local-check.sh
+    validations:
+      required: true
+  - type: textarea
+    id: agent_instructions
+    attributes:
+      label: Agent Dispatch Notes
+      description: Required issue/PR/review sequencing for agents.
+      value: |
+        - Claim in `bominal Agent Command` board before coding.
+        - Post design note and path-set lock confirmation.
+        - Open draft PR with `Closes #<issue>`.
+        - Request `@copilot review` first.
+        - Request `@codex review` second.
+        - Resolve all material findings before merge.
+        - For promotion-gated bundles, finish `## Release Summary` in gate issue before `/gate promote`.
+    validations:
+      required: true

@@ -21,13 +21,15 @@ Architecture:
 - `runtime/frontend`: asset pipeline, not a separate SPA.
 
 Project-governance checks (mandatory):
-- Validate linked issue syntax (`Closes #...`) and required labels (`type:*`, `area:*`, `priority:*`).
+- Validate linked issue syntax (`Closes #...`) and required labels (`type:*`, `area:*`, `priority:*`, and `ci:tier:*` for non-promotion PRs).
+- Enforce branch promotion flow: implementation -> `dev`, then `dev -> staging -> main`; allow `hotfix/* -> main` only with explicit back-promotion.
 - Treat board policy as first-class contract:
   - `bominal Workstreams` for issue state,
   - `bominal Review` for review depth and merge readiness,
   - `bominal Agent Command` for claim/checkpoint/escalation state.
 - Flag policy violations when PR scope crosses multiple `area:*` domains without explicit split/escalation.
 - Require secondary review posture for sensitive scope (`auth`, `payment-crypto`, deploy/infra, security) and high-risk changes.
+- In secondary-review flows, expect `@copilot review` followed by `@codex review` before merge.
 - Classify findings as:
   - `Material`: security/auth/payment/session/data-loss/deploy/test-gap concerns (merge-blocking until fixed or maintainer waiver with risk note),
   - `Advisory`: non-blocking quality improvements.

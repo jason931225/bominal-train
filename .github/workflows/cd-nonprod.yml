@@ -1,21 +1,31 @@
-name: CD
+name: CD Non-Production
 
 on:
   push:
     branches:
-      - main
+      - dev
+      - staging
     paths:
       - runtime/**
-      - env/prod/**
-      - .github/workflows/cd.yml
+      - env/dev/**
+      - env/staging/**
+      - .github/workflows/cd-nonprod.yml
       - '!**/*.md'
       - '!docs/**'
   workflow_dispatch:
     inputs:
-      deploy:
-        description: Run production deploy after publishing images
+      target:
+        description: Target non-production environment
         required: true
-        default: false
+        default: dev
+        type: choice
+        options:
+          - dev
+          - staging
+      deploy:
+        description: Run non-production deploy after publishing images
+        required: true
+        default: true
         type: boolean
 
 permissions:
@@ -24,7 +34,7 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: cd-${{ github.ref }}
+  group: cd-nonprod-${{ github.ref_name || github.event.inputs.target }}
   cancel-in-progress: false
 
 env:
@@ -34,11 +44,11 @@ env:
 
 jobs:
   budget-policy:
-    name: CD Budget Policy
+    name: CD Non-Production Budget Policy
     uses: ./.github/workflows/actions-budget-governor.yml
 
   cd-budget-guard:
-    name: CD Budget Guard
+    name: CD Non-Production Budget Guard
     runs-on: ubuntu-latest
     timeout-minutes: 5
     needs:
@@ -47,13 +57,13 @@ jobs:
       GLOBAL_MODE: ${{ needs.budget-policy.outputs.global_mode }}
       HOTFIX_PREFIX: ${{ vars.ACTIONS_HOTFIX_BRANCH_PREFIX }}
     steps:
-      - name: Enforce CD global budget policy
+      - name: Enforce non-production CD global budget policy
         uses: actions/github-script@v7
         with:
           script: |
             const mode = process.env.GLOBAL_MODE || "normal";
             if (mode !== "lockdown") {
-              core.info(`global_mode=${mode}; CD workflow allowed.`);
+              core.info(`global_mode=${mode}; non-production CD workflow allowed.`);
               return;
             }
 
@@ -76,17 +86,56 @@ jobs:
             }
 
             if (hotfixAllowed) {
-              core.warning("Global budget lockdown active, but associated hotfix PR detected; allowing CD run.");
+              core.warning("Global budget lockdown active, but associated hotfix PR detected; allowing non-production CD run.");
               return;
             }
 
-            core.setFailed("Global Actions budget is in lockdown mode; CD is blocked to prevent monthly cap overrun.");
+            core.setFailed("Global Actions budget is in lockdown mode; non-production CD is blocked.");
+
+  resolve-target:
+    name: Resolve Deployment Target
+    runs-on: ubuntu-latest
+    outputs:
+      target_environment: ${{ steps.resolve.outputs.target_environment }}
+      target_branch: ${{ steps.resolve.outputs.target_branch }}
+      should_deploy: ${{ steps.resolve.outputs.should_deploy }}
+    steps:
+      - name: Resolve environment and branch
+        id: resolve
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            target_input="${{ inputs.target }}"
+            if [ "${target_input}" = "staging" ]; then
+              echo "target_environment=staging" >> "${GITHUB_OUTPUT}"
+              echo "target_branch=staging" >> "${GITHUB_OUTPUT}"
+            else
+              echo "target_environment=development" >> "${GITHUB_OUTPUT}"
+              echo "target_branch=dev" >> "${GITHUB_OUTPUT}"
+            fi
+            if [ "${{ inputs.deploy }}" = "true" ]; then
+              echo "should_deploy=true" >> "${GITHUB_OUTPUT}"
+            else
+              echo "should_deploy=false" >> "${GITHUB_OUTPUT}"
+            fi
+            exit 0
+          fi
+
+          if [ "${{ github.ref_name }}" = "staging" ]; then
+            echo "target_environment=staging" >> "${GITHUB_OUTPUT}"
+            echo "target_branch=staging" >> "${GITHUB_OUTPUT}"
+          else
+            echo "target_environment=development" >> "${GITHUB_OUTPUT}"
+            echo "target_branch=dev" >> "${GITHUB_OUTPUT}"
+          fi
+          echo "should_deploy=true" >> "${GITHUB_OUTPUT}"
 
   detect-changes:
-    name: Detect CD Build Scope
+    name: Detect Non-Production CD Build Scope
     runs-on: ubuntu-latest
     timeout-minutes: 5
     needs:
+      - resolve-target
       - cd-budget-guard
     outputs:
       build_api: ${{ steps.scope.outputs.build_api }}
@@ -146,17 +195,19 @@ jobs:
           } >> "${GITHUB_OUTPUT}"
 
   build-and-publish:
-    name: Build, Sign, and Publish Images
+    name: Build and Publish Non-Production Images
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs:
-      - cd-budget-guard
+      - resolve-target
       - detect-changes
+      - cd-budget-guard
+    concurrency:
+      group: nonprod-build-${{ github.ref_name || github.event.inputs.target }}
+      cancel-in-progress: true
     permissions:
       contents: read
       packages: write
-      attestations: write
-      id-token: write
     outputs:
       api_image_ref: ${{ steps.refs.outputs.api_image_ref }}
       worker_image_ref: ${{ steps.refs.outputs.worker_image_ref }}
@@ -165,23 +216,24 @@ jobs:
       REQUEST_BUILD_WORKER: ${{ needs.detect-changes.outputs.build_worker }}
     steps:
       - name: Checkout
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        uses: actions/checkout@v5
 
       - name: Log in to GHCR
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Docker Buildx
-        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+        uses: docker/setup-buildx-action@v3
 
       - name: Resolve effective build plan
         id: build-plan
         env:
-          STABLE_API_REF: ${{ env.REGISTRY }}/${{ env.API_IMAGE_NAME }}:latest
-          STABLE_WORKER_REF: ${{ env.REGISTRY }}/${{ env.WORKER_IMAGE_NAME }}:latest
+          TARGET_BRANCH: ${{ needs.resolve-target.outputs.target_branch }}
+          STABLE_API_REF: ${{ env.REGISTRY }}/${{ env.API_IMAGE_NAME }}:${{ needs.resolve-target.outputs.target_branch }}-latest
+          STABLE_WORKER_REF: ${{ env.REGISTRY }}/${{ env.WORKER_IMAGE_NAME }}:${{ needs.resolve-target.outputs.target_branch }}-latest
         run: |
           set -euo pipefail
           build_api="${REQUEST_BUILD_API}"
@@ -215,27 +267,29 @@ jobs:
       - name: Extract API image metadata
         id: meta-api
         if: steps.build-plan.outputs.build_api == 'true'
-        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
+        uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.API_IMAGE_NAME }}
           tags: |
-            type=sha,format=long
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ needs.resolve-target.outputs.target_branch }}-${{ github.sha }}
+            type=sha,format=long,prefix=${{ needs.resolve-target.outputs.target_branch }}-
+            type=raw,value=${{ needs.resolve-target.outputs.target_branch }}-latest
 
       - name: Extract worker image metadata
         id: meta-worker
         if: steps.build-plan.outputs.build_worker == 'true'
-        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
+        uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.WORKER_IMAGE_NAME }}
           tags: |
-            type=sha,format=long
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ needs.resolve-target.outputs.target_branch }}-${{ github.sha }}
+            type=sha,format=long,prefix=${{ needs.resolve-target.outputs.target_branch }}-
+            type=raw,value=${{ needs.resolve-target.outputs.target_branch }}-latest
 
       - name: Build and push API image
         id: build-api
         if: steps.build-plan.outputs.build_api == 'true'
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        uses: docker/build-push-action@v6
         with:
           context: runtime
           file: runtime/Dockerfile.api
@@ -244,7 +298,6 @@ jobs:
           sbom: true
           tags: |
             ${{ steps.meta-api.outputs.tags }}
-            ${{ env.REGISTRY }}/${{ env.API_IMAGE_NAME }}:${{ github.sha }}
           labels: ${{ steps.meta-api.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -252,7 +305,7 @@ jobs:
       - name: Build and push worker image
         id: build-worker
         if: steps.build-plan.outputs.build_worker == 'true'
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        uses: docker/build-push-action@v6
         with:
           context: runtime
           file: runtime/Dockerfile.worker
@@ -261,32 +314,9 @@ jobs:
           sbom: true
           tags: |
             ${{ steps.meta-worker.outputs.tags }}
-            ${{ env.REGISTRY }}/${{ env.WORKER_IMAGE_NAME }}:${{ github.sha }}
           labels: ${{ steps.meta-worker.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-      - name: Attest API image provenance
-        if: vars.CD_ENABLE_ATTESTATIONS == 'true' && steps.build-plan.outputs.build_api == 'true'
-        uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661 # v3
-        with:
-          subject-name: ${{ env.REGISTRY }}/${{ env.API_IMAGE_NAME }}
-          subject-digest: ${{ steps.build-api.outputs.digest }}
-          push-to-registry: true
-
-      - name: Attest worker image provenance
-        if: vars.CD_ENABLE_ATTESTATIONS == 'true' && steps.build-plan.outputs.build_worker == 'true'
-        uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661 # v3
-        with:
-          subject-name: ${{ env.REGISTRY }}/${{ env.WORKER_IMAGE_NAME }}
-          subject-digest: ${{ steps.build-worker.outputs.digest }}
-          push-to-registry: true
-
-      - name: Attestation policy note
-        if: vars.CD_ENABLE_ATTESTATIONS != 'true'
-        run: |
-          echo "Image attestation is disabled by policy (CD_ENABLE_ATTESTATIONS != 'true')."
-          echo "Enable repository variable CD_ENABLE_ATTESTATIONS=true once attestation is available for this repository."
 
       - name: Publish image refs
         id: refs
@@ -309,9 +339,10 @@ jobs:
         run: |
           cat > build-metadata.json <<JSON
           {
-            "workflow": "CD",
+            "workflow": "CD Non-Production",
             "run_id": "${{ github.run_id }}",
             "sha": "${{ github.sha }}",
+            "target_branch": "${{ needs.resolve-target.outputs.target_branch }}",
             "build_api": "${{ steps.build-plan.outputs.build_api }}",
             "build_worker": "${{ steps.build-plan.outputs.build_worker }}",
             "api_image_ref": "${{ steps.refs.outputs.api_image_ref }}",
@@ -322,22 +353,20 @@ jobs:
       - name: Upload build metadata
         uses: actions/upload-artifact@v4
         with:
-          name: cd-build-metadata-${{ github.run_id }}
+          name: cd-nonprod-build-metadata-${{ github.run_id }}
           path: build-metadata.json
 
-  deploy-production:
-    name: Deploy Production
-    if: >
-      (github.event_name == 'workflow_dispatch' &&
-      github.ref == 'refs/heads/main' &&
-      inputs.deploy)
+  deploy-nonprod:
+    name: Deploy Non-Production
+    if: needs.resolve-target.outputs.should_deploy == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     needs:
+      - resolve-target
       - build-and-publish
-    environment: production
+    environment: ${{ needs.resolve-target.outputs.target_environment }}
     concurrency:
-      group: production-deploy
+      group: nonprod-deploy-${{ needs.resolve-target.outputs.target_environment }}
       cancel-in-progress: false
     permissions:
       contents: read
@@ -404,64 +433,15 @@ jobs:
           if [ "${missing}" -ne 0 ]; then
             exit 1
           fi
-          for path_like in \
-            DEPLOY_WORKDIR \
-            DEPLOY_SCRIPT_PATH \
-            DEPLOY_HEALTHCHECK_SCRIPT_PATH \
-            DEPLOY_ROLLBACK_SCRIPT_PATH \
-            VM_SECRET_ENV_FILE \
-            DEPLOY_RUNTIME_ENV_FILE \
-            DEPLOY_COMPOSE_FILE \
-            DEPLOY_MIGRATIONS_DIR; do
-            value="${!path_like}"
-            if ! [[ "${value}" =~ ^/[A-Za-z0-9._/-]+$ ]]; then
-              echo "::error::${path_like} must be an absolute safe path (no spaces)"
-              exit 1
-            fi
-            if [[ "${value}" == *".."* ]]; then
-              echo "::error::${path_like} must not contain path traversal segments"
-              exit 1
-            fi
-          done
-          for optional_path in DEPLOY_ROLLBACK_STATE_PATH DEPLOY_VM_BASELINE_SCRIPT; do
-            value="${!optional_path:-}"
-            if [ -z "${value}" ]; then
-              continue
-            fi
-            if ! [[ "${value}" =~ ^/[A-Za-z0-9._/-]+$ ]]; then
-              echo "::error::${optional_path} must be an absolute safe path (no spaces)"
-              exit 1
-            fi
-            if [[ "${value}" == *".."* ]]; then
-              echo "::error::${optional_path} must not contain path traversal segments"
-              exit 1
-            fi
-          done
-          if [ -n "${DEPLOY_COMPOSE_PROJECT_NAME:-}" ] && ! [[ "${DEPLOY_COMPOSE_PROJECT_NAME}" =~ ^[A-Za-z0-9._-]+$ ]]; then
-            echo "::error::DEPLOY_COMPOSE_PROJECT_NAME must match ^[A-Za-z0-9._-]+$"
-            exit 1
-          fi
-          if [ -n "${DEPLOY_HEALTHCHECK_RETRIES:-}" ] && ! [[ "${DEPLOY_HEALTHCHECK_RETRIES}" =~ ^[0-9]+$ ]]; then
-            echo "::error::DEPLOY_HEALTHCHECK_RETRIES must be numeric"
-            exit 1
-          fi
-          if [ -n "${DEPLOY_HEALTHCHECK_DELAY_SECONDS:-}" ] && ! [[ "${DEPLOY_HEALTHCHECK_DELAY_SECONDS}" =~ ^[0-9]+$ ]]; then
-            echo "::error::DEPLOY_HEALTHCHECK_DELAY_SECONDS must be numeric"
-            exit 1
-          fi
-          if ! [[ "${POSTGRES_PORT}" =~ ^[0-9]+$ ]]; then
-            echo "::error::POSTGRES_PORT must be numeric"
-            exit 1
-          fi
 
       - name: Authenticate to Google Cloud (OIDC)
-        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2
+        uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
 
       - name: Setup gcloud CLI
-        uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f # v2
+        uses: google-github-actions/setup-gcloud@v2
         with:
           project_id: ${{ vars.GCP_PROJECT_ID }}
 

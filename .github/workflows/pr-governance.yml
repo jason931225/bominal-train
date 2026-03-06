@@ -3,6 +3,8 @@ name: PR Governance
 on:
   pull_request:
     branches:
+      - dev
+      - staging
       - main
     types:
       - opened
@@ -15,8 +17,8 @@ on:
 
 permissions:
   contents: read
-  issues: read
-  pull-requests: read
+  issues: write
+  pull-requests: write
 
 concurrency:
   group: pr-governance-${{ github.event.pull_request.number }}
@@ -35,8 +37,10 @@ jobs:
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const pr = context.payload.pull_request;
-            const labels = (pr.labels || []).map((l) => l.name);
             const body = pr.body || "";
+            const title = pr.title || "";
+            const baseRef = pr.base.ref;
+            const headRef = pr.head.ref;
 
             const files = await github.paginate(github.rest.pulls.listFiles, {
               owner,
@@ -46,16 +50,108 @@ jobs:
             });
 
             // Keep docs-only classification in sync with branch-policy-gate.yml.
-            const isDocsFile = (name) => name.startsWith("docs/") || (name.endsWith(".md") && !name.startsWith(".github/"));
+            const isDocsFile = (name) => name.startsWith("docs/") || name.endsWith(".md");
             const docsOnly = files.length > 0 && files.every((f) => isDocsFile(f.filename));
             const changedPaths = files.map((f) => f.filename);
 
+            const closesIssuePattern = /(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+((?:[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)?#\d+)/ig;
+            const closingRefs = [...body.matchAll(closesIssuePattern)].map((m) => m[1]);
+
+            const parseRef = (value) => {
+              const [repoPart, issuePart] = value.includes("/") ? value.split("#") : [null, value.slice(1)];
+              if (!repoPart) {
+                return { owner: null, repo: null, issue: Number(issuePart) };
+              }
+              const [refOwner, refRepo] = repoPart.split("/");
+              return { owner: refOwner, repo: refRepo, issue: Number(issuePart) };
+            };
+
+            const linkedIssues = closingRefs
+              .map(parseRef)
+              .filter((m) => Number.isFinite(m.issue))
+              .filter((m) => !m.owner || !m.repo || (
+                m.owner.toLowerCase() === owner.toLowerCase() &&
+                m.repo.toLowerCase() === repo.toLowerCase()
+              ));
+
+            const localIssueNumbers = [...new Set(linkedIssues.map((m) => m.issue))];
+
+            // Promotion PRs are expected to carry forward prior validated changes.
+            const isPromotionPair = (
+              (headRef === "dev" && baseRef === "staging") ||
+              (headRef === "staging" && baseRef === "main") ||
+              (headRef === "main" && baseRef === "staging") ||
+              (headRef === "staging" && baseRef === "dev")
+            );
+            const promotionPr = isPromotionPair || title.toLowerCase().startsWith("promote:") || title.toLowerCase().startsWith("backpromote:");
+
+            const failures = [];
+
+            const branchFlowAllowed = (() => {
+              if (baseRef === "main") {
+                return headRef === "staging" || headRef.startsWith("hotfix/");
+              }
+              if (baseRef === "staging") {
+                return headRef === "dev" || headRef === "main";
+              }
+              if (baseRef === "dev") {
+                return headRef !== "main" && !headRef.startsWith("hotfix/");
+              }
+              return true;
+            })();
+
+            if (!branchFlowAllowed) {
+              failures.push(`Invalid promotion/branch flow: ${headRef} -> ${baseRef}. Allowed: feature/*->dev, dev->staging, staging->main, hotfix/*->main with back-promotion.`);
+            }
+
+            let labels = (pr.labels || []).map((l) => l.name);
+
+            // Auto-inherit type/area/priority from linked issue when missing.
+            if (localIssueNumbers.length > 0) {
+              const primaryIssue = await github.rest.issues.get({
+                owner,
+                repo,
+                issue_number: localIssueNumbers[0],
+              });
+              const issueLabels = (primaryIssue.data.labels || []).map((l) => typeof l === "string" ? l : l.name);
+              const missingPrefixes = ["type:", "area:", "priority:", "ci:tier:"]
+                .filter((prefix) => !labels.some((name) => name.startsWith(prefix)));
+              const inherited = missingPrefixes
+                .map((prefix) => issueLabels.find((name) => name.startsWith(prefix)))
+                .filter((name) => Boolean(name));
+
+              if (inherited.length > 0) {
+                await github.rest.issues.addLabels({
+                  owner,
+                  repo,
+                  issue_number: pr.number,
+                  labels: inherited,
+                });
+                labels = [...new Set([...labels, ...inherited])];
+                core.info(`Inherited labels from issue #${localIssueNumbers[0]}: ${inherited.join(", ")}`);
+              }
+            }
+
             const prefixed = (prefix) => labels.filter((name) => name.startsWith(prefix));
+            if (!promotionPr) {
+              const ciTierExisting = prefixed("ci:tier:");
+              if (ciTierExisting.length === 0) {
+                const defaultTier = docsOnly ? "ci:tier:light" : "ci:tier:standard";
+                await github.rest.issues.addLabels({
+                  owner,
+                  repo,
+                  issue_number: pr.number,
+                  labels: [defaultTier],
+                });
+                labels = [...new Set([...labels, defaultTier])];
+                core.info(`Defaulted PR #${pr.number} to ${defaultTier}`);
+              }
+            }
+
             const typeLabels = prefixed("type:");
             const areaLabels = prefixed("area:");
             const priorityLabels = prefixed("priority:");
-
-            const failures = [];
+            const ciTierLabels = prefixed("ci:tier:");
 
             if (typeLabels.length !== 1) {
               failures.push(`Exactly one type:* label required (found ${typeLabels.length})`);
@@ -66,71 +162,12 @@ jobs:
             if (priorityLabels.length !== 1) {
               failures.push(`Exactly one priority:* label required (found ${priorityLabels.length})`);
             }
-
-            const closesIssuePattern = /(close[sd]?|fix(e[sd])?|resolve[sd]?)\s+((?:[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)?#\d+)/ig;
-            if (!closesIssuePattern.test(body)) {
-              failures.push("PR body must link at least one issue with closing syntax (for example: Closes #123)");
+            if (!promotionPr && ciTierLabels.length !== 1) {
+              failures.push(`Exactly one ci:tier:* label required for non-promotion PRs (found ${ciTierLabels.length})`);
             }
 
-            const issueRefs = [...body.matchAll(/(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+(?:(?<owner>[A-Za-z0-9_.-]+)\/(?<repo>[A-Za-z0-9_.-]+))?#(?<issue>\d+)/ig)]
-              .map((m) => ({
-                owner: m.groups?.owner || null,
-                repo: m.groups?.repo || null,
-                issueNumber: Number(m.groups?.issue),
-              }))
-              .filter((m) => Number.isFinite(m.issueNumber))
-              .filter((m) => {
-                if (!m.owner || !m.repo) {
-                  return true;
-                }
-                return (
-                  m.owner.toLowerCase() === owner.toLowerCase() &&
-                  m.repo.toLowerCase() === repo.toLowerCase()
-                );
-              });
-
-            const issueNumbers = [...new Set(issueRefs.map((m) => m.issueNumber))];
-            if (issueNumbers.length === 0) {
-              failures.push("PR must close at least one issue from this repository.");
-            } else {
-              if (issueNumbers.length > 1) {
-                core.info(`Multiple linked issues found; label-inheritance check will use #${issueNumbers[0]}.`);
-              }
-
-              const primaryIssueNumber = issueNumbers[0];
-              const primaryIssue = await github.rest.issues.get({
-                owner,
-                repo,
-                issue_number: primaryIssueNumber,
-              });
-              const issueLabels = (primaryIssue.data.labels || []).map((label) =>
-                typeof label === "string" ? label : label.name
-              );
-
-              const singlePrefixedLabel = (names, prefix) => names.filter((name) => name.startsWith(prefix));
-              const expectedType = singlePrefixedLabel(issueLabels, "type:");
-              const expectedArea = singlePrefixedLabel(issueLabels, "area:");
-              const expectedPriority = singlePrefixedLabel(issueLabels, "priority:");
-
-              if (expectedType.length !== 1) {
-                failures.push(`Linked issue #${primaryIssueNumber} must carry exactly one type:* label for PR inheritance.`);
-              }
-              if (expectedArea.length !== 1) {
-                failures.push(`Linked issue #${primaryIssueNumber} must carry exactly one area:* label for PR inheritance.`);
-              }
-              if (expectedPriority.length !== 1) {
-                failures.push(`Linked issue #${primaryIssueNumber} must carry exactly one priority:* label for PR inheritance.`);
-              }
-
-              if (typeLabels.length === 1 && expectedType.length === 1 && typeLabels[0] !== expectedType[0]) {
-                failures.push(`PR type label must inherit from issue #${primaryIssueNumber}: expected ${expectedType[0]}, found ${typeLabels[0]}.`);
-              }
-              if (areaLabels.length === 1 && expectedArea.length === 1 && areaLabels[0] !== expectedArea[0]) {
-                failures.push(`PR area label must inherit from issue #${primaryIssueNumber}: expected ${expectedArea[0]}, found ${areaLabels[0]}.`);
-              }
-              if (priorityLabels.length === 1 && expectedPriority.length === 1 && priorityLabels[0] !== expectedPriority[0]) {
-                failures.push(`PR priority label must inherit from issue #${primaryIssueNumber}: expected ${expectedPriority[0]}, found ${priorityLabels[0]}.`);
-              }
+            if (!promotionPr && closingRefs.length === 0) {
+              failures.push("PR body must link at least one issue with closing syntax (for example: Closes #123)");
             }
 
             if (labels.includes("duplicate")) {
@@ -147,7 +184,7 @@ jobs:
               if (!labels.includes("area:docs")) {
                 failures.push("Docs-only PRs must include label area:docs");
               }
-            } else {
+            } else if (!promotionPr) {
               if (!changedPaths.includes("CHANGELOG.md")) {
                 failures.push("Non-docs PRs must update CHANGELOG.md under ## Unreleased");
               }
@@ -158,4 +195,4 @@ jobs:
               return;
             }
 
-            core.info(`PR #${pr.number} governance passed. docsOnly=${docsOnly}`);
+            core.info(`PR #${pr.number} governance passed. docsOnly=${docsOnly} promotionPr=${promotionPr} base=${baseRef} head=${headRef}`);

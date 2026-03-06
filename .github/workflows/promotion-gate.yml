@@ -1,0 +1,561 @@
+name: Promotion Gate
+
+on:
+  issues:
+    types:
+      - opened
+      - edited
+      - reopened
+      - labeled
+      - unlabeled
+  issue_comment:
+    types:
+      - created
+      - edited
+  workflow_dispatch:
+    inputs:
+      gate_issue_number:
+        description: Specific gate issue number to evaluate
+        required: false
+        type: string
+  schedule:
+    - cron: '*/30 * * * *'
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+  checks: read
+
+concurrency:
+  group: promotion-gate-${{ github.event.issue.number || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  collect_targets:
+    name: Collect Gate Targets
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      gate_numbers: ${{ steps.collect.outputs.gate_numbers }}
+    steps:
+      - name: Resolve gate issue numbers
+        id: collect
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            const isGateIssue = (issue) => {
+              const labels = (issue.labels || []).map((label) => typeof label === "string" ? label : label.name);
+              return labels.includes("gate:open") && !issue.pull_request;
+            };
+
+            let targets = [];
+
+            if (context.eventName === "workflow_dispatch") {
+              const value = Number(core.getInput("gate_issue_number"));
+              if (Number.isFinite(value) && value > 0) {
+                targets = [value];
+              }
+            } else if (context.eventName === "issues") {
+              if (isGateIssue(context.payload.issue)) {
+                targets = [context.payload.issue.number];
+              }
+            } else if (context.eventName === "issue_comment") {
+              const issue = context.payload.issue;
+              if (issue && !issue.pull_request) {
+                const issueResp = await github.rest.issues.get({
+                  owner,
+                  repo,
+                  issue_number: issue.number,
+                });
+                if (isGateIssue(issueResp.data)) {
+                  targets = [issue.number];
+                }
+              }
+            }
+
+            if (targets.length === 0) {
+              const openGates = await github.paginate(github.rest.issues.listForRepo, {
+                owner,
+                repo,
+                state: "open",
+                labels: "gate:open",
+                per_page: 100,
+              });
+              targets = openGates.filter((issue) => !issue.pull_request).map((issue) => issue.number);
+            }
+
+            core.setOutput("gate_numbers", JSON.stringify([...new Set(targets)]));
+
+  ci_gate:
+    name: ci_gate
+    needs:
+      - collect_targets
+    if: needs.collect_targets.outputs.gate_numbers != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        gate_issue_number: ${{ fromJson(needs.collect_targets.outputs.gate_numbers) }}
+    steps:
+      - name: Evaluate bundle CI health
+        uses: actions/github-script@v7
+        env:
+          GATE_ISSUE_NUMBER: ${{ matrix.gate_issue_number }}
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const gateIssueNumber = Number(process.env.GATE_ISSUE_NUMBER);
+
+            const upsertComment = async (issueNumber, marker, body) => {
+              const comments = await github.paginate(github.rest.issues.listComments, {
+                owner,
+                repo,
+                issue_number: issueNumber,
+                per_page: 100,
+              });
+              const existing = comments.find((comment) => comment.user?.type === "Bot" && comment.body?.includes(marker));
+              if (existing) {
+                await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+              } else {
+                await github.rest.issues.createComment({ owner, repo, issue_number: issueNumber, body });
+              }
+            };
+
+            const extractManifest = (body) => {
+              const startMarker = "<!-- promotion-gate-manifest:start -->";
+              const endMarker = "<!-- promotion-gate-manifest:end -->";
+              const start = body.indexOf(startMarker);
+              const end = body.indexOf(endMarker);
+              if (start === -1 || end === -1 || end <= start) {
+                return { ok: false, error: "Manifest markers missing." };
+              }
+              const manifestText = body.slice(start + startMarker.length, end).trim();
+              const lines = manifestText.split(/\r?\n/);
+              const manifest = { ordered_prs: [], depends_on: [] };
+              let currentList = null;
+
+              for (const rawLine of lines) {
+                const line = rawLine.replace(/\t/g, "    ").trimEnd();
+                if (!line.trim()) continue;
+                const keyMatch = line.match(/^([a-zA-Z0-9_]+):\s*(.*)$/);
+                if (keyMatch && !line.trimStart().startsWith("-")) {
+                  const key = keyMatch[1];
+                  const value = keyMatch[2].trim();
+                  if (key === "ordered_prs" || key === "depends_on") {
+                    currentList = key;
+                    continue;
+                  }
+                  manifest[key] = value;
+                  currentList = null;
+                  continue;
+                }
+                const listItemMatch = line.trim().match(/^\-\s*(.+)$/);
+                if (listItemMatch && currentList) {
+                  const item = listItemMatch[1].trim();
+                  if (currentList === "ordered_prs") {
+                    const n = Number(item);
+                    if (Number.isFinite(n) && n > 0) {
+                      manifest.ordered_prs.push(n);
+                    }
+                  } else {
+                    const depMatch = item.match(/^(issue|pr):\s*(\d+)$/);
+                    if (depMatch) {
+                      manifest.depends_on.push({ type: depMatch[1], number: Number(depMatch[2]) });
+                    }
+                  }
+                }
+              }
+
+              return { ok: true, manifest };
+            };
+
+            const gateIssueResp = await github.rest.issues.get({ owner, repo, issue_number: gateIssueNumber });
+            const gateIssue = gateIssueResp.data;
+            const parseResult = extractManifest(gateIssue.body || "");
+
+            const failures = [];
+            const checks = [];
+
+            if (!parseResult.ok) {
+              failures.push(parseResult.error);
+            }
+
+            const manifest = parseResult.manifest || { ordered_prs: [] };
+            if ((manifest.ordered_prs || []).length === 0) {
+              failures.push("No ordered_prs entries in manifest.");
+            }
+
+            for (const prNumber of manifest.ordered_prs || []) {
+              try {
+                const prResp = await github.rest.pulls.get({ owner, repo, pull_number: prNumber });
+                const pr = prResp.data;
+
+                if (pr.base.ref !== "dev") {
+                  failures.push(`PR #${prNumber} base branch is ${pr.base.ref}; expected dev.`);
+                }
+                if (!pr.merged) {
+                  failures.push(`PR #${prNumber} is not merged.`);
+                }
+
+                const checkResp = await github.rest.checks.listForRef({
+                  owner,
+                  repo,
+                  ref: pr.head.sha,
+                  per_page: 100,
+                });
+                const checkRuns = (checkResp.data.check_runs || []).filter((run) => run.name !== "Branch Policy Gate");
+                const failed = checkRuns.filter((run) => run.status === "completed" && !["success", "neutral", "skipped"].includes(run.conclusion));
+                const pending = checkRuns.filter((run) => run.status !== "completed");
+                if (failed.length > 0) {
+                  failures.push(`PR #${prNumber} has failed checks: ${failed.map((run) => `${run.name}=${run.conclusion}`).join(", ")}`);
+                }
+                if (pending.length > 0) {
+                  failures.push(`PR #${prNumber} has pending checks: ${pending.map((run) => run.name).join(", ")}`);
+                }
+
+                const reviewsResp = await github.rest.pulls.listReviews({ owner, repo, pull_number: prNumber, per_page: 100 });
+                const latestByUser = new Map();
+                for (const review of reviewsResp.data) {
+                  if (review.user?.login) {
+                    latestByUser.set(review.user.login, review.state);
+                  }
+                }
+                if ([...latestByUser.values()].includes("CHANGES_REQUESTED")) {
+                  failures.push(`PR #${prNumber} still has active CHANGES_REQUESTED review state.`);
+                }
+
+                checks.push({ rule: `PR #${prNumber} checks`, status: "pass" });
+              } catch (error) {
+                failures.push(`Failed to inspect PR #${prNumber}: ${String(error?.message || error)}`);
+              }
+            }
+
+            const pass = failures.length === 0;
+            const existingLabels = (gateIssue.labels || []).map((label) => typeof label === "string" ? label : label.name);
+            const labelsToAdd = pass ? ["gate:ci-pass"] : ["gate:ci-fail"];
+            const labelsToRemove = pass ? ["gate:ci-fail"] : ["gate:ci-pass"];
+
+            if (labelsToAdd.some((label) => !existingLabels.includes(label))) {
+              await github.rest.issues.addLabels({ owner, repo, issue_number: gateIssueNumber, labels: labelsToAdd });
+            }
+
+            for (const label of labelsToRemove) {
+              if (!existingLabels.includes(label)) continue;
+              try {
+                await github.rest.issues.removeLabel({ owner, repo, issue_number: gateIssueNumber, name: label });
+              } catch (error) {
+                core.info(`Unable to remove label ${label}: ${String(error?.message || error)}`);
+              }
+            }
+
+            const rows = [
+              "| Rule | Result |",
+              "|---|---|",
+              `| Manifest parse | ${parseResult.ok ? "PASS" : "FAIL"} |`,
+              `| Ordered PR list present | ${(manifest.ordered_prs || []).length > 0 ? "PASS" : "FAIL"} |`,
+              `| Bundle PR CI/review health | ${pass ? "PASS" : "FAIL"} |`,
+            ];
+
+            const body = [
+              "<!-- gate-ci-status -->",
+              "## ci_gate status",
+              ...rows,
+              "",
+              pass ? "CI gate passed." : `CI gate failed:\n- ${failures.join("\n- ")}`,
+            ].join("\n");
+
+            await upsertComment(gateIssueNumber, "<!-- gate-ci-status -->", body);
+
+            if (!pass) {
+              core.setFailed(`ci_gate failed for gate issue #${gateIssueNumber}`);
+            }
+
+  promotion_governance_gate:
+    name: promotion_governance_gate
+    needs:
+      - collect_targets
+    if: needs.collect_targets.outputs.gate_numbers != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        gate_issue_number: ${{ fromJson(needs.collect_targets.outputs.gate_numbers) }}
+    steps:
+      - name: Validate promotion governance bundle rules
+        uses: actions/github-script@v7
+        env:
+          GATE_ISSUE_NUMBER: ${{ matrix.gate_issue_number }}
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const gateIssueNumber = Number(process.env.GATE_ISSUE_NUMBER);
+
+            const upsertComment = async (issueNumber, marker, body) => {
+              const comments = await github.paginate(github.rest.issues.listComments, {
+                owner,
+                repo,
+                issue_number: issueNumber,
+                per_page: 100,
+              });
+              const existing = comments.find((comment) => comment.user?.type === "Bot" && comment.body?.includes(marker));
+              if (existing) {
+                await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+              } else {
+                await github.rest.issues.createComment({ owner, repo, issue_number: issueNumber, body });
+              }
+            };
+
+            const extractManifest = (body) => {
+              const startMarker = "<!-- promotion-gate-manifest:start -->";
+              const endMarker = "<!-- promotion-gate-manifest:end -->";
+              const start = body.indexOf(startMarker);
+              const end = body.indexOf(endMarker);
+              if (start === -1 || end === -1 || end <= start) {
+                return { ok: false, error: "Manifest markers missing." };
+              }
+              const manifestText = body.slice(start + startMarker.length, end).trim();
+              const lines = manifestText.split(/\r?\n/);
+              const manifest = { ordered_prs: [], depends_on: [] };
+              let currentList = null;
+
+              for (const rawLine of lines) {
+                const line = rawLine.replace(/\t/g, "    ").trimEnd();
+                if (!line.trim()) continue;
+                const keyMatch = line.match(/^([a-zA-Z0-9_]+):\s*(.*)$/);
+                if (keyMatch && !line.trimStart().startsWith("-")) {
+                  const key = keyMatch[1];
+                  const value = keyMatch[2].trim();
+                  if (key === "ordered_prs" || key === "depends_on") {
+                    currentList = key;
+                    continue;
+                  }
+                  manifest[key] = value;
+                  currentList = null;
+                  continue;
+                }
+                const listItemMatch = line.trim().match(/^\-\s*(.+)$/);
+                if (listItemMatch && currentList) {
+                  const item = listItemMatch[1].trim();
+                  if (currentList === "ordered_prs") {
+                    const n = Number(item);
+                    if (Number.isFinite(n) && n > 0) {
+                      manifest.ordered_prs.push(n);
+                    }
+                  } else {
+                    const depMatch = item.match(/^(issue|pr):\s*(\d+)$/);
+                    if (depMatch) {
+                      manifest.depends_on.push({ type: depMatch[1], number: Number(depMatch[2]) });
+                    }
+                  }
+                }
+              }
+              return { ok: true, manifest };
+            };
+
+            const parseControlIssueNumber = (body) => {
+              const match = (body || "").match(/Control issue:\s*#(\d+)/i);
+              return match ? Number(match[1]) : null;
+            };
+
+            const gateIssueResp = await github.rest.issues.get({ owner, repo, issue_number: gateIssueNumber });
+            const gateIssue = gateIssueResp.data;
+            const gateLabels = (gateIssue.labels || []).map((label) => typeof label === "string" ? label : label.name);
+            const parseResult = extractManifest(gateIssue.body || "");
+
+            const failures = [];
+            const ruleRows = [];
+            if (!parseResult.ok) {
+              failures.push(parseResult.error);
+            }
+
+            const manifest = parseResult.manifest || { ordered_prs: [], depends_on: [] };
+            const requiredManifestKeys = ["bundle_id", "milestone", "area", "risk"];
+            const missingKeys = requiredManifestKeys.filter((key) => !manifest[key]);
+            if (missingKeys.length > 0) {
+              failures.push(`Manifest missing keys: ${missingKeys.join(", ")}`);
+            }
+
+            if (!/^area:[a-z0-9-]+$/.test(manifest.area || "")) {
+              failures.push(`Manifest area is invalid: ${manifest.area || "<missing>"}`);
+            }
+
+            if (!["low", "medium", "high"].includes((manifest.risk || "").toLowerCase())) {
+              failures.push(`Manifest risk must be low|medium|high (got ${manifest.risk || "<missing>"}).`);
+            }
+
+            const controlIssueNumber = parseControlIssueNumber(gateIssue.body || "");
+            if (!controlIssueNumber || !Number.isFinite(controlIssueNumber)) {
+              failures.push("Control issue reference missing in gate body.");
+            }
+
+            let controlIssue = null;
+            if (controlIssueNumber) {
+              try {
+                const controlResp = await github.rest.issues.get({ owner, repo, issue_number: controlIssueNumber });
+                controlIssue = controlResp.data;
+              } catch (error) {
+                failures.push(`Unable to load control issue #${controlIssueNumber}: ${String(error?.message || error)}`);
+              }
+            }
+
+            if ((manifest.ordered_prs || []).length === 0) {
+              failures.push("ordered_prs list is empty.");
+            }
+
+            const prSet = new Set();
+            for (const prNumber of manifest.ordered_prs || []) {
+              if (prSet.has(prNumber)) {
+                failures.push(`ordered_prs contains duplicate PR #${prNumber}.`);
+                continue;
+              }
+              prSet.add(prNumber);
+
+              try {
+                const prResp = await github.rest.pulls.get({ owner, repo, pull_number: prNumber });
+                const pr = prResp.data;
+                const labels = (pr.labels || []).map((label) => label.name);
+
+                if (!labels.includes(manifest.area)) {
+                  failures.push(`PR #${prNumber} missing required area label ${manifest.area}.`);
+                }
+
+                if (manifest.milestone && (pr.milestone?.title || "") !== manifest.milestone) {
+                  failures.push(`PR #${prNumber} milestone mismatch: expected ${manifest.milestone}, got ${pr.milestone?.title || "<none>"}.`);
+                }
+              } catch (error) {
+                failures.push(`Referenced PR #${prNumber} does not exist or is inaccessible.`);
+              }
+            }
+
+            const depEdges = new Map();
+            for (const prNumber of manifest.ordered_prs || []) {
+              depEdges.set(`pr:${prNumber}`, []);
+            }
+
+            for (const dep of manifest.depends_on || []) {
+              const key = `${dep.type}:${dep.number}`;
+              if (!depEdges.has(key)) {
+                depEdges.set(key, []);
+              }
+            }
+
+            for (const dep of manifest.depends_on || []) {
+              const key = `${dep.type}:${dep.number}`;
+              try {
+                if (dep.type === "issue") {
+                  const issueResp = await github.rest.issues.get({ owner, repo, issue_number: dep.number });
+                  if (issueResp.data.state !== "closed") {
+                    failures.push(`Dependency issue #${dep.number} is not closed.`);
+                  }
+                } else if (dep.type === "pr") {
+                  const prResp = await github.rest.pulls.get({ owner, repo, pull_number: dep.number });
+                  if (!prResp.data.merged) {
+                    failures.push(`Dependency PR #${dep.number} is not merged.`);
+                  }
+                } else {
+                  failures.push(`Unsupported dependency type ${dep.type}.`);
+                }
+              } catch (error) {
+                failures.push(`Dependency ${key} not found.`);
+              }
+            }
+
+            const visiting = new Set();
+            const visited = new Set();
+            let hasCycle = false;
+            const dfs = (node) => {
+              if (visiting.has(node)) {
+                hasCycle = true;
+                return;
+              }
+              if (visited.has(node)) return;
+              visiting.add(node);
+              for (const next of depEdges.get(node) || []) {
+                dfs(next);
+              }
+              visiting.delete(node);
+              visited.add(node);
+            };
+            for (const node of depEdges.keys()) {
+              dfs(node);
+            }
+            if (hasCycle) {
+              failures.push("Dependency graph contains a cycle.");
+            }
+
+            const sections = {
+              mergeOrder: /##\s+Merge Order Notes\s*([\s\S]*?)(##|$)/i,
+              risk: /##\s+Risk Assessment\s*([\s\S]*?)(##|$)/i,
+              release: /##\s+Release Summary\s*([\s\S]*?)(##|$)/i,
+              round: /##\s+Round Review Log\s*([\s\S]*?)(##|$)/i,
+            };
+
+            const sectionBody = gateIssue.body || "";
+            for (const [name, regex] of Object.entries(sections)) {
+              const match = sectionBody.match(regex);
+              const content = (match?.[1] || "").trim();
+              if (!content || content === "- None") {
+                failures.push(`Section ${name} is missing or empty.`);
+              }
+            }
+
+            if (gateLabels.includes("status:blocked") || gateLabels.includes("gate:ci-fail")) {
+              failures.push("Gate issue has blocking labels (status:blocked or gate:ci-fail).");
+            }
+
+            if (controlIssue) {
+              const controlLabels = (controlIssue.labels || []).map((label) => typeof label === "string" ? label : label.name);
+              if (!controlLabels.includes(manifest.area)) {
+                failures.push(`Control issue #${controlIssue.number} is missing area label ${manifest.area}.`);
+              }
+            }
+
+            const pass = failures.length === 0;
+            const labelsToAdd = pass ? ["gate:governance-pass"] : ["gate:governance-fail"];
+            const labelsToRemove = pass ? ["gate:governance-fail"] : ["gate:governance-pass"];
+
+            if (labelsToAdd.some((label) => !gateLabels.includes(label))) {
+              await github.rest.issues.addLabels({ owner, repo, issue_number: gateIssueNumber, labels: labelsToAdd });
+            }
+            for (const label of labelsToRemove) {
+              if (!gateLabels.includes(label)) continue;
+              try {
+                await github.rest.issues.removeLabel({ owner, repo, issue_number: gateIssueNumber, name: label });
+              } catch (error) {
+                core.info(`Unable to remove label ${label}: ${String(error?.message || error)}`);
+              }
+            }
+
+            const rows = [
+              "| Rule | Result |",
+              "|---|---|",
+              `| Manifest schema valid | ${parseResult.ok && missingKeys.length === 0 ? "PASS" : "FAIL"} |`,
+              `| All PRs/issues exist and area/milestone aligned | ${failures.some((f) => f.includes("PR #") || f.includes("Dependency") || f.includes("Control issue")) ? "FAIL" : "PASS"} |`,
+              `| Dependency graph acyclic and satisfied | ${hasCycle || failures.some((f) => f.includes("Dependency")) ? "FAIL" : "PASS"} |`,
+              `| Ordered PR list coherent | ${failures.some((f) => f.includes("ordered_prs") || f.includes("duplicate")) ? "FAIL" : "PASS"} |`,
+              `| Risk assessment complete | ${failures.some((f) => f.includes("risk") || f.includes("Risk")) ? "FAIL" : "PASS"} |`,
+              `| No unresolved blocker labels/comments | ${failures.some((f) => f.includes("blocking labels")) ? "FAIL" : "PASS"} |`,
+              `| Required release-summary sections present | ${failures.some((f) => f.includes("Section")) ? "FAIL" : "PASS"} |`,
+            ];
+
+            const commentBody = [
+              "<!-- gate-governance-status -->",
+              "## promotion_governance_gate status",
+              ...rows,
+              "",
+              pass ? "Governance gate passed." : `Governance gate failed:\n- ${failures.join("\n- ")}`,
+            ].join("\n");
+
+            await upsertComment(gateIssueNumber, "<!-- gate-governance-status -->", commentBody);
+
+            if (!pass) {
+              core.setFailed(`promotion_governance_gate failed for gate issue #${gateIssueNumber}`);
+            }

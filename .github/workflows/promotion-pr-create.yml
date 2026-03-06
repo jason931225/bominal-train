@@ -1,0 +1,107 @@
+name: Promotion PR Create
+
+on:
+  pull_request:
+    types:
+      - closed
+    branches:
+      - staging
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: promotion-pr-create-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  create-promotion:
+    name: Create Promotion PR (staging -> main)
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Create promotion PR for opt-in items
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const sourceLabels = (pr.labels || []).map((label) => label.name);
+
+            if (!sourceLabels.includes("promotion:auto")) {
+              core.info(`PR #${pr.number} does not include promotion:auto; skipping.`);
+              return;
+            }
+
+            const sourceBase = pr.base.ref;
+            const sourceHead = pr.head.ref;
+            const map = {
+              staging: { expectedHead: "dev", head: "staging", base: "main" },
+            };
+
+            const target = map[sourceBase];
+            if (!target) {
+              core.info(`Base branch ${sourceBase} is not configured for auto-promotion; skipping.`);
+              return;
+            }
+
+            if (target.expectedHead && sourceHead !== target.expectedHead) {
+              core.info(`Skipping auto-promotion for ${sourceHead} -> ${sourceBase}; expected source head is ${target.expectedHead}.`);
+              return;
+            }
+
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            const existing = await github.paginate(github.rest.pulls.list, {
+              owner,
+              repo,
+              state: "open",
+              head: `${owner}:${target.head}`,
+              base: target.base,
+              per_page: 100,
+            });
+
+            if (existing.length > 0) {
+              core.info(`Promotion PR already exists: #${existing[0].number}`);
+              return;
+            }
+
+            const title = `promote: ${target.head} -> ${target.base} (from #${pr.number})`;
+            const body = [
+              `Automated promotion PR generated from merged source PR #${pr.number}.`,
+              "",
+              "Promotion mode: auto-create + maintainer command merge.",
+              "Note: dev -> staging promotion is controlled by gate workflows.",
+              "",
+              "Policy:",
+              "- Verify required checks are green.",
+              "- Request `@copilot review` first, then `@codex review` for cross-check.",
+              "- Merge via `/promote merge` command comment after conversations are resolved.",
+            ].join("\n");
+
+            const created = await github.rest.pulls.create({
+              owner,
+              repo,
+              title,
+              head: target.head,
+              base: target.base,
+              body,
+              maintainer_can_modify: true,
+            });
+
+            const carryLabels = sourceLabels.filter((name) => {
+              return name === "promotion:auto" || name.startsWith("type:") || name.startsWith("area:") || name.startsWith("priority:");
+            });
+
+            if (carryLabels.length > 0) {
+              await github.rest.issues.addLabels({
+                owner,
+                repo,
+                issue_number: created.data.number,
+                labels: [...new Set(carryLabels)],
+              });
+            }
+
+            core.info(`Created promotion PR #${created.data.number}: ${target.head} -> ${target.base}`);

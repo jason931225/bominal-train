@@ -1,0 +1,155 @@
+name: Actions Budget Governor
+
+on:
+  workflow_call:
+    outputs:
+      global_mode:
+        description: Global monthly mode (normal|lockdown)
+        value: ${{ jobs.evaluate.outputs.global_mode }}
+      noncd_mode:
+        description: Non-CD mode (normal|throttle|lockdown)
+        value: ${{ jobs.evaluate.outputs.noncd_mode }}
+      global_used_minutes:
+        description: Total minutes used this month (all workflows)
+        value: ${{ jobs.evaluate.outputs.global_used_minutes }}
+      cd_used_minutes:
+        description: Minutes used this month by CD-class workflows
+        value: ${{ jobs.evaluate.outputs.cd_used_minutes }}
+      noncd_used_minutes:
+        description: Minutes used this month by non-CD workflows
+        value: ${{ jobs.evaluate.outputs.noncd_used_minutes }}
+      global_remaining_minutes:
+        description: Remaining minutes in monthly global budget
+        value: ${{ jobs.evaluate.outputs.global_remaining_minutes }}
+      noncd_remaining_minutes:
+        description: Remaining minutes in non-CD budget cap
+        value: ${{ jobs.evaluate.outputs.noncd_remaining_minutes }}
+      projected_noncd_month_end_minutes:
+        description: Projected non-CD month-end usage by current pace
+        value: ${{ jobs.evaluate.outputs.projected_noncd_month_end_minutes }}
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  evaluate:
+    name: Evaluate Actions Minute Budget
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      global_mode: ${{ steps.eval.outputs.global_mode }}
+      noncd_mode: ${{ steps.eval.outputs.noncd_mode }}
+      global_used_minutes: ${{ steps.eval.outputs.global_used_minutes }}
+      cd_used_minutes: ${{ steps.eval.outputs.cd_used_minutes }}
+      noncd_used_minutes: ${{ steps.eval.outputs.noncd_used_minutes }}
+      global_remaining_minutes: ${{ steps.eval.outputs.global_remaining_minutes }}
+      noncd_remaining_minutes: ${{ steps.eval.outputs.noncd_remaining_minutes }}
+      projected_noncd_month_end_minutes: ${{ steps.eval.outputs.projected_noncd_month_end_minutes }}
+    steps:
+      - name: Calculate month-to-date workflow usage
+        id: eval
+        uses: actions/github-script@v7
+        env:
+          ACTIONS_MINUTES_MONTHLY_BUDGET: ${{ vars.ACTIONS_MINUTES_MONTHLY_BUDGET }}
+          ACTIONS_CD_RESERVED_MINUTES: ${{ vars.ACTIONS_CD_RESERVED_MINUTES }}
+          ACTIONS_BURNRATE_ENFORCE: ${{ vars.ACTIONS_BURNRATE_ENFORCE }}
+          ACTIONS_BURNRATE_BUFFER_PCT: ${{ vars.ACTIONS_BURNRATE_BUFFER_PCT }}
+          ACTIONS_CD_WORKFLOW_NAMES: ${{ vars.ACTIONS_CD_WORKFLOW_NAMES }}
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            const monthlyBudget = Number(process.env.ACTIONS_MINUTES_MONTHLY_BUDGET || 3000);
+            const reservedCd = Number(process.env.ACTIONS_CD_RESERVED_MINUTES || 300);
+            const burnrateBufferPct = Number(process.env.ACTIONS_BURNRATE_BUFFER_PCT || 10);
+            const burnrateEnforce = String(process.env.ACTIONS_BURNRATE_ENFORCE || "true").toLowerCase() !== "false";
+            const configuredCdNames = (process.env.ACTIONS_CD_WORKFLOW_NAMES || "CD,CD Non-Production,Release Tag")
+              .split(",")
+              .map((v) => v.trim())
+              .filter(Boolean);
+            const cdWorkflowNames = new Set(configuredCdNames);
+
+            if (!Number.isFinite(monthlyBudget) || monthlyBudget <= 0) {
+              core.setFailed(`Invalid ACTIONS_MINUTES_MONTHLY_BUDGET: ${process.env.ACTIONS_MINUTES_MONTHLY_BUDGET || "<empty>"}`);
+              return;
+            }
+
+            if (!Number.isFinite(reservedCd) || reservedCd < 0 || reservedCd >= monthlyBudget) {
+              core.setFailed(`Invalid ACTIONS_CD_RESERVED_MINUTES: ${process.env.ACTIONS_CD_RESERVED_MINUTES || "<empty>"} (must be >=0 and < monthly budget)`);
+              return;
+            }
+
+            const now = new Date();
+            const utcYear = now.getUTCFullYear();
+            const utcMonth = now.getUTCMonth();
+            const monthStart = new Date(Date.UTC(utcYear, utcMonth, 1));
+            const monthStartIso = monthStart.toISOString();
+            const daysInMonth = new Date(Date.UTC(utcYear, utcMonth + 1, 0)).getUTCDate();
+            const dayOfMonth = now.getUTCDate();
+
+            const runs = await github.paginate(github.rest.actions.listWorkflowRunsForRepo, {
+              owner,
+              repo,
+              per_page: 100,
+              created: `>=${monthStartIso}`,
+            });
+
+            let globalUsed = 0;
+            let cdUsed = 0;
+            let nonCdUsed = 0;
+
+            for (const run of runs) {
+              if (run.status !== "completed") continue;
+              const started = run.run_started_at ? Date.parse(run.run_started_at) : NaN;
+              const finished = run.updated_at ? Date.parse(run.updated_at) : NaN;
+              if (!Number.isFinite(started) || !Number.isFinite(finished) || finished < started) continue;
+
+              const durationMin = (finished - started) / 60000;
+              globalUsed += durationMin;
+              if (cdWorkflowNames.has(run.name)) {
+                cdUsed += durationMin;
+              } else {
+                nonCdUsed += durationMin;
+              }
+            }
+
+            const nonCdCap = monthlyBudget - reservedCd;
+            const globalRemaining = Math.max(0, monthlyBudget - globalUsed);
+            const nonCdRemaining = Math.max(0, nonCdCap - nonCdUsed);
+
+            const proratedNonCd = nonCdCap * (dayOfMonth / daysInMonth);
+            const throttleThreshold = proratedNonCd * (1 + burnrateBufferPct / 100);
+            const projectedNonCdEnd = dayOfMonth > 0 ? (nonCdUsed / dayOfMonth) * daysInMonth : 0;
+
+            let globalMode = "normal";
+            if (globalUsed >= monthlyBudget) {
+              globalMode = "lockdown";
+            }
+
+            let nonCdMode = "normal";
+            if (nonCdUsed >= nonCdCap) {
+              nonCdMode = "lockdown";
+            } else if (burnrateEnforce && nonCdUsed >= throttleThreshold) {
+              nonCdMode = "throttle";
+            }
+
+            core.setOutput("global_mode", globalMode);
+            core.setOutput("noncd_mode", nonCdMode);
+            core.setOutput("global_used_minutes", String(Math.round(globalUsed)));
+            core.setOutput("cd_used_minutes", String(Math.round(cdUsed)));
+            core.setOutput("noncd_used_minutes", String(Math.round(nonCdUsed)));
+            core.setOutput("global_remaining_minutes", String(Math.round(globalRemaining)));
+            core.setOutput("noncd_remaining_minutes", String(Math.round(nonCdRemaining)));
+            core.setOutput("projected_noncd_month_end_minutes", String(Math.round(projectedNonCdEnd)));
+
+            core.summary
+              .addHeading("Actions Budget Snapshot")
+              .addRaw(`Global mode: ${globalMode}\n`, true)
+              .addRaw(`Non-CD mode: ${nonCdMode}\n`, true)
+              .addRaw(`Global used: ${Math.round(globalUsed)} / ${monthlyBudget} min\n`, true)
+              .addRaw(`CD used: ${Math.round(cdUsed)} / reserved ${reservedCd} min\n`, true)
+              .addRaw(`Non-CD used: ${Math.round(nonCdUsed)} / cap ${nonCdCap} min\n`, true)
+              .addRaw(`Projected non-CD month end: ${Math.round(projectedNonCdEnd)} min\n`, true)
+              .write();
