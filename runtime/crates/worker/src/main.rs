@@ -1,9 +1,12 @@
 use std::{sync::Arc, time::Duration};
 
 use anyhow::Result;
-use bominal_shared::{config::AppConfig, telemetry::init_tracing};
+use bominal_shared::{
+    config::{AppConfig, DbPoolConfig, DbPoolTarget, pg_pool_options_from_config},
+    telemetry::init_tracing,
+};
 use chrono::Utc;
-use sqlx::{PgPool, postgres::PgPoolOptions};
+use sqlx::{Error as SqlxError, PgPool};
 use tokio::{
     signal,
     sync::watch,
@@ -77,11 +80,8 @@ async fn build_state(config: Arc<AppConfig>) -> Result<WorkerState> {
     let db_pool = if config.database_url.is_empty() {
         None
     } else {
-        Some(
-            PgPoolOptions::new()
-                .max_connections(5)
-                .connect_lazy(&config.database_url)?,
-        )
+        let pool_config = DbPoolConfig::from_env(DbPoolTarget::Worker)?;
+        Some(pg_pool_options_from_config(&pool_config).connect_lazy(&config.database_url)?)
     };
 
     Ok(WorkerState {
@@ -118,7 +118,7 @@ async fn poll_loop(state: Arc<WorkerState>, mut shutdown_rx: watch::Receiver<boo
                 if let Some(pool) = state.db_pool.as_ref()
                     && let Err(err) = runtime::process_next_job(pool, &state.runtime_v2).await
                 {
-                    warn!(error = %err, "runtime v2 poll tick failed");
+                    log_worker_loop_error("poll", &err, "runtime v2 poll tick failed");
                 }
             }
             changed = shutdown_rx.changed() => {
@@ -144,7 +144,7 @@ async fn reconcile_loop(state: Arc<WorkerState>, mut shutdown_rx: watch::Receive
                         }
                         Ok(_) => {}
                         Err(err) => {
-                            warn!(error = %err, "runtime v2 reconcile tick failed");
+                            log_worker_loop_error("reconcile", &err, "runtime v2 reconcile tick failed");
                         }
                     }
                 }
@@ -168,7 +168,7 @@ async fn train_tasks_loop(state: Arc<WorkerState>, mut shutdown_rx: watch::Recei
                 if let Some(pool) = state.db_pool.as_ref()
                     && let Err(err) = train_tasks::process_due_train_task(pool, &state.runtime_v2).await
                 {
-                    warn!(error = %err, "train task tick failed");
+                    log_worker_loop_error("train_tasks", &err, "train task tick failed");
                 }
             }
             changed = shutdown_rx.changed() => {
@@ -190,7 +190,7 @@ async fn scheduler_loop(state: Arc<WorkerState>, mut shutdown_rx: watch::Receive
                 if let Some(pool) = state.db_pool.as_ref()
                     && let Err(err) = train_tasks::process_scheduled_tasks(pool, &state.runtime_v2).await
                 {
-                    warn!(error = %err, "worker scheduler tick failed");
+                    log_worker_loop_error("scheduler", &err, "worker scheduler tick failed");
                 }
             }
             changed = shutdown_rx.changed() => {
@@ -210,7 +210,24 @@ async fn watch_loop(state: Arc<WorkerState>, mut shutdown_rx: watch::Receiver<bo
         tokio::select! {
             _ = ticker.tick() => {
                 let queue_key = state.config.redis.queue_key.as_str();
-                info!(queue_key, "watch loop heartbeat");
+                if let Some(pool) = state.db_pool.as_ref() {
+                    match runtime::queue_snapshot(pool, Utc::now()).await {
+                        Ok(snapshot) => {
+                            info!(
+                                loop_name = "watch",
+                                queue_key,
+                                runtime_queue_depth = snapshot.queued_jobs,
+                                runtime_queue_ready_depth = snapshot.ready_jobs,
+                                runtime_queue_oldest_age_seconds = snapshot.oldest_ready_age_seconds.unwrap_or_default(),
+                                runtime_queue_oldest_age_observed = snapshot.oldest_ready_age_seconds.is_some(),
+                                "runtime queue snapshot"
+                            );
+                        }
+                        Err(err) => {
+                            log_worker_loop_error("watch", &err, "runtime queue snapshot failed");
+                        }
+                    }
+                }
             }
             changed = shutdown_rx.changed() => {
                 if changed.is_ok() && *shutdown_rx.borrow() {
@@ -264,5 +281,53 @@ async fn shutdown_signal() {
     tokio::select! {
         _ = ctrl_c => {}
         _ = terminate => {}
+    }
+}
+
+fn log_worker_loop_error(
+    loop_name: &'static str,
+    err: &anyhow::Error,
+    failure_context: &'static str,
+) {
+    if is_db_acquire_timeout(err) {
+        warn!(
+            loop_name,
+            failure_context,
+            worker_metric = "db_acquire_timeout_total",
+            value = 1u64,
+            error = %err,
+            "worker database acquire timed out"
+        );
+        return;
+    }
+
+    warn!(loop_name, failure_context, error = %err, "worker loop failed");
+}
+
+fn is_db_acquire_timeout(err: &anyhow::Error) -> bool {
+    err.chain().any(|cause| {
+        matches!(
+            cause.downcast_ref::<SqlxError>(),
+            Some(SqlxError::PoolTimedOut)
+        )
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn detects_sqlx_pool_timeout_errors() {
+        let err = anyhow::Error::from(sqlx::Error::PoolTimedOut);
+
+        assert!(is_db_acquire_timeout(&err));
+    }
+
+    #[test]
+    fn ignores_non_pool_timeout_errors() {
+        let err = anyhow::anyhow!("different worker error");
+
+        assert!(!is_db_acquire_timeout(&err));
     }
 }

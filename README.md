@@ -218,8 +218,21 @@ Generate production env files from templates with either prompts (operator mode)
 ./scripts/bootstrap-prod.sh --non-interactive --force \
   --only deploy \
   --set GCP_PROJECT_ID=your-project \
+  --set GCP_REGION=us-central1 \
   --set GCP_WORKLOAD_IDENTITY_PROVIDER=projects/123456789/locations/global/workloadIdentityPools/pool/providers/provider \
   --set GCP_SERVICE_ACCOUNT=bominal-deploy@your-project.iam.gserviceaccount.com \
+  --set ARTIFACT_REGISTRY_REPOSITORY=bominal \
+  --set CLOUDRUN_API_SERVICE=bominal-api \
+  --set CLOUDRUN_API_SERVICE_ACCOUNT=bominal-api@your-project.iam.gserviceaccount.com \
+  --set CLOUDRUN_API_VPC_NETWORK=default \
+  --set CLOUDRUN_API_VPC_SUBNET=bominal-serverless \
+  --set USER_APP_HOST=www.bominal.com \
+  --set ADMIN_APP_HOST=ops.bominal.com \
+  --set SESSION_COOKIE_DOMAIN=.bominal.com \
+  --set INVITE_BASE_URL=https://www.bominal.com \
+  --set EMAIL_FROM_ADDRESS=no-reply@example.com \
+  --set WEBAUTHN_RP_ID=www.bominal.com \
+  --set WEBAUTHN_RP_ORIGIN=https://www.bominal.com \
   --set DEPLOY_VM_NAME=bominal-deploy \
   --set DEPLOY_VM_ZONE=us-central1-a \
   --set DEPLOY_WORKDIR=/opt/bominal/repo \
@@ -230,10 +243,7 @@ Generate production env files from templates with either prompts (operator mode)
   --set DEPLOY_RUNTIME_ENV_FILE=/opt/bominal/repo/env/prod/runtime.env \
   --set DEPLOY_COMPOSE_FILE=/opt/bominal/repo/runtime/compose.prod.yml \
   --set DEPLOY_MIGRATIONS_DIR=/opt/bominal/repo/runtime/migrations \
-  --set DEPLOY_API_SERVICE=api \
   --set DEPLOY_WORKER_SERVICE=worker \
-  --set DEPLOY_HEALTHCHECK_LIVE_URL=http://127.0.0.1:8000/health \
-  --set DEPLOY_HEALTHCHECK_READY_URL=http://127.0.0.1:8000/ready \
   --set POSTGRES_HOST=127.0.0.1 \
   --set POSTGRES_PORT=5432 \
   --set POSTGRES_DB=bominal \
@@ -248,14 +258,23 @@ Outputs (from `env/prod/*.example` templates; depends on `--only` selection):
 
 ## Production Operations (VM)
 
-Use `scripts/prod-up.sh` as the canonical operator entrypoint on the VM:
+The API/SSR service deploys to Cloud Run. The VM remains responsible for the worker, Redis, and Postgres.
+
+Use `scripts/prod-up.sh` as the canonical worker/operator entrypoint on the VM:
 
 ```bash
 cd /opt/bominal/repo
 ./scripts/prod-up.sh start
 ./scripts/prod-up.sh status
 ./scripts/prod-up.sh health
-./scripts/prod-up.sh logs -f --since 30m --service api
+./scripts/prod-up.sh logs -f --since 30m --service worker
+```
+
+For VM-local `health`, `deploy`, and `rollback`, export Cloud Run health URLs first so the worker checks target the active API service:
+
+```bash
+export BOMINAL_HEALTHCHECK_LIVE_URL="$(gcloud run services describe bominal-api --region us-central1 --format='value(status.url)')/health"
+export BOMINAL_HEALTHCHECK_READY_URL="$(gcloud run services describe bominal-api --region us-central1 --format='value(status.url)')/ready"
 ```
 
 Deploy/rollback are explicit and guarded:
@@ -266,7 +285,7 @@ cd /opt/bominal/repo
 ./scripts/prod-up.sh rollback --yes
 ```
 
-`deploy` reuses `scripts/prod/deploy-runtime.sh` and still requires deploy inputs (`BOMINAL_API_IMAGE`, `BOMINAL_WORKER_IMAGE`, `BOMINAL_POSTGRES_*`) to be set by CI/CD or operator exports.
+`deploy` reuses `scripts/prod/deploy-runtime.sh` and requires worker-side deploy inputs (`BOMINAL_WORKER_IMAGE`, `BOMINAL_POSTGRES_*`) to be set by CI/CD or operator exports. The API path is driven by the checked-in Cloud Run service definition under `runtime/cloudrun/api/`.
 
 ## Security and Safety Baseline
 

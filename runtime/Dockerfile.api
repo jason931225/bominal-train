@@ -23,6 +23,7 @@ RUN apt-get update \
 WORKDIR /app
 COPY --from=rust-builder /app/target/release/bominal-api /usr/local/bin/bominal-api
 COPY --from=frontend-builder /app/frontend/dist /app/frontend/dist
+COPY data /app/data
 
 ENV APP_ENV=production \
   APP_HOST=0.0.0.0 \

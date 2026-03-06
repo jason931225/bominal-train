@@ -8,7 +8,6 @@ source "${SCRIPT_DIR}/_env_lib.sh"
 require_cmd docker
 require_cmd mktemp
 
-require_var BOMINAL_API_IMAGE
 require_var BOMINAL_WORKER_IMAGE
 require_var BOMINAL_POSTGRES_HOST
 require_var BOMINAL_POSTGRES_PORT
@@ -18,7 +17,6 @@ require_var BOMINAL_VM_SECRET_ENV_FILE
 require_var BOMINAL_RUNTIME_ENV_PATH
 require_var BOMINAL_COMPOSE_FILE
 require_var BOMINAL_MIGRATIONS_DIR
-require_var BOMINAL_API_SERVICE
 require_var BOMINAL_WORKER_SERVICE
 
 url_encode() {
@@ -136,18 +134,15 @@ export BOMINAL_DATABASE_URL="${database_url}"
 rollback_state_path="${BOMINAL_ROLLBACK_STATE_PATH:-${PWD}/.deploy/rollback.env}"
 mkdir -p "$(dirname "${rollback_state_path}")"
 
-prev_api_image="$(read_env_key "${BOMINAL_RUNTIME_ENV_PATH}" "BOMINAL_API_IMAGE")"
 prev_worker_image="$(read_env_key "${BOMINAL_RUNTIME_ENV_PATH}" "BOMINAL_WORKER_IMAGE")"
 prev_database_url="$(read_env_key "${BOMINAL_RUNTIME_ENV_PATH}" "DATABASE_URL")"
 
 umask 077
 {
-  printf 'BOMINAL_PREV_API_IMAGE=%q\n' "${prev_api_image}"
   printf 'BOMINAL_PREV_WORKER_IMAGE=%q\n' "${prev_worker_image}"
   printf 'BOMINAL_PREV_DATABASE_URL=%q\n' "${prev_database_url}"
 } > "${rollback_state_path}"
 
-set_env_key "${BOMINAL_RUNTIME_ENV_PATH}" "BOMINAL_API_IMAGE" "${BOMINAL_API_IMAGE}"
 set_env_key "${BOMINAL_RUNTIME_ENV_PATH}" "BOMINAL_WORKER_IMAGE" "${BOMINAL_WORKER_IMAGE}"
 set_env_key "${BOMINAL_RUNTIME_ENV_PATH}" "DATABASE_URL" "${database_url}"
 
@@ -155,12 +150,12 @@ ensure_registry_auth
 
 log "pulling deploy images"
 if ! compose_cmd "${BOMINAL_RUNTIME_ENV_PATH}" "${BOMINAL_COMPOSE_FILE}" pull \
-  "${BOMINAL_API_SERVICE}" "${BOMINAL_WORKER_SERVICE}"; then
+  "${BOMINAL_WORKER_SERVICE}"; then
   fail "image pull failed; set GHCR_USERNAME and GHCR_TOKEN in ${BOMINAL_VM_SECRET_ENV_FILE} for private registries"
 fi
 
 log "starting updated services"
 compose_cmd "${BOMINAL_RUNTIME_ENV_PATH}" "${BOMINAL_COMPOSE_FILE}" up -d --no-build \
-  "${BOMINAL_API_SERVICE}" "${BOMINAL_WORKER_SERVICE}"
+  "${BOMINAL_WORKER_SERVICE}"
 
 log "deploy script completed"

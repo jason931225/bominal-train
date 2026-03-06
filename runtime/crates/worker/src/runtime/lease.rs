@@ -24,6 +24,13 @@ pub struct ClaimedLease {
     pub expires_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct QueueSnapshot {
+    pub queued_jobs: i64,
+    pub ready_jobs: i64,
+    pub oldest_ready_age_seconds: Option<f64>,
+}
+
 pub async fn claim_next_job(
     pool: &PgPool,
     lease_owner: &str,
@@ -79,6 +86,21 @@ pub async fn release_lease(pool: &PgPool, job_id: &str, lease_token: &str) -> Re
         .await?
         .rows_affected();
     Ok(released > 0)
+}
+
+const RUNTIME_JOB_QUEUE_SNAPSHOT_SQL: &str = "with ready as ( select coalesce(next_run_at, created_at) as ready_at from runtime_jobs where status = 'queued' and (next_run_at is null or next_run_at <= $1) ) select (select count(*) from runtime_jobs where status = 'queued') as queued_jobs, (select count(*) from ready) as ready_jobs, (select extract(epoch from ($1 - min(ready_at))) from ready) as oldest_ready_age_seconds";
+
+pub async fn queue_snapshot(pool: &PgPool, now: DateTime<Utc>) -> Result<QueueSnapshot> {
+    let row = sqlx::query(RUNTIME_JOB_QUEUE_SNAPSHOT_SQL)
+        .bind(now)
+        .fetch_one(pool)
+        .await?;
+
+    Ok(QueueSnapshot {
+        queued_jobs: row.try_get("queued_jobs")?,
+        ready_jobs: row.try_get("ready_jobs")?,
+        oldest_ready_age_seconds: row.try_get("oldest_ready_age_seconds")?,
+    })
 }
 
 pub struct LeaseHeartbeat {

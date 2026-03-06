@@ -20,7 +20,7 @@ use axum::{
     response::{Html, IntoResponse, Redirect},
 };
 use bominal_shared::{
-    config::{AppConfig, PasskeyProvider},
+    config::{AppConfig, DbPoolConfig, DbPoolTarget, PasskeyProvider, pg_pool_options_from_config},
     error::{ApiError, ApiErrorCode, ApiErrorStatus},
     http_client::build_http_client,
     telemetry::init_tracing,
@@ -28,7 +28,7 @@ use bominal_shared::{
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 use redis::{Client as RedisClient, RedisResult};
 use serde::Serialize;
-use sqlx::{PgPool, postgres::PgPoolOptions};
+use sqlx::PgPool;
 use tokio::{net::TcpListener, signal};
 use tracing::{error, info};
 use uuid::Uuid;
@@ -120,9 +120,9 @@ pub(crate) async fn build_state(config: AppConfig) -> Result<AppState> {
     let db_pool = if config.database_url.is_empty() {
         None
     } else {
+        let pool_config = DbPoolConfig::from_env(DbPoolTarget::Api)?;
         Some(
-            PgPoolOptions::new()
-                .max_connections(10)
+            pg_pool_options_from_config(&pool_config)
                 .connect_lazy(&config.database_url)
                 .context("failed to create postgres pool")?,
         )

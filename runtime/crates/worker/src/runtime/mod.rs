@@ -1,4 +1,7 @@
-use std::{env, process, time::Duration as StdDuration};
+use std::{
+    env, process,
+    time::{Duration as StdDuration, Instant},
+};
 
 use anyhow::Result;
 use bominal_shared::repo::{
@@ -101,6 +104,15 @@ pub async fn process_next_job(
         })
         .unwrap_or(job.kind.as_str())
         .to_string();
+    info!(
+        worker_metric = "runtime_jobs_started_total",
+        value = 1u64,
+        job_id = %job.job_id,
+        provider = %inferred_provider,
+        operation = %operation_name,
+        attempt_count = job.attempt_count,
+        "worker metric"
+    );
     insert_runtime_job_event_best_effort(
         pool,
         job.job_id.as_str(),
@@ -114,12 +126,13 @@ pub async fn process_next_job(
     )
     .await;
 
+    let execution_started_at = Instant::now();
     let execution = executor::ProviderExecutor
         .execute(pool, &job, &config.payment_policy)
         .await;
     heartbeat.stop().await;
 
-    let transition_result: Result<()> = match execution {
+    let transition_result: Result<&'static str> = match execution {
         Ok(success) => {
             let processed_at = Utc::now();
             let params = MarkRuntimeJobV2TerminalParams {
@@ -137,28 +150,40 @@ pub async fn process_next_job(
                     job_id = %job.job_id,
                     "runtime job completed transition skipped due idempotent state"
                 );
+                Ok("completed_skipped")
             } else {
+                let success_provider = success.provider.clone();
+                let success_operation = success.operation.clone();
+                let success_result_redacted = success.result_redacted.clone();
                 info!(
                     job_id = %job.job_id,
-                    provider = %success.provider,
-                    operation = %success.operation,
-                    result = %success.result_redacted,
+                    provider = %success_provider,
+                    operation = %success_operation,
+                    result = %success_result_redacted,
                     "runtime job completed"
+                );
+                info!(
+                    worker_metric = "runtime_jobs_completed_total",
+                    value = 1u64,
+                    job_id = %job.job_id,
+                    provider = %success_provider,
+                    operation = %success_operation,
+                    "worker metric"
                 );
                 insert_runtime_job_event_best_effort(
                     pool,
                     job.job_id.as_str(),
                     "completed",
                     json!({
-                        "provider": success.provider,
-                        "operation": success.operation,
+                        "provider": success_provider,
+                        "operation": success_operation,
                         "state": "completed",
-                        "result": success.result_redacted,
+                        "result": success_result_redacted,
                     }),
                 )
                 .await;
+                Ok("completed")
             }
-            Ok(())
         }
         Err(error) => {
             let now = Utc::now();
@@ -188,6 +213,7 @@ pub async fn process_next_job(
                             job_id = %job.job_id,
                             "runtime job retry transition skipped due idempotent state"
                         );
+                        Ok("retry_scheduled_skipped")
                     } else {
                         info!(
                             job_id = %job.job_id,
@@ -208,6 +234,7 @@ pub async fn process_next_job(
                             }),
                         )
                         .await;
+                        Ok("retry_scheduled")
                     }
                 }
                 retry::FailureAction::DeadLetter { failure_kind } => {
@@ -247,17 +274,25 @@ pub async fn process_next_job(
                             }),
                         )
                         .await;
+                        info!(
+                            worker_metric = "runtime_jobs_failed_total",
+                            value = 1u64,
+                            job_id = %job.job_id,
+                            failure_kind,
+                            error_class = error.kind.as_str(),
+                            "worker metric"
+                        );
+                        Ok("dead_lettered")
                     } else {
                         info!(
                             job_id = %job.job_id,
                             failure_kind,
                             "runtime job dead-letter transition skipped due idempotent state"
                         );
+                        Ok("dead_lettered_skipped")
                     }
                 }
             }
-
-            Ok(())
         }
     };
 
@@ -271,12 +306,28 @@ pub async fn process_next_job(
         );
     }
 
+    let job_outcome = transition_result
+        .as_ref()
+        .map(|outcome| *outcome)
+        .unwrap_or("transition_error");
+    info!(
+        worker_metric = "runtime_job_duration_seconds",
+        value = execution_started_at.elapsed().as_secs_f64(),
+        job_id = %job.job_id,
+        outcome = job_outcome,
+        "worker metric"
+    );
+
     transition_result?;
     Ok(Some(claimed_job_id))
 }
 
 pub async fn recover_expired_jobs(pool: &PgPool, now: DateTime<Utc>) -> Result<u64> {
     lease::recover_expired_running_jobs(pool, now).await
+}
+
+pub async fn queue_snapshot(pool: &PgPool, now: DateTime<Utc>) -> Result<lease::QueueSnapshot> {
+    lease::queue_snapshot(pool, now).await
 }
 
 fn env_i64(key: &str, default: i64) -> i64 {

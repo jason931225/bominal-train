@@ -45,15 +45,12 @@ new_case() {
   mkdir -p "${case_dir}/bin"
 
   cat > "${case_dir}/runtime.env" <<'EOF'
-BOMINAL_API_IMAGE=ghcr.io/example/bominal-api@sha256:aaa
 BOMINAL_WORKER_IMAGE=ghcr.io/example/bominal-worker@sha256:bbb
 DATABASE_URL=postgresql://example
 EOF
 
   cat > "${case_dir}/compose.prod.yml" <<'EOF'
 services:
-  api:
-    image: example
   worker:
     image: example
   redis:
@@ -88,10 +85,10 @@ case "${subcommand}" in
     if printf '%s\n' "$*" | grep -q -- '--services'; then
       case "${MOCK_PS_MODE:-full}" in
         full)
-          printf 'redis\napi\nworker\n'
-          ;;
-        missing_api)
           printf 'redis\nworker\n'
+          ;;
+        missing_worker)
+          printf 'redis\n'
           ;;
         missing_all)
           printf '\n'
@@ -186,7 +183,7 @@ main() {
 
   local case_start_missing
   case_start_missing="$(new_case)"
-  MOCK_PS_MODE="missing_api" run_case "${case_start_missing}" start \
+  MOCK_PS_MODE="missing_worker" run_case "${case_start_missing}" start \
     --runtime-env "${case_start_missing}/runtime.env" \
     --compose-file "${case_start_missing}/compose.prod.yml" \
     --vm-secret-env "${case_start_missing}/vm-secrets.env"
@@ -200,7 +197,7 @@ main() {
     --compose-file "${case_start_ok}/compose.prod.yml" \
     --vm-secret-env "${case_start_ok}/vm-secrets.env"
   assert_status 0 "start success"
-  assert_contains "${case_start_ok}/docker.log" "start redis api worker" "start command"
+  assert_contains "${case_start_ok}/docker.log" "start redis worker" "start command"
   assert_contains "${case_start_ok}/health.log" "healthcheck" "health invoked"
 
   local case_deploy_ok
@@ -228,7 +225,6 @@ main() {
     --runtime-env "${case_status}/runtime.env" \
     --compose-file "${case_status}/compose.prod.yml"
   assert_status 0 "status success"
-  assert_contains "${LAST_OUTPUT_FILE}" "api_image=ghcr.io/example/bominal-api@sha256:aaa" "status api image"
   assert_contains "${LAST_OUTPUT_FILE}" "worker_image=ghcr.io/example/bominal-worker@sha256:bbb" "status worker image"
 
   local case_logs_default
@@ -237,7 +233,7 @@ main() {
     --runtime-env "${case_logs_default}/runtime.env" \
     --compose-file "${case_logs_default}/compose.prod.yml"
   assert_status 0 "logs default success"
-  assert_contains "${case_logs_default}/docker.log" "logs api worker" "logs default services"
+  assert_contains "${case_logs_default}/docker.log" "logs worker" "logs default services"
 
   local case_project_name
   case_project_name="$(new_case)"

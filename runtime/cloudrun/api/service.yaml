@@ -1,0 +1,108 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: __CLOUDRUN_API_SERVICE__
+  annotations:
+    run.googleapis.com/ingress: all
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/minScale: "0"
+        autoscaling.knative.dev/maxScale: "1"
+        run.googleapis.com/cpu-throttling: "true"
+        run.googleapis.com/startup-cpu-boost: "true"
+        run.googleapis.com/vpc-access-egress: private-ranges-only
+        run.googleapis.com/network-interfaces: '__CLOUDRUN_NETWORK_INTERFACES__'
+    spec:
+      containerConcurrency: 4
+      timeoutSeconds: 35
+      serviceAccountName: __CLOUDRUN_API_SERVICE_ACCOUNT__
+      containers:
+        - image: __CLOUDRUN_API_IMAGE__
+          ports:
+            - name: http1
+              containerPort: 8080
+          resources:
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          env:
+            - name: APP_ENV
+              value: production
+            - name: APP_HOST
+              value: 0.0.0.0
+            - name: APP_PORT
+              value: "8080"
+            - name: LOG_JSON
+              value: "true"
+            - name: FRONTEND_ASSETS_DIR
+              value: /app/frontend/dist
+            - name: STATION_CATALOG_JSON_PATH
+              value: /app/data/train/station_catalog.v1.json
+            - name: STATION_CATALOG_SOURCE_MODE
+              value: repo_only
+            - name: USER_APP_HOST
+              value: __USER_APP_HOST__
+            - name: ADMIN_APP_HOST
+              value: __ADMIN_APP_HOST__
+            - name: SESSION_COOKIE_DOMAIN
+              value: __SESSION_COOKIE_DOMAIN__
+            - name: INVITE_BASE_URL
+              value: __INVITE_BASE_URL__
+            - name: EMAIL_FROM_ADDRESS
+              value: __EMAIL_FROM_ADDRESS__
+            - name: PASSKEY_PROVIDER
+              value: server_webauthn
+            - name: WEBAUTHN_RP_ID
+              value: __WEBAUTHN_RP_ID__
+            - name: WEBAUTHN_RP_ORIGIN
+              value: __WEBAUTHN_RP_ORIGIN__
+            - name: WEBAUTHN_RP_NAME
+              value: bominal
+            - name: HTTP_REQUEST_TIMEOUT_SECONDS
+              value: "30"
+            - name: HTTP_REQUEST_BODY_LIMIT_BYTES
+              value: "2097152"
+            - name: HTTP_CONCURRENCY_LIMIT
+              value: "4"
+            - name: PASSWORD_HASH_CONCURRENCY
+              value: "1"
+            - name: API_DB_POOL_MAX_CONNECTIONS
+              value: "4"
+            - name: DB_POOL_ACQUIRE_TIMEOUT_SECONDS
+              value: "2"
+            - name: DB_POOL_IDLE_TIMEOUT_SECONDS
+              value: "60"
+            - name: DB_POOL_MAX_LIFETIME_SECONDS
+              value: "300"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: DATABASE_URL
+                  key: latest
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: REDIS_URL
+                  key: latest
+            - name: SESSION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: SESSION_SECRET
+                  key: latest
+            - name: INTERNAL_IDENTITY_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: INTERNAL_IDENTITY_SECRET
+                  key: latest
+            - name: MASTER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: MASTER_KEY
+                  key: latest
+            - name: RESEND_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: RESEND_API_KEY
+                  key: latest

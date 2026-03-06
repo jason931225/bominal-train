@@ -9,7 +9,6 @@ require_cmd docker
 require_cmd mktemp
 require_var BOMINAL_RUNTIME_ENV_PATH
 require_var BOMINAL_COMPOSE_FILE
-require_var BOMINAL_API_SERVICE
 require_var BOMINAL_WORKER_SERVICE
 
 if [ ! -f "${BOMINAL_RUNTIME_ENV_PATH}" ]; then
@@ -29,12 +28,11 @@ set -a
 source "${rollback_state_path}"
 set +a
 
-set_env_key "${BOMINAL_RUNTIME_ENV_PATH}" "BOMINAL_API_IMAGE" "${BOMINAL_PREV_API_IMAGE:-}"
 set_env_key "${BOMINAL_RUNTIME_ENV_PATH}" "BOMINAL_WORKER_IMAGE" "${BOMINAL_PREV_WORKER_IMAGE:-}"
 set_env_key "${BOMINAL_RUNTIME_ENV_PATH}" "DATABASE_URL" "${BOMINAL_PREV_DATABASE_URL:-}"
 
 log "rolling back services"
 compose_cmd "${BOMINAL_RUNTIME_ENV_PATH}" "${BOMINAL_COMPOSE_FILE}" up -d --no-build \
-  "${BOMINAL_API_SERVICE}" "${BOMINAL_WORKER_SERVICE}"
+  "${BOMINAL_WORKER_SERVICE}"
 
 log "rollback script completed"

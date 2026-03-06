@@ -10,7 +10,6 @@ require_cmd docker
 
 require_var BOMINAL_RUNTIME_ENV_PATH
 require_var BOMINAL_COMPOSE_FILE
-require_var BOMINAL_API_SERVICE
 require_var BOMINAL_WORKER_SERVICE
 require_var BOMINAL_HEALTHCHECK_LIVE_URL
 require_var BOMINAL_HEALTHCHECK_READY_URL
@@ -57,7 +56,6 @@ running_services="$(
     --services --status running | tr -d '\r'
 )"
 
-printf '%s\n' "${running_services}" | grep -qx "${BOMINAL_API_SERVICE}" || fail "api service not running: ${BOMINAL_API_SERVICE}"
 printf '%s\n' "${running_services}" | grep -qx "${BOMINAL_WORKER_SERVICE}" || fail "worker service not running: ${BOMINAL_WORKER_SERVICE}"
 
 log "health checks completed"

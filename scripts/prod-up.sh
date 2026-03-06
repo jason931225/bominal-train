@@ -20,7 +20,7 @@ EXIT_ROLLBACK=6
 runtime_env_path="${BOMINAL_RUNTIME_ENV_PATH:-/opt/bominal/repo/env/prod/runtime.env}"
 compose_file="${BOMINAL_COMPOSE_FILE:-/opt/bominal/repo/runtime/compose.prod.yml}"
 vm_secret_env_file="${BOMINAL_VM_SECRET_ENV_FILE:-/opt/bominal/env/prod/vm-secrets.env}"
-api_service="${BOMINAL_API_SERVICE:-api}"
+api_service="${BOMINAL_API_SERVICE:-}"
 worker_service="${BOMINAL_WORKER_SERVICE:-worker}"
 redis_service="${BOMINAL_REDIS_SERVICE:-redis}"
 compose_project_name="${BOMINAL_COMPOSE_PROJECT_NAME:-}"
@@ -41,7 +41,7 @@ Subcommands:
   start       Start existing runtime containers only, then run health checks.
   status      Show runtime service status and pinned image refs from runtime env.
   health      Run runtime health checks.
-  logs        Show runtime service logs (defaults to api+worker).
+  logs        Show runtime service logs (defaults to worker).
   deploy      Run deploy flow (requires --yes), then health check and rollback on failure.
   rollback    Run rollback flow (requires --yes), then health check.
   help        Show this help.
@@ -50,7 +50,7 @@ Global options:
   --runtime-env <path>     Runtime env file path.
   --compose-file <path>    Compose file path.
   --vm-secret-env <path>   VM secret env path.
-  --api-service <name>     API service name in compose.
+  --api-service <name>     Optional API service name in compose (legacy compatibility).
   --worker-service <name>  Worker service name in compose.
   --redis-service <name>   Redis service name in compose.
   --project-name <name>    Compose project name override.
@@ -61,7 +61,7 @@ Global options:
 Examples:
   ./scripts/prod-up.sh start
   ./scripts/prod-up.sh status --project-name bominal
-  ./scripts/prod-up.sh logs -f --since 30m --service api
+  ./scripts/prod-up.sh logs -f --since 30m --service worker
   ./scripts/prod-up.sh deploy --yes
   ./scripts/prod-up.sh rollback --yes
 EOF
@@ -144,8 +144,12 @@ export_common_env() {
   export BOMINAL_RUNTIME_ENV_PATH="${runtime_env_path}"
   export BOMINAL_COMPOSE_FILE="${compose_file}"
   export BOMINAL_VM_SECRET_ENV_FILE="${vm_secret_env_file}"
-  export BOMINAL_API_SERVICE="${api_service}"
   export BOMINAL_WORKER_SERVICE="${worker_service}"
+  if [ -n "${api_service}" ]; then
+    export BOMINAL_API_SERVICE="${api_service}"
+  else
+    unset BOMINAL_API_SERVICE 2>/dev/null || true
+  fi
   if [ -n "${compose_project_name}" ]; then
     export BOMINAL_COMPOSE_PROJECT_NAME="${compose_project_name}"
   else
@@ -190,12 +194,17 @@ ensure_service_containers_exist() {
   local service_listing=""
   local missing_services=()
   local service
+  local services_to_check=("${redis_service}" "${worker_service}")
+
+  if [ -n "${api_service}" ]; then
+    services_to_check+=("${api_service}")
+  fi
 
   if ! service_listing="$(compose_cmd "${runtime_env_path}" "${compose_file}" ps --all --services | tr -d '\r')"; then
     precondition_error "failed to inspect runtime containers via docker compose"
   fi
 
-  for service in "${redis_service}" "${api_service}" "${worker_service}"; do
+  for service in "${services_to_check[@]}"; do
     if ! printf '%s\n' "${service_listing}" | grep -qx "${service}"; then
       missing_services+=("${service}")
     fi
@@ -219,10 +228,15 @@ cmd_start() {
   require_runtime_inputs
   export_common_env
   ensure_service_containers_exist
+  local services_to_start=("${redis_service}" "${worker_service}")
 
-  log "starting existing runtime services: ${redis_service} ${api_service} ${worker_service}"
+  if [ -n "${api_service}" ]; then
+    services_to_start+=("${api_service}")
+  fi
+
+  log "starting existing runtime services: ${services_to_start[*]}"
   compose_cmd "${runtime_env_path}" "${compose_file}" start \
-    "${redis_service}" "${api_service}" "${worker_service}" >/dev/null
+    "${services_to_start[@]}" >/dev/null
 
   if ! run_healthcheck; then
     precondition_error "start completed but health checks failed"
@@ -245,7 +259,6 @@ cmd_status() {
 
   printf 'runtime_env=%s\n' "${runtime_env_path}"
   printf 'compose_file=%s\n' "${compose_file}"
-  printf 'api_image=%s\n' "$(read_env_key "${runtime_env_path}" "BOMINAL_API_IMAGE")"
   printf 'worker_image=%s\n' "$(read_env_key "${runtime_env_path}" "BOMINAL_WORKER_IMAGE")"
   printf 'database_url_present=%s\n' "$([ -n "$(read_env_key "${runtime_env_path}" "DATABASE_URL")" ] && printf true || printf false)"
 
@@ -321,7 +334,10 @@ cmd_logs() {
   done
 
   if [ "${#logs_services[@]}" -eq 0 ]; then
-    logs_services=("${api_service}" "${worker_service}")
+    logs_services=("${worker_service}")
+    if [ -n "${api_service}" ]; then
+      logs_services+=("${api_service}")
+    fi
   fi
 
   require_runtime_inputs

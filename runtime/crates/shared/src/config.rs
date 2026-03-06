@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+use sqlx::postgres::PgPoolOptions;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RedisConfig {
@@ -62,6 +63,72 @@ pub struct RuntimeSchedule {
     pub reconcile_interval: Duration,
     pub watch_interval: Duration,
     pub key_rotation_interval: Duration,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum DbPoolTarget {
+    Api,
+    Worker,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DbPoolConfig {
+    pub max_connections: u32,
+    pub acquire_timeout: Duration,
+    pub idle_timeout: Duration,
+    pub max_lifetime: Duration,
+}
+
+impl DbPoolConfig {
+    pub fn from_env(target: DbPoolTarget) -> Result<Self> {
+        Self::from_lookup(target, |key| match env::var(key) {
+            Ok(value) => Ok(Some(value)),
+            Err(env::VarError::NotPresent) => Ok(None),
+            Err(err) => Err(anyhow::anyhow!("failed to read {key}: {err}")).context("env read"),
+        })
+    }
+
+    fn from_lookup<F>(target: DbPoolTarget, lookup: F) -> Result<Self>
+    where
+        F: Fn(&str) -> Result<Option<String>>,
+    {
+        let max_connections = match target {
+            DbPoolTarget::Api => {
+                parse_positive_u32_lookup(&lookup, "API_DB_POOL_MAX_CONNECTIONS", 10)?
+            }
+            DbPoolTarget::Worker => {
+                parse_positive_u32_lookup(&lookup, "WORKER_DB_POOL_MAX_CONNECTIONS", 5)?
+            }
+        };
+
+        Ok(Self {
+            max_connections,
+            acquire_timeout: parse_positive_seconds_lookup(
+                &lookup,
+                "DB_POOL_ACQUIRE_TIMEOUT_SECONDS",
+                5,
+            )?,
+            idle_timeout: parse_positive_seconds_lookup(
+                &lookup,
+                "DB_POOL_IDLE_TIMEOUT_SECONDS",
+                300,
+            )?,
+            max_lifetime: parse_positive_seconds_lookup(
+                &lookup,
+                "DB_POOL_MAX_LIFETIME_SECONDS",
+                1800,
+            )?,
+        })
+    }
+}
+
+pub fn pg_pool_options_from_config(config: &DbPoolConfig) -> PgPoolOptions {
+    PgPoolOptions::new()
+        .max_connections(config.max_connections)
+        .acquire_timeout(config.acquire_timeout)
+        .idle_timeout(config.idle_timeout)
+        .max_lifetime(config.max_lifetime)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -240,6 +307,42 @@ fn parse_seconds(key: &str, default: u64) -> Result<Duration> {
         .map_or(Ok(Duration::from_secs(default)), Ok)
 }
 
+fn parse_positive_u32_lookup<F>(lookup: &F, key: &str, default: u32) -> Result<u32>
+where
+    F: Fn(&str) -> Result<Option<String>>,
+{
+    let Some(raw) = lookup(key)? else {
+        return Ok(default);
+    };
+
+    let value = raw
+        .parse::<u32>()
+        .with_context(|| format!("{key} must be a valid u32"))?;
+    if value == 0 {
+        return Err(anyhow::anyhow!("{key} must be greater than zero"));
+    }
+    Ok(value)
+}
+
+fn parse_positive_seconds_lookup<F>(lookup: &F, key: &str, default: u64) -> Result<Duration>
+where
+    F: Fn(&str) -> Result<Option<String>>,
+{
+    let Some(raw) = lookup(key)? else {
+        return Ok(Duration::from_secs(default));
+    };
+
+    let value = raw
+        .parse::<u64>()
+        .with_context(|| format!("{key} must be a positive integer in seconds"))?;
+    if value == 0 {
+        return Err(anyhow::anyhow!(
+            "{key} must be a positive integer in seconds"
+        ));
+    }
+    Ok(Duration::from_secs(value))
+}
+
 fn maybe_resend() -> Result<Option<ResendConfig>> {
     let api_key_present = env_opt("RESEND_API_KEY").is_some();
     let base_url = env_or("RESEND_BASE_URL", "https://api.resend.com")?;
@@ -274,6 +377,11 @@ fn parse_station_catalog_source_mode(raw: &str) -> Result<StationCatalogSourceMo
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+    use std::time::Duration;
+
+    use sqlx::postgres::PgPoolOptions;
+
     use super::normalize_database_url;
 
     #[test]
@@ -295,5 +403,90 @@ mod tests {
         let input = "postgresql+psycopg2://user:pw@db:5432/bominal?ssl=verify-full&x=1";
         let expected = "postgresql://user:pw@db:5432/bominal?sslmode=verify-full&x=1";
         assert_eq!(normalize_database_url(input), expected);
+    }
+
+    #[test]
+    fn db_pool_config_defaults_match_local_runtime_expectations() {
+        let env = HashMap::<String, String>::new();
+        let api = match super::DbPoolConfig::from_lookup(super::DbPoolTarget::Api, |key| {
+            Ok(env.get(key).cloned())
+        }) {
+            Ok(value) => value,
+            Err(err) => panic!("api db pool config should parse defaults: {err}"),
+        };
+        let worker = match super::DbPoolConfig::from_lookup(super::DbPoolTarget::Worker, |key| {
+            Ok(env.get(key).cloned())
+        }) {
+            Ok(value) => value,
+            Err(err) => panic!("worker db pool config should parse defaults: {err}"),
+        };
+
+        assert_eq!(api.max_connections, 10);
+        assert_eq!(worker.max_connections, 5);
+        assert_eq!(api.acquire_timeout, Duration::from_secs(5));
+        assert_eq!(worker.acquire_timeout, Duration::from_secs(5));
+        assert_eq!(api.idle_timeout, Duration::from_secs(300));
+        assert_eq!(worker.idle_timeout, Duration::from_secs(300));
+        assert_eq!(api.max_lifetime, Duration::from_secs(1800));
+        assert_eq!(worker.max_lifetime, Duration::from_secs(1800));
+    }
+
+    #[test]
+    fn db_pool_config_reads_role_specific_and_shared_overrides() {
+        let env = HashMap::from([
+            ("API_DB_POOL_MAX_CONNECTIONS".to_string(), "4".to_string()),
+            (
+                "WORKER_DB_POOL_MAX_CONNECTIONS".to_string(),
+                "3".to_string(),
+            ),
+            (
+                "DB_POOL_ACQUIRE_TIMEOUT_SECONDS".to_string(),
+                "2".to_string(),
+            ),
+            ("DB_POOL_IDLE_TIMEOUT_SECONDS".to_string(), "60".to_string()),
+            (
+                "DB_POOL_MAX_LIFETIME_SECONDS".to_string(),
+                "300".to_string(),
+            ),
+        ]);
+
+        let api = match super::DbPoolConfig::from_lookup(super::DbPoolTarget::Api, |key| {
+            Ok(env.get(key).cloned())
+        }) {
+            Ok(value) => value,
+            Err(err) => panic!("api db pool config should parse overrides: {err}"),
+        };
+        let worker = match super::DbPoolConfig::from_lookup(super::DbPoolTarget::Worker, |key| {
+            Ok(env.get(key).cloned())
+        }) {
+            Ok(value) => value,
+            Err(err) => panic!("worker db pool config should parse overrides: {err}"),
+        };
+
+        assert_eq!(api.max_connections, 4);
+        assert_eq!(worker.max_connections, 3);
+        assert_eq!(api.acquire_timeout, Duration::from_secs(2));
+        assert_eq!(worker.acquire_timeout, Duration::from_secs(2));
+        assert_eq!(api.idle_timeout, Duration::from_secs(60));
+        assert_eq!(worker.idle_timeout, Duration::from_secs(60));
+        assert_eq!(api.max_lifetime, Duration::from_secs(300));
+        assert_eq!(worker.max_lifetime, Duration::from_secs(300));
+    }
+
+    #[test]
+    fn pg_pool_options_from_config_applies_all_limits() {
+        let config = super::DbPoolConfig {
+            max_connections: 4,
+            acquire_timeout: Duration::from_secs(2),
+            idle_timeout: Duration::from_secs(60),
+            max_lifetime: Duration::from_secs(300),
+        };
+
+        let options: PgPoolOptions = super::pg_pool_options_from_config(&config);
+
+        assert_eq!(options.get_max_connections(), 4);
+        assert_eq!(options.get_acquire_timeout(), Duration::from_secs(2));
+        assert_eq!(options.get_idle_timeout(), Some(Duration::from_secs(60)));
+        assert_eq!(options.get_max_lifetime(), Some(Duration::from_secs(300)));
     }
 }
