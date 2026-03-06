@@ -26,6 +26,17 @@ if spec.get("openapi") != "3.1.0":
 
 if spec.get("info", {}).get("version") != "v1":
     raise SystemExit(f"unexpected internal schema version in {path}")
+
+security_scheme = (
+    spec.get("components", {})
+    .get("securitySchemes", {})
+    .get("InternalServiceToken", {})
+)
+if security_scheme.get("name") != "x-internal-service-token":
+    raise SystemExit(
+        "unexpected InternalServiceToken header name in "
+        f"{path}: {security_scheme.get('name')!r}"
+    )
 PY
 
 mkdir -p "${OUTPUT_DIR}"
@@ -231,7 +242,7 @@ export class InternalSdkClient {
   private async request<T>(path: string, init: RequestInit): Promise<T> {
     const headers = new Headers(init.headers);
     headers.set("accept", "application/json");
-    headers.set("x-bominal-service-token", this.serviceToken);
+    headers.set("x-internal-service-token", this.serviceToken);
     if (init.body && !headers.has("content-type")) {
       headers.set("content-type", "application/json");
     }

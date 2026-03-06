@@ -195,7 +195,7 @@ export class InternalSdkClient {
   private async request<T>(path: string, init: RequestInit): Promise<T> {
     const headers = new Headers(init.headers);
     headers.set("accept", "application/json");
-    headers.set("x-bominal-service-token", this.serviceToken);
+    headers.set("x-internal-service-token", this.serviceToken);
     if (init.body && !headers.has("content-type")) {
       headers.set("content-type", "application/json");
     }

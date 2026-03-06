@@ -286,7 +286,7 @@
       "InternalServiceToken": {
         "type": "apiKey",
         "in": "header",
-        "name": "x-bominal-service-token"
+        "name": "x-internal-service-token"
       }
     },
     "responses": {
