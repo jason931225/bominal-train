@@ -27,7 +27,7 @@ Project v2 item/field operations are done with `gh` using PAT (`GH_PAT_FULL`).
 
 ```bash
 set -a
-source /Users/jasonlee/bominal/env/dev/test.env
+source /path/to/your/env/file  # Replace with your actual env file path, e.g., env/dev/test.env; must export GH_PAT_FULL
 set +a
 export GH_TOKEN="$GH_PAT_FULL"
 gh auth status -h github.com
