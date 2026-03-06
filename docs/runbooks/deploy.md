@@ -6,7 +6,7 @@ Execute production deploys for `bominal` using the protected GitHub CD workflow 
 
 ## Preconditions
 
-- Deploy source is protected `main` or an approved release tag.
+- Deploy source is protected `main`; the current production CD workflow does not deploy from tag refs.
 - GitHub `production` environment is configured with required variables.
 - VM deploy scripts and runtime env contracts are present and current.
 
@@ -14,7 +14,8 @@ Execute production deploys for `bominal` using the protected GitHub CD workflow 
 
 1. Confirm scope and linked issue/PR metadata are complete.
 2. Confirm release artifact identity (image digest/version metadata).
-3. Trigger `.github/workflows/cd.yml` through approved path.
+3. Trigger `.github/workflows/cd.yml` from the `main` ref through the approved path.
+   For `workflow_dispatch`, set the required `deploy=true` input or the workflow will only publish images without executing the production deploy job.
 4. Verify deploy sequence:
    - remote deploy script execution
    - migration application
