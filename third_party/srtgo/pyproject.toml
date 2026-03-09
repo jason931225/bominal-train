@@ -27,6 +27,7 @@ dependencies = [
 ]
 dynamic = ["version"]
 [tool.setuptools_scm]
+fallback_version = "2.2.3.dev4+gfaedd2145"
 
 [project.urls]
 Homepage = "https://github.com/lapis42/srtgo"
