@@ -13,9 +13,11 @@ from enum import Enum
 from datetime import datetime
 from typing import Dict, List, Pattern
 
+from .interrupts import wrap_session_for_graceful_sigint
+
 # Constants
 EMAIL_REGEX: Pattern = re.compile(r"[^@]+@[^@]+\.[^@]+")
-PHONE_NUMBER_REGEX: Pattern = re.compile(r"(\d{3})-(\d{3,4})-(\d{4})")
+PHONE_NUMBER_REGEX: Pattern = re.compile(r"010-?(\d{3,4})-?(\d{4})$")
 
 USER_AGENT = (
     "Mozilla/5.0 (Linux; Android 15; SM-S912N Build/AP3A.240905.015.A2; wv) AppleWebKit/537.36"
@@ -26,6 +28,15 @@ DEFAULT_HEADERS: Dict[str, str] = {
     "User-Agent": USER_AGENT,
     "Accept": "application/json",
 }
+
+
+def _normalize_login_identifier(srt_id: str) -> tuple[str, str]:
+    srt_id = srt_id.strip()
+    if EMAIL_REGEX.fullmatch(srt_id):
+        return "2", srt_id
+    if PHONE_NUMBER_REGEX.fullmatch(srt_id):
+        return "3", re.sub(r"\D", "", srt_id)
+    return "1", srt_id
 
 RESERVE_JOBID = {
     "PERSONAL": "1101",  # 개인예약
@@ -530,7 +541,9 @@ class NetFunnelHelper:
 
     def __init__(self, debug=False):
         if HAS_CURL_CFFI:
-            self._session = curl_cffi.Session(impersonate="chrome")
+            self._session = wrap_session_for_graceful_sigint(
+                curl_cffi.Session(impersonate="chrome")
+            )
         else:
             self._session = requests.session()
         self._session.headers.update(self.DEFAULT_HEADERS)
@@ -650,7 +663,9 @@ class SRT:
         self, srt_id: str, srt_pw: str, auto_login: bool = True, verbose: bool = False
     ) -> None:
         if HAS_CURL_CFFI:
-            self._session = curl_cffi.Session(impersonate="chrome")
+            self._session = wrap_session_for_graceful_sigint(
+                curl_cffi.Session(impersonate="chrome")
+            )
         else:
             self._session = requests.session()
         self._session.headers.update(DEFAULT_HEADERS)
@@ -688,14 +703,7 @@ class SRT:
         srt_id = srt_id or self.srt_id
         srt_pw = srt_pw or self.srt_pw
 
-        login_type = (
-            "2"
-            if EMAIL_REGEX.match(srt_id)
-            else ("3" if PHONE_NUMBER_REGEX.match(srt_id) else "1")
-        )
-
-        if login_type == "3":
-            srt_id = re.sub("-", "", srt_id)
+        login_type, srt_id = _normalize_login_identifier(srt_id)
 
         data = {
             "auto": "Y",

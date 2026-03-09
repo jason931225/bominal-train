@@ -24,6 +24,8 @@ from Crypto.Util.Padding import pad
 from datetime import datetime, timedelta
 from functools import reduce
 
+from .interrupts import wrap_session_for_graceful_sigint
+
 
 # Constants
 EMAIL_REGEX = re.compile(r"[^@]+@[^@]+\.[^@]+")
@@ -544,7 +546,9 @@ class NetFunnelHelper:
 
     def __init__(self):
         if HAS_CURL_CFFI:
-            self._session = curl_cffi.Session(impersonate="chrome131_android")
+            self._session = wrap_session_for_graceful_sigint(
+                curl_cffi.Session(impersonate="chrome131_android")
+            )
         else:
             self._session = requests.session()
         self._session.headers.update(self.DEFAULT_HEADERS)
@@ -633,7 +637,9 @@ class Korail:
 
     def __init__(self, korail_id, korail_pw, auto_login=True, verbose=False):
         if HAS_CURL_CFFI:
-            self._session = curl_cffi.Session(impersonate="chrome131_android")
+            self._session = wrap_session_for_graceful_sigint(
+                curl_cffi.Session(impersonate="chrome131_android")
+            )
         else:
             self._session = requests.session()
         self._session.headers.update(DEFAULT_HEADERS)
@@ -815,7 +821,8 @@ class Korail:
             "mbCrdNo": self.membership_number,
         }
 
-        headers, _ = self._get_auth_headers_and_sid(API_ENDPOINTS["search_schedule"])
+        headers, sid = self._get_auth_headers_and_sid(API_ENDPOINTS["search_schedule"])
+        data["Sid"] = sid
         r = self._session.post(
             API_ENDPOINTS["search_schedule"], params=data, headers=headers
         )
