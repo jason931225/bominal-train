@@ -3,12 +3,6 @@ try:
 except ImportError:
     from requests.exceptions import ConnectionError, Timeout
 
-from datetime import datetime, timedelta
-from json.decoder import JSONDecodeError
-from random import gammavariate
-from termcolor import colored
-from typing import Awaitable, Callable, List, Optional, Tuple, Union
-
 import asyncio
 import click
 import inquirer
@@ -18,6 +12,12 @@ import telegram
 import time
 import re
 import sys
+
+from datetime import datetime, timedelta
+from json.decoder import JSONDecodeError
+from random import gammavariate
+from termcolor import colored
+from typing import Awaitable, Callable, List, Optional, Tuple, Union
 
 from .ktx import (
     Korail,
@@ -490,7 +490,6 @@ def set_login(rail_type="SRT", debug=False):
         ) if rail_type == "SRT" else Korail(
             login_info["id"], login_info["pass"], verbose=debug
         )
-
         return (
             rail
             if _keyring_set_many(
