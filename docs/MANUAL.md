@@ -2,7 +2,10 @@
 
 ## Product Scope And Non-Negotiables
 
-This manual is the canonical policy and operations source for **bominal**.
+This manual is the canonical product, security, permission, quality, deploy, and operations source for **bominal**.
+For GitHub governance and CI/CD policy, use:
+- `docs/GITHUB_GOVERNANCE.md`
+- `docs/CI_CD_POLICY.md`
 
 Mandatory invariants:
 - Product name stays `bominal` in UI, docs, and config.
@@ -75,359 +78,27 @@ Verification contract:
 - Run formatting, compile, and tests before completion claims.
 - Completion claims require command evidence, not assumptions.
 
-## CI-CD Target State Policy
+## CI-CD Policy
 
-Platform is intentionally tool-agnostic. Any CI/CD implementation MUST satisfy these outcome gates.
+Canonical CI/CD policy has been moved to:
+- `docs/CI_CD_POLICY.md`
 
-Required pipeline stages:
-0. Trigger gate
-- full CI on pull requests to protected branches (`dev`, `staging`, `main`),
-- minimal post-merge guardrail CI on protected branch pushes,
-- docs/markdown-only changes bypass heavy CI/CD stages.
+This includes:
+- required CI/CD stage gates and trigger model,
+- docs-only routing and deploy trigger rules,
+- artifact/reporting requirements,
+- CI tier and Actions-minute budget governance.
 
-1. Source integrity gate
-- deterministic checkout
-- lockfile integrity
-- forbidden-secret scan
+## GitHub Governance Policy
 
-2. Build and static gate
-- compile all runtime services with locked dependencies
-- type/lint checks for web/runtime assets
-- scheduled clean-build verification without cache for dependency drift detection
+Canonical GitHub governance has been moved to:
+- `docs/GITHUB_GOVERNANCE.md`
 
-3. Test and quality gate
-- unit tests first, then integration tests
-- coverage threshold enforcement
-- critical-path negative test enforcement
-
-4. Supply-chain and security gate
-- dependency vulnerability scan on every pull request
-- base image provenance/signing checks
-
-5. Release gate
-- immutable artifacts with version metadata
-- changelog and docs alignment verification
-
-6. Deploy gate
-- pre-deploy config validation
-- migration safety validation
-- rollout strategy enforcement (progressive/controlled)
-
-7. Post-deploy gate
-- health checks
-- smoke checks
-- rollback trigger evaluation
-
-Change-scope routing policy:
-- Docs-only deltas MUST bypass heavy CI/CD stages (build, runtime test, artifact publish, deploy).
-- Docs-only means changes under `docs/**` or markdown-only file updates.
-- Deploy workflows MUST NOT trigger from markdown-only changes even when they occur under otherwise deploy-scoped paths (for example `runtime/**` or `env/prod/**`).
-
-Mandatory artifacts:
-- build metadata,
-- test and coverage reports,
-- security scan report,
-- deployment decision log,
-- post-deploy verification summary.
-
-## GitHub Project Management Policy
-
-Use GitHub Issues, Pull Requests, Actions, Milestones, and Project tracking as the operational source of truth for active delivery.
-
-Authority model:
-- Canonical policy and security/deploy standards remain in-repo (`docs/MANUAL.md`).
-- GitHub Wiki is active for operational guidance, onboarding, and coordination pages, and MUST link back to canonical manual sections when policy-sensitive topics are referenced.
-
-### Label Taxonomy
-
-All active Issues and PRs MUST carry:
-- exactly one `type:*` label:
-  - `type:bug`
-  - `type:enhancement`
-  - `type:documentation`
-  - `type:chore`
-  - `type:security`
-  - `type:ops`
-- exactly one `area:*` label:
-  - `area:runtime-api`
-  - `area:runtime-worker`
-  - `area:runtime-shared`
-  - `area:runtime-frontend`
-  - `area:payment-crypto`
-  - `area:docs`
-  - `area:ci-cd`
-  - `area:infra`
-  - `area:auth`
-  - `area:observability`
-- exactly one `priority:*` label:
-  - `priority:p0`
-  - `priority:p1`
-  - `priority:p2`
-  - `priority:p3`
-
-Optional labels:
-- status/risk labels (`status:*`, `risk:*`) are encouraged for routing and incident response.
-- CI execution tier labels (`ci:tier:light|standard|heavy`) are required on non-promotion PRs.
-- semver labels (`semver:major|minor|patch|none`) are release metadata for production-release and promotion planning only.
-- budget labels (`budget:override`, `budget:lockdown`) are reserved for Actions minute-governance controls.
-- `duplicate`, `help wanted`, `question`, `invalid`, `wontfix` remain available for triage outcomes.
-
-Canonical label definitions MUST be kept in `.github/labels.yml`.
-
-Priority scope classification:
-- `priority:p0`: active incident, security emergency, data-integrity risk, or release-blocking production risk.
-- `priority:p1`: high-impact, near-term committed work with meaningful user/operator risk.
-- `priority:p2`: planned standard backlog delivery without immediate service risk.
-- `priority:p3`: exploratory or deferred backlog work.
-
-PR label inheritance:
-- PR `type:*`, `area:*`, and `priority:*` labels MUST inherit from the primary linked issue (`Closes #...`).
-- Label mismatches between PR and linked issue are merge-blocking governance failures.
-
-### Issue Governance
-
-Issue intake MUST use repository issue forms (`.github/ISSUE_TEMPLATE/*.yml`) and include:
-- problem statement
-- expected outcome
-- in-scope / out-of-scope
-- acceptance criteria
-- risk classification
-- verification plan
-
-Blank issues are disabled by default.
-
-### Pull Request Governance
-
-Every PR to `main` MUST:
-1. Link at least one issue with closing syntax (`Closes #123`).
-2. Include summary, scope, risk/rollback notes, verification evidence, docs impact, and changelog impact in the PR template.
-3. Carry required labels (`type:*`, `area:*`, `priority:*`).
-4. Carry exactly one `ci:tier:*` label unless it is an explicit promotion/back-promotion PR.
-5. Resolve all review conversations before merge.
-6. Pass required checks and branch protection rules.
-
-Additional PR rules:
-- Docs-only PRs:
-  - scope must remain docs/markdown only,
-  - must include `type:documentation` and `area:docs`,
-  - use docs-only CI/CD routing (no heavy build/deploy stages).
-- Duplicate PRs:
-  - apply `duplicate`,
-  - include replacement reference in body/comment,
-  - close or keep only as historical context.
-- PR structure:
-  - one PR should represent one coherent change scope, even when it contains multiple focused commits,
-  - split into multiple PRs only when scopes are independent, need different merge order, or require risk isolation.
-
-### Secondary AI Review
-
-- Every non-trivial PR SHOULD request both AI reviews when scope/risk warrants it; Copilot-first then Codex cross-check is the default sequence:
-  1. `@copilot review`
-  2. resolve/waive material Copilot findings
-  3. `@codex review`
-- Every PR MUST request at least a secondary Codex review comment after labels/body/checks are ready:
-  - `@codex review`
-- For material-risk changes (`SECURITY`, `PRODUCTION`, `DESTRUCTIVE`) or high-complexity refactors, also request:
-  - `@copilot review`
-- Copilot review is required for:
-  - PRs linked to work items with `Risk=Medium` or `Risk=High`,
-  - any PR classified as `Review Depth=Secondary Required`.
-- Copilot review should be used judiciously:
-  - avoid routine docs-only or low-risk hygiene PRs unless explicitly warranted,
-  - prefer risk-driven usage (security/auth/payment/deploy/sensitive migrations),
-  - default cross-check order is `@copilot review` then `@codex review`.
-- Copilot findings are classified as:
-  - `Material`: security/auth/payment/session/data-loss/deploy/test-gap scope,
-  - `Advisory`: quality/style/non-blocking scope.
-- Merge is blocked while any material Codex or Copilot finding is open.
-- Material findings may only be waived by a maintainer with explicit rationale and risk note.
-- AI review is advisory and does not replace required human approval policy where applicable.
-- Copilot review monthly budget is capped at `300` requests per month (UTC month boundary, reset on day `1`).
-- CI MUST track monthly `@copilot review` invocation count and fail when budget is exceeded.
-
-### Actions Minute Governance
-
-- GitHub Actions usage is billed by minute and must be actively governed.
-- Monthly global Actions budget cap: `3000` minutes.
-- Reserved CD budget pool: `300` minutes (for `CD`, `CD Non-Production`, and `Release Tag` workflows).
-- Non-CD budget cap: `2700` minutes.
-- Governance modes:
-  - `normal`: full non-CD policy checks run.
-  - `throttle`: only `ci:tier:heavy` (or hotfix/override) PRs run heavy checks; other PRs run cheap checks only.
-  - `lockdown`: non-hotfix non-CD workflows are blocked; CD remains reserved until global cap is reached.
-- Global lockdown (`>=3000` used) blocks CD/release workflows unless explicit emergency override policy is invoked.
-- Budget tracking and reporting:
-  - reusable evaluator workflow: `.github/workflows/actions-budget-governor.yml`,
-  - daily report workflow: `.github/workflows/actions-budget-report.yml`,
-  - operator commands: `/budget status`, `/budget override reason:\"...\"`.
-
-### Project Tracking
-
-Maintain three active GitHub Project v2 boards:
-- `bominal Workstreams`: issue intake and delivery tracking.
-- `bominal Review`: PR review-depth and merge-readiness tracking.
-- `bominal Agent Command`: automation control-plane for dispatch, claim checkpoints, and policy escalations.
-
-Operational runbooks:
-- `docs/playbooks/GITHUB_PROJECT_AUTOMATION.md`
-- `docs/playbooks/GITHUB_PROJECT_OPERATIONS.md`
-
-`bominal Workstreams` required fields:
-- `Status`: `Triage`, `Ready`, `In Progress`, `In Review`, `Blocked`, `Done`
-- `Type`: `Bug`, `Enhancement`, `Docs`, `Chore`, `Security`, `Ops`
-- `Area`: aligned to `area:*` taxonomy
-- `Priority`: `P0`, `P1`, `P2`, `P3`
-- `Risk`: `Low`, `Medium`, `High`
-- `Release Checkpoint`: `Backlog`, `Ready for Staging Gate`, `Gate In Progress`, `Promotion PR Open`, `Promoted`
-- `Promotion Flag`: `None`, `Promote`, `Hold`
-- `Target Release`: semver target (for example `v0.2.0`)
-- `Due Date`
-- `Linked PR`
-- `Gate Issue URL` (text)
-- `Merge Order Source` (text)
-
-`bominal Review` required fields:
-- `Review Status`: `Ready for Review`, `Changes Requested`, `Approved`, `Merged`
-- `Review Depth`: `Standard`, `Secondary Required`
-- `Copilot Required`: `Yes`, `No`
-- `Copilot Material State`: `Clear`, `Material Open`, `Material Waived`
-- `Linked Issue`
-
-`bominal Agent Command` required fields:
-- `Queue Rank`
-- `Claim State`: `Ready`, `Claimed`, `Design Note Posted`, `Draft PR Linked`, `Blocked`, `Escalated`
-- `Checkpoint`: `Claim`, `Design Note`, `Draft PR`
-- `Domain Lock`: `Pass`, `Fail`
-- `Conflict State`: `None`, `Rebase Required`
-- `Escalation State`: `None`, `Secondary Review`, `Policy Exception`
-
-Template adoption strategy:
-- Full adoption: iterative development + kanban flow on `bominal Workstreams`.
-- Partial adoption: feature-release, bug-tracker, and product-launch templates as saved views/filters over the same canonical issues (not separate duplicate issue systems).
-- Non-adoption: avoid template mechanics that duplicate labeling/project state outside canonical issue fields.
-
-Automation expectations:
-- new issues are auto-added to `bominal Workstreams` with `Status=Triage`,
-- implementation starts only from `Ready` issues with required labels/acceptance/verification metadata,
-- agent pickup order is deterministic: highest `priority:*`, then FIFO oldest `Ready`,
-- claim flow is checkpoint-driven: `Claimed` -> `Design Note Posted` -> `Draft PR Linked`,
-- hard domain lock applies: one `area:*` per implementation item and PR path-set,
-- area WIP cap is `1`; same-area merge conflicts auto-transition active claims to `Blocked` with rebase checklist,
-- linked PR review-ready state moves issue status to `In Review` (or mapped fallback when board options differ),
-- merged linked PR moves issue status to `Done`,
-- promotion to `staging` is gate-driven from milestone checkpoints, not direct branch merge side effects.
-
-Repository automation prerequisites:
-- preferred variables:
-  - `BOMINAL_WORKSTREAMS_PROJECT_OWNER`
-  - `BOMINAL_WORKSTREAMS_PROJECT_NUMBER`
-- review/command board variables:
-  - `BOMINAL_REVIEW_PROJECT_OWNER`
-  - `BOMINAL_REVIEW_PROJECT_NUMBER`
-  - `BOMINAL_COMMAND_PROJECT_OWNER`
-  - `BOMINAL_COMMAND_PROJECT_NUMBER`
-  - optional: `ACTIONS_MINUTES_MONTHLY_BUDGET` (default `3000`)
-  - optional: `ACTIONS_CD_RESERVED_MINUTES` (default `300`)
-  - optional: `ACTIONS_BURNRATE_ENFORCE` (default `true`)
-  - optional: `ACTIONS_BURNRATE_BUFFER_PCT` (default `10`)
-  - optional: `ACTIONS_CD_WORKFLOW_NAMES` (default `CD,CD Non-Production,Release Tag`)
-  - optional: `ACTIONS_HOTFIX_BRANCH_PREFIX` (default `hotfix/`)
-  - optional: `ACTIONS_BUDGET_REPORT_ISSUE_NUMBER` (issue number for daily budget report comment updates)
-  - optional: `COPILOT_REVIEW_MONTHLY_BUDGET` (default `300`)
-  - optional: `COPILOT_REVIEW_WARN_THRESHOLD` (default `270`)
-- repository secret `PROJECT_AUTOMATION_TOKEN` with `repo`, `project`, and `read:project` scopes.
-- transition compatibility while workflow migration is in progress:
-  - keep legacy `BOMINAL_PROJECT_OWNER`
-  - keep legacy `BOMINAL_PROJECT_NUMBER`
-
-Agent policy:
-- agents MUST pull work from `bominal Agent Command` queue state, not ad-hoc branch choice,
-- no implementation PR without a linked issue (`Closes #...`),
-- secondary review is required when risk/sensitive scope or large-diff policy is triggered,
-- orchestrator-authored issues MUST include scope, risk, domain lock, dependency notes, and merge-order notes.
-
-### Promotion Gate And Commands
-
-Promotion governance is enforced by deterministic workflows:
-- `promotion-gate-controller.yml`: creates/refreshes gate issues from Workstreams `Release Checkpoint=Ready for Staging Gate`.
-- `promotion-gate.yml`: runs `ci_gate` and `promotion_governance_gate`.
-- `promotion-gate-review-loop.yml`: enforces review-loop evidence (`@copilot review`, `@codex review`) and no unresolved `CHANGES_REQUESTED`.
-- `promotion-gate-commands.yml`: handles `/gate ...` and `/promote merge`.
-- `promotion-pr-open-dev-staging.yml`: opens `dev -> staging` PR only after gate pass + promotion intent.
-
-Gate pass prerequisites for `dev -> staging`:
-- `gate:ci-pass`
-- `gate:governance-pass`
-- `gate:review-round-complete`
-- `gate:promote`
-
-Command policy:
-- `/gate refresh` reruns gate validation for a specific issue.
-- `/gate promote` sets promotion intent (and project `Promotion Flag=Promote` where available).
-- `/gate waive advisory ...` records advisory-only waivers in gate `## Waiver Ledger`.
-- `/promote merge` is restricted to write/maintain/admin and enforces green checks + no active `CHANGES_REQUESTED`.
-- `/budget status` reports month-to-date usage and current governance mode.
-- `/budget override reason:\"...\"` applies auditable temporary budget bypass marker (`budget:override`).
-
-Orchestrator policy:
-- orchestrator agents MUST create or update a GitHub issue before dispatching execution agents.
-- orchestrator-created issues MUST include:
-  - explicit `type:*`, `area:*`, `priority:*`, and `risk:*` labels,
-  - scope (`in-scope`, `out-of-scope`),
-  - domain constraints (security/auth/payment/deploy boundaries),
-  - acceptance criteria and verification plan,
-  - rollback note and dependency context,
-  - clear implementation instructions and non-goals.
-
-### Wiki Governance
-
-Required active wiki pages:
-- Home
-- Roadmap
-- Release Calendar
-- Incident Index
-- Contributor Workflow
-
-Wiki pages that describe policy MUST link back to canonical manual anchors instead of redefining policy independently.
-
-Wiki bootstrap note:
-- if `<repo>.wiki.git` is not yet provisioned, initialize the first wiki page via GitHub UI, then manage pages through git or web edits.
-
-### Milestones, Releases, And Tags
-
-Release planning model:
-- create one milestone per planned semver release (`vX.Y.Z`),
-- assign all release-scoped issues/PRs to that milestone,
-- close milestone only after acceptance criteria are met.
-
-Tagging model:
-- create annotated semver tags only (`vMAJOR.MINOR.PATCH`) from `main`,
-- create tags through protected manual workflow dispatch (not ad-hoc local tagging),
-- each release tag MUST have release notes and changelog alignment evidence.
-
-### Branch Protection Baseline For `main`
-
-Required branch settings:
-- require pull request before merge,
-- require configured approving review count (solo mode may be `0`; policy-driven secondary review gates still apply),
-- dismiss stale approvals on new commits,
-- require conversation resolution,
-- require strict up-to-date status checks,
-- enforce for admins,
-- disallow force-pushes and deletions.
-
-Required status checks:
-- `Workflow Lint`
-- `PR Governance`
-- `CI Budget Policy`
-- `PR Execution Policy`
-- `Dependency Review`
-- `Copilot Review Budget`
-- `Branch Policy Gate`
-
-Merge strategy default:
-- prefer squash merge for routine feature/fix PRs,
-- merge commit and rebase merge should remain disabled unless a documented exception is approved.
+This includes:
+- issue, PR, label, and project-board policy,
+- promotion-gate command model and orchestrator contract,
+- secondary AI-review policy and Copilot budget controls,
+- tested agent command/MCP contract, milestones/releases/tags, and branch protection baseline.
 
 ## Deployment And Rollback Standard
 
@@ -472,8 +143,11 @@ Operational expectations:
 ## Documentation Governance
 
 Single-source rule:
-- `docs/MANUAL.md` is canonical policy + operations guidance.
-- Other docs should reference this manual instead of redefining policy.
+- canonical policy is split by domain:
+  - `docs/MANUAL.md` for product/security/permissions/quality/deploy/ops/docs governance,
+  - `docs/CI_CD_POLICY.md` for CI/CD execution and resource governance,
+  - `docs/GITHUB_GOVERNANCE.md` for GitHub issue/PR/project/release governance.
+- other docs should reference canonical documents instead of redefining policy.
 
 Change discipline:
 - Docs-first for policy-sensitive work.
@@ -483,7 +157,7 @@ Change discipline:
 Pointer discipline:
 - Keep `docs/README.md` as a compact pointer index.
 - Keep `docs/START_HERE.md` as orientation entrypoint.
-- Keep `docs/INTENT_ROUTING.md` as keyword router into manual sections.
+- Keep `docs/INTENT_ROUTING.md` as keyword router into canonical docs.
 - Keep `docs/PROD_ENV_CONTRACT.md` aligned with production env key contracts and secret-handling posture.
 
 ## Current Gap Register And Backfill Targets

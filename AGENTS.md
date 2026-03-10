@@ -6,8 +6,10 @@ Guidance for automated contributors in this repository.
 
 1. `docs/START_HERE.md`
 2. `docs/MANUAL.md`
-3. `docs/README.md`
-4. `docs/INTENT_ROUTING.md`
+3. `docs/GITHUB_GOVERNANCE.md`
+4. `docs/CI_CD_POLICY.md`
+5. `docs/README.md`
+6. `docs/INTENT_ROUTING.md`
 
 ## Non-Negotiables
 
@@ -16,7 +18,10 @@ Guidance for automated contributors in this repository.
 3. Keep train-provider integration behavior source-aligned with `third_party/srtgo/srtgo/srt.py` and `third_party/srtgo/srtgo/ktx.py`.
 4. Never log or persist secrets, passwords, tokens, PAN/CVV, or raw sensitive provider payloads.
 5. Preserve session-cookie security behavior (`HttpOnly`, `SameSite=Lax`, `Secure` only in production).
-6. Follow `docs/MANUAL.md` for security, permissions, quality, CI/CD target controls, deployment standards, and docs governance.
+6. Follow canonical policy docs:
+   - `docs/MANUAL.md` for security, permissions, quality, deployment standards, and docs governance.
+   - `docs/GITHUB_GOVERNANCE.md` for issue/PR/project/release governance.
+   - `docs/CI_CD_POLICY.md` for CI/CD execution and resource policy.
 7. Keep `CHANGELOG.md` commit-based and append notable updates under `## Unreleased`.
 
 ## Repository Scope
@@ -37,14 +42,13 @@ Preserved external reference docs:
 - Validate changes with build/test commands relevant to touched scope.
 - Treat critical-path areas (auth, security, payment boundary, deployment) as high-rigor paths.
 - Do not perform destructive or production/security boundary operations without explicit human approval.
-- For GitHub Project v2 operations, follow `docs/playbooks/GITHUB_PROJECT_OPERATIONS.md` and use PAT-bootstrapped `gh` commands (Project v2 field/item admin is CLI-first in this repo flow).
+- For GitHub Project v2 operations, follow `docs/GITHUB_GOVERNANCE.md` and use PAT-bootstrapped `gh` commands (Project v2 field/item admin is CLI-first in this repo flow).
 - For PRs, request AI reviews generously when warranted: run `@copilot review` first for medium/high-risk or complex scope, then `@codex review` as cross-check before merge.
 
 ## GitHub Project Operating Policy (Mandatory)
 
 Agents MUST follow the three-board model documented in:
-- `docs/MANUAL.md#project-tracking`
-- `docs/playbooks/GITHUB_PROJECT_AUTOMATION.md`
+- `docs/GITHUB_GOVERNANCE.md#project-tracking`
 
 Execution rules:
 - Pull work from `bominal Agent Command` queue state, not ad-hoc branch-first selection.
@@ -64,8 +68,8 @@ Execution rules:
 - Preserve CI ordering: unit/static checks before integration-heavy checks.
 - Keep `@copilot review` usage judicious and within monthly budget (`300`, resets on the 1st UTC); rely on CI budget tracking before requesting additional reviews.
 - Keep Actions usage within minute-governance policy: `3000` monthly global cap with `300` reserved for CD workflows.
-- For project operations commands and MCP tooling, follow `docs/playbooks/GITHUB_PROJECT_AUTOMATION.md`.
-- If `gh` lacks project scopes, load `GH_PAT_FULL` from `env/dev/test.env` as documented in the playbook before board operations.
+- For project operations commands and MCP tooling, follow `docs/GITHUB_GOVERNANCE.md`.
+- If `gh` lacks project scopes, load `GH_PAT_FULL` from `env/dev/test.env` as documented in `docs/GITHUB_GOVERNANCE.md` before board operations.
 
 ## Current Infrastructure Reality
 

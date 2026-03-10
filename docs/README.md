@@ -1,11 +1,11 @@
 # Bominal Docs Index
 
 Canonical documentation:
-- `docs/MANUAL.md` - single source of policy, quality, operations, and target-state CI/CD controls.
-- `docs/MANUAL.md#github-project-management-policy` - canonical GitHub governance contract (labels, issue/PR policy, project tracking, wiki linkage, milestones/tags, and branch protection baseline).
-- `docs/MANUAL.md#project-tracking` - canonical three-board operating model (`bominal Workstreams`, `bominal Review`, `bominal Agent Command`) and automation expectations.
+- `docs/MANUAL.md` - canonical product/security/permissions/quality/deploy/ops/docs governance.
+- `docs/GITHUB_GOVERNANCE.md` - canonical GitHub governance contract (labels, issues/PRs, project boards, promotion commands, milestones/tags, wiki, branch protection, and agent command/MCP contract).
+- `docs/CI_CD_POLICY.md` - canonical CI/CD stage gates, docs-only routing, resource budget controls, and CD efficiency policy.
 - `docs/START_HERE.md` - entrypoint for humans and agents.
-- `docs/INTENT_ROUTING.md` - keyword router into manual sections.
+- `docs/INTENT_ROUTING.md` - keyword router into canonical docs.
 - `docs/GUARDRAIL.MD` - explicit immutable boundary: `third_party/**` is read-only.
 - `docs/PROD_ENV_CONTRACT.md` - key-by-key production env classification (`required` / `optional` / `secret-manager-only` / `must-be-false-in-prod` / `public-safe`).
 
@@ -15,7 +15,7 @@ Preserved reference set:
 Repository-level governance entrypoints:
 - `AGENTS.md` - mandatory constraints for automated contributors.
 - `CHANGELOG.md` - commit-based change log.
-- GitHub Wiki - active operational/onboarding/project coordination pages that must reference canonical policy anchors in `docs/MANUAL.md`.
+- GitHub Wiki - active operational/onboarding/project coordination pages that must reference canonical policy anchors in `docs/GITHUB_GOVERNANCE.md` and `docs/MANUAL.md`.
 
 Active implementation plans:
 - `docs/plans/2026-03-02-runtime-test-backfill-srt-parity.md` - runtime test backfill and SRT parity rewrite plan.
@@ -24,8 +24,6 @@ Active implementation plans:
 
 Operational playbooks:
 - `docs/playbooks/RUST_PRODUCTION_CUTOVER.md` - hard-cutover + rollback checklist for Rust production deploy.
-- `docs/playbooks/GITHUB_PROJECT_AUTOMATION.md` - board topology, branch-promotion (`dev -> staging -> main`) automation policy, orchestrator issue contract, secondary-review disposition, and tested GH CLI/MCP command set for agents.
-- `docs/playbooks/GITHUB_PROJECT_OPERATIONS.md` - tested PAT/MCP project-board operations runbook, automation validation flow, and secondary-review command policy (`@codex review`, risk-based `@copilot review`).
 
 Note:
 - Legacy split docs trees (governance/humans/agents/playbooks/plans/etc.) were intentionally removed from canonical usage.
