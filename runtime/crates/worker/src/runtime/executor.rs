@@ -923,6 +923,24 @@ struct PaymentDecryptPayload {
     card_password_two_digits_ev: String,
 }
 
+fn payment_crypto_http_client() -> &'static reqwest::Client {
+    static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    CLIENT.get_or_init(|| {
+        let timeout = std::time::Duration::from_secs(15);
+        reqwest::Client::builder()
+            .timeout(timeout)
+            .build()
+            .unwrap_or_else(|err| {
+                tracing::warn!(
+                    error = %err,
+                    "payment crypto http client builder failed; \
+                     falling back to no-timeout default — downstream calls may hang"
+                );
+                reqwest::Client::new()
+            })
+    })
+}
+
 async fn decrypt_via_payment_crypto_service(
     provider: &str,
     owner_ref: &str,
@@ -945,16 +963,7 @@ async fn decrypt_via_payment_crypto_service(
         base_url.trim_end_matches('/'),
         PAYMENT_CRYPTO_DECRYPT_PATH
     );
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(15))
-        .build()
-        .map_err(|_| {
-            ExecutionError::new(
-                ExecutionErrorKind::Transient,
-                "payment crypto service unavailable",
-                json!({"provider": provider, "operation": operation_name, "class": "payment_crypto_http_init"}),
-            )
-        })?;
+    let client = payment_crypto_http_client();
     let mut request_builder = client
         .post(url)
         .header(CONTENT_TYPE, "application/json")
