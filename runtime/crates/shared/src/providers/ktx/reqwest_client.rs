@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 use chrono::{Duration as ChronoDuration, Utc};
-use reqwest::blocking::Client as BlockingClient;
+use reqwest::Client;
 use reqwest::header::CONTENT_TYPE;
 use secrecy::{ExposeSecret, SecretString};
 use url::form_urlencoded;
@@ -64,10 +64,7 @@ struct PlannedFailure {
 #[derive(Debug, Clone)]
 enum KtxTransportMode {
     Deterministic,
-    Live {
-        base_url: String,
-        client: BlockingClient,
-    },
+    Live { base_url: String, client: Client },
 }
 
 #[derive(Debug, Clone)]
@@ -95,10 +92,10 @@ impl ReqwestKtxClient {
     }
 
     pub fn live_with_timeout(base_url: impl Into<String>, timeout: Duration) -> Self {
-        let client = BlockingClient::builder()
+        let client = Client::builder()
             .timeout(timeout)
             .build()
-            .unwrap_or_else(|_| BlockingClient::new());
+            .unwrap_or_else(|_| Client::new());
         Self {
             mode: KtxTransportMode::Live {
                 base_url: trim_trailing_slash(base_url.into()),
@@ -179,7 +176,7 @@ impl ReqwestKtxClient {
         Ok(())
     }
 
-    fn maybe_live_form(
+    async fn maybe_live_form(
         &self,
         operation: ProviderOperation,
         endpoint: &str,
@@ -196,6 +193,7 @@ impl ReqwestKtxClient {
             .header(CONTENT_TYPE, "application/x-www-form-urlencoded")
             .body(encoded_form)
             .send()
+            .await
             .map_err(|err| SrtProviderError::Transport {
                 message: format!(
                     "ktx transport failed for {}: {err}",
@@ -300,7 +298,10 @@ impl ReqwestKtxClient {
 }
 
 impl SrtClient for ReqwestKtxClient {
-    fn login(&mut self, request: &LoginRequest) -> SrtResult<ClientCallOutput<LoginResponse>> {
+    async fn login(
+        &mut self,
+        request: &LoginRequest,
+    ) -> SrtResult<ClientCallOutput<LoginResponse>> {
         self.maybe_fail(ProviderOperation::Login)?;
         self.maybe_live_form(
             ProviderOperation::Login,
@@ -315,11 +316,12 @@ impl SrtClient for ReqwestKtxClient {
                     request.password.expose_secret().to_string(),
                 ),
             ],
-        )?;
+        )
+        .await?;
         Ok(ClientCallOutput::success(Self::canned_login_response()))
     }
 
-    fn logout(
+    async fn logout(
         &mut self,
         _session: &SessionSnapshot,
         _request: &LogoutRequest,
@@ -329,13 +331,14 @@ impl SrtClient for ReqwestKtxClient {
             ProviderOperation::Logout,
             "/classes/com.korail.mobile.common.logout",
             Vec::new(),
-        )?;
+        )
+        .await?;
         Ok(ClientCallOutput::success(LogoutResponse {
             logged_out: true,
         }))
     }
 
-    fn search_train(
+    async fn search_train(
         &mut self,
         _session: &SessionSnapshot,
         request: &SearchTrainRequest,
@@ -350,14 +353,15 @@ impl SrtClient for ReqwestKtxClient {
                 ("txtGoAbrdDt".to_string(), request.dep_date.clone()),
                 ("txtGoHour".to_string(), request.dep_time.clone()),
             ],
-        )?;
+        )
+        .await?;
         Ok(ClientCallOutput::success(SearchTrainResponse {
             trains: vec![Self::canned_train()],
             netfunnel_status: NetfunnelStatus::Pass,
         }))
     }
 
-    fn reserve(
+    async fn reserve(
         &mut self,
         _session: &SessionSnapshot,
         request: &ReserveRequest,
@@ -370,13 +374,14 @@ impl SrtClient for ReqwestKtxClient {
                 ("txtTrnNo1".to_string(), request.train.train_number.clone()),
                 ("txtRunDt1".to_string(), request.train.dep_date.clone()),
             ],
-        )?;
+        )
+        .await?;
         Ok(ClientCallOutput::success(ReserveResponse {
             reservation: Self::canned_reservation(),
         }))
     }
 
-    fn reserve_standby(
+    async fn reserve_standby(
         &mut self,
         _session: &SessionSnapshot,
         _request: &ReserveStandbyRequest,
@@ -386,7 +391,7 @@ impl SrtClient for ReqwestKtxClient {
         })
     }
 
-    fn reserve_standby_option_settings(
+    async fn reserve_standby_option_settings(
         &mut self,
         _session: &SessionSnapshot,
         _request: &ReserveStandbyOptionSettingsRequest,
@@ -396,7 +401,7 @@ impl SrtClient for ReqwestKtxClient {
         })
     }
 
-    fn get_reservations(
+    async fn get_reservations(
         &mut self,
         _session: &SessionSnapshot,
         _request: &GetReservationsRequest,
@@ -406,13 +411,14 @@ impl SrtClient for ReqwestKtxClient {
             ProviderOperation::GetReservations,
             "/classes/com.korail.mobile.certification.ReservationList",
             Vec::new(),
-        )?;
+        )
+        .await?;
         Ok(ClientCallOutput::success(GetReservationsResponse {
             reservations: vec![Self::canned_reservation()],
         }))
     }
 
-    fn ticket_info(
+    async fn ticket_info(
         &mut self,
         _session: &SessionSnapshot,
         request: &TicketInfoRequest,
@@ -422,13 +428,14 @@ impl SrtClient for ReqwestKtxClient {
             ProviderOperation::TicketInfo,
             "/classes/com.korail.mobile.refunds.SelTicketInfo",
             vec![("txtPnrNo".to_string(), request.reservation_id.clone())],
-        )?;
+        )
+        .await?;
         Ok(ClientCallOutput::success(TicketInfoResponse {
             tickets: vec![Self::canned_ticket()],
         }))
     }
 
-    fn cancel(
+    async fn cancel(
         &mut self,
         _session: &SessionSnapshot,
         request: &CancelRequest,
@@ -438,11 +445,12 @@ impl SrtClient for ReqwestKtxClient {
             ProviderOperation::Cancel,
             "/classes/com.korail.mobile.reservationCancel.ReservationCancelChk",
             vec![("txtPnrNo".to_string(), request.reservation_id.clone())],
-        )?;
+        )
+        .await?;
         Ok(ClientCallOutput::success(CancelResponse { canceled: true }))
     }
 
-    fn pay_with_card(
+    async fn pay_with_card(
         &mut self,
         _session: &SessionSnapshot,
         request: &PayWithCardRequest,
@@ -470,14 +478,15 @@ impl SrtClient for ReqwestKtxClient {
                     request.card_expiry_yymm.expose_secret().to_string(),
                 ),
             ],
-        )?;
+        )
+        .await?;
         Ok(ClientCallOutput::success(PayWithCardResponse {
             paid: true,
             approval_code: Some("KTX-APR-1".to_string()),
         }))
     }
 
-    fn reserve_info(
+    async fn reserve_info(
         &mut self,
         _session: &SessionSnapshot,
         _request: &ReserveInfoRequest,
@@ -487,7 +496,7 @@ impl SrtClient for ReqwestKtxClient {
         })
     }
 
-    fn refund(
+    async fn refund(
         &mut self,
         _session: &SessionSnapshot,
         request: &RefundRequest,
@@ -497,11 +506,15 @@ impl SrtClient for ReqwestKtxClient {
             ProviderOperation::Refund,
             "/classes/com.korail.mobile.refunds.RefundsRequest",
             vec![("txtPnrNo".to_string(), request.reservation_id.clone())],
-        )?;
+        )
+        .await?;
         Ok(ClientCallOutput::success(RefundResponse { refunded: true }))
     }
 
-    fn clear(&mut self, _request: &ClearRequest) -> SrtResult<ClientCallOutput<ClearResponse>> {
+    async fn clear(
+        &mut self,
+        _request: &ClearRequest,
+    ) -> SrtResult<ClientCallOutput<ClearResponse>> {
         self.maybe_fail(ProviderOperation::Clear)?;
         Ok(ClientCallOutput::success(ClearResponse { cleared: true }))
     }
@@ -535,4 +548,31 @@ fn encode_form_pairs(form: &[(String, String)]) -> String {
         serializer.append_pair(key.as_str(), value.as_str());
     }
     serializer.finish()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use super::*;
+    use crate::providers::srt::{LoginAccountType, LoginRequest};
+
+    #[tokio::test]
+    async fn ktx_live_provider_client_use_inside_tokio_does_not_require_blocking_reqwest() {
+        let join = tokio::spawn(async move {
+            let mut client =
+                ReqwestKtxClient::live_with_timeout("http://127.0.0.1:1", Duration::from_millis(5));
+
+            client
+                .login(&LoginRequest {
+                    account_type: LoginAccountType::MembershipNumber,
+                    account_identifier: "member-1".to_string(),
+                    password: SecretString::new("password".to_string().into_boxed_str()),
+                })
+                .await
+        });
+
+        let result = join.await.expect("client task should not panic");
+        assert!(matches!(result, Err(SrtProviderError::Transport { .. })));
+    }
 }

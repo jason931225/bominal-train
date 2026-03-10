@@ -390,28 +390,16 @@ async fn probe_provider_login_once(
         );
     }
 
-    let timeout = Duration::from_secs(PROVIDER_AUTH_PROBE_TIMEOUT_SECONDS);
-    let provider_owned = provider.to_string();
-    let account_owned = account_identifier.to_string();
-    let password_owned = password.to_string();
-    let handle = tokio::task::spawn_blocking(move || {
-        probe_provider_login_blocking(
-            provider_owned.as_str(),
-            account_owned.as_str(),
-            password_owned.as_str(),
-            timeout,
-        )
-    });
-    match handle.await {
-        Ok(result) => result,
-        Err(_) => AuthProbeResult::error(
-            provider,
-            "Authentication probe failed. Credentials were saved.",
-        ),
-    }
+    probe_provider_login(
+        provider,
+        account_identifier,
+        password,
+        Duration::from_secs(PROVIDER_AUTH_PROBE_TIMEOUT_SECONDS),
+    )
+    .await
 }
 
-fn probe_provider_login_blocking(
+async fn probe_provider_login(
     provider: &str,
     account_identifier: &str,
     password: &str,
@@ -429,14 +417,14 @@ fn probe_provider_login_blocking(
                 "https://app.srail.or.kr",
                 timeout,
             ));
-            adapter.login(request)
+            adapter.login(request).await
         }
         "ktx" => {
             let mut adapter = KtxProviderAdapter::new(ReqwestKtxClient::live_with_timeout(
                 "https://smart.letskorail.com",
                 timeout,
             ));
-            adapter.login(request)
+            adapter.login(request).await
         }
         _ => return AuthProbeResult::error(provider, "Authentication probe unsupported"),
     };

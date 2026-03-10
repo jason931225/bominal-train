@@ -35,74 +35,77 @@ impl<T> ClientCallOutput<T> {
     }
 }
 
+#[allow(async_fn_in_trait)]
 pub trait SrtClient {
-    fn login(&mut self, request: &LoginRequest) -> SrtResult<ClientCallOutput<LoginResponse>>;
+    async fn login(&mut self, request: &LoginRequest)
+    -> SrtResult<ClientCallOutput<LoginResponse>>;
 
-    fn logout(
+    async fn logout(
         &mut self,
         session: &SessionSnapshot,
         request: &LogoutRequest,
     ) -> SrtResult<ClientCallOutput<LogoutResponse>>;
 
-    fn search_train(
+    async fn search_train(
         &mut self,
         session: &SessionSnapshot,
         request: &SearchTrainRequest,
     ) -> SrtResult<ClientCallOutput<SearchTrainResponse>>;
 
-    fn reserve(
+    async fn reserve(
         &mut self,
         session: &SessionSnapshot,
         request: &ReserveRequest,
     ) -> SrtResult<ClientCallOutput<ReserveResponse>>;
 
-    fn reserve_standby(
+    async fn reserve_standby(
         &mut self,
         session: &SessionSnapshot,
         request: &ReserveStandbyRequest,
     ) -> SrtResult<ClientCallOutput<ReserveStandbyResponse>>;
 
-    fn reserve_standby_option_settings(
+    async fn reserve_standby_option_settings(
         &mut self,
         session: &SessionSnapshot,
         request: &ReserveStandbyOptionSettingsRequest,
     ) -> SrtResult<ClientCallOutput<ReserveStandbyOptionSettingsResponse>>;
 
-    fn get_reservations(
+    async fn get_reservations(
         &mut self,
         session: &SessionSnapshot,
         request: &GetReservationsRequest,
     ) -> SrtResult<ClientCallOutput<GetReservationsResponse>>;
 
-    fn ticket_info(
+    async fn ticket_info(
         &mut self,
         session: &SessionSnapshot,
         request: &TicketInfoRequest,
     ) -> SrtResult<ClientCallOutput<TicketInfoResponse>>;
 
-    fn cancel(
+    async fn cancel(
         &mut self,
         session: &SessionSnapshot,
         request: &CancelRequest,
     ) -> SrtResult<ClientCallOutput<CancelResponse>>;
 
-    fn pay_with_card(
+    async fn pay_with_card(
         &mut self,
         session: &SessionSnapshot,
         request: &PayWithCardRequest,
     ) -> SrtResult<ClientCallOutput<PayWithCardResponse>>;
 
-    fn reserve_info(
+    async fn reserve_info(
         &mut self,
         session: &SessionSnapshot,
         request: &ReserveInfoRequest,
     ) -> SrtResult<ClientCallOutput<ReserveInfoResponse>>;
 
-    fn refund(
+    async fn refund(
         &mut self,
         session: &SessionSnapshot,
         request: &RefundRequest,
     ) -> SrtResult<ClientCallOutput<RefundResponse>>;
 
-    fn clear(&mut self, request: &ClearRequest) -> SrtResult<ClientCallOutput<ClearResponse>>;
+    async fn clear(&mut self, request: &ClearRequest)
+    -> SrtResult<ClientCallOutput<ClearResponse>>;
 }

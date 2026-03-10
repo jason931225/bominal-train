@@ -21,15 +21,15 @@ impl KtxProviderAdapter {
         }
     }
 
-    pub fn login(&mut self, request: LoginRequest) -> ProviderResult<LoginResponse> {
-        self.inner.login(request)
+    pub async fn login(&mut self, request: LoginRequest) -> ProviderResult<LoginResponse> {
+        self.inner.login(request).await
     }
 
-    pub fn dispatch(
+    pub async fn dispatch(
         &mut self,
         request: ProviderOperationRequest,
     ) -> ProviderResult<ProviderOperationResponse> {
-        self.inner.dispatch(request)
+        self.inner.dispatch(request).await
     }
 
     pub fn session_snapshot(&self) -> Option<SessionSnapshot> {

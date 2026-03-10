@@ -282,7 +282,7 @@ impl ProviderExecutor {
             if let Some(failure_kind) = parsed.simulated_failure {
                 live_client = live_client.with_failure(operation, failure_kind, 1);
             }
-            match dispatch_srt_with_client(&parsed, live_client) {
+            match dispatch_srt_with_client(&parsed, live_client).await {
                 Ok(response) => {
                     let result_redacted = build_redacted_result(job, &response);
                     return Ok(ExecutionSuccess {
@@ -304,6 +304,7 @@ impl ProviderExecutor {
             fallback_client = fallback_client.with_failure(operation, failure_kind, 1);
         }
         let response = dispatch_srt_with_client(&parsed, fallback_client)
+            .await
             .map_err(|error| map_provider_error(error, "srt", operation_name.as_str()))?;
         let result_redacted = build_redacted_result(job, &response);
 
@@ -338,7 +339,7 @@ impl ProviderExecutor {
             if let Some(failure_kind) = parsed.simulated_failure {
                 live_client = live_client.with_srt_failure(operation, failure_kind, 1);
             }
-            match dispatch_ktx_with_client(&parsed, live_client) {
+            match dispatch_ktx_with_client(&parsed, live_client).await {
                 Ok(response) => {
                     let result_redacted = build_redacted_result(job, &response);
                     return Ok(ExecutionSuccess {
@@ -360,6 +361,7 @@ impl ProviderExecutor {
             fallback_client = fallback_client.with_srt_failure(operation, failure_kind, 1);
         }
         let response = dispatch_ktx_with_client(&parsed, fallback_client)
+            .await
             .map_err(|error| map_provider_error(error, "ktx", operation_name.as_str()))?;
         let result_redacted = build_redacted_result(job, &response);
 
@@ -453,7 +455,7 @@ fn map_srt_error(error: ProviderError, operation_name: &str) -> ExecutionError {
     map_provider_error(error, "srt", operation_name)
 }
 
-fn dispatch_srt_with_client(
+async fn dispatch_srt_with_client(
     parsed: &ParsedProviderExecution,
     client: ReqwestSrtClient,
 ) -> Result<SrtOperationResponse, ProviderError> {
@@ -463,12 +465,12 @@ fn dispatch_srt_with_client(
             .login_material
             .clone()
             .ok_or(ProviderError::NotLoggedIn)?;
-        adapter.login(login_request)?;
+        adapter.login(login_request).await?;
     }
-    adapter.dispatch(parsed.request.clone())
+    adapter.dispatch(parsed.request.clone()).await
 }
 
-fn dispatch_ktx_with_client(
+async fn dispatch_ktx_with_client(
     parsed: &ParsedProviderExecution,
     client: ReqwestKtxClient,
 ) -> Result<SrtOperationResponse, ProviderError> {
@@ -478,9 +480,9 @@ fn dispatch_ktx_with_client(
             .login_material
             .clone()
             .ok_or(ProviderError::NotLoggedIn)?;
-        adapter.login(login_request)?;
+        adapter.login(login_request).await?;
     }
-    adapter.dispatch(parsed.request.clone())
+    adapter.dispatch(parsed.request.clone()).await
 }
 
 fn should_fallback_to_deterministic(error: &ProviderError) -> bool {
@@ -1927,8 +1929,8 @@ mod tests {
         assert_eq!(error.context["class"], json!("auth"));
     }
 
-    #[test]
-    fn dispatch_ktx_supports_search_train_flow() {
+    #[tokio::test]
+    async fn dispatch_ktx_supports_search_train_flow() {
         let parsed = parsed_with_login(SrtOperationRequest::SearchTrain(SearchTrainRequest {
             dep_station_code: "0001".to_string(),
             arr_station_code: "0020".to_string(),
@@ -1940,17 +1942,19 @@ mod tests {
         }));
 
         let response = dispatch_ktx_with_client(&parsed, ReqwestKtxClient::deterministic())
+            .await
             .expect("ktx deterministic search should succeed");
         assert_eq!(response.operation_name(), "search_train");
     }
 
-    #[test]
-    fn dispatch_ktx_marks_unsupported_operations_fatal() {
+    #[tokio::test]
+    async fn dispatch_ktx_marks_unsupported_operations_fatal() {
         let parsed = parsed_with_login(SrtOperationRequest::ReserveInfo(ReserveInfoRequest {
             reservation_id: "KTX-PNR-1".to_string(),
         }));
 
         let error = dispatch_ktx_with_client(&parsed, ReqwestKtxClient::deterministic())
+            .await
             .expect_err("reserve_info should be unsupported for ktx");
         assert!(matches!(
             &error,

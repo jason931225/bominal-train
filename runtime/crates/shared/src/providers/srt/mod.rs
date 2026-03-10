@@ -141,6 +141,38 @@ pub struct SrtProviderAdapter<C: SrtClient> {
     cached_login_request: Option<LoginRequest>,
 }
 
+macro_rules! authenticated_call {
+    ($adapter:expr, |$client:ident, $session:ident| $call:expr) => {{
+        let adapter = &mut *$adapter;
+        let mut relogin_attempted = false;
+
+        loop {
+            let session_snapshot = adapter.current_session().await?;
+            match {
+                let $client = &mut adapter.client;
+                let $session = &session_snapshot;
+                $call
+            }
+            .await
+            {
+                Ok(output) => {
+                    adapter.apply_output_session(&output);
+                    break Ok(output.payload);
+                }
+                Err(error)
+                    if adapter.relogin_policy.retry_once_on_auth_failure
+                        && !relogin_attempted
+                        && error.is_auth_failure() =>
+                {
+                    adapter.try_relogin().await?;
+                    relogin_attempted = true;
+                }
+                Err(error) => break Err(error),
+            }
+        }
+    }};
+}
+
 impl<C: SrtClient> SrtProviderAdapter<C> {
     pub fn new(client: C) -> Self {
         Self {
@@ -170,12 +202,12 @@ impl<C: SrtClient> SrtProviderAdapter<C> {
         }
     }
 
-    fn perform_login(
+    async fn perform_login(
         &mut self,
         request: &LoginRequest,
         cache_request: bool,
     ) -> SrtResult<LoginResponse> {
-        let output = self.client.login(request)?;
+        let output = self.client.login(request).await?;
         self.apply_output_session(&output);
 
         let response = output.payload;
@@ -188,16 +220,16 @@ impl<C: SrtClient> SrtProviderAdapter<C> {
         Ok(response)
     }
 
-    fn try_relogin(&mut self) -> SrtResult<()> {
+    async fn try_relogin(&mut self) -> SrtResult<()> {
         let cached_request = self
             .cached_login_request
             .clone()
             .ok_or(SrtProviderError::ReloginUnavailable)?;
 
-        self.perform_login(&cached_request, false).map(|_| ())
+        self.perform_login(&cached_request, false).await.map(|_| ())
     }
 
-    fn current_session(&mut self) -> SrtResult<SessionSnapshot> {
+    async fn current_session(&mut self) -> SrtResult<SessionSnapshot> {
         let now = Utc::now();
         if let Some(snapshot) = self.session.snapshot()
             && !snapshot.is_expired_at(now)
@@ -205,80 +237,61 @@ impl<C: SrtClient> SrtProviderAdapter<C> {
             return Ok(snapshot);
         }
 
-        self.try_relogin()?;
+        self.try_relogin().await?;
         self.session.snapshot().ok_or(SrtProviderError::NotLoggedIn)
     }
 
-    fn call_authenticated<T, F>(
+    pub async fn dispatch(
         &mut self,
-        _operation: ProviderOperation,
-        mut invoke: F,
-    ) -> SrtResult<T>
-    where
-        F: FnMut(&mut C, &SessionSnapshot) -> SrtResult<ClientCallOutput<T>>,
-    {
-        let mut relogin_attempted = false;
-
-        loop {
-            let session = self.current_session()?;
-            match invoke(&mut self.client, &session) {
-                Ok(output) => {
-                    self.apply_output_session(&output);
-                    return Ok(output.payload);
-                }
-                Err(error)
-                    if self.relogin_policy.retry_once_on_auth_failure
-                        && !relogin_attempted
-                        && error.is_auth_failure() =>
-                {
-                    self.try_relogin()?;
-                    relogin_attempted = true;
-                }
-                Err(error) => return Err(error),
-            }
-        }
-    }
-
-    pub fn dispatch(&mut self, request: SrtOperationRequest) -> SrtResult<SrtOperationResponse> {
+        request: SrtOperationRequest,
+    ) -> SrtResult<SrtOperationResponse> {
         match request {
             SrtOperationRequest::Login(request) => {
-                self.login(request).map(SrtOperationResponse::Login)
+                self.login(request).await.map(SrtOperationResponse::Login)
             }
             SrtOperationRequest::Logout(request) => {
-                self.logout(request).map(SrtOperationResponse::Logout)
+                self.logout(request).await.map(SrtOperationResponse::Logout)
             }
             SrtOperationRequest::SearchTrain(request) => self
                 .search_train(request)
+                .await
                 .map(SrtOperationResponse::SearchTrain),
-            SrtOperationRequest::Reserve(request) => {
-                self.reserve(request).map(SrtOperationResponse::Reserve)
-            }
+            SrtOperationRequest::Reserve(request) => self
+                .reserve(request)
+                .await
+                .map(SrtOperationResponse::Reserve),
             SrtOperationRequest::ReserveStandby(request) => self
                 .reserve_standby(request)
+                .await
                 .map(SrtOperationResponse::ReserveStandby),
             SrtOperationRequest::ReserveStandbyOptionSettings(request) => self
                 .reserve_standby_option_settings(request)
+                .await
                 .map(SrtOperationResponse::ReserveStandbyOptionSettings),
             SrtOperationRequest::GetReservations(request) => self
                 .get_reservations(request)
+                .await
                 .map(SrtOperationResponse::GetReservations),
             SrtOperationRequest::TicketInfo(request) => self
                 .ticket_info(request)
+                .await
                 .map(SrtOperationResponse::TicketInfo),
             SrtOperationRequest::Cancel(request) => {
-                self.cancel(request).map(SrtOperationResponse::Cancel)
+                self.cancel(request).await.map(SrtOperationResponse::Cancel)
             }
             SrtOperationRequest::PayWithCard(request) => self
                 .pay_with_card(request)
+                .await
                 .map(SrtOperationResponse::PayWithCard),
             SrtOperationRequest::ReserveInfo(request) => self
                 .reserve_info(request)
+                .await
                 .map(SrtOperationResponse::ReserveInfo),
             SrtOperationRequest::Refund(request) => {
-                self.refund(request).map(SrtOperationResponse::Refund)
+                self.refund(request).await.map(SrtOperationResponse::Refund)
             }
             SrtOperationRequest::Clear(request) => {
-                self.clear(request).map(SrtOperationResponse::Clear)
+                self.clear(request).await.map(SrtOperationResponse::Clear)
             }
         }
     }
@@ -289,15 +302,13 @@ impl<C: SrtClient> ProviderAdapter for SrtProviderAdapter<C> {
         ProviderKind::Srt
     }
 
-    fn login(&mut self, request: LoginRequest) -> SrtResult<LoginResponse> {
-        self.perform_login(&request, true)
+    async fn login(&mut self, request: LoginRequest) -> SrtResult<LoginResponse> {
+        self.perform_login(&request, true).await
     }
 
-    fn logout(&mut self, request: LogoutRequest) -> SrtResult<LogoutResponse> {
+    async fn logout(&mut self, request: LogoutRequest) -> SrtResult<LogoutResponse> {
         let response = if self.session.is_active() {
-            self.call_authenticated(ProviderOperation::Logout, |client, session| {
-                client.logout(session, &request)
-            })?
+            authenticated_call!(self, |client, session| client.logout(session, &request))?
         } else {
             LogoutResponse { logged_out: true }
         };
@@ -307,78 +318,74 @@ impl<C: SrtClient> ProviderAdapter for SrtProviderAdapter<C> {
         Ok(response)
     }
 
-    fn search_train(&mut self, request: SearchTrainRequest) -> SrtResult<SearchTrainResponse> {
-        self.call_authenticated(ProviderOperation::SearchTrain, |client, session| {
-            client.search_train(session, &request)
-        })
+    async fn search_train(
+        &mut self,
+        request: SearchTrainRequest,
+    ) -> SrtResult<SearchTrainResponse> {
+        authenticated_call!(self, |client, session| client
+            .search_train(session, &request))
     }
 
-    fn reserve(&mut self, request: ReserveRequest) -> SrtResult<ReserveResponse> {
-        self.call_authenticated(ProviderOperation::Reserve, |client, session| {
-            client.reserve(session, &request)
-        })
+    async fn reserve(&mut self, request: ReserveRequest) -> SrtResult<ReserveResponse> {
+        authenticated_call!(self, |client, session| client.reserve(session, &request))
     }
 
-    fn reserve_standby(
+    async fn reserve_standby(
         &mut self,
         request: ReserveStandbyRequest,
     ) -> SrtResult<ReserveStandbyResponse> {
-        self.call_authenticated(ProviderOperation::ReserveStandby, |client, session| {
-            client.reserve_standby(session, &request)
-        })
+        authenticated_call!(self, |client, session| client
+            .reserve_standby(session, &request))
     }
 
-    fn reserve_standby_option_settings(
+    async fn reserve_standby_option_settings(
         &mut self,
         request: ReserveStandbyOptionSettingsRequest,
     ) -> SrtResult<ReserveStandbyOptionSettingsResponse> {
-        self.call_authenticated(
-            ProviderOperation::ReserveStandbyOptionSettings,
-            |client, session| client.reserve_standby_option_settings(session, &request),
-        )
+        authenticated_call!(self, |client, session| {
+            client.reserve_standby_option_settings(session, &request)
+        })
     }
 
-    fn get_reservations(
+    async fn get_reservations(
         &mut self,
         request: GetReservationsRequest,
     ) -> SrtResult<GetReservationsResponse> {
-        self.call_authenticated(ProviderOperation::GetReservations, |client, session| {
-            client.get_reservations(session, &request)
-        })
+        authenticated_call!(self, |client, session| client
+            .get_reservations(session, &request))
     }
 
-    fn ticket_info(&mut self, request: TicketInfoRequest) -> SrtResult<TicketInfoResponse> {
-        self.call_authenticated(ProviderOperation::TicketInfo, |client, session| {
-            client.ticket_info(session, &request)
-        })
+    async fn ticket_info(&mut self, request: TicketInfoRequest) -> SrtResult<TicketInfoResponse> {
+        authenticated_call!(self, |client, session| client
+            .ticket_info(session, &request))
     }
 
-    fn cancel(&mut self, request: CancelRequest) -> SrtResult<CancelResponse> {
-        self.call_authenticated(ProviderOperation::Cancel, |client, session| {
-            client.cancel(session, &request)
-        })
+    async fn cancel(&mut self, request: CancelRequest) -> SrtResult<CancelResponse> {
+        authenticated_call!(self, |client, session| client.cancel(session, &request))
     }
 
-    fn pay_with_card(&mut self, request: PayWithCardRequest) -> SrtResult<PayWithCardResponse> {
-        self.call_authenticated(ProviderOperation::PayWithCard, |client, session| {
-            client.pay_with_card(session, &request)
-        })
+    async fn pay_with_card(
+        &mut self,
+        request: PayWithCardRequest,
+    ) -> SrtResult<PayWithCardResponse> {
+        authenticated_call!(self, |client, session| client
+            .pay_with_card(session, &request))
     }
 
-    fn reserve_info(&mut self, request: ReserveInfoRequest) -> SrtResult<ReserveInfoResponse> {
-        self.call_authenticated(ProviderOperation::ReserveInfo, |client, session| {
-            client.reserve_info(session, &request)
-        })
+    async fn reserve_info(
+        &mut self,
+        request: ReserveInfoRequest,
+    ) -> SrtResult<ReserveInfoResponse> {
+        authenticated_call!(self, |client, session| client
+            .reserve_info(session, &request))
     }
 
-    fn refund(&mut self, request: RefundRequest) -> SrtResult<RefundResponse> {
-        self.call_authenticated(ProviderOperation::Refund, |client, session| {
-            client.refund(session, &request)
-        })
+    async fn refund(&mut self, request: RefundRequest) -> SrtResult<RefundResponse> {
+        authenticated_call!(self, |client, session| client.refund(session, &request))
     }
 
-    fn clear(&mut self, request: ClearRequest) -> SrtResult<ClearResponse> {
-        let output = self.client.clear(&request)?;
+    async fn clear(&mut self, request: ClearRequest) -> SrtResult<ClearResponse> {
+        let output = self.client.clear(&request).await?;
         self.apply_output_session(&output);
         Ok(output.payload)
     }
@@ -460,5 +467,44 @@ mod tests {
         assert!(!login.requires_authentication());
         assert!(!clear.requires_authentication());
         assert!(logout.requires_authentication());
+    }
+
+    #[tokio::test]
+    async fn async_provider_adapter_dispatch_keeps_existing_result_shapes() {
+        let mut adapter = SrtProviderAdapter::new(ReqwestSrtClient::deterministic());
+        let login = adapter
+            .login(LoginRequest {
+                account_type: LoginAccountType::MembershipNumber,
+                account_identifier: "member-1".to_string(),
+                password: SecretString::new("password".to_string().into_boxed_str()),
+            })
+            .await
+            .expect("deterministic login should succeed");
+
+        assert_eq!(login.membership_number, "MEM-DET-1");
+
+        let response = adapter
+            .dispatch(SrtOperationRequest::SearchTrain(SearchTrainRequest {
+                dep_station_code: "0551".to_string(),
+                arr_station_code: "0020".to_string(),
+                dep_date: "20260305".to_string(),
+                dep_time: "080000".to_string(),
+                time_limit: None,
+                passengers: vec![Passenger::adult(1)],
+                available_only: true,
+            }))
+            .await
+            .expect("deterministic dispatch should succeed");
+
+        match response {
+            SrtOperationResponse::SearchTrain(payload) => {
+                assert_eq!(payload.trains.len(), 1);
+                assert_eq!(payload.netfunnel_status, NetfunnelStatus::Pass);
+            }
+            other => panic!(
+                "expected search_train response shape, got {}",
+                other.operation_name()
+            ),
+        }
     }
 }
