@@ -19,6 +19,7 @@ use super::super::super::{
     services::{admin_service, auth_service, metrics_service},
 };
 use super::super::runtime_event_cursor;
+use super::super::sse as canonical_sse;
 
 #[derive(Debug, serde::Deserialize)]
 struct SensitiveMutationRequest {
@@ -1003,6 +1004,9 @@ async fn stream_runtime_jobs(
     }
     let events = stream! {
         let mut last_fingerprint: Option<String> = None;
+        let mut sent_sync = false;
+        let sync_id = uuid::Uuid::new_v4().to_string();
+        let mut seq: u64 = 0;
         loop {
             match admin_service::list_runtime_jobs(state.as_ref()).await {
                 Ok(jobs) => {
@@ -1037,22 +1041,44 @@ async fn stream_runtime_jobs(
                         })
                         .collect::<Vec<_>>()
                         .join(";");
-                    if last_fingerprint.as_ref() != Some(&fingerprint) {
+                    if !sent_sync {
+                        sent_sync = true;
                         last_fingerprint = Some(fingerprint);
                         let payload = serde_json::json!({ "items": items });
                         yield Ok::<Event, Infallible>(
-                            Event::default()
-                                .event("runtime_jobs")
-                                .data(payload.to_string()),
+                            canonical_sse::sync_event(
+                                "admin.runtime_jobs",
+                                "runtime_jobs",
+                                "all",
+                                &sync_id,
+                                seq,
+                                "runtime_jobs.v1",
+                                payload,
+                            ),
+                        );
+                    } else if last_fingerprint.as_ref() != Some(&fingerprint) {
+                        seq = seq.saturating_add(1);
+                        last_fingerprint = Some(fingerprint);
+                        yield Ok::<Event, Infallible>(
+                            canonical_sse::delta_event(
+                                "admin.runtime_jobs",
+                                "runtime_jobs",
+                                "all",
+                                &sync_id,
+                                seq,
+                                "runtime_jobs.v1",
+                                vec![canonical_sse::op_upsert(
+                                    "/items",
+                                    serde_json::json!(items),
+                                )],
+                            ),
                         );
                     }
                 }
                 Err(_) => {
-                    yield Ok::<Event, Infallible>(
-                        Event::default()
-                            .event("error")
-                            .data("{\"message\":\"runtime jobs stream temporarily unavailable\"}"),
-                    );
+                    yield Ok::<Event, Infallible>(canonical_sse::error_event(
+                        "runtime jobs stream temporarily unavailable",
+                    ));
                 }
             }
             tokio::time::sleep(Duration::from_secs(3)).await;
@@ -1092,11 +1118,28 @@ async fn stream_runtime_job_events(
     let mut after_id = request.after_id;
     let limit = request.limit;
     let events = stream! {
+        let sync_id = uuid::Uuid::new_v4().to_string();
+        let mut seq: u64 = 0;
+        yield Ok::<Event, Infallible>(
+            canonical_sse::sync_event(
+                "admin.runtime_job_events",
+                "runtime_job_events",
+                job_id.as_str(),
+                &sync_id,
+                seq,
+                "runtime_job_events.v1",
+                serde_json::json!({
+                    "job_id": job_id,
+                    "events": [],
+                }),
+            ),
+        );
         loop {
             match admin_service::list_runtime_job_events_page(state.as_ref(), &job_id, after_id, limit).await {
                 Ok(page) => {
                     for event in page.items {
                         after_id = event.id;
+                        seq = seq.saturating_add(1);
                         let payload = serde_json::json!({
                             "id": event.id,
                             "event_type": event.event_type,
@@ -1104,9 +1147,15 @@ async fn stream_runtime_job_events(
                             "created_at": event.created_at,
                         });
                         yield Ok::<Event, Infallible>(
-                            Event::default()
-                                .event("job_event")
-                                .data(payload.to_string()),
+                            canonical_sse::delta_event(
+                                "admin.runtime_job_events",
+                                "runtime_job_events",
+                                job_id.as_str(),
+                                &sync_id,
+                                seq,
+                                "runtime_job_events.v1",
+                                vec![canonical_sse::op_append("/events", payload)],
+                            ),
                         );
                     }
                     if page.has_more {
@@ -1114,11 +1163,9 @@ async fn stream_runtime_job_events(
                     }
                 }
                 Err(_) => {
-                    yield Ok::<Event, Infallible>(
-                        Event::default()
-                            .event("error")
-                            .data("{\"message\":\"stream temporarily unavailable\"}"),
-                    );
+                    yield Ok::<Event, Infallible>(canonical_sse::error_event(
+                        "stream temporarily unavailable",
+                    ));
                 }
             }
             tokio::time::sleep(Duration::from_secs(2)).await;
@@ -1391,6 +1438,9 @@ async fn stream_observability_events(
     }
     let events = stream! {
         let mut last_fingerprint: Option<String> = None;
+        let mut sent_sync = false;
+        let sync_id = uuid::Uuid::new_v4().to_string();
+        let mut seq: u64 = 0;
         loop {
             match admin_service::list_observability_events(state.as_ref()).await {
                 Ok(events) => {
@@ -1419,7 +1469,8 @@ async fn stream_observability_events(
                         })
                         .collect::<Vec<_>>()
                         .join(";");
-                    if last_fingerprint.as_ref() != Some(&fingerprint) {
+                    if !sent_sync {
+                        sent_sync = true;
                         last_fingerprint = Some(fingerprint);
                         let next_cursor = (!items.is_empty()).then(|| encode_cursor_offset(items.len()));
                         let payload = serde_json::json!({
@@ -1427,18 +1478,39 @@ async fn stream_observability_events(
                             "cursor": next_cursor,
                         });
                         yield Ok::<Event, Infallible>(
-                            Event::default()
-                                .event("observability_events")
-                                .data(payload.to_string()),
+                            canonical_sse::sync_event(
+                                "admin.observability_events",
+                                "observability_events",
+                                "all",
+                                &sync_id,
+                                seq,
+                                "observability_events.v1",
+                                payload,
+                            ),
+                        );
+                    } else if last_fingerprint.as_ref() != Some(&fingerprint) {
+                        seq = seq.saturating_add(1);
+                        last_fingerprint = Some(fingerprint);
+                        yield Ok::<Event, Infallible>(
+                            canonical_sse::delta_event(
+                                "admin.observability_events",
+                                "observability_events",
+                                "all",
+                                &sync_id,
+                                seq,
+                                "observability_events.v1",
+                                vec![canonical_sse::op_upsert(
+                                    "/items",
+                                    serde_json::json!(items),
+                                )],
+                            ),
                         );
                     }
                 }
                 Err(_) => {
-                    yield Ok::<Event, Infallible>(
-                        Event::default()
-                            .event("error")
-                            .data("{\"message\":\"observability stream temporarily unavailable\"}"),
-                    );
+                    yield Ok::<Event, Infallible>(canonical_sse::error_event(
+                        "observability stream temporarily unavailable",
+                    ));
                 }
             }
             tokio::time::sleep(Duration::from_secs(3)).await;

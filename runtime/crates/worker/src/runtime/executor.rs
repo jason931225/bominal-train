@@ -1077,7 +1077,9 @@ fn validate_aad_hash(
         )
     })?;
     let computed = Sha256::digest(aad_bytes.as_slice());
-    if computed.as_slice() != stored_hash {
+    let matches_legacy_plain = stored_hash == aad_bytes.as_slice();
+    let matches_hashed = stored_hash == computed.as_slice();
+    if !matches_legacy_plain && !matches_hashed {
         return Err(ExecutionError::new(
             ExecutionErrorKind::Fatal,
             "provider secret envelope invalid",

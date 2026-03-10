@@ -344,13 +344,7 @@ export const renderRuntimeSection = async (ctx) => {
       state.streamDisabled = true;
       return;
     }
-    runtimeJobsStream.addEventListener("runtime_jobs", (event) => {
-      let payload = null;
-      try {
-        payload = JSON.parse(event.data || "{}");
-      } catch (_error) {
-        return;
-      }
+    const applyItems = (items) => {
       if (
         state.filters.q ||
         state.filters.status ||
@@ -359,15 +353,36 @@ export const renderRuntimeSection = async (ctx) => {
       ) {
         return;
       }
-      const streamItems = Array.isArray(payload.items)
-        ? payload.items
-        : Array.isArray(payload.jobs)
-          ? payload.jobs
-          : [];
+      const streamItems = Array.isArray(items) ? items : [];
       state.jobs.items = streamItems;
       state.jobs.nextCursor = null;
       state.jobs.hasMore = false;
       render();
+    };
+    runtimeJobsStream.addEventListener("sync", (event) => {
+      let payload = null;
+      try {
+        payload = JSON.parse(event.data || "{}");
+      } catch (_error) {
+        return;
+      }
+      const snapshot = payload && typeof payload.snapshot === "object" ? payload.snapshot : {};
+      applyItems(snapshot.items);
+    });
+    runtimeJobsStream.addEventListener("delta", (event) => {
+      let payload = null;
+      try {
+        payload = JSON.parse(event.data || "{}");
+      } catch (_error) {
+        return;
+      }
+      const ops = Array.isArray(payload.ops) ? payload.ops : [];
+      ops.forEach((op) => {
+        if (!op || typeof op !== "object") return;
+        if (op.op === "upsert" && op.path === "/items") {
+          applyItems(op.value);
+        }
+      });
     });
     runtimeJobsStream.addEventListener("error", () => {
       closeStream();

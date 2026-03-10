@@ -13,6 +13,7 @@ use bominal_shared::{
     },
 };
 use chrono::Utc;
+use sha2::Digest;
 use tracing::{error, warn};
 use uuid::Uuid;
 
@@ -90,8 +91,9 @@ pub(crate) async fn put_provider_credentials(
     let encrypted = cipher
         .encrypt(&plaintext, aad.clone())
         .map_err(|_| PutProviderCredentialsError::CryptoUnavailable)?;
-    let aad_hash =
+    let aad_bytes =
         serde_json::to_vec(&aad).map_err(|_| PutProviderCredentialsError::CryptoUnavailable)?;
+    let aad_hash = sha2::Sha256::digest(aad_bytes.as_slice());
     let key_version = i32::try_from(encrypted.key_version)
         .map_err(|_| PutProviderCredentialsError::CryptoUnavailable)?;
     let now = Utc::now();
@@ -443,7 +445,14 @@ fn probe_provider_login_blocking(
 
     match outcome {
         Ok(_) => AuthProbeResult::success(provider),
-        Err(error) => AuthProbeResult::error(provider, probe_error_message(&error).as_str()),
+        Err(error) => {
+            let message = probe_error_message(&error);
+            if should_skip_probe_failure(&error) {
+                AuthProbeResult::skipped(provider, message.as_str())
+            } else {
+                AuthProbeResult::error(provider, message.as_str())
+            }
+        }
     }
 }
 
@@ -456,21 +465,52 @@ fn probe_error_message(error: &ProviderError) -> String {
             "Authentication failed. Provider session could not be created.".to_string()
         }
         ProviderError::Transport { message } | ProviderError::OperationFailed { message } => {
-            let trimmed = message.trim();
-            let lower = trimmed.to_ascii_lowercase();
-            if lower.contains("timed out") || lower.contains("timeout") {
-                return "Authentication probe timed out after 4 seconds. Credentials were saved."
-                    .to_string();
-            }
-            if trimmed.is_empty() {
-                "Authentication probe failed".to_string()
-            } else {
-                trimmed.to_string()
-            }
+            probe_transport_message(message)
         }
         ProviderError::UnsupportedOperation { .. } => {
             "Authentication probe is not supported for this provider.".to_string()
         }
+    }
+}
+
+fn probe_transport_message(raw: &str) -> String {
+    let trimmed = raw.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    if lower.contains("timed out") || lower.contains("timeout") {
+        return "Authentication probe timed out after 4 seconds. Credentials were saved."
+            .to_string();
+    }
+    if lower.contains("rate_limited") || lower.contains("rate limited") {
+        return "Authentication probe was rate-limited by provider. Credentials were saved; retry in a few minutes."
+            .to_string();
+    }
+    if lower.contains("upstream status")
+        || lower.contains("upstream rejected")
+        || lower.contains("transport failed")
+    {
+        return "Authentication probe could not reach provider right now. Credentials were saved; retry later."
+            .to_string();
+    }
+    if trimmed.is_empty() {
+        "Authentication probe failed".to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+fn should_skip_probe_failure(error: &ProviderError) -> bool {
+    match error {
+        ProviderError::Transport { .. } => true,
+        ProviderError::OperationFailed { message } => {
+            let normalized = message.trim().to_ascii_lowercase();
+            normalized.contains("timed out")
+                || normalized.contains("timeout")
+                || normalized.contains("rate_limited")
+                || normalized.contains("rate limited")
+                || normalized.contains("upstream status")
+                || normalized.contains("upstream rejected")
+        }
+        _ => false,
     }
 }
 
@@ -503,8 +543,29 @@ mod tests {
             probe_error_message(&ProviderError::OperationFailed {
                 message: "rate_limited for login".to_string()
             }),
-            "rate_limited for login"
+            "Authentication probe was rate-limited by provider. Credentials were saved; retry in a few minutes."
         );
+    }
+
+    #[test]
+    fn probe_error_message_hides_raw_upstream_5xx_details() {
+        assert_eq!(
+            probe_error_message(&ProviderError::Transport {
+                message: "srt upstream status 500 for login".to_string(),
+            }),
+            "Authentication probe could not reach provider right now. Credentials were saved; retry later."
+        );
+    }
+
+    #[test]
+    fn transient_probe_failures_are_marked_skipped() {
+        assert!(should_skip_probe_failure(&ProviderError::Transport {
+            message: "srt upstream status 500 for login".to_string(),
+        }));
+        assert!(should_skip_probe_failure(&ProviderError::OperationFailed {
+            message: "rate_limited for login".to_string(),
+        }));
+        assert!(!should_skip_probe_failure(&ProviderError::Unauthorized));
     }
 
     #[test]

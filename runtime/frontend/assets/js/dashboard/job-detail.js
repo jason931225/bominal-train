@@ -105,10 +105,28 @@
       params.set('cursor', eventsCursor);
     }
     const source = new EventSource(`/api/dashboard/jobs/${jobId}/events/stream?${params.toString()}`);
-    source.addEventListener('job_event', (event) => {
+    source.addEventListener('sync', (event) => {
       try {
-        const payload = JSON.parse(event.data);
-        renderEvents([payload]);
+        const payload = JSON.parse(event.data || '{}');
+        const snapshot = payload && typeof payload.snapshot === 'object' ? payload.snapshot : {};
+        const events = Array.isArray(snapshot.events) ? snapshot.events : [];
+        renderEvents(events);
+      } catch (_err) {}
+    });
+    source.addEventListener('delta', (event) => {
+      try {
+        const payload = JSON.parse(event.data || '{}');
+        const ops = Array.isArray(payload.ops) ? payload.ops : [];
+        ops.forEach((op) => {
+          if (!op || typeof op !== 'object') return;
+          if (op.op === 'append' && op.path === '/events' && op.value) {
+            renderEvents([op.value]);
+            return;
+          }
+          if (op.op === 'upsert' && op.path === '/events' && Array.isArray(op.value)) {
+            renderEvents(op.value);
+          }
+        });
       } catch (_err) {}
     });
     source.onerror = () => {

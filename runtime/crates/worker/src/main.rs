@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use anyhow::Result;
 use bominal_shared::{config::AppConfig, telemetry::init_tracing};
@@ -13,6 +13,7 @@ use tokio::{
 use tracing::{error, info, warn};
 
 mod runtime;
+mod train_tasks;
 
 #[derive(Clone)]
 struct WorkerState {
@@ -36,6 +37,18 @@ async fn main() -> Result<()> {
             state.clone(),
             shutdown_rx.clone(),
             reconcile_loop,
+        ),
+        spawn_loop(
+            "train_tasks",
+            state.clone(),
+            shutdown_rx.clone(),
+            train_tasks_loop,
+        ),
+        spawn_loop(
+            "scheduler",
+            state.clone(),
+            shutdown_rx.clone(),
+            scheduler_loop,
         ),
         spawn_loop("watch", state.clone(), shutdown_rx.clone(), watch_loop),
         spawn_loop(
@@ -134,6 +147,50 @@ async fn reconcile_loop(state: Arc<WorkerState>, mut shutdown_rx: watch::Receive
                             warn!(error = %err, "runtime v2 reconcile tick failed");
                         }
                     }
+                }
+            }
+            changed = shutdown_rx.changed() => {
+                if changed.is_ok() && *shutdown_rx.borrow() {
+                    return;
+                }
+            }
+        }
+    }
+}
+
+async fn train_tasks_loop(state: Arc<WorkerState>, mut shutdown_rx: watch::Receiver<bool>) {
+    let mut ticker = interval(Duration::from_millis(1250));
+    ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
+
+    loop {
+        tokio::select! {
+            _ = ticker.tick() => {
+                if let Some(pool) = state.db_pool.as_ref()
+                    && let Err(err) = train_tasks::process_due_train_task(pool, &state.runtime_v2).await
+                {
+                    warn!(error = %err, "train task tick failed");
+                }
+            }
+            changed = shutdown_rx.changed() => {
+                if changed.is_ok() && *shutdown_rx.borrow() {
+                    return;
+                }
+            }
+        }
+    }
+}
+
+async fn scheduler_loop(state: Arc<WorkerState>, mut shutdown_rx: watch::Receiver<bool>) {
+    let mut ticker = interval(Duration::from_secs(30));
+    ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
+
+    loop {
+        tokio::select! {
+            _ = ticker.tick() => {
+                if let Some(pool) = state.db_pool.as_ref()
+                    && let Err(err) = train_tasks::process_scheduled_tasks(pool, &state.runtime_v2).await
+                {
+                    warn!(error = %err, "worker scheduler tick failed");
                 }
             }
             changed = shutdown_rx.changed() => {

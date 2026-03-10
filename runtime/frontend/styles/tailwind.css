@@ -567,6 +567,22 @@
     @apply block rounded-2xl border border-slate-200/80 bg-white/65 p-3;
   }
 
+  .train-section-stack {
+    @apply space-y-4;
+  }
+
+  .train-panel {
+    @apply glass-card rounded-[22px] p-5;
+  }
+
+  .train-control-shell {
+    @apply rounded-[24px] border border-slate-200/80 bg-white/65 p-3;
+  }
+
+  .train-toggle-row input[type="checkbox"] {
+    @apply h-4 w-4 rounded border-slate-300;
+  }
+
   .status-light {
     @apply inline-block h-2.5 w-2.5 rounded-full;
     box-shadow: 0 0 0 4px transparent;
@@ -650,6 +666,10 @@
   }
 
   body[data-theme-mode="dark"] .summary-card {
+    @apply border-slate-700/70 bg-slate-900/55;
+  }
+
+  body[data-theme-mode="dark"] .train-control-shell {
     @apply border-slate-700/70 bg-slate-900/55;
   }
 

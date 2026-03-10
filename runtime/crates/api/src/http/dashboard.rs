@@ -18,6 +18,7 @@ use super::super::{
     services::{auth_service, dashboard_service},
 };
 use super::runtime_event_cursor;
+use super::sse as canonical_sse;
 
 #[derive(Debug, serde::Serialize)]
 struct DashboardEventsResponse {
@@ -179,6 +180,22 @@ async fn stream_dashboard_job_events(
     let limit = request.limit;
     let event_stream = stream! {
         let mut after_id = start_after_id;
+        let sync_id = uuid::Uuid::new_v4().to_string();
+        let mut seq: u64 = 0;
+        yield Ok::<Event, Infallible>(
+            canonical_sse::sync_event(
+                "dashboard.runtime_job_events",
+                "runtime_job_events",
+                job_id.as_str(),
+                &sync_id,
+                seq,
+                "runtime_job_events.v1",
+                serde_json::json!({
+                    "job_id": job_id,
+                    "events": [],
+                }),
+            ),
+        );
         loop {
             match dashboard_service::list_dashboard_job_events_page(
                 state.as_ref(),
@@ -191,6 +208,7 @@ async fn stream_dashboard_job_events(
                 Ok(page) => {
                     for event in page.items {
                         after_id = event.id;
+                        seq = seq.saturating_add(1);
                         let payload = serde_json::json!({
                             "id": event.id,
                             "event_type": event.event_type,
@@ -198,9 +216,15 @@ async fn stream_dashboard_job_events(
                             "created_at": event.created_at,
                         });
                         yield Ok::<Event, Infallible>(
-                            Event::default()
-                                .event("job_event")
-                                .data(payload.to_string()),
+                            canonical_sse::delta_event(
+                                "dashboard.runtime_job_events",
+                                "runtime_job_events",
+                                job_id.as_str(),
+                                &sync_id,
+                                seq,
+                                "runtime_job_events.v1",
+                                vec![canonical_sse::op_append("/events", payload)],
+                            ),
                         );
                     }
                     if page.has_more {
@@ -208,11 +232,9 @@ async fn stream_dashboard_job_events(
                     }
                 }
                 Err(_) => {
-                    yield Ok::<Event, Infallible>(
-                        Event::default()
-                            .event("error")
-                            .data("{\"message\":\"stream temporarily unavailable\"}"),
-                    );
+                    yield Ok::<Event, Infallible>(canonical_sse::error_event(
+                        "stream temporarily unavailable",
+                    ));
                 }
             }
             tokio::time::sleep(Duration::from_secs(2)).await;
