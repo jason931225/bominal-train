@@ -18,6 +18,7 @@ env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -Dwarnings
   DATABASE_URL: postgres://bominal:bominal@localhost:5432/bominal_test
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   fmt:
@@ -52,7 +53,7 @@ jobs:
     needs: [fmt]
     services:
       postgres:
-        image: postgres:16
+        image: postgres:17
         env:
           POSTGRES_USER: bominal
           POSTGRES_PASSWORD: bominal
@@ -83,7 +84,9 @@ jobs:
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
       - name: Install sqlx-cli
-        run: curl -LsSf https://github.com/cargo-bins/cargo-binstall/releases/latest/download/cargo-binstall-x86_64-unknown-linux-musl.tgz | tar xzf - -C /usr/local/bin && cargo binstall sqlx-cli --no-confirm --no-default-features --features rustls,postgres
+        run: |
+          curl -LsSf https://github.com/cargo-bins/cargo-binstall/releases/latest/download/cargo-binstall-x86_64-unknown-linux-musl.tgz | tar xzf - -C /usr/local/bin
+          cargo binstall sqlx-cli --no-confirm
       - name: Run migrations
         run: sqlx migrate run --source crates/bominal-db/migrations
       - name: Run tests
@@ -96,7 +99,7 @@ jobs:
     needs: [test]
     services:
       postgres:
-        image: postgres:16
+        image: postgres:17
         env:
           POSTGRES_USER: bominal
           POSTGRES_PASSWORD: bominal
@@ -128,7 +131,9 @@ jobs:
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
       - name: Install tools
-        run: curl -LsSf https://github.com/cargo-bins/cargo-binstall/releases/latest/download/cargo-binstall-x86_64-unknown-linux-musl.tgz | tar xzf - -C /usr/local/bin && cargo binstall cargo-llvm-cov sqlx-cli --no-confirm --no-default-features --features rustls,postgres
+        run: |
+          curl -LsSf https://github.com/cargo-bins/cargo-binstall/releases/latest/download/cargo-binstall-x86_64-unknown-linux-musl.tgz | tar xzf - -C /usr/local/bin
+          cargo binstall cargo-llvm-cov sqlx-cli --no-confirm
       - name: Run migrations
         run: sqlx migrate run --source crates/bominal-db/migrations
       - name: Generate coverage
@@ -176,7 +181,9 @@ jobs:
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
       - name: Install cargo-leptos
-        run: curl -LsSf https://github.com/cargo-bins/cargo-binstall/releases/latest/download/cargo-binstall-x86_64-unknown-linux-musl.tgz | tar xzf - -C /usr/local/bin && cargo binstall cargo-leptos --no-confirm
+        run: |
+          curl -LsSf https://github.com/cargo-bins/cargo-binstall/releases/latest/download/cargo-binstall-x86_64-unknown-linux-musl.tgz | tar xzf - -C /usr/local/bin
+          cargo binstall cargo-leptos --no-confirm
       - name: Build release
         run: cargo leptos build --release
       - name: Pre-compress assets
