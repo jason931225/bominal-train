@@ -1,0 +1,27 @@
+[Unit]
+Description=Bominal Train Reservation
+After=network.target postgresql.service valkey.service
+
+[Service]
+Type=simple
+User=bominal
+Group=bominal
+EnvironmentFile=/etc/bominal/env
+ExecStart=/opt/bominal/bominal-server
+WorkingDirectory=/opt/bominal
+Restart=always
+RestartSec=5
+
+# Resource limits for e2-micro
+MemoryMax=256M
+CPUQuota=80%
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/bominal/data
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
