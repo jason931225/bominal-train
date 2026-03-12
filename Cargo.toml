@@ -1,0 +1,85 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/bominal-server",
+    "crates/bominal-provider",
+    "crates/bominal-domain",
+    "crates/bominal-db",
+    "crates/bominal-email",
+    "crates/bominal-frontend",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT"
+
+[workspace.dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# Web framework
+axum = { version = "0.8", features = ["macros"] }
+tower = { version = "0.5", features = ["full"] }
+tower-http = { version = "0.6", features = ["cors", "compression-br", "compression-gzip", "trace", "request-id", "util", "fs"] }
+
+# Leptos
+leptos = { version = "0.8", features = ["ssr"] }
+leptos_axum = "0.8"
+leptos_meta = "0.8"
+leptos_router = { version = "0.8", features = ["ssr"] }
+
+# Database
+sqlx = { version = "0.8", features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "chrono", "json"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# HTTP client (provider)
+reqwest = { version = "0.13", features = ["cookies", "json", "rustls", "webpki-roots", "form"], default-features = false }
+
+# Crypto
+argon2 = { version = "0.5", features = ["std"] }
+aes = "0.8"
+aes-gcm = "0.10"
+cbc = "0.1"
+base64 = "0.22"
+
+# Date/time
+chrono = { version = "0.4", features = ["serde"] }
+chrono-tz = "0.10"
+
+# Observability
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+metrics = "0.24"
+metrics-exporter-prometheus = "0.18"
+
+# Cache
+redis = { version = "1", features = ["tokio-comp", "connection-manager"] }
+
+# Random / distributions
+rand = "0.9"
+rand_distr = "0.5"
+
+# Async streams
+futures-util = "0.3"
+async-stream = "0.3"
+
+# Utilities
+uuid = { version = "1", features = ["v4", "v7", "serde"] }
+thiserror = "2"
+anyhow = "1"
+dotenvy = "0.15"
+url = "2"
+
+# Testing
+proptest = "1"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true
