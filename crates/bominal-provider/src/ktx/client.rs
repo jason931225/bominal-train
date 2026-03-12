@@ -1,0 +1,846 @@
+//! KTX/Korail HTTP client implementation.
+//!
+//! Faithfully ported from `third_party/srtgo/srtgo/ktx.py`.
+//! - Most requests are GET with query params (search, reserve, tickets)
+//! - Cancel, pay, refund are POST with form body
+//! - DynaPath token required for protected endpoints
+
+use tracing::{debug, instrument};
+
+use crate::types::{AuthType, ProviderError, SeatPreference, classify_auth};
+
+use super::crypto::{encrypt_password, generate_sid};
+use super::dynapath::{DynaPathEngine, requires_token};
+use super::reservation::{KtxReservation, KtxTicket};
+use super::response::KtxResponse;
+use super::stations::station_code;
+use super::train::KtxTrain;
+
+// ── Constants ────────────────────────────────────────────────────────
+
+const BASE_URL: &str = "https://smart.letskorail.com:443/classes/com.korail.mobile";
+
+const USER_AGENT: &str =
+    "Dalvik/2.1.0 (Linux; U; Android 14; SM-S928N Build/UP1A.231005.007)";
+
+const DEVICE: &str = "AD";
+const VERSION: &str = "250601002";
+/// Public/shared API key sent as a form parameter in every request.
+/// This is a protocol constant (not a secret) — same value in the official Korail app.
+const KEY: &str = "korail1234567890";
+
+/// Device ID for DynaPath (fixed per client instance in Python reference).
+const DEVICE_ID: &str = "558a4f02041657ea";
+
+/// API endpoint paths (appended to BASE_URL).
+struct Endpoints;
+
+impl Endpoints {
+    const CODE: &str = ".common.code.do";
+    const LOGIN: &str = ".login.Login";
+    const LOGOUT: &str = ".common.logout";
+    const SEARCH: &str = ".seatMovie.ScheduleView";
+    const RESERVE: &str = ".certification.TicketReservation";
+    const CANCEL: &str = ".reservationCancel.ReservationCancelChk";
+    const TICKETS: &str = ".myTicket.MyTicketList";
+    const TICKET_INFO: &str = ".refunds.SelTicketInfo";
+    const RESERVATION_VIEW: &str = ".reservation.ReservationView";
+    const RESERVATION_LIST: &str = ".certification.ReservationList";
+    const PAYMENT: &str = ".payment.ReservationPayment";
+    const REFUND: &str = ".refunds.RefundsRequest";
+
+    fn url(path: &str) -> String {
+        format!("{BASE_URL}{path}")
+    }
+}
+
+// ── Client ───────────────────────────────────────────────────────────
+
+/// KTX/Korail provider client with persistent session.
+pub struct KtxClient {
+    client: reqwest::Client,
+    dynapath: DynaPathEngine,
+    user_info: Option<KtxUserInfo>,
+    is_logged_in: bool,
+    /// Set once at client creation, NOT regenerated per call.
+    app_start_ts: u64,
+}
+
+/// User info extracted after successful login.
+#[derive(Debug, Clone)]
+pub struct KtxUserInfo {
+    pub membership_number: String,
+    pub name: String,
+    pub email: String,
+    pub phone: String,
+}
+
+impl KtxClient {
+    /// Create a new KTX client with fresh session.
+    pub fn new() -> Self {
+        let client = reqwest::Client::builder()
+            .cookie_store(true)
+            .user_agent(USER_AGENT)
+            .default_headers({
+                let mut h = reqwest::header::HeaderMap::new();
+                h.insert(
+                    reqwest::header::CONTENT_TYPE,
+                    "application/x-www-form-urlencoded; charset=UTF-8"
+                        .parse()
+                        .unwrap(),
+                );
+                h.insert(
+                    reqwest::header::HOST,
+                    "smart.letskorail.com".parse().unwrap(),
+                );
+                h
+            })
+            .build()
+            .expect("Failed to build KTX client");
+
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("Time went backwards")
+            .as_millis() as u64;
+
+        Self {
+            client,
+            dynapath: DynaPathEngine::new(now),
+            user_info: None,
+            is_logged_in: false,
+            app_start_ts: now,
+        }
+    }
+
+    /// Whether the client is currently logged in.
+    pub fn is_logged_in(&self) -> bool {
+        self.is_logged_in
+    }
+
+    /// User info (available after login).
+    pub fn user_info(&self) -> Option<&KtxUserInfo> {
+        self.user_info.as_ref()
+    }
+
+    /// KTX auth code: Email -> "5", Phone -> "4", Membership -> "2".
+    fn auth_code(login_id: &str) -> &'static str {
+        match classify_auth(login_id) {
+            AuthType::Email => "5",
+            AuthType::Phone => "4",
+            AuthType::Membership => "2",
+        }
+    }
+
+    /// Common form params included in every KTX request.
+    fn base_params() -> Vec<(&'static str, &'static str)> {
+        vec![("Device", DEVICE), ("Version", VERSION), ("Key", KEY)]
+    }
+
+    /// Generate current timestamp in milliseconds.
+    fn now_ms() -> u64 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("Time went backwards")
+            .as_millis() as u64
+    }
+
+    /// Generate SID for the current timestamp.
+    fn current_sid() -> String {
+        generate_sid(DEVICE, Self::now_ms())
+    }
+
+    /// Build a request with optional DynaPath token header.
+    fn request_with_dynapath(
+        &self,
+        method: reqwest::Method,
+        url: &str,
+    ) -> reqwest::RequestBuilder {
+        let mut builder = self.client.request(method, url);
+        if requires_token(url) {
+            let token = self.dynapath.generate_token_auto(DEVICE_ID);
+            builder = builder.header("x-dynapath-m-token", token);
+        }
+        builder
+    }
+
+    // ── Encryption Key ──────────────────────────────────────────────
+
+    /// Fetch the encryption key and idx from the `/code` endpoint.
+    async fn fetch_encryption_params(&self) -> Result<(String, String), ProviderError> {
+        let form: Vec<(&str, &str)> = vec![
+            ("Device", DEVICE),
+            ("Version", VERSION),
+            ("code", "app.login.cphd"),
+        ];
+
+        let resp = self
+            .client
+            .post(Endpoints::url(Endpoints::CODE))
+            .form(&form)
+            .send()
+            .await?;
+
+        let body = resp.text().await?;
+        let parsed = KtxResponse::parse(&body)?;
+
+        let key = parsed.str_field("key");
+        let idx = parsed.str_field("idx");
+
+        if key.is_empty() {
+            return Err(ProviderError::UnexpectedResponse {
+                status: 200,
+                body: "Missing encryption key from /code endpoint".to_string(),
+            });
+        }
+
+        Ok((key.to_string(), idx.to_string()))
+    }
+
+    // ── Login ────────────────────────────────────────────────────────
+
+    /// Log in to the KTX/Korail server.
+    #[instrument(skip(self, password), fields(login_type))]
+    pub async fn login(
+        &mut self,
+        login_id: &str,
+        password: &str,
+    ) -> Result<(), ProviderError> {
+        // Step 1: Fetch encryption key
+        let (enc_key, idx) = self.fetch_encryption_params().await?;
+
+        // Step 2: Encrypt password
+        let encrypted_password = encrypt_password(password, &enc_key).map_err(|e| {
+            ProviderError::UnexpectedResponse {
+                status: 500,
+                body: format!("Password encryption failed: {e}"),
+            }
+        })?;
+
+        let login_type = Self::auth_code(login_id);
+        let sid = Self::current_sid();
+
+        let form: Vec<(&str, &str)> = vec![
+            ("Device", DEVICE),
+            ("Version", VERSION),
+            ("Key", KEY),
+            ("txtMemberNo", login_id),
+            ("txtPwd", &encrypted_password),
+            ("txtInputFlg", login_type),
+            ("idx", &idx),
+            ("Sid", &sid),
+        ];
+
+        let resp = self
+            .request_with_dynapath(reqwest::Method::POST, &Endpoints::url(Endpoints::LOGIN))
+            .form(&form)
+            .send()
+            .await?;
+
+        let body = resp.text().await?;
+        debug!(body_len = body.len(), "KTX login response received");
+
+        let parsed = KtxResponse::parse(&body)?;
+
+        if !parsed.is_success() {
+            self.is_logged_in = false;
+            return Err(ProviderError::LoginFailed {
+                message: parsed.message().to_string(),
+            });
+        }
+
+        self.user_info = Some(KtxUserInfo {
+            membership_number: parsed.str_field("strMbCrdNo").to_string(),
+            name: parsed.str_field("strCustNm").to_string(),
+            email: parsed.str_field("strEmailAdr").to_string(),
+            phone: parsed.str_field("strCpNo").to_string(),
+        });
+        self.is_logged_in = true;
+
+        Ok(())
+    }
+
+    // ── Logout ───────────────────────────────────────────────────────
+
+    /// Log out from the KTX server.
+    #[instrument(skip(self))]
+    pub async fn logout(&mut self) -> Result<(), ProviderError> {
+        if !self.is_logged_in {
+            return Ok(());
+        }
+
+        let form = Self::base_params();
+
+        let resp = self
+            .client
+            .post(Endpoints::url(Endpoints::LOGOUT))
+            .form(&form)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::UnexpectedResponse {
+                status: 500,
+                body,
+            });
+        }
+
+        self.is_logged_in = false;
+        self.user_info = None;
+        Ok(())
+    }
+
+    // ── Search ───────────────────────────────────────────────────────
+
+    /// Search for KTX trains.
+    ///
+    /// - `dep`/`arr`: Korean station names (e.g., "서울", "부산")
+    /// - `date`: YYYYMMDD format
+    /// - `time`: HHMMSS format (default: "000000")
+    /// - `available_only`: filter to trains with available seats
+    #[instrument(skip(self))]
+    pub async fn search_train(
+        &self,
+        dep: &str,
+        arr: &str,
+        date: Option<&str>,
+        time: Option<&str>,
+        available_only: bool,
+    ) -> Result<Vec<KtxTrain>, ProviderError> {
+        let dep_code = station_code(dep).ok_or_else(|| ProviderError::UnexpectedResponse {
+            status: 400,
+            body: format!("Unknown departure station: {dep}"),
+        })?;
+        let arr_code = station_code(arr).ok_or_else(|| ProviderError::UnexpectedResponse {
+            status: 400,
+            body: format!("Unknown arrival station: {arr}"),
+        })?;
+
+        let today = chrono::Local::now().format("%Y%m%d").to_string();
+        let date = date.unwrap_or(&today);
+        let time = time.unwrap_or("000000");
+
+        let membership_number = self
+            .user_info
+            .as_ref()
+            .map(|u| u.membership_number.as_str())
+            .unwrap_or("");
+
+        let params: Vec<(&str, &str)> = vec![
+            ("Device", DEVICE),
+            ("Version", VERSION),
+            ("Sid", ""),
+            ("txtMenuId", "11"),
+            ("radJobId", "1"),
+            ("selGoTrain", "109"),
+            ("txtTrnGpCd", "109"),
+            ("txtGoStart", dep_code),
+            ("txtGoEnd", arr_code),
+            ("txtGoAbrdDt", date),
+            ("txtGoHour", time),
+            ("txtPsgFlg_1", "1"),
+            ("txtPsgFlg_2", "0"),
+            ("txtPsgFlg_3", "0"),
+            ("txtPsgFlg_4", "0"),
+            ("txtPsgFlg_5", "0"),
+            ("txtSeatAttCd_2", "000"),
+            ("txtSeatAttCd_3", "000"),
+            ("txtSeatAttCd_4", "015"),
+            ("ebizCrossCheck", "N"),
+            ("srtCheckYn", "N"),
+            ("rtYn", "N"),
+            ("adjStnScdlOfrFlg", "N"),
+            ("mbCrdNo", membership_number),
+        ];
+
+        let resp = self
+            .request_with_dynapath(reqwest::Method::POST, &Endpoints::url(Endpoints::SEARCH))
+            .form(&params)
+            .send()
+            .await?;
+
+        let body = resp.text().await?;
+        let parsed = KtxResponse::parse(&body)?;
+
+        if !parsed.is_success() {
+            return Err(ProviderError::NoResults);
+        }
+
+        let trains_json = parsed
+            .get("/trn_infos/trn_info")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+
+        let mut trains: Vec<KtxTrain> = trains_json
+            .iter()
+            .filter_map(KtxTrain::from_json)
+            .filter(|t| t.is_ktx())
+            .collect();
+
+        if available_only {
+            trains.retain(|t| t.seat_available());
+        }
+
+        Ok(trains)
+    }
+
+    // ── Reserve ──────────────────────────────────────────────────────
+
+    /// Reserve a KTX train seat.
+    #[instrument(skip(self, train))]
+    pub async fn reserve(
+        &self,
+        train: &KtxTrain,
+        seat_pref: SeatPreference,
+        passengers: u8,
+    ) -> Result<KtxReservation, ProviderError> {
+        self.require_login()?;
+
+        let is_special = match seat_pref {
+            SeatPreference::GeneralOnly => false,
+            SeatPreference::SpecialOnly => true,
+            SeatPreference::GeneralFirst => !train.general_seat_available(),
+            SeatPreference::SpecialFirst => train.special_seat_available(),
+        };
+        let seat_class = if is_special { "2" } else { "1" };
+        let psg_count = passengers.max(1).to_string();
+
+        let params: Vec<(&str, &str)> = vec![
+            ("Device", DEVICE),
+            ("Version", VERSION),
+            ("Key", KEY),
+            ("txtMenuId", "11"),
+            ("txtJobId", "1101"),
+            ("txtGdNo", ""),
+            ("hidFreeFlg", "N"),
+            ("txtTotPsgCnt", &psg_count),
+            ("txtSeatAttCd1", "000"),
+            ("txtSeatAttCd2", "000"),
+            ("txtSeatAttCd3", "000"),
+            ("txtSeatAttCd4", "015"),
+            ("txtSeatAttCd5", "000"),
+            ("txtStndFlg", "N"),
+            ("txtSrcarCnt", "0"),
+            ("txtJrnyCnt", "1"),
+            ("txtJrnySqno1", "001"),
+            ("txtJrnyTpCd1", "11"),
+            ("txtDptDt1", &train.dep_date),
+            ("txtDptRsStnCd1", &train.dep_code),
+            ("txtDptTm1", &train.dep_time),
+            ("txtArvRsStnCd1", &train.arr_code),
+            ("txtTrnNo1", &train.train_no),
+            ("txtRunDt1", &train.run_date),
+            ("txtTrnClsfCd1", &train.train_type),
+            ("txtTrnGpCd1", &train.train_group),
+            ("txtPsrmClCd1", seat_class),
+            ("txtChgFlg1", ""),
+            ("txtPsgTpCd1", "1"),
+            ("txtDiscKndCd1", "000"),
+            ("txtCompaCnt1", &psg_count),
+            ("txtCardCode_1", ""),
+            ("txtCardNo_1", ""),
+            ("txtCardPw_1", ""),
+        ];
+
+        let resp = self
+            .request_with_dynapath(reqwest::Method::POST, &Endpoints::url(Endpoints::RESERVE))
+            .form(&params)
+            .send()
+            .await?;
+
+        let body = resp.text().await?;
+        let parsed = KtxResponse::parse(&body)?;
+
+        if !parsed.is_success() {
+            let msg = parsed.message();
+            if msg.contains("이미 예약") || msg.contains("중복") {
+                return Err(ProviderError::DuplicateReservation);
+            }
+            return Err(ProviderError::UnexpectedResponse {
+                status: 200,
+                body: msg.to_string(),
+            });
+        }
+
+        let pnr_no = parsed.str_field("h_pnr_no");
+        if pnr_no.is_empty() {
+            return Err(ProviderError::UnexpectedResponse {
+                status: 200,
+                body: "Missing h_pnr_no in reserve response".to_string(),
+            });
+        }
+
+        // Fetch full reservation details
+        let reservations = self.get_reservations().await?;
+        reservations
+            .into_iter()
+            .find(|r| r.rsv_id == pnr_no)
+            .ok_or_else(|| ProviderError::UnexpectedResponse {
+                status: 200,
+                body: format!("Reservation {pnr_no} not found after reserve"),
+            })
+    }
+
+    // ── Get Reservations ─────────────────────────────────────────────
+
+    /// Get all current reservations.
+    #[instrument(skip(self))]
+    pub async fn get_reservations(&self) -> Result<Vec<KtxReservation>, ProviderError> {
+        self.require_login()?;
+
+        let params = Self::base_params();
+
+        let resp = self
+            .client
+            .post(Endpoints::url(Endpoints::RESERVATION_VIEW))
+            .form(&params)
+            .send()
+            .await?;
+
+        let body = resp.text().await?;
+        let parsed = KtxResponse::parse(&body)?;
+
+        if !parsed.is_success() {
+            return Err(ProviderError::NoResults);
+        }
+
+        let journeys = parsed
+            .get("/jrny_infos/jrny_info")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+
+        let mut reservations = Vec::new();
+
+        for jrny in &journeys {
+            let pnr_no = jrny
+                .get("h_pnr_no")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+
+            if pnr_no.is_empty() {
+                continue;
+            }
+
+            let tickets = self.ticket_info(pnr_no).await?;
+
+            if let Some(rsv) = KtxReservation::from_json(jrny, tickets) {
+                reservations.push(rsv);
+            }
+        }
+
+        Ok(reservations)
+    }
+
+    // ── Ticket Info ──────────────────────────────────────────────────
+
+    /// Get ticket details for a reservation.
+    #[instrument(skip(self))]
+    pub async fn ticket_info(&self, pnr_no: &str) -> Result<Vec<KtxTicket>, ProviderError> {
+        self.require_login()?;
+
+        let params: Vec<(&str, &str)> = vec![
+            ("Device", DEVICE),
+            ("Version", VERSION),
+            ("Key", KEY),
+            ("h_pnr_no", pnr_no),
+        ];
+
+        let resp = self
+            .client
+            .post(Endpoints::url(Endpoints::RESERVATION_LIST))
+            .form(&params)
+            .send()
+            .await?;
+
+        let body = resp.text().await?;
+        let parsed = KtxResponse::parse(&body)?;
+
+        if !parsed.is_success() {
+            return Err(ProviderError::UnexpectedResponse {
+                status: 200,
+                body: parsed.message().to_string(),
+            });
+        }
+
+        let ticket_data = parsed
+            .get("/tk_infos/tk_info")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+
+        Ok(ticket_data.iter().filter_map(KtxTicket::from_json).collect())
+    }
+
+    // ── Cancel ───────────────────────────────────────────────────────
+
+    /// Cancel a reservation.
+    #[instrument(skip(self))]
+    pub async fn cancel(&self, reservation: &KtxReservation) -> Result<(), ProviderError> {
+        self.require_login()?;
+
+        let form: Vec<(&str, &str)> = vec![
+            ("Device", DEVICE),
+            ("Version", VERSION),
+            ("Key", KEY),
+            ("txtPnrNo", &reservation.rsv_id),
+            ("txtJrnySqno", &reservation.journey_no),
+            ("txtJrnyCnt", &reservation.journey_cnt),
+            ("hidRsvChgNo", &reservation.rsv_chg_no),
+        ];
+
+        let resp = self
+            .client
+            .post(Endpoints::url(Endpoints::CANCEL))
+            .form(&form)
+            .send()
+            .await?;
+
+        let body = resp.text().await?;
+        let parsed = KtxResponse::parse(&body)?;
+
+        if !parsed.is_success() {
+            return Err(ProviderError::UnexpectedResponse {
+                status: 200,
+                body: parsed.message().to_string(),
+            });
+        }
+
+        Ok(())
+    }
+
+    // ── Payment ──────────────────────────────────────────────────────
+
+    /// Pay for a reservation with a credit card.
+    ///
+    /// - `card_number`: card number (no hyphens, 13-19 digits)
+    /// - `card_password`: first 2 digits of card password
+    /// - `birthday`: YYMMDD format for personal cards
+    /// - `card_expire`: MMYY format (note: MMYY, not YYMM like SRT)
+    /// - `installment`: "0" for lump sum, "2"-"24" for installment
+    /// - `card_type`: "J" for personal, "S" for corporate
+    #[instrument(skip(self, card_number, card_password, birthday))]
+    pub async fn pay_with_card(
+        &self,
+        reservation: &KtxReservation,
+        card_number: &str,
+        card_password: &str,
+        birthday: &str,
+        card_expire: &str,
+        installment: &str,
+        card_type: &str,
+    ) -> Result<(), ProviderError> {
+        self.require_login()?;
+
+        // Validate card inputs
+        Self::validate_card_inputs(card_number, card_password, card_expire, card_type)?;
+
+        if reservation.is_waiting {
+            return Err(ProviderError::UnexpectedResponse {
+                status: 400,
+                body: "Cannot pay for standby/waiting reservations".to_string(),
+            });
+        }
+
+        let form: Vec<(&str, &str)> = vec![
+            ("Device", DEVICE),
+            ("Version", VERSION),
+            ("Key", KEY),
+            ("hidPnrNo", &reservation.rsv_id),
+            ("hidWctNo", &reservation.wct_no),
+            ("hidTmpJobSqno1", "000000"),
+            ("hidTmpJobSqno2", "000000"),
+            ("hidRsvChgNo", "000"),
+            ("hidInrecmnsGridcnt", "1"),
+            ("hidStlMnsSqno1", "1"),
+            ("hidStlMnsCd1", "02"),
+            ("hidMnsStlAmt1", &reservation.price),
+            ("hidCrdInpWayCd1", "@"),
+            ("hidStlCrCrdNo1", card_number),
+            ("hidVanPwd1", card_password),
+            ("hidCrdVlidTrm1", card_expire),
+            ("hidIsmtMnthNum1", installment),
+            ("hidAthnDvCd1", card_type),
+            ("hidAthnVal1", birthday),
+            ("hiduserYn", "Y"),
+        ];
+
+        let resp = self
+            .client
+            .post(Endpoints::url(Endpoints::PAYMENT))
+            .form(&form)
+            .send()
+            .await?;
+
+        let body = resp.text().await?;
+        let parsed = KtxResponse::parse(&body)?;
+
+        if !parsed.is_success() {
+            return Err(ProviderError::UnexpectedResponse {
+                status: 200,
+                body: parsed.message().to_string(),
+            });
+        }
+
+        Ok(())
+    }
+
+    // ── Refund ───────────────────────────────────────────────────────
+
+    /// Refund a paid ticket.
+    #[instrument(skip(self))]
+    pub async fn refund(&self, ticket: &KtxTicket) -> Result<(), ProviderError> {
+        self.require_login()?;
+
+        let form: Vec<(&str, &str)> = vec![
+            ("Device", DEVICE),
+            ("Version", VERSION),
+            ("Key", KEY),
+            ("txtPrnNo", &ticket.pnr_no),
+            ("h_orgtk_sale_dt", &ticket.sale_info2),
+            ("h_orgtk_sale_wct_no", &ticket.sale_info1),
+            ("h_orgtk_sale_sqno", &ticket.sale_info3),
+            ("h_orgtk_ret_pwd", &ticket.sale_info4),
+            ("h_mlg_stl", "N"),
+            ("tk_ret_tms_dv_cd", "21"),
+            ("trnNo", &ticket.train_no),
+            ("pbpAcepTgtFlg", "N"),
+            ("latitude", ""),
+            ("longitude", ""),
+        ];
+
+        let resp = self
+            .client
+            .post(Endpoints::url(Endpoints::REFUND))
+            .form(&form)
+            .send()
+            .await?;
+
+        let body = resp.text().await?;
+        let parsed = KtxResponse::parse(&body)?;
+
+        if !parsed.is_success() {
+            return Err(ProviderError::UnexpectedResponse {
+                status: 200,
+                body: parsed.message().to_string(),
+            });
+        }
+
+        Ok(())
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────
+
+    fn validate_card_inputs(
+        card_number: &str,
+        card_password: &str,
+        card_expire: &str,
+        card_type: &str,
+    ) -> Result<(), ProviderError> {
+        let card_digits = card_number.chars().all(|c| c.is_ascii_digit());
+        if !card_digits || card_number.len() < 13 || card_number.len() > 19 {
+            return Err(ProviderError::UnexpectedResponse {
+                status: 400,
+                body: "Card number must be 13-19 digits".to_string(),
+            });
+        }
+        if card_password.len() != 2 || !card_password.chars().all(|c| c.is_ascii_digit()) {
+            return Err(ProviderError::UnexpectedResponse {
+                status: 400,
+                body: "Card password must be exactly 2 digits".to_string(),
+            });
+        }
+        if card_expire.len() != 4 || !card_expire.chars().all(|c| c.is_ascii_digit()) {
+            return Err(ProviderError::UnexpectedResponse {
+                status: 400,
+                body: "Card expire must be 4 digits (MMYY)".to_string(),
+            });
+        }
+        if card_type != "J" && card_type != "S" {
+            return Err(ProviderError::UnexpectedResponse {
+                status: 400,
+                body: "Card type must be \"J\" (personal) or \"S\" (corporate)".to_string(),
+            });
+        }
+        Ok(())
+    }
+
+    fn require_login(&self) -> Result<(), ProviderError> {
+        if !self.is_logged_in {
+            Err(ProviderError::SessionExpired)
+        } else {
+            Ok(())
+        }
+    }
+}
+
+impl Default for KtxClient {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn auth_code_classification() {
+        assert_eq!(KtxClient::auth_code("user@example.com"), "5");
+        assert_eq!(KtxClient::auth_code("010-1234-5678"), "4");
+        assert_eq!(KtxClient::auth_code("1234567890"), "2");
+    }
+
+    #[test]
+    fn base_params_include_device() {
+        let params = KtxClient::base_params();
+        assert!(params.iter().any(|(k, v)| *k == "Device" && *v == "AD"));
+        assert!(params.iter().any(|(k, v)| *k == "Version" && *v == "250601002"));
+    }
+
+    #[test]
+    fn require_login_when_not_logged_in() {
+        let client = KtxClient::new();
+        assert!(client.require_login().is_err());
+    }
+
+    #[test]
+    fn endpoint_urls() {
+        assert!(Endpoints::url(Endpoints::LOGIN).contains("login.Login"));
+        assert!(Endpoints::url(Endpoints::SEARCH).contains("ScheduleView"));
+        assert!(Endpoints::url(Endpoints::RESERVE).contains("TicketReservation"));
+    }
+
+    #[test]
+    fn validate_card_valid() {
+        assert!(KtxClient::validate_card_inputs("4111111111111111", "12", "1226", "J").is_ok());
+    }
+
+    #[test]
+    fn validate_card_short_number() {
+        assert!(KtxClient::validate_card_inputs("123456", "12", "1226", "J").is_err());
+    }
+
+    #[test]
+    fn validate_card_bad_password() {
+        assert!(KtxClient::validate_card_inputs("4111111111111111", "1", "1226", "J").is_err());
+    }
+
+    #[test]
+    fn validate_card_bad_expiry() {
+        assert!(KtxClient::validate_card_inputs("4111111111111111", "12", "26", "J").is_err());
+    }
+
+    #[test]
+    fn validate_card_bad_type() {
+        assert!(KtxClient::validate_card_inputs("4111111111111111", "12", "1226", "X").is_err());
+    }
+
+    #[test]
+    fn sid_is_generated() {
+        let sid = KtxClient::current_sid();
+        assert!(sid.ends_with('\n'));
+        assert!(!sid.is_empty());
+    }
+}
