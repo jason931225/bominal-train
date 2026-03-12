@@ -2,8 +2,10 @@
 
 use leptos::prelude::*;
 
-use crate::api::cards::{list_cards, CardInfo};
-use crate::api::reservations::{cancel_reservation, list_reservations, pay_reservation, ReservationInfo};
+use crate::api::cards::{CardInfo, list_cards};
+use crate::api::reservations::{
+    ReservationInfo, cancel_reservation, list_reservations, pay_reservation,
+};
 use crate::components::glass_panel::GlassPanel;
 use crate::i18n::t;
 use crate::utils::{format_cost, format_date, format_time};
@@ -13,10 +15,7 @@ use crate::utils::{format_cost, format_date, format_time};
 pub fn ReservationsView() -> impl IntoView {
     let (provider, set_provider) = signal("SRT".to_string());
 
-    let reservations = Resource::new(
-        move || provider.get(),
-        |prov| list_reservations(prov),
-    );
+    let reservations = Resource::new(move || provider.get(), |prov| list_reservations(prov));
 
     let cards = Resource::new(|| (), |_| list_cards());
 
@@ -305,4 +304,3 @@ fn ReservationCard(
         </GlassPanel>
     }
 }
-

@@ -3,9 +3,11 @@
 use leptos::prelude::*;
 
 use crate::api::auth::{Logout, get_current_user};
-use crate::api::cards::{DeleteCard, list_cards, CardInfo};
-use crate::api::providers::{AddProvider, DeleteProvider, list_providers, ProviderInfo};
-use crate::components::card_brand::{detect_brand, format_card_number, strip_non_digits, CardBrand};
+use crate::api::cards::{CardInfo, DeleteCard, list_cards};
+use crate::api::providers::{AddProvider, DeleteProvider, ProviderInfo, list_providers};
+use crate::components::card_brand::{
+    CardBrand, detect_brand, format_card_number, strip_non_digits,
+};
 use crate::components::glass_panel::GlassPanel;
 use crate::i18n::t;
 
@@ -271,10 +273,7 @@ pub fn SettingsView() -> impl IntoView {
 
 /// Display row for an existing provider credential.
 #[component]
-fn ProviderRow(
-    cred: ProviderInfo,
-    delete_action: ServerAction<DeleteProvider>,
-) -> impl IntoView {
+fn ProviderRow(cred: ProviderInfo, delete_action: ServerAction<DeleteProvider>) -> impl IntoView {
     let provider_name = cred.provider.clone();
     let status_color = match cred.status.as_str() {
         "valid" => "var(--color-status-success)",
@@ -375,9 +374,7 @@ fn ProviderSetupRow(
 /// Inline form for adding a payment card with brand detection and formatting.
 /// Encrypts via Evervault JS SDK and POSTs to /api/cards.
 #[component]
-fn CardAddForm(
-    on_done: impl Fn() + Send + Sync + 'static,
-) -> impl IntoView {
+fn CardAddForm(on_done: impl Fn() + Send + Sync + 'static) -> impl IntoView {
     let _ = on_done; // used by JS — form reloads page on success
 
     // Reactive card number signal (raw digits only)
@@ -519,10 +516,7 @@ fn CardAddForm(
 
 /// Display row for a payment card.
 #[component]
-fn CardRow(
-    card: CardInfo,
-    delete_action: ServerAction<DeleteCard>,
-) -> impl IntoView {
+fn CardRow(card: CardInfo, delete_action: ServerAction<DeleteCard>) -> impl IntoView {
     let card_id = card.id.to_string();
     view! {
         <div class="flex items-center justify-between py-2 border-b border-[var(--color-border-subtle)] last:border-0">

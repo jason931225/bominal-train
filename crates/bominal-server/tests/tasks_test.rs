@@ -25,7 +25,9 @@ async fn insert_provider_credential(app: &TestApp, user_id: Uuid, provider: &str
 
 /// Helper: register + insert SRT creds, return (session, user_id).
 async fn setup_user_with_creds(app: &TestApp) -> (String, Uuid) {
-    let session = app.register_user("tasks@example.com", "password123", "TaskUser").await;
+    let session = app
+        .register_user("tasks@example.com", "password123", "TaskUser")
+        .await;
 
     // Get user_id from /me
     let req = app.authed_get("/api/auth/me", &session);

@@ -1,8 +1,8 @@
 //! Reusable UI components ported from the React prototype.
 
 pub mod bottom_nav;
-pub mod card_brand;
 pub mod bottom_sheet;
+pub mod card_brand;
 pub mod date_picker;
 pub mod glass_panel;
 pub mod passenger_selector;

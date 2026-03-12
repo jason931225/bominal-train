@@ -103,7 +103,8 @@ pub fn classify_auth(login_id: &str) -> AuthType {
         return AuthType::Phone;
     }
 
-    if digits_only.len() >= 10 && digits_only.len() <= 11
+    if digits_only.len() >= 10
+        && digits_only.len() <= 11
         && login_id.starts_with('0')
         && login_id.chars().all(|c| c.is_ascii_digit())
     {

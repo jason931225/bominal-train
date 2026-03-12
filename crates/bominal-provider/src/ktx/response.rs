@@ -29,12 +29,11 @@ impl KtxResponse {
     /// assert!(resp.is_success());
     /// ```
     pub fn parse(body: &str) -> Result<Self, ProviderError> {
-        let json: Value = serde_json::from_str(body).map_err(|_| {
-            ProviderError::UnexpectedResponse {
+        let json: Value =
+            serde_json::from_str(body).map_err(|_| ProviderError::UnexpectedResponse {
                 status: 200,
                 body: body.to_string(),
-            }
-        })?;
+            })?;
 
         Ok(Self { json })
     }
@@ -76,10 +75,7 @@ impl KtxResponse {
 
     /// Get a string value from a top-level field.
     pub fn str_field(&self, key: &str) -> &str {
-        self.json
-            .get(key)
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
+        self.json.get(key).and_then(|v| v.as_str()).unwrap_or("")
     }
 }
 
@@ -98,7 +94,8 @@ mod tests {
 
     #[test]
     fn parse_fail_response() {
-        let body = r#"{"strResult":"FAIL","h_msg_cd":"P058","h_msg_txt":"운행하는 열차가 없습니다"}"#;
+        let body =
+            r#"{"strResult":"FAIL","h_msg_cd":"P058","h_msg_txt":"운행하는 열차가 없습니다"}"#;
         let resp = KtxResponse::parse(body).unwrap();
         assert!(!resp.is_success());
         assert_eq!(resp.message(), "운행하는 열차가 없습니다");

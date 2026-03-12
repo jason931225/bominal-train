@@ -71,17 +71,15 @@ pub async fn register(
     if let Some(email_client) = use_context::<bominal_email::EmailClient>() {
         if let Some(app_base_url) = use_context::<AppBaseUrl>() {
             let token = Uuid::new_v4().to_string();
-            let expires_at =
-                chrono::Utc::now() + chrono::Duration::minutes(30);
-            let _ = bominal_db::user::set_verification_token(&pool, user.id, &token, expires_at)
-                .await;
+            let expires_at = chrono::Utc::now() + chrono::Duration::minutes(30);
+            let _ =
+                bominal_db::user::set_verification_token(&pool, user.id, &token, expires_at).await;
             let verify_url = format!("{}/verify-email?token={}", app_base_url.0, token);
-            let (subject, html) = bominal_email::templates::verify::render(
-                &user.display_name,
-                &verify_url,
-                30,
-            );
-            email_client.send_best_effort(&user.email, &subject, &html).await;
+            let (subject, html) =
+                bominal_email::templates::verify::render(&user.display_name, &verify_url, 30);
+            email_client
+                .send_best_effort(&user.email, &subject, &html)
+                .await;
         }
     }
 
@@ -176,8 +174,7 @@ async fn create_session(
     user: &bominal_db::user::UserRow,
 ) -> Result<(), ServerFnError> {
     let session_id = Uuid::new_v4().to_string();
-    let expires_at =
-        chrono::Utc::now() + chrono::Duration::hours(SESSION_TTL_HOURS);
+    let expires_at = chrono::Utc::now() + chrono::Duration::hours(SESSION_TTL_HOURS);
 
     bominal_db::session::create_session(pool, &session_id, user.id, expires_at)
         .await

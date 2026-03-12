@@ -283,10 +283,7 @@ struct StationForms {
 impl StationForms {
     fn from_document(document: &StationSearchDocument<'_>) -> Self {
         let ko_norm = normalize(document.normalized_name);
-        let en_norm = document
-            .station_name_en
-            .map(normalize)
-            .unwrap_or_default();
+        let en_norm = document.station_name_en.map(normalize).unwrap_or_default();
         let ja_norm = normalize(document.station_name_ja_katakana);
         let ja_hangul = transliterate_katakana_to_hangul(document.station_name_ja_katakana);
         let initials = extract_hangul_initials(document.station_name_ko);
@@ -881,8 +878,7 @@ fn compose_compat_jamo_stream(input: &str) -> String {
                         let c2 = chars[idx + advance + 1];
                         if let Some(combined) = combine_jongseong(c1, c2) {
                             let next_idx = idx + advance + 2;
-                            if next_idx >= chars.len()
-                                || jungseong_index(chars[next_idx]).is_none()
+                            if next_idx >= chars.len() || jungseong_index(chars[next_idx]).is_none()
                             {
                                 if let Some(combined_index) = jongseong_index(combined) {
                                     t_index = combined_index;
@@ -1549,18 +1545,18 @@ fn geminate_jongseong(next: char) -> char {
 // ── Hangul lookup tables ────────────────────────────────────────────
 
 const CHOSEONG_COMPAT: [char; 19] = [
-    'ㄱ', 'ㄲ', 'ㄴ', 'ㄷ', 'ㄸ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅃ', 'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅉ', 'ㅊ',
-    'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ',
+    'ㄱ', 'ㄲ', 'ㄴ', 'ㄷ', 'ㄸ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅃ', 'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅉ', 'ㅊ', 'ㅋ',
+    'ㅌ', 'ㅍ', 'ㅎ',
 ];
 
 const JUNGSEONG_COMPAT: [char; 21] = [
-    'ㅏ', 'ㅐ', 'ㅑ', 'ㅒ', 'ㅓ', 'ㅔ', 'ㅕ', 'ㅖ', 'ㅗ', 'ㅘ', 'ㅙ', 'ㅚ', 'ㅛ', 'ㅜ', 'ㅝ',
-    'ㅞ', 'ㅟ', 'ㅠ', 'ㅡ', 'ㅢ', 'ㅣ',
+    'ㅏ', 'ㅐ', 'ㅑ', 'ㅒ', 'ㅓ', 'ㅔ', 'ㅕ', 'ㅖ', 'ㅗ', 'ㅘ', 'ㅙ', 'ㅚ', 'ㅛ', 'ㅜ', 'ㅝ', 'ㅞ',
+    'ㅟ', 'ㅠ', 'ㅡ', 'ㅢ', 'ㅣ',
 ];
 
 const JONGSEONG_COMPAT: [char; 28] = [
-    '\0', 'ㄱ', 'ㄲ', 'ㄳ', 'ㄴ', 'ㄵ', 'ㄶ', 'ㄷ', 'ㄹ', 'ㄺ', 'ㄻ', 'ㄼ', 'ㄽ', 'ㄾ', 'ㄿ',
-    'ㅀ', 'ㅁ', 'ㅂ', 'ㅄ', 'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ',
+    '\0', 'ㄱ', 'ㄲ', 'ㄳ', 'ㄴ', 'ㄵ', 'ㄶ', 'ㄷ', 'ㄹ', 'ㄺ', 'ㄻ', 'ㄼ', 'ㄽ', 'ㄾ', 'ㄿ', 'ㅀ',
+    'ㅁ', 'ㅂ', 'ㅄ', 'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ',
 ];
 
 #[cfg(test)]
@@ -1614,9 +1610,9 @@ mod tests {
     fn keyboard_examples_map_to_expected_stations() {
         let docs = fixture_documents();
         let fixtures = [
-            ("tjdnf", 1usize), // 서울
-            ("qntks", 2usize), // 부산
-            ("eorn", 3usize),  // 대구
+            ("tjdnf", 1usize),   // 서울
+            ("qntks", 2usize),   // 부산
+            ("eorn", 3usize),    // 대구
             ("ckddnjs", 4usize), // 창원
         ];
         for (query, expected_index) in fixtures {
@@ -1720,8 +1716,11 @@ mod tests {
         // プサン → approximate hangul (ㅍㅜ + ㅅㅏ + ㄴ → 푸산)
         let result = transliterate_katakana_to_hangul("プサン");
         assert!(!result.is_empty());
-        assert!(result.chars().all(|ch| ('\u{AC00}'..='\u{D7A3}').contains(&ch)
-            || is_compat_jamo(ch)));
+        assert!(
+            result
+                .chars()
+                .all(|ch| ('\u{AC00}'..='\u{D7A3}').contains(&ch) || is_compat_jamo(ch))
+        );
     }
 
     #[test]

@@ -139,7 +139,10 @@ mod tests {
 
     #[test]
     fn format_number_groups_of_four() {
-        assert_eq!(format_card_number("4111111111111111"), "4111 1111 1111 1111");
+        assert_eq!(
+            format_card_number("4111111111111111"),
+            "4111 1111 1111 1111"
+        );
         assert_eq!(format_card_number("341111111111111"), "3411 1111 1111 111");
         assert_eq!(format_card_number("4111"), "4111");
         assert_eq!(format_card_number(""), "");

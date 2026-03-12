@@ -63,15 +63,13 @@ pub async fn create_task(
         return Err(ServerFnError::new("Stations are required"));
     }
     if departure_station == arrival_station {
-        return Err(ServerFnError::new(
-            "Departure and arrival must differ",
-        ));
+        return Err(ServerFnError::new("Departure and arrival must differ"));
     }
 
-    let passengers_json: serde_json::Value =
-        serde_json::from_str(&passengers).map_err(|e| ServerFnError::new(format!("Bad passengers JSON: {e}")))?;
-    let trains_json: serde_json::Value =
-        serde_json::from_str(&target_trains).map_err(|e| ServerFnError::new(format!("Bad trains JSON: {e}")))?;
+    let passengers_json: serde_json::Value = serde_json::from_str(&passengers)
+        .map_err(|e| ServerFnError::new(format!("Bad passengers JSON: {e}")))?;
+    let trains_json: serde_json::Value = serde_json::from_str(&target_trains)
+        .map_err(|e| ServerFnError::new(format!("Bad trains JSON: {e}")))?;
 
     let card_id = payment_card_id
         .filter(|s| !s.is_empty())
@@ -161,8 +159,8 @@ pub(crate) async fn require_auth() -> Result<(bominal_db::DbPool, Uuid), ServerF
     let pool = use_context::<bominal_db::DbPool>()
         .ok_or_else(|| ServerFnError::new("Server misconfigured"))?;
 
-    let session_id = super::auth::extract_session_id()
-        .ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+    let session_id =
+        super::auth::extract_session_id().ok_or_else(|| ServerFnError::new("Not authenticated"))?;
 
     let session = bominal_db::session::find_valid_session(&pool, &session_id)
         .await

@@ -246,7 +246,9 @@ mod tests {
             "/classes/com.korail.mobile.seatMovie.ScheduleView"
         ));
         assert!(!requires_token("/classes/com.korail.mobile.common.code.do"));
-        assert!(!requires_token("/classes/com.korail.mobile.myTicket.MyTicketList"));
+        assert!(!requires_token(
+            "/classes/com.korail.mobile.myTicket.MyTicketList"
+        ));
     }
 
     #[test]

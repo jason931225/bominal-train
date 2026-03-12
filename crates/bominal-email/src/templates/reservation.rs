@@ -94,24 +94,24 @@ pub fn render(
     };
 
     let message = match kind {
-        AlertKind::Confirmed => format!(
-            "Great news, {name}! Your {provider} train reservation has been confirmed."
-        ),
-        AlertKind::WaitingConfirmed => format!(
-            "Your waitlisted {provider} reservation has been confirmed, {name}!"
-        ),
-        AlertKind::Paid => format!(
-            "Your {provider} reservation has been paid successfully, {name}."
-        ),
+        AlertKind::Confirmed => {
+            format!("Great news, {name}! Your {provider} train reservation has been confirmed.")
+        }
+        AlertKind::WaitingConfirmed => {
+            format!("Your waitlisted {provider} reservation has been confirmed, {name}!")
+        }
+        AlertKind::Paid => {
+            format!("Your {provider} reservation has been paid successfully, {name}.")
+        }
         AlertKind::PayFailed => format!(
             "We couldn't process the auto-payment for your {provider} reservation, {name}. Please pay manually before the deadline.",
         ),
-        AlertKind::Failed => format!(
-            "Sorry {name}, we couldn't secure a seat on your requested {provider} train."
-        ),
-        AlertKind::Cancelled => format!(
-            "Your {provider} reservation task has been cancelled, {name}."
-        ),
+        AlertKind::Failed => {
+            format!("Sorry {name}, we couldn't secure a seat on your requested {provider} train.")
+        }
+        AlertKind::Cancelled => {
+            format!("Your {provider} reservation task has been cancelled, {name}.")
+        }
     };
 
     // PNR row
@@ -126,15 +126,18 @@ pub fn render(
     }).unwrap_or_default();
 
     // Cost row
-    let cost_row = details.total_cost.map(|cost| {
-        let cost = html_escape(cost);
-        format!(
-            r#"<tr class="detail-row">
+    let cost_row = details
+        .total_cost
+        .map(|cost| {
+            let cost = html_escape(cost);
+            format!(
+                r#"<tr class="detail-row">
   <td style="padding:8px 0; font-size:14px; color:#94a3b8; width:120px;">Total</td>
   <td style="padding:8px 0; font-size:14px; color:#f1f5f9; font-weight:600;">{cost}</td>
 </tr>"#
-        )
-    }).unwrap_or_default();
+            )
+        })
+        .unwrap_or_default();
 
     // CTA button for actionable states
     let cta = match kind {
@@ -237,7 +240,12 @@ mod tests {
 
     #[test]
     fn confirmed_email() {
-        let (subject, html) = render("Jason", AlertKind::Confirmed, &sample_details(), "https://bominal.com");
+        let (subject, html) = render(
+            "Jason",
+            AlertKind::Confirmed,
+            &sample_details(),
+            "https://bominal.com",
+        );
         assert!(subject.contains("예약 확정"));
         assert!(html.contains("Reservation Confirmed"));
         assert!(html.contains("305"));
@@ -248,14 +256,24 @@ mod tests {
 
     #[test]
     fn pay_failed_shows_pay_now() {
-        let (_, html) = render("User", AlertKind::PayFailed, &sample_details(), "https://bominal.com");
+        let (_, html) = render(
+            "User",
+            AlertKind::PayFailed,
+            &sample_details(),
+            "https://bominal.com",
+        );
         assert!(html.contains("Pay Now"));
         assert!(html.contains("pay manually"));
     }
 
     #[test]
     fn failed_no_cta() {
-        let (_, html) = render("User", AlertKind::Failed, &sample_details(), "https://bominal.com");
+        let (_, html) = render(
+            "User",
+            AlertKind::Failed,
+            &sample_details(),
+            "https://bominal.com",
+        );
         assert!(!html.contains("View Reservation"));
         assert!(!html.contains("Pay Now"));
     }

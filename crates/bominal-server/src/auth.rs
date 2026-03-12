@@ -1,9 +1,9 @@
 //! Auth route handlers: register, login, logout, email verification, password reset.
 
-use axum::extract::State;
-use axum::http::header::SET_COOKIE;
-use axum::http::HeaderMap;
 use axum::Json;
+use axum::extract::State;
+use axum::http::HeaderMap;
+use axum::http::header::SET_COOKIE;
 use chrono::{Duration, Utc};
 use serde::Deserialize;
 use uuid::Uuid;
@@ -45,9 +45,10 @@ pub async fn register(
         hash_password(&req.password).map_err(|e| AppError::Internal(anyhow::anyhow!("{}", e)))?;
 
     // Create user
-    let user_row = bominal_db::user::create_user(&state.db, &req.email, &req.display_name, &pw_hash)
-        .await
-        .map_err(|e| AppError::Internal(e.into()))?;
+    let user_row =
+        bominal_db::user::create_user(&state.db, &req.email, &req.display_name, &pw_hash)
+            .await
+            .map_err(|e| AppError::Internal(e.into()))?;
 
     // Send verification email (best-effort, don't block registration)
     send_verification_email(&state, user_row.id, &user_row.email, &user_row.display_name).await;
@@ -67,8 +68,7 @@ pub async fn login(
         .map_err(|e| AppError::Internal(e.into()))?
         .ok_or(AppError::Unauthorized)?;
 
-    verify_password(&req.password, &user_row.password_hash)
-        .map_err(|_| AppError::Unauthorized)?;
+    verify_password(&req.password, &user_row.password_hash).map_err(|_| AppError::Unauthorized)?;
 
     let (headers, response) = create_session_response(&state, &user_row).await?;
     Ok((headers, Json(response)))
@@ -211,7 +211,10 @@ pub async fn forgot_password(
             RESET_TOKEN_TTL_MINUTES as u32,
         );
 
-        state.email.send_best_effort(&user.email, &subject, &html).await;
+        state
+            .email
+            .send_best_effort(&user.email, &subject, &html)
+            .await;
     }
 
     Ok(Json(serde_json::json!({ "sent": true })))
@@ -239,11 +242,18 @@ pub async fn reset_password(
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-async fn send_verification_email(state: &SharedState, user_id: Uuid, email: &str, display_name: &str) {
+async fn send_verification_email(
+    state: &SharedState,
+    user_id: Uuid,
+    email: &str,
+    display_name: &str,
+) {
     let token = generate_token();
     let expires_at = Utc::now() + Duration::minutes(VERIFY_TOKEN_TTL_MINUTES);
 
-    if let Err(e) = bominal_db::user::set_verification_token(&state.db, user_id, &token, expires_at).await {
+    if let Err(e) =
+        bominal_db::user::set_verification_token(&state.db, user_id, &token, expires_at).await
+    {
         tracing::error!(user_id = %user_id, error = %e, "Failed to set verification token");
         return;
     }

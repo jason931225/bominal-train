@@ -2,7 +2,7 @@
 
 use leptos::prelude::*;
 
-use crate::api::tasks::{cancel_task, list_tasks, TaskInfo};
+use crate::api::tasks::{TaskInfo, cancel_task, list_tasks};
 use crate::components::glass_panel::GlassPanel;
 use crate::components::sse_reload::SseReload;
 use crate::components::status_chip::StatusChip;
@@ -160,4 +160,3 @@ pub fn TasksView() -> impl IntoView {
         </div>
     }
 }
-

@@ -6,8 +6,8 @@
 //! - PATCH  /api/tasks/:id  — update task
 //! - DELETE /api/tasks/:id  — cancel task
 
-use axum::extract::{Path, State};
 use axum::Json;
+use axum::extract::{Path, State};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -72,13 +72,10 @@ pub async fn create_task(
     validate_task_request(&req)?;
 
     // Verify user has valid provider credentials
-    let cred = bominal_db::provider::find_by_user_and_provider(
-        &state.db,
-        user.user_id,
-        &req.provider,
-    )
-    .await
-    .map_err(|e| AppError::Internal(e.into()))?;
+    let cred =
+        bominal_db::provider::find_by_user_and_provider(&state.db, user.user_id, &req.provider)
+            .await
+            .map_err(|e| AppError::Internal(e.into()))?;
 
     match &cred {
         Some(c) if c.status == "valid" => {}
@@ -212,7 +209,12 @@ fn validate_task_request(req: &CreateTaskRequest) -> Result<(), AppError> {
             "Departure time must be HHMMSS format".to_string(),
         ));
     }
-    if req.target_trains.as_array().map(|a| a.is_empty()).unwrap_or(true) {
+    if req
+        .target_trains
+        .as_array()
+        .map(|a| a.is_empty())
+        .unwrap_or(true)
+    {
         return Err(AppError::BadRequest(
             "At least one target train is required".to_string(),
         ));

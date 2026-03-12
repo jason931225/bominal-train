@@ -1,9 +1,9 @@
 //! WebAuthn passkey handlers — register and login ceremonies.
 
-use axum::extract::State;
-use axum::http::header::SET_COOKIE;
-use axum::http::HeaderMap;
 use axum::Json;
+use axum::extract::State;
+use axum::http::HeaderMap;
+use axum::http::header::SET_COOKIE;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -141,11 +141,10 @@ pub async fn login_finish(
     Json(req): Json<LoginFinishRequest>,
 ) -> Result<(HeaderMap, Json<serde_json::Value>), AppError> {
     // Verify login challenge exists and is not expired
-    let _challenge =
-        bominal_db::passkey::verify_login_challenge(&state.db, &req.challenge_id)
-            .await
-            .map_err(|e| AppError::Internal(e.into()))?
-            .ok_or_else(|| AppError::BadRequest("Invalid or expired challenge".to_string()))?;
+    let _challenge = bominal_db::passkey::verify_login_challenge(&state.db, &req.challenge_id)
+        .await
+        .map_err(|e| AppError::Internal(e.into()))?
+        .ok_or_else(|| AppError::BadRequest("Invalid or expired challenge".to_string()))?;
 
     // Look up the credential by its id
     let credential_id = req

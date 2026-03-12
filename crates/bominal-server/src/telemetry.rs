@@ -1,6 +1,6 @@
 use anyhow::Result;
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
 pub fn init() -> Result<PrometheusHandle> {
     let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
@@ -9,8 +9,7 @@ pub fn init() -> Result<PrometheusHandle> {
         )
     });
 
-    let is_production =
-        std::env::var("BOMINAL_ENV").unwrap_or_default() == "production";
+    let is_production = std::env::var("BOMINAL_ENV").unwrap_or_default() == "production";
 
     if is_production {
         tracing_subscriber::registry()

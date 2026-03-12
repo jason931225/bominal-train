@@ -108,11 +108,7 @@ fn mask_login_id(login_id: &str) -> String {
     format!("{first}{}{last}", "*".repeat(masked_len))
 }
 
-async fn verify_login(
-    provider: &str,
-    login_id: &str,
-    password: &str,
-) -> Result<(), ServerFnError> {
+async fn verify_login(provider: &str, login_id: &str, password: &str) -> Result<(), ServerFnError> {
     match provider {
         "SRT" => {
             let mut client = bominal_provider::srt::SrtClient::new();

@@ -42,7 +42,8 @@ async fn register_success() {
 async fn register_duplicate_email() {
     let app = TestApp::new().await;
 
-    app.register_user("dup@example.com", "password123", "First").await;
+    app.register_user("dup@example.com", "password123", "First")
+        .await;
 
     let body = serde_json::json!({
         "email": "dup@example.com",
@@ -136,7 +137,8 @@ async fn register_empty_name() {
 async fn login_success() {
     let app = TestApp::new().await;
 
-    app.register_user("login@example.com", "password123", "Login User").await;
+    app.register_user("login@example.com", "password123", "Login User")
+        .await;
 
     let body = serde_json::json!({
         "email": "login@example.com",
@@ -164,7 +166,8 @@ async fn login_success() {
 async fn login_wrong_password() {
     let app = TestApp::new().await;
 
-    app.register_user("wrongpw@example.com", "password123", "User").await;
+    app.register_user("wrongpw@example.com", "password123", "User")
+        .await;
 
     let body = serde_json::json!({
         "email": "wrongpw@example.com",
@@ -210,7 +213,9 @@ async fn login_nonexistent() {
 async fn me_valid_session() {
     let app = TestApp::new().await;
 
-    let session = app.register_user("me@example.com", "password123", "Me User").await;
+    let session = app
+        .register_user("me@example.com", "password123", "Me User")
+        .await;
 
     let req = app.authed_get("/api/auth/me", &session);
     let (status, json) = app.send(req).await;
@@ -242,7 +247,9 @@ async fn me_no_session() {
 async fn logout_clears_session() {
     let app = TestApp::new().await;
 
-    let session = app.register_user("logout@example.com", "password123", "Logout").await;
+    let session = app
+        .register_user("logout@example.com", "password123", "Logout")
+        .await;
 
     // Logout
     let req = Request::builder()

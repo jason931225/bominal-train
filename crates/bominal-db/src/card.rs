@@ -58,7 +58,10 @@ pub async fn create_card(
 }
 
 /// Find all cards for a user.
-pub async fn find_by_user(pool: &PgPool, user_id: Uuid) -> Result<Vec<PaymentCardRow>, sqlx::Error> {
+pub async fn find_by_user(
+    pool: &PgPool,
+    user_id: Uuid,
+) -> Result<Vec<PaymentCardRow>, sqlx::Error> {
     sqlx::query_as::<_, PaymentCardRow>(
         "SELECT * FROM payment_cards WHERE user_id = $1 ORDER BY created_at DESC",
     )
@@ -100,17 +103,11 @@ pub async fn update_label(
 }
 
 /// Delete a card.
-pub async fn delete_card(
-    pool: &PgPool,
-    card_id: Uuid,
-    user_id: Uuid,
-) -> Result<bool, sqlx::Error> {
-    let result = sqlx::query(
-        "DELETE FROM payment_cards WHERE id = $1 AND user_id = $2",
-    )
-    .bind(card_id)
-    .bind(user_id)
-    .execute(pool)
-    .await?;
+pub async fn delete_card(pool: &PgPool, card_id: Uuid, user_id: Uuid) -> Result<bool, sqlx::Error> {
+    let result = sqlx::query("DELETE FROM payment_cards WHERE id = $1 AND user_id = $2")
+        .bind(card_id)
+        .bind(user_id)
+        .execute(pool)
+        .await?;
     Ok(result.rows_affected() > 0)
 }

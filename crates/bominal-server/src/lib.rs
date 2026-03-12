@@ -1,11 +1,11 @@
 pub mod auth;
-pub mod passkey;
 pub mod cards;
 pub mod config;
 pub mod error;
 pub mod evervault;
 pub mod extractors;
 pub mod middleware;
+pub mod passkey;
 pub mod providers;
 pub mod rate_limit;
 pub mod reservations;

@@ -4,12 +4,12 @@
 //! - GET  /api/stations/:provider          — get station list
 //! - GET  /api/stations/:provider/suggest  — station autofill suggestions
 
-use axum::extract::{Path, Query, State};
 use axum::Json;
+use axum::extract::{Path, Query, State};
 use serde::{Deserialize, Serialize};
 
 use bominal_domain::station_search::{
-    self, LayoutHint, LangHint, SearchMode, SearchOptions, StationSearchDocument,
+    self, LangHint, LayoutHint, SearchMode, SearchOptions, StationSearchDocument,
 };
 
 use crate::error::AppError;
@@ -61,13 +61,10 @@ pub async fn search_trains(
     let available_only = req.available_only.unwrap_or(false);
 
     // Verify user has valid credentials for this provider
-    let cred = bominal_db::provider::find_by_user_and_provider(
-        &state.db,
-        user.user_id,
-        &req.provider,
-    )
-    .await
-    .map_err(|e| AppError::Internal(e.into()))?;
+    let cred =
+        bominal_db::provider::find_by_user_and_provider(&state.db, user.user_id, &req.provider)
+            .await
+            .map_err(|e| AppError::Internal(e.into()))?;
 
     match &cred {
         Some(c) if c.status == "valid" => {}
@@ -96,7 +93,9 @@ pub async fn search_trains(
 }
 
 /// GET /api/stations/:provider — list stations for a provider.
-pub async fn list_stations(Path(provider): Path<String>) -> Result<Json<Vec<StationEntry>>, AppError> {
+pub async fn list_stations(
+    Path(provider): Path<String>,
+) -> Result<Json<Vec<StationEntry>>, AppError> {
     match provider.as_str() {
         "SRT" => Ok(Json(srt_stations())),
         "KTX" => Ok(Json(ktx_stations())),
@@ -152,7 +151,7 @@ pub async fn suggest_stations(
         _ => {
             return Err(AppError::BadRequest(format!(
                 "Invalid provider: {provider}"
-            )))
+            )));
         }
     };
 
@@ -307,9 +306,9 @@ pub(crate) fn map_provider_error(err: bominal_provider::types::ProviderError) ->
     use bominal_provider::types::ProviderError;
     match err {
         ProviderError::NoResults => AppError::BadRequest("No trains found".to_string()),
-        ProviderError::SessionExpired => {
-            AppError::BadRequest("Provider session expired. Please re-verify credentials.".to_string())
-        }
+        ProviderError::SessionExpired => AppError::BadRequest(
+            "Provider session expired. Please re-verify credentials.".to_string(),
+        ),
         ProviderError::NetworkError(e) => {
             tracing::warn!(error = %e, "Provider network error");
             AppError::Internal(anyhow::anyhow!("Network error"))

@@ -94,7 +94,10 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
 
     // Errors
     m.insert("error.network", "네트워크 오류가 발생했습니다");
-    m.insert("error.session_expired", "세션이 만료되었습니다. 다시 로그인해 주세요");
+    m.insert(
+        "error.session_expired",
+        "세션이 만료되었습니다. 다시 로그인해 주세요",
+    );
     m.insert("error.sold_out", "매진되었습니다");
     m.insert("error.unexpected", "예상치 못한 오류가 발생했습니다");
     m.insert("error.login_failed", "로그인에 실패했습니다");

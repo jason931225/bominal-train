@@ -2,7 +2,7 @@
 
 use leptos::prelude::*;
 
-use crate::api::tasks::{list_tasks, TaskInfo};
+use crate::api::tasks::{TaskInfo, list_tasks};
 use crate::components::glass_panel::GlassPanel;
 use crate::components::sse_reload::SseReload;
 use crate::components::status_chip::StatusChip;

@@ -2,11 +2,11 @@
 
 use std::time::Instant;
 
+use axum::Router;
 use axum::body::Body;
 use axum::http::{HeaderValue, Method, Request};
 use axum::response::IntoResponse;
 use axum::routing::{delete, get, patch, post};
-use axum::Router;
 use leptos::prelude::provide_context;
 use tower_http::compression::CompressionLayer;
 use tower_http::cors::CorsLayer;
@@ -18,9 +18,9 @@ use tower_http::trace::TraceLayer;
 
 use crate::auth;
 use crate::cards;
-use crate::passkey;
 use crate::config::AppConfig;
 use crate::middleware;
+use crate::passkey;
 use crate::providers;
 use crate::reservations;
 use crate::runner;
@@ -43,8 +43,14 @@ pub fn api_routes() -> Router<SharedState> {
         .route("/auth/forgot-password", post(auth::forgot_password))
         .route("/auth/reset-password", post(auth::reset_password))
         // Passkey / WebAuthn
-        .route("/auth/passkey/register/start", post(passkey::register_start))
-        .route("/auth/passkey/register/finish", post(passkey::register_finish))
+        .route(
+            "/auth/passkey/register/start",
+            post(passkey::register_start),
+        )
+        .route(
+            "/auth/passkey/register/finish",
+            post(passkey::register_finish),
+        )
         .route("/auth/passkey/login/start", post(passkey::login_start))
         .route("/auth/passkey/login/finish", post(passkey::login_finish))
         // Provider credentials
@@ -61,10 +67,7 @@ pub fn api_routes() -> Router<SharedState> {
             get(search::suggest_stations),
         )
         // Tasks
-        .route(
-            "/tasks",
-            get(tasks::list_tasks).post(tasks::create_task),
-        )
+        .route("/tasks", get(tasks::list_tasks).post(tasks::create_task))
         .route(
             "/tasks/{id}",
             get(tasks::get_task)
@@ -92,10 +95,7 @@ pub fn api_routes() -> Router<SharedState> {
             post(reservations::refund_reservation),
         )
         // Payment cards
-        .route(
-            "/cards",
-            get(cards::list_cards).post(cards::add_card),
-        )
+        .route("/cards", get(cards::list_cards).post(cards::add_card))
         .route(
             "/cards/{id}",
             patch(cards::update_card).delete(cards::delete_card),
@@ -112,9 +112,8 @@ pub async fn create_router(
 
     let event_bus = sse::EventBus::new();
     let email = bominal_email::EmailClient::new(&config.resend_api_key, &config.email_from);
-    let encryption_key = bominal_domain::crypto::encryption::EncryptionKey::from_hex(
-        &config.encryption_key,
-    )?;
+    let encryption_key =
+        bominal_domain::crypto::encryption::EncryptionKey::from_hex(&config.encryption_key)?;
     let evervault = crate::evervault::EvervaultConfig::new(
         &config.ev_team_id,
         &config.ev_app_id,
@@ -180,10 +179,8 @@ pub async fn create_router(
     };
 
     // Leptos SSR page renderer (fallback for all non-API routes)
-    let page_renderer = leptos_axum::render_app_to_stream_with_context(
-        context_fn,
-        bominal_frontend::app::shell,
-    );
+    let page_renderer =
+        leptos_axum::render_app_to_stream_with_context(context_fn, bominal_frontend::app::shell);
 
     let app = Router::new()
         .nest("/api", api)
@@ -213,11 +210,18 @@ pub async fn create_router(
             axum::http::header::REFERRER_POLICY,
             HeaderValue::from_static("strict-origin-when-cross-origin"),
         ))
-        .layer(CorsLayer::new()
-            .allow_origin(config.app_base_url.parse::<HeaderValue>().unwrap_or_else(|_| HeaderValue::from_static("http://localhost:3000")))
-            .allow_methods([Method::GET, Method::POST, Method::PATCH, Method::DELETE])
-            .allow_credentials(true)
-            .allow_headers([axum::http::header::CONTENT_TYPE, axum::http::header::COOKIE]))
+        .layer(
+            CorsLayer::new()
+                .allow_origin(
+                    config
+                        .app_base_url
+                        .parse::<HeaderValue>()
+                        .unwrap_or_else(|_| HeaderValue::from_static("http://localhost:3000")),
+                )
+                .allow_methods([Method::GET, Method::POST, Method::PATCH, Method::DELETE])
+                .allow_credentials(true)
+                .allow_headers([axum::http::header::CONTENT_TYPE, axum::http::header::COOKIE]),
+        )
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(|request: &axum::http::Request<_>| {
@@ -246,9 +250,7 @@ pub async fn create_router(
                     },
                 ),
         )
-        .layer(PropagateRequestIdLayer::new(
-            middleware::request_id_header(),
-        ))
+        .layer(PropagateRequestIdLayer::new(middleware::request_id_header()))
         .layer(SetRequestIdLayer::new(
             middleware::request_id_header(),
             middleware::RequestIdGenerator,

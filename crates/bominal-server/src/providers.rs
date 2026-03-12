@@ -4,8 +4,8 @@
 //! - POST /api/providers           — add/update + verify credentials
 //! - DELETE /api/providers/:provider — remove credentials
 
-use axum::extract::{Path, State};
 use axum::Json;
+use axum::extract::{Path, State};
 use serde::{Deserialize, Serialize};
 
 use crate::error::AppError;
@@ -74,20 +74,14 @@ pub async fn add_provider(
         Ok(()) => "valid",
         Err(_) => {
             // Do NOT store invalid credentials
-            return Err(AppError::BadRequest(
-                verify_result
-                    .unwrap_err()
-                    .to_string(),
-            ));
+            return Err(AppError::BadRequest(verify_result.unwrap_err().to_string()));
         }
     };
 
     // Encrypt password for storage with AES-256-GCM
-    let encrypted_password = bominal_domain::crypto::encryption::encrypt(
-        &state.encryption_key,
-        &req.password,
-    )
-    .map_err(|e| AppError::Internal(e.into()))?;
+    let encrypted_password =
+        bominal_domain::crypto::encryption::encrypt(&state.encryption_key, &req.password)
+            .map_err(|e| AppError::Internal(e.into()))?;
 
     let row = bominal_db::provider::upsert_credential(
         &state.db,

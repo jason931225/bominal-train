@@ -89,13 +89,11 @@ pub async fn find_by_id(
     task_id: Uuid,
     user_id: Uuid,
 ) -> Result<Option<TaskRow>, sqlx::Error> {
-    sqlx::query_as::<_, TaskRow>(
-        "SELECT * FROM reservation_tasks WHERE id = $1 AND user_id = $2",
-    )
-    .bind(task_id)
-    .bind(user_id)
-    .fetch_optional(pool)
-    .await
+    sqlx::query_as::<_, TaskRow>("SELECT * FROM reservation_tasks WHERE id = $1 AND user_id = $2")
+        .bind(task_id)
+        .bind(user_id)
+        .fetch_optional(pool)
+        .await
 }
 
 /// Find all tasks with a specific status (for the task runner).
@@ -131,20 +129,14 @@ pub async fn claim_queued_tasks(pool: &PgPool) -> Result<Vec<TaskRow>, sqlx::Err
 }
 
 /// Update task status.
-pub async fn update_status(
-    pool: &PgPool,
-    task_id: Uuid,
-    status: &str,
-) -> Result<(), sqlx::Error> {
+pub async fn update_status(pool: &PgPool, task_id: Uuid, status: &str) -> Result<(), sqlx::Error> {
     let started_clause = if status == "running" {
         ", started_at = COALESCE(started_at, now())"
     } else {
         ""
     };
 
-    let query = format!(
-        "UPDATE reservation_tasks SET status = $1{started_clause} WHERE id = $2"
-    );
+    let query = format!("UPDATE reservation_tasks SET status = $1{started_clause} WHERE id = $2");
 
     sqlx::query(&query)
         .bind(status)
@@ -241,11 +233,7 @@ pub async fn update_task(
 }
 
 /// Delete (cancel) a task.
-pub async fn delete_task(
-    pool: &PgPool,
-    task_id: Uuid,
-    user_id: Uuid,
-) -> Result<bool, sqlx::Error> {
+pub async fn delete_task(pool: &PgPool, task_id: Uuid, user_id: Uuid) -> Result<bool, sqlx::Error> {
     let result = sqlx::query(
         "UPDATE reservation_tasks SET status = 'cancelled' WHERE id = $1 AND user_id = $2 AND status NOT IN ('confirmed', 'cancelled')",
     )

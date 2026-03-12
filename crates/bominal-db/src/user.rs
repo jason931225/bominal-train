@@ -76,10 +76,7 @@ pub async fn set_verification_token(
 }
 
 /// Verify email using the token. Returns the user if valid.
-pub async fn verify_email(
-    pool: &PgPool,
-    token: &str,
-) -> Result<Option<UserRow>, sqlx::Error> {
+pub async fn verify_email(pool: &PgPool, token: &str) -> Result<Option<UserRow>, sqlx::Error> {
     sqlx::query_as::<_, UserRow>(
         r#"
         UPDATE users

@@ -4,7 +4,7 @@
 use leptos::prelude::*;
 
 use crate::api::cards::list_cards;
-use crate::api::search::{list_stations, search_trains, StationInfo, TrainInfo};
+use crate::api::search::{StationInfo, TrainInfo, list_stations, search_trains};
 use crate::api::tasks::create_task;
 use crate::components::glass_panel::GlassPanel;
 use crate::i18n::t;
@@ -75,18 +75,20 @@ pub fn SearchPanel() -> impl IntoView {
 
         // Build target_trains JSON
         let target_trains_json = serde_json::json!(
-            trains.iter().map(|t| {
-                serde_json::json!({
-                    "train_number": t.train_number,
-                    "dep_time": t.dep_time,
+            trains
+                .iter()
+                .map(|t| {
+                    serde_json::json!({
+                        "train_number": t.train_number,
+                        "dep_time": t.dep_time,
+                    })
                 })
-            }).collect::<Vec<_>>()
+                .collect::<Vec<_>>()
         )
         .to_string();
 
         // Build passengers JSON
-        let passengers_json =
-            serde_json::json!([{"type": "adult", "count": adults}]).to_string();
+        let passengers_json = serde_json::json!([{"type": "adult", "count": adults}]).to_string();
 
         // Earliest selected train's dep_time as the task departure_time
         let dep_time = trains
@@ -573,4 +575,3 @@ fn SeatBadge(label: &'static str, available: bool) -> impl IntoView {
     };
     view! { <span class=class>{label}</span> }
 }
-

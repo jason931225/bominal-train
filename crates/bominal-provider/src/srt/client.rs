@@ -76,10 +76,7 @@ impl SrtClient {
             .user_agent(USER_AGENT)
             .default_headers({
                 let mut h = reqwest::header::HeaderMap::new();
-                h.insert(
-                    reqwest::header::ACCEPT,
-                    "application/json".parse().unwrap(),
-                );
+                h.insert(reqwest::header::ACCEPT, "application/json".parse().unwrap());
                 h
             })
             .build()
@@ -104,8 +101,8 @@ impl SrtClient {
     /// `ev:`-prefixed card fields in-flight. Cookies, Host, and UA are
     /// preserved because the target URL stays `app.srail.or.kr`.
     pub fn with_relay(relay_domain: &str) -> Self {
-        let proxy = reqwest::Proxy::all(format!("https://{relay_domain}"))
-            .expect("Invalid relay domain");
+        let proxy =
+            reqwest::Proxy::all(format!("https://{relay_domain}")).expect("Invalid relay domain");
 
         let api_client = reqwest::Client::builder()
             .cookie_store(true)
@@ -113,10 +110,7 @@ impl SrtClient {
             .proxy(proxy)
             .default_headers({
                 let mut h = reqwest::header::HeaderMap::new();
-                h.insert(
-                    reqwest::header::ACCEPT,
-                    "application/json".parse().unwrap(),
-                );
+                h.insert(reqwest::header::ACCEPT, "application/json".parse().unwrap());
                 h
             })
             .build()
@@ -175,11 +169,7 @@ impl SrtClient {
     /// Error detection uses Korean string search in the raw response body,
     /// NOT JSON status codes, because SRT returns errors as HTTP 200.
     #[instrument(skip(self, password), fields(login_type))]
-    pub async fn login(
-        &mut self,
-        login_id: &str,
-        password: &str,
-    ) -> Result<(), ProviderError> {
+    pub async fn login(&mut self, login_id: &str, password: &str) -> Result<(), ProviderError> {
         let login_type = Self::auth_code(login_id);
         let normalized_id = Self::normalize_id(login_id);
         let login_referer = Endpoints::url(Endpoints::MAIN);
@@ -229,12 +219,11 @@ impl SrtClient {
         }
 
         // Parse successful login response
-        let json: serde_json::Value = serde_json::from_str(&body).map_err(|_| {
-            ProviderError::UnexpectedResponse {
+        let json: serde_json::Value =
+            serde_json::from_str(&body).map_err(|_| ProviderError::UnexpectedResponse {
                 status: 200,
                 body: body.clone(),
-            }
-        })?;
+            })?;
 
         let user_map = json
             .get("userMap")
@@ -288,10 +277,7 @@ impl SrtClient {
 
         if !resp.status().is_success() {
             let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::UnexpectedResponse {
-                status: 500,
-                body,
-            });
+            return Err(ProviderError::UnexpectedResponse { status: 500, body });
         }
 
         self.is_logged_in = false;
@@ -404,8 +390,15 @@ impl SrtClient {
         window_seat: WindowSeat,
     ) -> Result<SrtReservation, ProviderError> {
         self.require_login()?;
-        self.reserve_internal(JOB_ID_PERSONAL, train, passengers, seat_pref, window_seat, None)
-            .await
+        self.reserve_internal(
+            JOB_ID_PERSONAL,
+            train,
+            passengers,
+            seat_pref,
+            window_seat,
+            None,
+        )
+        .await
     }
 
     /// Reserve standby (waiting list).
@@ -460,12 +453,14 @@ impl SrtClient {
             SeatPreference::SpecialFirst => train.special_seat_available(),
         };
 
-        let train_number: u32 = train.train_number.parse().map_err(|_| {
-            ProviderError::UnexpectedResponse {
-                status: 400,
-                body: format!("Invalid train number: {}", train.train_number),
-            }
-        })?;
+        let train_number: u32 =
+            train
+                .train_number
+                .parse()
+                .map_err(|_| ProviderError::UnexpectedResponse {
+                    status: 400,
+                    body: format!("Invalid train number: {}", train.train_number),
+                })?;
         let train_number_padded = format!("{train_number:05}");
         let phone_str = phone.unwrap_or("");
 
@@ -497,14 +492,8 @@ impl SrtClient {
                 "arvStnConsOrdr1".into(),
                 train.arr_station_constitution_order.clone(),
             ),
-            (
-                "dptStnRunOrdr1".into(),
-                train.dep_station_run_order.clone(),
-            ),
-            (
-                "arvStnRunOrdr1".into(),
-                train.arr_station_run_order.clone(),
-            ),
+            ("dptStnRunOrdr1".into(), train.dep_station_run_order.clone()),
+            ("arvStnRunOrdr1".into(), train.arr_station_run_order.clone()),
             ("mblPhone".into(), phone_str.to_string()),
         ];
 
@@ -577,11 +566,7 @@ impl SrtClient {
 
         let class_change_flag = if agree_class_change { "Y" } else { "N" };
         let sms_flag = if agree_sms { "Y" } else { "N" };
-        let tel = if agree_sms {
-            phone.unwrap_or("")
-        } else {
-            ""
-        };
+        let tel = if agree_sms { phone.unwrap_or("") } else { "" };
 
         let form: Vec<(&str, &str)> = vec![
             ("pnrNo", pnr_no),
@@ -639,10 +624,7 @@ impl SrtClient {
         let mut reservations = Vec::new();
 
         for (train, pay) in train_data.iter().zip(pay_data.iter()) {
-            let pnr_no = train
-                .get("pnrNo")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
+            let pnr_no = train.get("pnrNo").and_then(|v| v.as_str()).unwrap_or("");
 
             let tickets = self.ticket_info(pnr_no).await?;
 
@@ -696,11 +678,7 @@ impl SrtClient {
     pub async fn cancel(&self, pnr_no: &str) -> Result<(), ProviderError> {
         self.require_login()?;
 
-        let form: Vec<(&str, &str)> = vec![
-            ("pnrNo", pnr_no),
-            ("jrnyCnt", "1"),
-            ("rsvChgTno", "0"),
-        ];
+        let form: Vec<(&str, &str)> = vec![("pnrNo", pnr_no), ("jrnyCnt", "1"), ("rsvChgTno", "0")];
 
         let resp = self
             .api_client
@@ -940,30 +918,22 @@ mod tests {
 
     #[test]
     fn validate_card_bad_password() {
-        assert!(
-            SrtClient::validate_card_inputs("4111111111111111", "1", "2612", "J", 0).is_err()
-        );
+        assert!(SrtClient::validate_card_inputs("4111111111111111", "1", "2612", "J", 0).is_err());
     }
 
     #[test]
     fn validate_card_bad_expiry() {
-        assert!(
-            SrtClient::validate_card_inputs("4111111111111111", "12", "26", "J", 0).is_err()
-        );
+        assert!(SrtClient::validate_card_inputs("4111111111111111", "12", "26", "J", 0).is_err());
     }
 
     #[test]
     fn validate_card_bad_type() {
-        assert!(
-            SrtClient::validate_card_inputs("4111111111111111", "12", "2612", "X", 0).is_err()
-        );
+        assert!(SrtClient::validate_card_inputs("4111111111111111", "12", "2612", "X", 0).is_err());
     }
 
     #[test]
     fn validate_card_bad_installment() {
-        assert!(
-            SrtClient::validate_card_inputs("4111111111111111", "12", "2612", "J", 1).is_err()
-        );
+        assert!(SrtClient::validate_card_inputs("4111111111111111", "12", "2612", "J", 1).is_err());
         assert!(
             SrtClient::validate_card_inputs("4111111111111111", "12", "2612", "J", 25).is_err()
         );

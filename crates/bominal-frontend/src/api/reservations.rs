@@ -50,9 +50,7 @@ pub async fn list_reservations(provider: String) -> Result<Vec<ReservationInfo>,
     match provider.as_str() {
         "SRT" => list_srt(&cred.login_id, &password).await,
         "KTX" => list_ktx(&cred.login_id, &password).await,
-        _ => Err(ServerFnError::new(format!(
-            "Invalid provider: {provider}"
-        ))),
+        _ => Err(ServerFnError::new(format!("Invalid provider: {provider}"))),
     }
 }
 
@@ -78,9 +76,7 @@ pub async fn cancel_reservation(
     match provider.as_str() {
         "SRT" => cancel_srt(&cred.login_id, &password, &reservation_number).await,
         "KTX" => cancel_ktx(&cred.login_id, &password, &reservation_number).await,
-        _ => Err(ServerFnError::new(format!(
-            "Invalid provider: {provider}"
-        ))),
+        _ => Err(ServerFnError::new(format!("Invalid provider: {provider}"))),
     }
 }
 
@@ -126,15 +122,29 @@ pub async fn pay_reservation(
     match provider.as_str() {
         "SRT" => {
             pay_srt(
-                &cred.login_id, &password, &reservation_number,
-                &card_number, &card_password, &birthday, &expiry, &card.card_type,
-            ).await
+                &cred.login_id,
+                &password,
+                &reservation_number,
+                &card_number,
+                &card_password,
+                &birthday,
+                &expiry,
+                &card.card_type,
+            )
+            .await
         }
         "KTX" => {
             pay_ktx(
-                &cred.login_id, &password, &reservation_number,
-                &card_number, &card_password, &birthday, &expiry, &card.card_type,
-            ).await
+                &cred.login_id,
+                &password,
+                &reservation_number,
+                &card_number,
+                &card_password,
+                &birthday,
+                &expiry,
+                &card.card_type,
+            )
+            .await
         }
         _ => Err(ServerFnError::new(format!("Invalid provider: {provider}"))),
     }
@@ -142,10 +152,7 @@ pub async fn pay_reservation(
 
 // ── SRT ──────────────────────────────────────────────────────────────
 
-async fn list_srt(
-    login_id: &str,
-    password: &str,
-) -> Result<Vec<ReservationInfo>, ServerFnError> {
+async fn list_srt(login_id: &str, password: &str) -> Result<Vec<ReservationInfo>, ServerFnError> {
     let mut client = bominal_provider::srt::SrtClient::new();
     client
         .login(login_id, password)
@@ -179,11 +186,7 @@ async fn list_srt(
         .collect())
 }
 
-async fn cancel_srt(
-    login_id: &str,
-    password: &str,
-    pnr: &str,
-) -> Result<(), ServerFnError> {
+async fn cancel_srt(login_id: &str, password: &str, pnr: &str) -> Result<(), ServerFnError> {
     let mut client = bominal_provider::srt::SrtClient::new();
     client
         .login(login_id, password)
@@ -200,10 +203,7 @@ async fn cancel_srt(
 
 // ── KTX ──────────────────────────────────────────────────────────────
 
-async fn list_ktx(
-    login_id: &str,
-    password: &str,
-) -> Result<Vec<ReservationInfo>, ServerFnError> {
+async fn list_ktx(login_id: &str, password: &str) -> Result<Vec<ReservationInfo>, ServerFnError> {
     let mut client = bominal_provider::ktx::KtxClient::new();
     client
         .login(login_id, password)
@@ -237,11 +237,7 @@ async fn list_ktx(
         .collect())
 }
 
-async fn cancel_ktx(
-    login_id: &str,
-    password: &str,
-    pnr: &str,
-) -> Result<(), ServerFnError> {
+async fn cancel_ktx(login_id: &str, password: &str, pnr: &str) -> Result<(), ServerFnError> {
     let mut client = bominal_provider::ktx::KtxClient::new();
     client
         .login(login_id, password)

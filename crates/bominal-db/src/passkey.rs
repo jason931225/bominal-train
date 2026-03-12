@@ -29,13 +29,11 @@ pub async fn store_challenge(
     user_id: Uuid,
     challenge_id: &str,
 ) -> Result<(), sqlx::Error> {
-    sqlx::query(
-        "INSERT INTO passkey_challenges (user_id, challenge_id) VALUES ($1, $2)",
-    )
-    .bind(user_id)
-    .bind(challenge_id)
-    .execute(pool)
-    .await?;
+    sqlx::query("INSERT INTO passkey_challenges (user_id, challenge_id) VALUES ($1, $2)")
+        .bind(user_id)
+        .bind(challenge_id)
+        .execute(pool)
+        .await?;
     Ok(())
 }
 
@@ -56,16 +54,11 @@ pub async fn verify_challenge(
     .await
 }
 
-pub async fn store_login_challenge(
-    pool: &PgPool,
-    challenge_id: &str,
-) -> Result<(), sqlx::Error> {
-    sqlx::query(
-        "INSERT INTO passkey_challenges (challenge_id) VALUES ($1)",
-    )
-    .bind(challenge_id)
-    .execute(pool)
-    .await?;
+pub async fn store_login_challenge(pool: &PgPool, challenge_id: &str) -> Result<(), sqlx::Error> {
+    sqlx::query("INSERT INTO passkey_challenges (challenge_id) VALUES ($1)")
+        .bind(challenge_id)
+        .execute(pool)
+        .await?;
     Ok(())
 }
 
@@ -135,12 +128,10 @@ pub async fn delete_credential(
     credential_id: Uuid,
     user_id: Uuid,
 ) -> Result<bool, sqlx::Error> {
-    let result = sqlx::query(
-        "DELETE FROM passkey_credentials WHERE id = $1 AND user_id = $2",
-    )
-    .bind(credential_id)
-    .bind(user_id)
-    .execute(pool)
-    .await?;
+    let result = sqlx::query("DELETE FROM passkey_credentials WHERE id = $1 AND user_id = $2")
+        .bind(credential_id)
+        .bind(user_id)
+        .execute(pool)
+        .await?;
     Ok(result.rows_affected() > 0)
 }

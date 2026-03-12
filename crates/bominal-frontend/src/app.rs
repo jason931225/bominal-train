@@ -13,8 +13,8 @@ use crate::components::bottom_nav::BottomNav;
 use crate::i18n::t;
 use crate::pages::{
     auth_page::AuthPage, home_view::HomeView, reservations_view::ReservationsView,
-    schedule_results::ScheduleResults, search_panel::SearchPanel,
-    settings_view::SettingsView, tasks_view::TasksView,
+    schedule_results::ScheduleResults, search_panel::SearchPanel, settings_view::SettingsView,
+    tasks_view::TasksView,
 };
 
 /// HTML shell for SSR — renders the full `<html>` document.

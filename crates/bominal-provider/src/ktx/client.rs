@@ -20,8 +20,7 @@ use super::train::KtxTrain;
 
 const BASE_URL: &str = "https://smart.letskorail.com:443/classes/com.korail.mobile";
 
-const USER_AGENT: &str =
-    "Dalvik/2.1.0 (Linux; U; Android 14; SM-S928N Build/UP1A.231005.007)";
+const USER_AGENT: &str = "Dalvik/2.1.0 (Linux; U; Android 14; SM-S928N Build/UP1A.231005.007)";
 
 const DEVICE: &str = "AD";
 const VERSION: &str = "250601002";
@@ -118,8 +117,8 @@ impl KtxClient {
     /// `ev:`-prefixed card fields in-flight. Cookies, Host, and UA are
     /// preserved because the target URL stays `smart.letskorail.com`.
     pub fn with_relay(relay_domain: &str) -> Self {
-        let proxy = reqwest::Proxy::all(format!("https://{relay_domain}"))
-            .expect("Invalid relay domain");
+        let proxy =
+            reqwest::Proxy::all(format!("https://{relay_domain}")).expect("Invalid relay domain");
 
         let client = reqwest::Client::builder()
             .cookie_store(true)
@@ -194,11 +193,7 @@ impl KtxClient {
     }
 
     /// Build a request with optional DynaPath token header.
-    fn request_with_dynapath(
-        &self,
-        method: reqwest::Method,
-        url: &str,
-    ) -> reqwest::RequestBuilder {
+    fn request_with_dynapath(&self, method: reqwest::Method, url: &str) -> reqwest::RequestBuilder {
         let mut builder = self.client.request(method, url);
         if requires_token(url) {
             let token = self.dynapath.generate_token_auto(DEVICE_ID);
@@ -244,11 +239,7 @@ impl KtxClient {
 
     /// Log in to the KTX/Korail server.
     #[instrument(skip(self, password), fields(login_type))]
-    pub async fn login(
-        &mut self,
-        login_id: &str,
-        password: &str,
-    ) -> Result<(), ProviderError> {
+    pub async fn login(&mut self, login_id: &str, password: &str) -> Result<(), ProviderError> {
         // Step 1: Fetch encryption key
         let (enc_key, idx) = self.fetch_encryption_params().await?;
 
@@ -323,10 +314,7 @@ impl KtxClient {
 
         if !resp.status().is_success() {
             let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::UnexpectedResponse {
-                status: 500,
-                body,
-            });
+            return Err(ProviderError::UnexpectedResponse { status: 500, body });
         }
 
         self.is_logged_in = false;
@@ -562,7 +550,11 @@ impl KtxClient {
             .iter()
             .filter_map(|jrny| {
                 let pnr_no = jrny.get("h_pnr_no")?.as_str()?;
-                if pnr_no.is_empty() { None } else { Some((jrny, pnr_no.to_string())) }
+                if pnr_no.is_empty() {
+                    None
+                } else {
+                    Some((jrny, pnr_no.to_string()))
+                }
             })
             .collect();
 
@@ -626,7 +618,10 @@ impl KtxClient {
             .cloned()
             .unwrap_or_default();
 
-        Ok(ticket_data.iter().filter_map(KtxTicket::from_json).collect())
+        Ok(ticket_data
+            .iter()
+            .filter_map(KtxTicket::from_json)
+            .collect())
     }
 
     // ── Cancel ───────────────────────────────────────────────────────
@@ -860,7 +855,11 @@ mod tests {
     fn base_params_include_device() {
         let params = KtxClient::base_params();
         assert!(params.iter().any(|(k, v)| *k == "Device" && *v == "AD"));
-        assert!(params.iter().any(|(k, v)| *k == "Version" && *v == "250601002"));
+        assert!(
+            params
+                .iter()
+                .any(|(k, v)| *k == "Version" && *v == "250601002")
+        );
     }
 
     #[test]

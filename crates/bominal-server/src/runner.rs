@@ -39,7 +39,16 @@ pub fn spawn_runner(
     tokio::spawn(async move {
         info!("Task runner started");
         loop {
-            if let Err(e) = poll_and_dispatch(&db, &event_bus, &email, &encryption_key, &evervault, &app_base_url).await {
+            if let Err(e) = poll_and_dispatch(
+                &db,
+                &event_bus,
+                &email,
+                &encryption_key,
+                &evervault,
+                &app_base_url,
+            )
+            .await
+            {
                 error!(error = %e, "Task runner poll error");
             }
             tokio::time::sleep(std::time::Duration::from_secs(5)).await;
@@ -69,13 +78,17 @@ async fn poll_and_dispatch(
         tokio::spawn(async move {
             info!(task_id = %task.id, provider = %task.provider, "Starting reservation worker");
 
-            bus.publish(task.user_id, TaskEvent {
-                task_id: task.id,
-                status: "running".to_string(),
-                message: "Reservation worker started".to_string(),
-                attempt_count: 0,
-                reservation_number: None,
-            }).await;
+            bus.publish(
+                task.user_id,
+                TaskEvent {
+                    task_id: task.id,
+                    status: "running".to_string(),
+                    message: "Reservation worker started".to_string(),
+                    attempt_count: 0,
+                    reservation_number: None,
+                },
+            )
+            .await;
 
             let result = match task.provider.as_str() {
                 "SRT" => run_srt_task(&db, &task, &bus, &email, &key, &ev, &base_url).await,
@@ -91,13 +104,17 @@ async fn poll_and_dispatch(
                 if let Err(db_err) = bominal_db::task::update_status(&db, task.id, "failed").await {
                     error!(task_id = %task.id, error = %db_err, "Failed to mark task as failed");
                 }
-                bus.publish(task.user_id, TaskEvent {
-                    task_id: task.id,
-                    status: "failed".to_string(),
-                    message: format!("Task failed: {e}"),
-                    attempt_count: 0,
-                    reservation_number: None,
-                }).await;
+                bus.publish(
+                    task.user_id,
+                    TaskEvent {
+                        task_id: task.id,
+                        status: "failed".to_string(),
+                        message: format!("Task failed: {e}"),
+                        attempt_count: 0,
+                        reservation_number: None,
+                    },
+                )
+                .await;
 
                 // Send failure email if notifications enabled
                 if task.notify_enabled {
@@ -158,13 +175,18 @@ async fn run_srt_task(
             if t.attempt_count >= MAX_ATTEMPTS {
                 warn!(task_id = %task.id, attempts = t.attempt_count, "Max attempts reached");
                 bominal_db::task::update_status(db, task.id, "failed").await?;
-                event_bus.publish(task.user_id, TaskEvent {
-                    task_id: task.id,
-                    status: "failed".to_string(),
-                    message: format!("Max attempts ({MAX_ATTEMPTS}) reached"),
-                    attempt_count: t.attempt_count,
-                    reservation_number: None,
-                }).await;
+                event_bus
+                    .publish(
+                        task.user_id,
+                        TaskEvent {
+                            task_id: task.id,
+                            status: "failed".to_string(),
+                            message: format!("Max attempts ({MAX_ATTEMPTS}) reached"),
+                            attempt_count: t.attempt_count,
+                            reservation_number: None,
+                        },
+                    )
+                    .await;
                 return Ok(());
             }
         }
@@ -201,21 +223,11 @@ async fn run_srt_task(
 
                         let reserve_result = if train.seat_available() {
                             client
-                                .reserve(
-                                    train,
-                                    &passengers,
-                                    seat_pref,
-                                    WindowSeat::None,
-                                )
+                                .reserve(train, &passengers, seat_pref, WindowSeat::None)
                                 .await
                         } else {
                             client
-                                .reserve_standby(
-                                    train,
-                                    &passengers,
-                                    seat_pref,
-                                    None,
-                                )
+                                .reserve_standby(train, &passengers, seat_pref, None)
                                 .await
                         };
 
@@ -241,16 +253,24 @@ async fn run_srt_task(
                                     }),
                                 )
                                 .await?;
-                                event_bus.publish(task.user_id, TaskEvent {
-                                    task_id: task.id,
-                                    status: "confirmed".to_string(),
-                                    message: format!(
-                                        "Reservation confirmed! Train {} — PNR {}",
-                                        reservation.train_number, reservation.reservation_number
-                                    ),
-                                    attempt_count: task.attempt_count,
-                                    reservation_number: Some(reservation.reservation_number.clone()),
-                                }).await;
+                                event_bus
+                                    .publish(
+                                        task.user_id,
+                                        TaskEvent {
+                                            task_id: task.id,
+                                            status: "confirmed".to_string(),
+                                            message: format!(
+                                                "Reservation confirmed! Train {} — PNR {}",
+                                                reservation.train_number,
+                                                reservation.reservation_number
+                                            ),
+                                            attempt_count: task.attempt_count,
+                                            reservation_number: Some(
+                                                reservation.reservation_number.clone(),
+                                            ),
+                                        },
+                                    )
+                                    .await;
 
                                 // Send confirmation email
                                 if task.notify_enabled {
@@ -259,16 +279,32 @@ async fn run_srt_task(
                                     } else {
                                         AlertKind::Confirmed
                                     };
-                                    send_alert_email(db, email, task, kind, Some(&reservation.reservation_number), app_base_url).await;
+                                    send_alert_email(
+                                        db,
+                                        email,
+                                        task,
+                                        kind,
+                                        Some(&reservation.reservation_number),
+                                        app_base_url,
+                                    )
+                                    .await;
                                 }
 
                                 // Auto-pay if configured (skip for standby/waiting reservations)
                                 if task.auto_pay && !reservation.is_waiting {
                                     let pnr = reservation.reservation_number.clone();
                                     try_auto_pay_srt(
-                                        db, &client, task, &reservation, &pnr, event_bus, email,
-                                        evervault, app_base_url,
-                                    ).await;
+                                        db,
+                                        &client,
+                                        task,
+                                        &reservation,
+                                        &pnr,
+                                        event_bus,
+                                        email,
+                                        evervault,
+                                        app_base_url,
+                                    )
+                                    .await;
                                 }
 
                                 return Ok(());
@@ -276,13 +312,18 @@ async fn run_srt_task(
                             Err(ProviderError::DuplicateReservation) => {
                                 warn!(task_id = %task.id, "Duplicate reservation");
                                 bominal_db::task::update_status(db, task.id, "failed").await?;
-                                event_bus.publish(task.user_id, TaskEvent {
-                                    task_id: task.id,
-                                    status: "failed".to_string(),
-                                    message: "Duplicate reservation detected".to_string(),
-                                    attempt_count: task.attempt_count,
-                                    reservation_number: None,
-                                }).await;
+                                event_bus
+                                    .publish(
+                                        task.user_id,
+                                        TaskEvent {
+                                            task_id: task.id,
+                                            status: "failed".to_string(),
+                                            message: "Duplicate reservation detected".to_string(),
+                                            attempt_count: task.attempt_count,
+                                            reservation_number: None,
+                                        },
+                                    )
+                                    .await;
                                 return Ok(());
                             }
                             Err(e) => {
@@ -372,13 +413,18 @@ async fn run_ktx_task(
             if t.attempt_count >= MAX_ATTEMPTS {
                 warn!(task_id = %task.id, attempts = t.attempt_count, "Max attempts reached");
                 bominal_db::task::update_status(db, task.id, "failed").await?;
-                event_bus.publish(task.user_id, TaskEvent {
-                    task_id: task.id,
-                    status: "failed".to_string(),
-                    message: format!("Max attempts ({MAX_ATTEMPTS}) reached"),
-                    attempt_count: t.attempt_count,
-                    reservation_number: None,
-                }).await;
+                event_bus
+                    .publish(
+                        task.user_id,
+                        TaskEvent {
+                            task_id: task.id,
+                            status: "failed".to_string(),
+                            message: format!("Max attempts ({MAX_ATTEMPTS}) reached"),
+                            attempt_count: t.attempt_count,
+                            reservation_number: None,
+                        },
+                    )
+                    .await;
                 return Ok(());
             }
         }
@@ -399,8 +445,7 @@ async fn run_ktx_task(
             Ok(trains) => {
                 for target_no in &target_train_numbers {
                     let matching = trains.iter().find(|t| {
-                        t.train_no == *target_no
-                            && (t.seat_available() || t.waiting_available())
+                        t.train_no == *target_no && (t.seat_available() || t.waiting_available())
                     });
 
                     if let Some(train) = matching {
@@ -410,9 +455,7 @@ async fn run_ktx_task(
                             "Found available KTX train, attempting reservation"
                         );
 
-                        let reserve_result = client
-                            .reserve(train, seat_pref, psg_count)
-                            .await;
+                        let reserve_result = client.reserve(train, seat_pref, psg_count).await;
 
                         match reserve_result {
                             Ok(reservation) => {
@@ -436,16 +479,21 @@ async fn run_ktx_task(
                                     }),
                                 )
                                 .await?;
-                                event_bus.publish(task.user_id, TaskEvent {
-                                    task_id: task.id,
-                                    status: "confirmed".to_string(),
-                                    message: format!(
-                                        "KTX reservation confirmed! Train {} — PNR {}",
-                                        reservation.train_no, reservation.rsv_id
-                                    ),
-                                    attempt_count: task.attempt_count,
-                                    reservation_number: Some(reservation.rsv_id.clone()),
-                                }).await;
+                                event_bus
+                                    .publish(
+                                        task.user_id,
+                                        TaskEvent {
+                                            task_id: task.id,
+                                            status: "confirmed".to_string(),
+                                            message: format!(
+                                                "KTX reservation confirmed! Train {} — PNR {}",
+                                                reservation.train_no, reservation.rsv_id
+                                            ),
+                                            attempt_count: task.attempt_count,
+                                            reservation_number: Some(reservation.rsv_id.clone()),
+                                        },
+                                    )
+                                    .await;
 
                                 // Send confirmation email
                                 if task.notify_enabled {
@@ -454,16 +502,32 @@ async fn run_ktx_task(
                                     } else {
                                         AlertKind::Confirmed
                                     };
-                                    send_alert_email(db, email, task, kind, Some(&reservation.rsv_id), app_base_url).await;
+                                    send_alert_email(
+                                        db,
+                                        email,
+                                        task,
+                                        kind,
+                                        Some(&reservation.rsv_id),
+                                        app_base_url,
+                                    )
+                                    .await;
                                 }
 
                                 // Auto-pay if configured (skip for standby/waiting reservations)
                                 if task.auto_pay && !reservation.is_waiting {
                                     let pnr = reservation.rsv_id.clone();
                                     try_auto_pay_ktx(
-                                        db, &client, task, &reservation, &pnr, event_bus, email,
-                                        evervault, app_base_url,
-                                    ).await;
+                                        db,
+                                        &client,
+                                        task,
+                                        &reservation,
+                                        &pnr,
+                                        event_bus,
+                                        email,
+                                        evervault,
+                                        app_base_url,
+                                    )
+                                    .await;
                                 }
 
                                 return Ok(());
@@ -471,13 +535,18 @@ async fn run_ktx_task(
                             Err(ProviderError::DuplicateReservation) => {
                                 warn!(task_id = %task.id, "Duplicate reservation");
                                 bominal_db::task::update_status(db, task.id, "failed").await?;
-                                event_bus.publish(task.user_id, TaskEvent {
-                                    task_id: task.id,
-                                    status: "failed".to_string(),
-                                    message: "Duplicate reservation detected".to_string(),
-                                    attempt_count: task.attempt_count,
-                                    reservation_number: None,
-                                }).await;
+                                event_bus
+                                    .publish(
+                                        task.user_id,
+                                        TaskEvent {
+                                            task_id: task.id,
+                                            status: "failed".to_string(),
+                                            message: "Duplicate reservation detected".to_string(),
+                                            attempt_count: task.attempt_count,
+                                            reservation_number: None,
+                                        },
+                                    )
+                                    .await;
                                 return Ok(());
                             }
                             Err(e) => {
@@ -547,13 +616,18 @@ async fn try_auto_pay_srt(
         Ok(Some(c)) => c,
         Ok(None) => {
             warn!(task_id = %task.id, card_id = %card_id, "Payment card not found for auto-pay");
-            event_bus.publish(task.user_id, TaskEvent {
-                task_id: task.id,
-                status: "pay_failed".to_string(),
-                message: "Auto-pay failed: payment card not found".to_string(),
-                attempt_count: task.attempt_count,
-                reservation_number: Some(pnr.to_string()),
-            }).await;
+            event_bus
+                .publish(
+                    task.user_id,
+                    TaskEvent {
+                        task_id: task.id,
+                        status: "pay_failed".to_string(),
+                        message: "Auto-pay failed: payment card not found".to_string(),
+                        attempt_count: task.attempt_count,
+                        reservation_number: Some(pnr.to_string()),
+                    },
+                )
+                .await;
             return;
         }
         Err(e) => {
@@ -579,28 +653,46 @@ async fn try_auto_pay_srt(
     {
         Ok(()) => {
             info!(task_id = %task.id, "SRT auto-pay successful");
-            event_bus.publish(task.user_id, TaskEvent {
-                task_id: task.id,
-                status: "paid".to_string(),
-                message: "Auto-pay completed successfully".to_string(),
-                attempt_count: task.attempt_count,
-                reservation_number: Some(pnr.to_string()),
-            }).await;
+            event_bus
+                .publish(
+                    task.user_id,
+                    TaskEvent {
+                        task_id: task.id,
+                        status: "paid".to_string(),
+                        message: "Auto-pay completed successfully".to_string(),
+                        attempt_count: task.attempt_count,
+                        reservation_number: Some(pnr.to_string()),
+                    },
+                )
+                .await;
             if task.notify_enabled {
                 send_alert_email(db, email, task, AlertKind::Paid, Some(pnr), app_base_url).await;
             }
         }
         Err(e) => {
             warn!(task_id = %task.id, error = %e, "SRT auto-pay failed");
-            event_bus.publish(task.user_id, TaskEvent {
-                task_id: task.id,
-                status: "pay_failed".to_string(),
-                message: format!("Auto-pay failed: {e}. Please pay manually."),
-                attempt_count: task.attempt_count,
-                reservation_number: Some(pnr.to_string()),
-            }).await;
+            event_bus
+                .publish(
+                    task.user_id,
+                    TaskEvent {
+                        task_id: task.id,
+                        status: "pay_failed".to_string(),
+                        message: format!("Auto-pay failed: {e}. Please pay manually."),
+                        attempt_count: task.attempt_count,
+                        reservation_number: Some(pnr.to_string()),
+                    },
+                )
+                .await;
             if task.notify_enabled {
-                send_alert_email(db, email, task, AlertKind::PayFailed, Some(pnr), app_base_url).await;
+                send_alert_email(
+                    db,
+                    email,
+                    task,
+                    AlertKind::PayFailed,
+                    Some(pnr),
+                    app_base_url,
+                )
+                .await;
             }
         }
     }
@@ -631,13 +723,18 @@ async fn try_auto_pay_ktx(
         Ok(Some(c)) => c,
         Ok(None) => {
             warn!(task_id = %task.id, card_id = %card_id, "Payment card not found for auto-pay");
-            event_bus.publish(task.user_id, TaskEvent {
-                task_id: task.id,
-                status: "pay_failed".to_string(),
-                message: "Auto-pay failed: payment card not found".to_string(),
-                attempt_count: task.attempt_count,
-                reservation_number: Some(pnr.to_string()),
-            }).await;
+            event_bus
+                .publish(
+                    task.user_id,
+                    TaskEvent {
+                        task_id: task.id,
+                        status: "pay_failed".to_string(),
+                        message: "Auto-pay failed: payment card not found".to_string(),
+                        attempt_count: task.attempt_count,
+                        reservation_number: Some(pnr.to_string()),
+                    },
+                )
+                .await;
             return;
         }
         Err(e) => {
@@ -661,28 +758,46 @@ async fn try_auto_pay_ktx(
     {
         Ok(()) => {
             info!(task_id = %task.id, "KTX auto-pay successful");
-            event_bus.publish(task.user_id, TaskEvent {
-                task_id: task.id,
-                status: "paid".to_string(),
-                message: "Auto-pay completed successfully".to_string(),
-                attempt_count: task.attempt_count,
-                reservation_number: Some(pnr.to_string()),
-            }).await;
+            event_bus
+                .publish(
+                    task.user_id,
+                    TaskEvent {
+                        task_id: task.id,
+                        status: "paid".to_string(),
+                        message: "Auto-pay completed successfully".to_string(),
+                        attempt_count: task.attempt_count,
+                        reservation_number: Some(pnr.to_string()),
+                    },
+                )
+                .await;
             if task.notify_enabled {
                 send_alert_email(db, email, task, AlertKind::Paid, Some(pnr), app_base_url).await;
             }
         }
         Err(e) => {
             warn!(task_id = %task.id, error = %e, "KTX auto-pay failed");
-            event_bus.publish(task.user_id, TaskEvent {
-                task_id: task.id,
-                status: "pay_failed".to_string(),
-                message: format!("Auto-pay failed: {e}. Please pay manually."),
-                attempt_count: task.attempt_count,
-                reservation_number: Some(pnr.to_string()),
-            }).await;
+            event_bus
+                .publish(
+                    task.user_id,
+                    TaskEvent {
+                        task_id: task.id,
+                        status: "pay_failed".to_string(),
+                        message: format!("Auto-pay failed: {e}. Please pay manually."),
+                        attempt_count: task.attempt_count,
+                        reservation_number: Some(pnr.to_string()),
+                    },
+                )
+                .await;
             if task.notify_enabled {
-                send_alert_email(db, email, task, AlertKind::PayFailed, Some(pnr), app_base_url).await;
+                send_alert_email(
+                    db,
+                    email,
+                    task,
+                    AlertKind::PayFailed,
+                    Some(pnr),
+                    app_base_url,
+                )
+                .await;
             }
         }
     }
@@ -719,12 +834,8 @@ async fn send_alert_email(
     };
 
     let app_url = app_base_url;
-    let (subject, html) = bominal_email::templates::reservation::render(
-        &user.display_name,
-        kind,
-        &details,
-        app_url,
-    );
+    let (subject, html) =
+        bominal_email::templates::reservation::render(&user.display_name, kind, &details, app_url);
 
     email.send_best_effort(&user.email, &subject, &html).await;
 }
@@ -797,9 +908,18 @@ mod tests {
 
     #[test]
     fn parse_seat_preferences() {
-        assert_eq!(parse_seat_preference("GeneralFirst"), SeatPreference::GeneralFirst);
-        assert_eq!(parse_seat_preference("SpecialOnly"), SeatPreference::SpecialOnly);
-        assert_eq!(parse_seat_preference("unknown"), SeatPreference::GeneralFirst);
+        assert_eq!(
+            parse_seat_preference("GeneralFirst"),
+            SeatPreference::GeneralFirst
+        );
+        assert_eq!(
+            parse_seat_preference("SpecialOnly"),
+            SeatPreference::SpecialOnly
+        );
+        assert_eq!(
+            parse_seat_preference("unknown"),
+            SeatPreference::GeneralFirst
+        );
     }
 
     #[test]

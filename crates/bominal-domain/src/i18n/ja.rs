@@ -94,7 +94,10 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
 
     // Errors
     m.insert("error.network", "ネットワークエラーが発生しました");
-    m.insert("error.session_expired", "セッションが期限切れです。再度ログインしてください");
+    m.insert(
+        "error.session_expired",
+        "セッションが期限切れです。再度ログインしてください",
+    );
     m.insert("error.sold_out", "売り切れ");
     m.insert("error.unexpected", "予期しないエラーが発生しました");
     m.insert("error.login_failed", "ログインに失敗しました");

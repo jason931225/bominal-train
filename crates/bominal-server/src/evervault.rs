@@ -27,7 +27,13 @@ pub struct EvervaultConfig {
 
 impl EvervaultConfig {
     /// Create a new Evervault configuration.
-    pub fn new(team_id: &str, app_id: &str, api_key: &str, srt_relay_domain: &str, ktx_relay_domain: &str) -> Self {
+    pub fn new(
+        team_id: &str,
+        app_id: &str,
+        api_key: &str,
+        srt_relay_domain: &str,
+        ktx_relay_domain: &str,
+    ) -> Self {
         Self {
             team_id: team_id.to_string(),
             app_id: app_id.to_string(),

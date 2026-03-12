@@ -79,7 +79,10 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     m.insert("provider.status_unverified", "Unverified");
     m.insert("provider.status_disabled", "Disabled");
     m.insert("provider.not_configured", "Not configured");
-    m.insert("provider.credentials_required", "Provider credentials required");
+    m.insert(
+        "provider.credentials_required",
+        "Provider credentials required",
+    );
     m.insert("provider.invalid_auth", "Provider credentials are invalid");
 
     // Payment
@@ -94,7 +97,10 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
 
     // Errors
     m.insert("error.network", "A network error occurred");
-    m.insert("error.session_expired", "Session expired. Please log in again");
+    m.insert(
+        "error.session_expired",
+        "Session expired. Please log in again",
+    );
     m.insert("error.sold_out", "Sold out");
     m.insert("error.unexpected", "An unexpected error occurred");
     m.insert("error.login_failed", "Login failed");

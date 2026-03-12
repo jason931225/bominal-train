@@ -126,7 +126,10 @@ pub fn passenger_form_fields(
 
     for (idx, group) in combined.iter().enumerate() {
         let i = idx + 1;
-        fields.push((format!("psgTpCd{i}"), group.passenger_type.type_code().to_string()));
+        fields.push((
+            format!("psgTpCd{i}"),
+            group.passenger_type.type_code().to_string(),
+        ));
         fields.push((format!("psgInfoPerPrnb{i}"), group.count.to_string()));
         fields.push((format!("locSeatAttCd{i}"), window_seat.code().to_string()));
         fields.push((format!("rqSeatAttCd{i}"), "015".to_string()));
@@ -160,10 +163,7 @@ mod tests {
 
     #[test]
     fn combine_same_type() {
-        let groups = vec![
-            PassengerGroup::adults(1),
-            PassengerGroup::adults(2),
-        ];
+        let groups = vec![PassengerGroup::adults(1), PassengerGroup::adults(2)];
         let combined = combine_passengers(&groups);
         assert_eq!(combined.len(), 1);
         assert_eq!(combined[0].count, 3);

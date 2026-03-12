@@ -51,10 +51,7 @@ pub fn render(display_name: &str, verify_url: &str, expires_minutes: u32) -> (St
 </table>"##
     );
 
-    let html = base::layout(
-        "Verify your email to start using Bominal",
-        &body,
-    );
+    let html = base::layout("Verify your email to start using Bominal", &body);
 
     (subject, html)
 }

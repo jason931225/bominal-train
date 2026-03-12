@@ -5,9 +5,9 @@
 
 use std::time::Instant;
 
+use axum::Router;
 use axum::body::Body;
 use axum::http::{Method, Request, StatusCode};
-use axum::Router;
 use http_body_util::BodyExt;
 use sqlx::PgPool;
 use tower::ServiceExt;
@@ -105,13 +105,13 @@ impl TestApp {
                 .install_recorder()
                 .unwrap_or_else(|_| {
                     // Recorder already installed by another test — create a handle-only builder
-                    metrics_exporter_prometheus::PrometheusBuilder::new().build_recorder().handle()
+                    metrics_exporter_prometheus::PrometheusBuilder::new()
+                        .build_recorder()
+                        .handle()
                 }),
         };
 
-        let router = Router::new()
-            .nest("/api", api_routes())
-            .with_state(state);
+        let router = Router::new().nest("/api", api_routes()).with_state(state);
 
         Self {
             router,
@@ -125,12 +125,7 @@ impl TestApp {
     // ── Auth helpers ────────────────────────────────────────────────────
 
     /// Register a user and return the session cookie value.
-    pub async fn register_user(
-        &self,
-        email: &str,
-        password: &str,
-        display_name: &str,
-    ) -> String {
+    pub async fn register_user(&self, email: &str, password: &str, display_name: &str) -> String {
         let body = serde_json::json!({
             "email": email,
             "password": password,
@@ -193,12 +188,7 @@ impl TestApp {
             .unwrap()
     }
 
-    pub fn authed_post(
-        &self,
-        uri: &str,
-        session: &str,
-        body: &serde_json::Value,
-    ) -> Request<Body> {
+    pub fn authed_post(&self, uri: &str, session: &str, body: &serde_json::Value) -> Request<Body> {
         Request::builder()
             .method(Method::POST)
             .uri(uri)
@@ -253,7 +243,8 @@ impl TestApp {
         let json = if bytes.is_empty() {
             serde_json::json!(null)
         } else {
-            serde_json::from_slice(&bytes).unwrap_or(serde_json::json!({"raw": String::from_utf8_lossy(&bytes).to_string()}))
+            serde_json::from_slice(&bytes)
+                .unwrap_or(serde_json::json!({"raw": String::from_utf8_lossy(&bytes).to_string()}))
         };
 
         (status, json)

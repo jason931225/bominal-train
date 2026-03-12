@@ -108,11 +108,7 @@ pub fn t(locale: Locale, key: &str) -> &'static str {
 }
 
 /// Get station display name for the given locale and provider.
-pub fn station_name(
-    locale: Locale,
-    korean_name: &str,
-    provider: &str,
-) -> &'static str {
+pub fn station_name(locale: Locale, korean_name: &str, provider: &str) -> &'static str {
     stations::display_name(locale, korean_name, provider)
 }
 

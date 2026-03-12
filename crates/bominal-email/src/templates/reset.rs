@@ -52,10 +52,7 @@ pub fn render(display_name: &str, reset_url: &str, expires_minutes: u32) -> (Str
 </table>"##
     );
 
-    let html = base::layout(
-        "Reset your Bominal password",
-        &body,
-    );
+    let html = base::layout("Reset your Bominal password", &body);
 
     (subject, html)
 }

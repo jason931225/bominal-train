@@ -5,8 +5,8 @@
 //! - PATCH  /api/cards/:id   — update card label
 //! - DELETE /api/cards/:id   — delete card
 
-use axum::extract::{Path, State};
 use axum::Json;
+use axum::extract::{Path, State};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
