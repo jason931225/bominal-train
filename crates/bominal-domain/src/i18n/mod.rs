@@ -61,7 +61,6 @@ impl Locale {
     }
 }
 
-
 type Messages = HashMap<&'static str, &'static str>;
 
 static KO_MESSAGES: LazyLock<Messages> = LazyLock::new(ko::messages);
@@ -93,7 +92,9 @@ pub fn t(locale: Locale, key: &str) -> &'static str {
     }
 
     // Fallback to Korean
-    if locale != Locale::Ko && let Some(msg) = KO_MESSAGES.get(key) {
+    if locale != Locale::Ko
+        && let Some(msg) = KO_MESSAGES.get(key)
+    {
         return msg;
     }
 

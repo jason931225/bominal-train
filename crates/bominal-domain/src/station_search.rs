@@ -875,12 +875,10 @@ fn compose_compat_jamo_stream(input: &str) -> String {
                         take_as_jong = false;
                     }
                     if idx + advance + 2 < chars.len()
-                        && let Some(combined) =
-                            combine_jongseong(c1, chars[idx + advance + 1])
+                        && let Some(combined) = combine_jongseong(c1, chars[idx + advance + 1])
                     {
                         let next_idx = idx + advance + 2;
-                        if (next_idx >= chars.len()
-                            || jungseong_index(chars[next_idx]).is_none())
+                        if (next_idx >= chars.len() || jungseong_index(chars[next_idx]).is_none())
                             && let Some(combined_index) = jongseong_index(combined)
                         {
                             t_index = combined_index;

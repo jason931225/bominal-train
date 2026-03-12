@@ -556,7 +556,8 @@ fn validate_pay_request(req: &PayRequest) -> Result<(), AppError> {
         ));
     }
     if let Some(ct) = &req.card_type
-        && ct != "J" && ct != "S"
+        && ct != "J"
+        && ct != "S"
     {
         return Err(AppError::BadRequest(
             "Card type must be 'J' (credit) or 'S' (debit)".to_string(),

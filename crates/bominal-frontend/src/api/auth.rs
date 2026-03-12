@@ -73,8 +73,7 @@ pub async fn register(
     {
         let token = Uuid::new_v4().to_string();
         let expires_at = chrono::Utc::now() + chrono::Duration::minutes(30);
-        let _ =
-            bominal_db::user::set_verification_token(&pool, user.id, &token, expires_at).await;
+        let _ = bominal_db::user::set_verification_token(&pool, user.id, &token, expires_at).await;
         let verify_url = format!("{}/verify-email?token={}", app_base_url.0, token);
         let (subject, html) =
             bominal_email::templates::verify::render(&user.display_name, &verify_url, 30);
