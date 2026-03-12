@@ -14,6 +14,7 @@ pub struct PaymentCardRow {
     pub encrypted_password: String,
     pub encrypted_birthday: String,
     pub encrypted_expiry: String,
+    pub encrypted_expiry_yymm: Option<String>,
     pub card_type: String,
     pub last_four: String,
     pub created_at: DateTime<Utc>,
@@ -28,6 +29,7 @@ pub async fn create_card(
     encrypted_password: &str,
     encrypted_birthday: &str,
     encrypted_expiry: &str,
+    encrypted_expiry_yymm: Option<&str>,
     card_type: &str,
     last_four: &str,
 ) -> Result<PaymentCardRow, sqlx::Error> {
@@ -35,9 +37,10 @@ pub async fn create_card(
         r#"
         INSERT INTO payment_cards (
             user_id, label, encrypted_number, encrypted_password,
-            encrypted_birthday, encrypted_expiry, card_type, last_four
+            encrypted_birthday, encrypted_expiry, encrypted_expiry_yymm,
+            card_type, last_four
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         RETURNING *
         "#,
     )
@@ -47,6 +50,7 @@ pub async fn create_card(
     .bind(encrypted_password)
     .bind(encrypted_birthday)
     .bind(encrypted_expiry)
+    .bind(encrypted_expiry_yymm)
     .bind(card_type)
     .bind(last_four)
     .fetch_one(pool)

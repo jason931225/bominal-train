@@ -11,6 +11,8 @@
 use rand_distr::{Distribution, Gamma};
 use tracing::{debug, error, info, warn};
 
+const MAX_ATTEMPTS: i32 = 10_000;
+
 use bominal_db::DbPool;
 use bominal_domain::crypto::encryption::{self, EncryptionKey};
 use bominal_email::EmailClient;
@@ -20,6 +22,7 @@ use bominal_provider::srt::SrtClient;
 use bominal_provider::srt::passenger::{PassengerGroup, PassengerType, WindowSeat, total_count};
 use bominal_provider::types::{ProviderError, SeatPreference};
 
+use crate::evervault::EvervaultConfig;
 use crate::sse::{EventBus, TaskEvent};
 
 /// Start the task runner background loop.
@@ -30,12 +33,13 @@ pub fn spawn_runner(
     event_bus: EventBus,
     email: EmailClient,
     encryption_key: EncryptionKey,
+    evervault: EvervaultConfig,
     app_base_url: String,
 ) {
     tokio::spawn(async move {
         info!("Task runner started");
         loop {
-            if let Err(e) = poll_and_dispatch(&db, &event_bus, &email, &encryption_key, &app_base_url).await {
+            if let Err(e) = poll_and_dispatch(&db, &event_bus, &email, &encryption_key, &evervault, &app_base_url).await {
                 error!(error = %e, "Task runner poll error");
             }
             tokio::time::sleep(std::time::Duration::from_secs(5)).await;
@@ -49,6 +53,7 @@ async fn poll_and_dispatch(
     event_bus: &EventBus,
     email: &EmailClient,
     encryption_key: &EncryptionKey,
+    evervault: &EvervaultConfig,
     app_base_url: &str,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let tasks = bominal_db::task::claim_queued_tasks(db).await?;
@@ -58,6 +63,7 @@ async fn poll_and_dispatch(
         let bus = event_bus.clone();
         let email = email.clone();
         let key = encryption_key.clone();
+        let ev = evervault.clone();
         let base_url = app_base_url.to_string();
 
         tokio::spawn(async move {
@@ -72,8 +78,8 @@ async fn poll_and_dispatch(
             }).await;
 
             let result = match task.provider.as_str() {
-                "SRT" => run_srt_task(&db, &task, &bus, &email, &key, &base_url).await,
-                "KTX" => run_ktx_task(&db, &task, &bus, &email, &key, &base_url).await,
+                "SRT" => run_srt_task(&db, &task, &bus, &email, &key, &ev, &base_url).await,
+                "KTX" => run_ktx_task(&db, &task, &bus, &email, &key, &ev, &base_url).await,
                 _ => {
                     error!(task_id = %task.id, provider = %task.provider, "Unknown provider");
                     Err("Unknown provider".into())
@@ -111,6 +117,7 @@ async fn run_srt_task(
     event_bus: &EventBus,
     email: &EmailClient,
     encryption_key: &EncryptionKey,
+    evervault: &EvervaultConfig,
     app_base_url: &str,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Fetch stored credentials and decrypt password
@@ -119,8 +126,8 @@ async fn run_srt_task(
         .ok_or("No SRT credentials found")?;
     let password = encryption::decrypt(encryption_key, &cred.encrypted_password)?;
 
-    // Create client and login (single-owner, no Arc/Mutex needed)
-    let mut client = SrtClient::new();
+    // Create client with Evervault Relay proxy (decrypts ev: card fields in-flight).
+    let mut client = SrtClient::with_relay(&evervault.srt_relay_domain);
     client.login(&cred.login_id, &password).await?;
 
     let seat_pref = parse_seat_preference(&task.seat_preference);
@@ -138,7 +145,7 @@ async fn run_srt_task(
     );
 
     loop {
-        // Check if task was cancelled
+        // Check if task was cancelled or max attempts reached
         let current = bominal_db::task::find_by_id(db, task.id, task.user_id).await?;
         match current.as_ref().map(|t| t.status.as_str()) {
             Some("cancelled") | Some("confirmed") | Some("failed") | None => {
@@ -146,6 +153,20 @@ async fn run_srt_task(
                 return Ok(());
             }
             _ => {}
+        }
+        if let Some(ref t) = current {
+            if t.attempt_count >= MAX_ATTEMPTS {
+                warn!(task_id = %task.id, attempts = t.attempt_count, "Max attempts reached");
+                bominal_db::task::update_status(db, task.id, "failed").await?;
+                event_bus.publish(task.user_id, TaskEvent {
+                    task_id: task.id,
+                    status: "failed".to_string(),
+                    message: format!("Max attempts ({MAX_ATTEMPTS}) reached"),
+                    attempt_count: t.attempt_count,
+                    reservation_number: None,
+                }).await;
+                return Ok(());
+            }
         }
 
         // Record attempt
@@ -246,7 +267,7 @@ async fn run_srt_task(
                                     let pnr = reservation.reservation_number.clone();
                                     try_auto_pay_srt(
                                         db, &client, task, &reservation, &pnr, event_bus, email,
-                                        encryption_key, app_base_url,
+                                        evervault, app_base_url,
                                     ).await;
                                 }
 
@@ -312,6 +333,7 @@ async fn run_ktx_task(
     event_bus: &EventBus,
     email: &EmailClient,
     encryption_key: &EncryptionKey,
+    evervault: &EvervaultConfig,
     app_base_url: &str,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let cred = bominal_db::provider::find_by_user_and_provider(db, task.user_id, "KTX")
@@ -319,7 +341,7 @@ async fn run_ktx_task(
         .ok_or("No KTX credentials found")?;
     let password = encryption::decrypt(encryption_key, &cred.encrypted_password)?;
 
-    let mut client = KtxClient::new();
+    let mut client = KtxClient::with_relay(&evervault.ktx_relay_domain);
     client.login(&cred.login_id, &password).await?;
 
     let seat_pref = parse_seat_preference(&task.seat_preference);
@@ -337,7 +359,7 @@ async fn run_ktx_task(
     );
 
     loop {
-        // Check if task was cancelled
+        // Check if task was cancelled or max attempts reached
         let current = bominal_db::task::find_by_id(db, task.id, task.user_id).await?;
         match current.as_ref().map(|t| t.status.as_str()) {
             Some("cancelled") | Some("confirmed") | Some("failed") | None => {
@@ -345,6 +367,20 @@ async fn run_ktx_task(
                 return Ok(());
             }
             _ => {}
+        }
+        if let Some(ref t) = current {
+            if t.attempt_count >= MAX_ATTEMPTS {
+                warn!(task_id = %task.id, attempts = t.attempt_count, "Max attempts reached");
+                bominal_db::task::update_status(db, task.id, "failed").await?;
+                event_bus.publish(task.user_id, TaskEvent {
+                    task_id: task.id,
+                    status: "failed".to_string(),
+                    message: format!("Max attempts ({MAX_ATTEMPTS}) reached"),
+                    attempt_count: t.attempt_count,
+                    reservation_number: None,
+                }).await;
+                return Ok(());
+            }
         }
 
         bominal_db::task::record_attempt(db, task.id).await?;
@@ -426,7 +462,7 @@ async fn run_ktx_task(
                                     let pnr = reservation.rsv_id.clone();
                                     try_auto_pay_ktx(
                                         db, &client, task, &reservation, &pnr, event_bus, email,
-                                        encryption_key, app_base_url,
+                                        evervault, app_base_url,
                                     ).await;
                                 }
 
@@ -495,9 +531,10 @@ async fn try_auto_pay_srt(
     pnr: &str,
     event_bus: &EventBus,
     email: &EmailClient,
-    encryption_key: &EncryptionKey,
+    _evervault: &EvervaultConfig,
     app_base_url: &str,
 ) {
+    // Card fields are Evervault-encrypted; the Relay (configured on the client) decrypts in-flight.
     let card_id = match task.payment_card_id {
         Some(id) => id,
         None => {
@@ -525,30 +562,16 @@ async fn try_auto_pay_srt(
         }
     };
 
-    // Decrypt card fields
-    let (card_number, card_password, birthday, expiry) =
-        match decrypt_card_fields(encryption_key, &card) {
-            Ok(fields) => fields,
-            Err(e) => {
-                error!(task_id = %task.id, error = %e, "Failed to decrypt card for auto-pay");
-                event_bus.publish(task.user_id, TaskEvent {
-                    task_id: task.id,
-                    status: "pay_failed".to_string(),
-                    message: "Auto-pay failed: could not decrypt card data".to_string(),
-                    attempt_count: task.attempt_count,
-                    reservation_number: Some(pnr.to_string()),
-                }).await;
-                return;
-            }
-        };
-
+    // Card fields are Evervault-encrypted (ev: prefix). The Evervault Outbound
+    // Relay decrypts them in-flight when the provider payment request passes
+    // through the relay proxy. We pass the encrypted values directly.
     match client
         .pay_with_card(
             reservation,
-            &card_number,
-            &card_password,
-            &birthday,
-            &expiry,
+            &card.encrypted_number,
+            &card.encrypted_password,
+            &card.encrypted_birthday,
+            &card.encrypted_expiry,
             0, // 일시불 (lump-sum)
             &card.card_type,
         )
@@ -592,9 +615,10 @@ async fn try_auto_pay_ktx(
     pnr: &str,
     event_bus: &EventBus,
     email: &EmailClient,
-    encryption_key: &EncryptionKey,
+    _evervault: &EvervaultConfig,
     app_base_url: &str,
 ) {
+    // Card fields are Evervault-encrypted; the Relay (configured on the client) decrypts in-flight.
     let card_id = match task.payment_card_id {
         Some(id) => id,
         None => {
@@ -622,30 +646,14 @@ async fn try_auto_pay_ktx(
         }
     };
 
-    // Decrypt card fields
-    let (card_number, card_password, birthday, expiry) =
-        match decrypt_card_fields(encryption_key, &card) {
-            Ok(fields) => fields,
-            Err(e) => {
-                error!(task_id = %task.id, error = %e, "Failed to decrypt card for auto-pay");
-                event_bus.publish(task.user_id, TaskEvent {
-                    task_id: task.id,
-                    status: "pay_failed".to_string(),
-                    message: "Auto-pay failed: could not decrypt card data".to_string(),
-                    attempt_count: task.attempt_count,
-                    reservation_number: Some(pnr.to_string()),
-                }).await;
-                return;
-            }
-        };
-
+    // Card fields are Evervault-encrypted. Passed through Evervault Relay.
     match client
         .pay_with_card(
             reservation,
-            &card_number,
-            &card_password,
-            &birthday,
-            &expiry,
+            &card.encrypted_number,
+            &card.encrypted_password,
+            &card.encrypted_birthday,
+            &card.encrypted_expiry,
             "00", // 일시불 (lump-sum)
             &card.card_type,
         )
@@ -678,21 +686,6 @@ async fn try_auto_pay_ktx(
             }
         }
     }
-}
-
-// ── Card decryption ──────────────────────────────────────────────────
-
-/// Decrypt all four encrypted card fields for payment.
-fn decrypt_card_fields(
-    key: &EncryptionKey,
-    card: &bominal_db::card::PaymentCardRow,
-) -> Result<(String, String, String, String), encryption::EncryptionError> {
-    Ok((
-        encryption::decrypt(key, &card.encrypted_number)?,
-        encryption::decrypt(key, &card.encrypted_password)?,
-        encryption::decrypt(key, &card.encrypted_birthday)?,
-        encryption::decrypt(key, &card.encrypted_expiry)?,
-    ))
 }
 
 // ── Email alerts ─────────────────────────────────────────────────────

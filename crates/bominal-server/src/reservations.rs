@@ -4,6 +4,7 @@
 //! - GET    /api/reservations/:pnr/tickets   — ticket detail for a reservation
 //! - POST   /api/reservations/:pnr/cancel    — cancel a reservation
 //! - POST   /api/reservations/:pnr/pay       — pay with card
+//! - POST   /api/reservations/:pnr/refund    — refund a paid reservation
 
 use axum::extract::{Path, State};
 use axum::Json;
@@ -47,11 +48,18 @@ pub struct TicketResponse {
 }
 
 /// Payment request body.
+///
+/// All sensitive fields must be pre-encrypted by the Evervault JS SDK
+/// (`ev:` prefix). The server never sees plaintext card data.
 #[derive(Debug, Deserialize)]
 pub struct PayRequest {
+    /// Evervault-encrypted card number (ev:... format).
     pub card_number: String,
+    /// Evervault-encrypted card password (ev:... format).
     pub card_password: String,
+    /// Evervault-encrypted validation number (ev:... format).
     pub validation_number: String,
+    /// Evervault-encrypted expire date (ev:... format).
     pub expire_date: String,
     pub installment: Option<u8>,
     pub card_type: Option<String>,
@@ -110,6 +118,29 @@ pub async fn cancel_reservation(
     }
 }
 
+/// POST /api/reservations/:pnr/refund — refund a paid reservation.
+pub async fn refund_reservation(
+    user: AuthUser,
+    State(state): State<SharedState>,
+    Path(pnr): Path<String>,
+    axum::extract::Query(params): axum::extract::Query<ProviderQuery>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let provider = params.provider.as_deref().unwrap_or("SRT");
+    let cred = require_credentials(&state, user.user_id, provider).await?;
+
+    let key = &state.encryption_key;
+    match provider {
+        "SRT" => {
+            // TODO: SRT client does not yet support refund — implement when available
+            Err(AppError::BadRequest(
+                "Refund is not yet supported for SRT reservations".to_string(),
+            ))
+        }
+        "KTX" => refund_ktx(&cred, &pnr, key).await,
+        _ => Err(AppError::BadRequest(format!("Invalid provider: {provider}"))),
+    }
+}
+
 /// POST /api/reservations/:pnr/pay — pay with card.
 pub async fn pay_reservation(
     user: AuthUser,
@@ -118,13 +149,16 @@ pub async fn pay_reservation(
     axum::extract::Query(params): axum::extract::Query<ProviderQuery>,
     Json(req): Json<PayRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
+    validate_pay_request(&req)?;
+
     let provider = params.provider.as_deref().unwrap_or("SRT");
     let cred = require_credentials(&state, user.user_id, provider).await?;
 
     let key = &state.encryption_key;
+    let ev = &state.evervault;
     match provider {
-        "SRT" => pay_srt(&cred, &pnr, &req, key).await,
-        "KTX" => pay_ktx(&cred, &pnr, &req, key).await,
+        "SRT" => pay_srt(&cred, &pnr, &req, key, &ev.srt_relay_domain).await,
+        "KTX" => pay_ktx(&cred, &pnr, &req, key, &ev.ktx_relay_domain).await,
         _ => Err(AppError::BadRequest(format!("Invalid provider: {provider}"))),
     }
 }
@@ -174,6 +208,25 @@ async fn login_srt(
     .map_err(|e| AppError::Internal(e.into()))?;
 
     let mut client = bominal_provider::srt::SrtClient::new();
+    client
+        .login(&cred.login_id, &password)
+        .await
+        .map_err(map_provider_error)?;
+    Ok(client)
+}
+
+async fn login_srt_with_relay(
+    cred: &bominal_db::provider::ProviderCredentialRow,
+    encryption_key: &bominal_domain::crypto::encryption::EncryptionKey,
+    relay_domain: &str,
+) -> Result<bominal_provider::srt::SrtClient, AppError> {
+    let password = bominal_domain::crypto::encryption::decrypt(
+        encryption_key,
+        &cred.encrypted_password,
+    )
+    .map_err(|e| AppError::Internal(e.into()))?;
+
+    let mut client = bominal_provider::srt::SrtClient::with_relay(relay_domain);
     client
         .login(&cred.login_id, &password)
         .await
@@ -261,8 +314,9 @@ async fn pay_srt(
     pnr: &str,
     req: &PayRequest,
     encryption_key: &bominal_domain::crypto::encryption::EncryptionKey,
+    relay_domain: &str,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let client = login_srt(cred, encryption_key).await?;
+    let client = login_srt_with_relay(cred, encryption_key, relay_domain).await?;
 
     // Find the reservation to pass to pay_with_card
     let reservations = client
@@ -307,6 +361,25 @@ async fn login_ktx(
     .map_err(|e| AppError::Internal(e.into()))?;
 
     let mut client = bominal_provider::ktx::KtxClient::new();
+    client
+        .login(&cred.login_id, &password)
+        .await
+        .map_err(map_provider_error)?;
+    Ok(client)
+}
+
+async fn login_ktx_with_relay(
+    cred: &bominal_db::provider::ProviderCredentialRow,
+    encryption_key: &bominal_domain::crypto::encryption::EncryptionKey,
+    relay_domain: &str,
+) -> Result<bominal_provider::ktx::KtxClient, AppError> {
+    let password = bominal_domain::crypto::encryption::decrypt(
+        encryption_key,
+        &cred.encrypted_password,
+    )
+    .map_err(|e| AppError::Internal(e.into()))?;
+
+    let mut client = bominal_provider::ktx::KtxClient::with_relay(relay_domain);
     client
         .login(&cred.login_id, &password)
         .await
@@ -407,8 +480,9 @@ async fn pay_ktx(
     pnr: &str,
     req: &PayRequest,
     encryption_key: &bominal_domain::crypto::encryption::EncryptionKey,
+    relay_domain: &str,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let client = login_ktx(cred, encryption_key).await?;
+    let client = login_ktx_with_relay(cred, encryption_key, relay_domain).await?;
 
     let reservations = client
         .get_reservations()
@@ -439,6 +513,62 @@ async fn pay_ktx(
     Ok(Json(serde_json::json!({ "paid": true, "pnr": pnr })))
 }
 
+async fn refund_ktx(
+    cred: &bominal_db::provider::ProviderCredentialRow,
+    pnr: &str,
+    encryption_key: &bominal_domain::crypto::encryption::EncryptionKey,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let client = login_ktx(cred, encryption_key).await?;
+
+    let tickets = client
+        .ticket_info(pnr)
+        .await
+        .map_err(map_provider_error)?;
+
+    if tickets.is_empty() {
+        return Err(AppError::BadRequest(
+            "No tickets found for refund".to_string(),
+        ));
+    }
+
+    for ticket in &tickets {
+        client.refund(ticket).await.map_err(map_provider_error)?;
+    }
+
+    Ok(Json(serde_json::json!({ "refunded": true, "pnr": pnr })))
+}
+
+fn validate_pay_request(req: &PayRequest) -> Result<(), AppError> {
+    if !req.card_number.starts_with("ev:") {
+        return Err(AppError::BadRequest(
+            "Card number must be encrypted via Evervault SDK".to_string(),
+        ));
+    }
+    if !req.card_password.starts_with("ev:") {
+        return Err(AppError::BadRequest(
+            "Card password must be encrypted via Evervault SDK".to_string(),
+        ));
+    }
+    if !req.validation_number.starts_with("ev:") {
+        return Err(AppError::BadRequest(
+            "Validation number must be encrypted via Evervault SDK".to_string(),
+        ));
+    }
+    if !req.expire_date.starts_with("ev:") {
+        return Err(AppError::BadRequest(
+            "Expire date must be encrypted via Evervault SDK".to_string(),
+        ));
+    }
+    if let Some(ct) = &req.card_type {
+        if ct != "J" && ct != "S" {
+            return Err(AppError::BadRequest(
+                "Card type must be 'J' (credit) or 'S' (debit)".to_string(),
+            ));
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -458,10 +588,10 @@ mod tests {
     #[test]
     fn pay_request_defaults() {
         let req: PayRequest = serde_json::from_str(r#"{
-            "card_number": "1234567890123456",
-            "card_password": "12",
-            "validation_number": "900101",
-            "expire_date": "1228"
+            "card_number": "ev:abc:num",
+            "card_password": "ev:abc:pw",
+            "validation_number": "ev:abc:val",
+            "expire_date": "ev:abc:exp"
         }"#).unwrap();
         assert!(req.installment.is_none());
         assert!(req.card_type.is_none());
@@ -470,14 +600,53 @@ mod tests {
     #[test]
     fn pay_request_full() {
         let req: PayRequest = serde_json::from_str(r#"{
-            "card_number": "1234567890123456",
-            "card_password": "12",
-            "validation_number": "900101",
-            "expire_date": "1228",
+            "card_number": "ev:abc:num",
+            "card_password": "ev:abc:pw",
+            "validation_number": "ev:abc:val",
+            "expire_date": "ev:abc:exp",
             "installment": 3,
             "card_type": "J"
         }"#).unwrap();
         assert_eq!(req.installment, Some(3));
         assert_eq!(req.card_type.as_deref(), Some("J"));
+    }
+
+    #[test]
+    fn validate_pay_request_valid() {
+        let req = PayRequest {
+            card_number: "ev:abc:num".to_string(),
+            card_password: "ev:abc:pw".to_string(),
+            validation_number: "ev:abc:val".to_string(),
+            expire_date: "ev:abc:exp".to_string(),
+            installment: None,
+            card_type: None,
+        };
+        assert!(validate_pay_request(&req).is_ok());
+    }
+
+    #[test]
+    fn validate_pay_request_rejects_plaintext() {
+        let req = PayRequest {
+            card_number: "1234567890123456".to_string(),
+            card_password: "ev:abc:pw".to_string(),
+            validation_number: "ev:abc:val".to_string(),
+            expire_date: "ev:abc:exp".to_string(),
+            installment: None,
+            card_type: None,
+        };
+        assert!(validate_pay_request(&req).is_err());
+    }
+
+    #[test]
+    fn validate_pay_request_rejects_bad_card_type() {
+        let req = PayRequest {
+            card_number: "ev:abc:num".to_string(),
+            card_password: "ev:abc:pw".to_string(),
+            validation_number: "ev:abc:val".to_string(),
+            expire_date: "ev:abc:exp".to_string(),
+            installment: None,
+            card_type: Some("X".to_string()),
+        };
+        assert!(validate_pay_request(&req).is_err());
     }
 }

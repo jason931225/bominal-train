@@ -8,6 +8,7 @@ use crate::api::search::{list_stations, search_trains, StationInfo, TrainInfo};
 use crate::api::tasks::create_task;
 use crate::components::glass_panel::GlassPanel;
 use crate::i18n::t;
+use crate::utils::format_time;
 
 /// Train search form with station selection, date picker, passenger count,
 /// train selection, and task creation.
@@ -87,9 +88,10 @@ pub fn SearchPanel() -> impl IntoView {
         let passengers_json =
             serde_json::json!([{"type": "adult", "count": adults}]).to_string();
 
-        // First selected train's dep_time as the task departure_time
+        // Earliest selected train's dep_time as the task departure_time
         let dep_time = trains
-            .first()
+            .iter()
+            .min_by_key(|t| &t.dep_time)
             .map(|t| t.dep_time.clone())
             .unwrap_or_default();
 
@@ -117,7 +119,7 @@ pub fn SearchPanel() -> impl IntoView {
     let create_result = create_action.value();
 
     view! {
-        <div class="px-4 pt-6 pb-4 space-y-4">
+        <div class="px-4 pt-6 pb-4 space-y-4 max-w-xl lg:max-w-2xl mx-auto page-enter">
             <div class="flex items-center justify-between">
                 <h1 class="text-xl font-bold text-[var(--color-text-primary)]">{t("search.title")}</h1>
                 <a href="/settings" class="p-2 rounded-lg hover:bg-[var(--color-interactive-hover)] transition-colors">
@@ -228,9 +230,9 @@ pub fn SearchPanel() -> impl IntoView {
                         </div>
                     </div>
 
-                    // Search button
+                    // Search button — tinted glass
                     <button
-                        class="w-full py-3 bg-[var(--color-brand-primary)] text-white font-medium rounded-xl text-sm hover:opacity-90 disabled:opacity-50 transition-all"
+                        class="w-full py-3 btn-glass font-medium rounded-xl text-sm disabled:opacity-50 transition-all"
                         disabled=searching
                         on:click=move |_| { search_action.dispatch(()); }
                     >
@@ -349,7 +351,7 @@ fn TrainResults(
         <GlassPanel>
             <div class="p-4">
                 <div class="flex items-center justify-between mb-3">
-                    <h2 class="text-sm font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider">
+                    <h2 class="text-sm font-semibold text-[var(--color-text-secondary)] uppercase tracking-[0.18em]">
                         {format!("{} ({trains_len})", provider, trains_len = trains.len())}
                     </h2>
                     <p class="text-[10px] text-[var(--color-text-tertiary)]">{t("search.tap_to_select")}</p>
@@ -452,10 +454,10 @@ fn TaskCreationPanel(
         <GlassPanel>
             <div class="p-4 space-y-4">
                 <div class="flex items-center justify-between">
-                    <h2 class="text-sm font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider">
+                    <h2 class="text-sm font-semibold text-[var(--color-text-secondary)] uppercase tracking-[0.18em]">
                         {t("search.create_task")}
                     </h2>
-                    <span class="text-xs px-2 py-0.5 rounded-full bg-[var(--color-brand-primary)]/20 text-[var(--color-brand-primary)]">
+                    <span class="text-xs px-2 py-0.5 rounded-full bg-[var(--color-brand-primary)]/20 text-[var(--color-brand-text)]">
                         {format!("{selected_count} {}", t("selection.selected_count"))}
                     </span>
                 </div>
@@ -504,7 +506,7 @@ fn TaskCreationPanel(
                                 Ok(card_list) if card_list.is_empty() => view! {
                                     <p class="text-xs text-[var(--color-text-tertiary)]">
                                         {t("search.no_cards")} " "
-                                        <a href="/settings" class="text-[var(--color-brand-primary)] hover:underline">{t("search.add_card")}</a>
+                                        <a href="/settings" class="text-[var(--color-brand-text)] hover:underline">{t("search.add_card")}</a>
                                     </p>
                                 }.into_any(),
                                 Ok(card_list) => view! {
@@ -539,7 +541,7 @@ fn TaskCreationPanel(
 
                 // Submit button
                 <button
-                    class="w-full py-3 bg-[var(--color-brand-primary)] text-white font-medium rounded-xl text-sm hover:opacity-90 disabled:opacity-50 transition-all"
+                    class="w-full py-3 btn-glass font-medium rounded-xl text-sm disabled:opacity-50 transition-all"
                     disabled=creating
                     on:click=move |_| { on_submit(); }
                 >
@@ -552,7 +554,7 @@ fn TaskCreationPanel(
                         <p class="text-sm text-[var(--color-status-success)]">
                             {t("task.created")}
                         </p>
-                        <a href="/tasks" class="text-xs text-[var(--color-brand-primary)] hover:underline mt-1 inline-block">
+                        <a href="/tasks" class="text-xs text-[var(--color-brand-text)] hover:underline mt-1 inline-block">
                             {t("search.view_tasks")}
                         </a>
                     </div>
@@ -572,10 +574,3 @@ fn SeatBadge(label: &'static str, available: bool) -> impl IntoView {
     view! { <span class=class>{label}</span> }
 }
 
-fn format_time(raw: &str) -> String {
-    if raw.len() >= 4 {
-        format!("{}:{}", &raw[..2], &raw[2..4])
-    } else {
-        raw.to_string()
-    }
-}

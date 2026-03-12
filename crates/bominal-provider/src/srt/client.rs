@@ -98,6 +98,43 @@ impl SrtClient {
         }
     }
 
+    /// Create a new SRT client that proxies through an Evervault Relay.
+    ///
+    /// All requests go through the relay, which transparently decrypts
+    /// `ev:`-prefixed card fields in-flight. Cookies, Host, and UA are
+    /// preserved because the target URL stays `app.srail.or.kr`.
+    pub fn with_relay(relay_domain: &str) -> Self {
+        let proxy = reqwest::Proxy::all(format!("https://{relay_domain}"))
+            .expect("Invalid relay domain");
+
+        let api_client = reqwest::Client::builder()
+            .cookie_store(true)
+            .user_agent(USER_AGENT)
+            .proxy(proxy)
+            .default_headers({
+                let mut h = reqwest::header::HeaderMap::new();
+                h.insert(
+                    reqwest::header::ACCEPT,
+                    "application/json".parse().unwrap(),
+                );
+                h
+            })
+            .build()
+            .expect("Failed to build SRT API client with relay");
+
+        let netfunnel_client = reqwest::Client::builder()
+            .cookie_store(true)
+            .build()
+            .expect("Failed to build SRT NetFunnel client");
+
+        Self {
+            api_client,
+            netfunnel_client,
+            user_info: None,
+            is_logged_in: false,
+        }
+    }
+
     /// Whether the client is currently logged in.
     pub fn is_logged_in(&self) -> bool {
         self.is_logged_in
@@ -787,24 +824,32 @@ impl SrtClient {
         card_type: &str,
         installment: u8,
     ) -> Result<(), ProviderError> {
-        let card_digits = card_number.chars().all(|c| c.is_ascii_digit());
-        if !card_digits || card_number.len() < 13 || card_number.len() > 19 {
-            return Err(ProviderError::UnexpectedResponse {
-                status: 400,
-                body: "Card number must be 13-19 digits".to_string(),
-            });
+        // Evervault-encrypted values (ev: prefix) bypass digit validation —
+        // the Outbound Relay decrypts them to plaintext before forwarding.
+        if !card_number.starts_with("ev:") {
+            let card_digits = card_number.chars().all(|c| c.is_ascii_digit());
+            if !card_digits || card_number.len() < 13 || card_number.len() > 19 {
+                return Err(ProviderError::UnexpectedResponse {
+                    status: 400,
+                    body: "Card number must be 13-19 digits".to_string(),
+                });
+            }
         }
-        if card_password.len() != 2 || !card_password.chars().all(|c| c.is_ascii_digit()) {
-            return Err(ProviderError::UnexpectedResponse {
-                status: 400,
-                body: "Card password must be exactly 2 digits".to_string(),
-            });
+        if !card_password.starts_with("ev:") {
+            if card_password.len() != 2 || !card_password.chars().all(|c| c.is_ascii_digit()) {
+                return Err(ProviderError::UnexpectedResponse {
+                    status: 400,
+                    body: "Card password must be exactly 2 digits".to_string(),
+                });
+            }
         }
-        if expire_date.len() != 4 || !expire_date.chars().all(|c| c.is_ascii_digit()) {
-            return Err(ProviderError::UnexpectedResponse {
-                status: 400,
-                body: "Expire date must be 4 digits (YYMM)".to_string(),
-            });
+        if !expire_date.starts_with("ev:") {
+            if expire_date.len() != 4 || !expire_date.chars().all(|c| c.is_ascii_digit()) {
+                return Err(ProviderError::UnexpectedResponse {
+                    status: 400,
+                    body: "Expire date must be 4 digits (YYMM)".to_string(),
+                });
+            }
         }
         if card_type != "J" && card_type != "S" {
             return Err(ProviderError::UnexpectedResponse {

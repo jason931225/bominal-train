@@ -105,6 +105,10 @@ CREATE TABLE sessions (
 CREATE INDEX idx_sessions_user ON sessions(user_id);
 CREATE INDEX idx_sessions_expires ON sessions(expires_at);
 
+-- Token lookup indexes
+CREATE INDEX idx_users_email_verification_token ON users(email_verification_token) WHERE email_verification_token IS NOT NULL;
+CREATE INDEX idx_users_password_reset_token ON users(password_reset_token) WHERE password_reset_token IS NOT NULL;
+
 -- Row Level Security
 ALTER TABLE provider_credentials ENABLE ROW LEVEL SECURITY;
 ALTER TABLE payment_cards ENABLE ROW LEVEL SECURITY;

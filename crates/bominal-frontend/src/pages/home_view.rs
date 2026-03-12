@@ -1,4 +1,4 @@
-//! Home page — dashboard with active task summary and quick actions.
+//! Home page — dashboard with hero panel, quick action cards, and active task summary.
 
 use leptos::prelude::*;
 
@@ -7,29 +7,65 @@ use crate::components::glass_panel::GlassPanel;
 use crate::components::sse_reload::SseReload;
 use crate::components::status_chip::StatusChip;
 use crate::i18n::t;
+use crate::utils::status_variant;
 
-/// Home dashboard showing active tasks summary and quick actions.
+/// Home dashboard with hero panel and quick actions.
 #[component]
 pub fn HomeView() -> impl IntoView {
     let tasks = Resource::new(|| (), |_| list_tasks());
 
     view! {
         <SseReload />
-        <div class="px-4 pt-6 pb-4 space-y-4">
-            <div class="flex items-center justify-between">
-                <div>
-                    <h1 class="text-xl font-bold text-[var(--color-text-primary)]">{t("home.welcome")}</h1>
-                    <p class="text-sm text-[var(--color-text-secondary)]">{t("home.active_tasks")}</p>
-                </div>
+        <div class="px-4 pt-6 pb-4 space-y-5 max-w-xl lg:max-w-2xl mx-auto page-enter">
+            // Wordmark header
+            <div class="flex items-center gap-3">
+                <span class="app-brand-wordmark text-2xl font-bold bg-clip-text text-transparent tracking-tight">"Bominal"</span>
             </div>
+
+            // Hero glass panel
+            <GlassPanel>
+                <div class="p-5">
+                    <h1 class="text-2xl font-bold tracking-tight text-[var(--color-text-primary)]">{t("home.welcome")}</h1>
+                    <p class="mt-2 text-sm text-[var(--color-text-tertiary)] leading-relaxed max-w-md">
+                        {t("home.description")}
+                    </p>
+
+                    // 2-column action cards
+                    <div class="mt-5 grid grid-cols-2 gap-3">
+                        <a href="/search"
+                            class="flex flex-col items-start justify-between min-h-[7rem] rounded-2xl border border-[var(--color-brand-border)] bg-[var(--color-brand-primary)] px-4 py-3.5 text-left hover:opacity-80 transition-opacity"
+                        >
+                            <svg class="w-5 h-5 text-[var(--color-brand-text)]" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                            </svg>
+                            <div>
+                                <div class="text-sm font-semibold text-[var(--color-text-primary)]">{t("home.start_search")}</div>
+                                <div class="mt-0.5 text-xs text-[var(--color-text-tertiary)]">{t("home.start_search_desc")}</div>
+                            </div>
+                        </a>
+
+                        <a href="/tasks"
+                            class="flex flex-col items-start justify-between min-h-[7rem] rounded-2xl border border-[var(--color-border-default)] bg-[var(--color-bg-elevated)] px-4 py-3.5 text-left hover:bg-[var(--color-interactive-hover)] transition-colors"
+                        >
+                            <svg class="w-5 h-5 text-[var(--color-text-tertiary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                            </svg>
+                            <div>
+                                <div class="text-sm font-semibold text-[var(--color-text-primary)]">{t("home.open_tasks")}</div>
+                                <div class="mt-0.5 text-xs text-[var(--color-text-tertiary)]">{t("home.open_tasks_desc")}</div>
+                            </div>
+                        </a>
+                    </div>
+                </div>
+            </GlassPanel>
 
             // Active tasks summary
             <GlassPanel>
                 <div class="p-4">
-                    <h2 class="text-sm font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider mb-3">{t("home.active_tasks")}</h2>
+                    <h2 class="text-sm font-semibold text-[var(--color-text-secondary)] uppercase tracking-[0.18em] mb-3">{t("home.active_tasks")}</h2>
                     <Suspense fallback=move || view! {
-                        <div class="text-center py-8">
-                            <p class="text-[var(--color-text-tertiary)] text-sm">{t("common.loading")}</p>
+                        <div class="text-center py-6">
+                            <div class="shimmer h-10 rounded-xl"></div>
                         </div>
                     }>
                         {move || tasks.get().map(|result| match result {
@@ -41,9 +77,9 @@ pub fn HomeView() -> impl IntoView {
 
                                 if active.is_empty() {
                                     view! {
-                                        <div class="text-center py-8">
+                                        <div class="text-center py-6">
                                             <p class="text-[var(--color-text-tertiary)] text-sm">{t("home.no_active_tasks")}</p>
-                                            <a href="/search" class="inline-block mt-3 text-sm text-[var(--color-brand-primary)] font-medium hover:underline">
+                                            <a href="/search" class="inline-block mt-3 text-sm text-[var(--color-brand-text)] font-medium hover:underline">
                                                 {t("search.go_to_search")}
                                             </a>
                                         </div>
@@ -69,7 +105,7 @@ pub fn HomeView() -> impl IntoView {
                                 }
                             }
                             Err(_) => view! {
-                                <div class="text-center py-8">
+                                <div class="text-center py-6">
                                     <p class="text-[var(--color-text-tertiary)] text-sm">{t("error.load_failed")}</p>
                                 </div>
                             }.into_any(),
@@ -77,45 +113,6 @@ pub fn HomeView() -> impl IntoView {
                     </Suspense>
                 </div>
             </GlassPanel>
-
-            // Quick actions
-            <GlassPanel>
-                <div class="p-4">
-                    <h2 class="text-sm font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider mb-3">{t("home.quick_actions")}</h2>
-                    <div class="grid grid-cols-3 gap-3">
-                        <a href="/search" class="flex flex-col items-center gap-2 p-4 rounded-xl bg-[var(--color-bg-sunken)] hover:bg-[var(--color-interactive-hover)] transition-colors">
-                            <svg class="w-6 h-6 text-[var(--color-brand-primary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                            </svg>
-                            <span class="text-xs font-medium text-[var(--color-text-secondary)]">{t("nav.search")}</span>
-                        </a>
-                        <a href="/tasks" class="flex flex-col items-center gap-2 p-4 rounded-xl bg-[var(--color-bg-sunken)] hover:bg-[var(--color-interactive-hover)] transition-colors">
-                            <svg class="w-6 h-6 text-[var(--color-brand-primary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-                            </svg>
-                            <span class="text-xs font-medium text-[var(--color-text-secondary)]">{t("nav.tasks")}</span>
-                        </a>
-                        <a href="/reservations" class="flex flex-col items-center gap-2 p-4 rounded-xl bg-[var(--color-bg-sunken)] hover:bg-[var(--color-interactive-hover)] transition-colors">
-                            <svg class="w-6 h-6 text-[var(--color-brand-primary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" />
-                            </svg>
-                            <span class="text-xs font-medium text-[var(--color-text-secondary)]">{t("home.tickets")}</span>
-                        </a>
-                    </div>
-                </div>
-            </GlassPanel>
         </div>
     }
-}
-
-fn status_variant(status: &str) -> String {
-    match status {
-        "queued" => "idle",
-        "running" => "running",
-        "confirmed" => "success",
-        "failed" | "error" => "error",
-        "cancelled" => "warning",
-        _ => "info",
-    }
-    .to_string()
 }

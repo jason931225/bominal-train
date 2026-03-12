@@ -27,13 +27,26 @@ pub struct CardResponse {
 }
 
 /// Add card request.
+///
+/// All sensitive fields (`card_number`, `card_password`, `birthday`,
+/// `expire_date`) must be pre-encrypted by the Evervault JS SDK on the
+/// frontend. The server stores these `ev:`-prefixed strings directly
+/// and never sees plaintext card data.
 #[derive(Debug, Deserialize)]
 pub struct AddCardRequest {
     pub label: Option<String>,
+    /// Evervault-encrypted card number (ev:... format).
     pub card_number: String,
+    /// Evervault-encrypted card password (ev:... format).
     pub card_password: String,
+    /// Evervault-encrypted birthday (ev:... format).
     pub birthday: String,
+    /// Evervault-encrypted expiry date (ev:... format).
     pub expire_date: String,
+    /// Evervault-encrypted expiry date in YYMM format (ev:... format).
+    pub expire_date_yymm: Option<String>,
+    /// Last 4 digits of card (plaintext, for display).
+    pub last_four: String,
     pub card_type: Option<String>,
 }
 
@@ -63,28 +76,21 @@ pub async fn add_card(
 ) -> Result<Json<CardResponse>, AppError> {
     validate_card_request(&req)?;
 
-    let last_four = &req.card_number[req.card_number.len() - 4..];
+    let last_four = &req.last_four;
     let card_type = req.card_type.as_deref().unwrap_or("J");
     let label = req.label.as_deref().unwrap_or("My Card");
 
-    // Encrypt sensitive card fields with AES-256-GCM before storage
-    use bominal_domain::crypto::encryption::encrypt;
-    let key = &state.encryption_key;
-    let enc_number = encrypt(key, &req.card_number).map_err(|e| AppError::Internal(e.into()))?;
-    let enc_password =
-        encrypt(key, &req.card_password).map_err(|e| AppError::Internal(e.into()))?;
-    let enc_birthday = encrypt(key, &req.birthday).map_err(|e| AppError::Internal(e.into()))?;
-    let enc_expiry =
-        encrypt(key, &req.expire_date).map_err(|e| AppError::Internal(e.into()))?;
-
+    // Card fields arrive pre-encrypted by the Evervault JS SDK (ev: prefix).
+    // The server never sees plaintext card data — store as-is.
     let row = bominal_db::card::create_card(
         &state.db,
         user.user_id,
         label,
-        &enc_number,
-        &enc_password,
-        &enc_birthday,
-        &enc_expiry,
+        &req.card_number,
+        &req.card_password,
+        &req.birthday,
+        &req.expire_date,
+        req.expire_date_yymm.as_deref(),
         card_type,
         last_four,
     )
@@ -152,29 +158,38 @@ fn card_type_name(code: &str) -> &str {
 }
 
 fn validate_card_request(req: &AddCardRequest) -> Result<(), AppError> {
-    if req.card_number.len() < 15 || req.card_number.len() > 16 {
+    // Sensitive fields must be Evervault-encrypted (ev: prefix).
+    if !req.card_number.starts_with("ev:") {
         return Err(AppError::BadRequest(
-            "Card number must be 15-16 digits".to_string(),
+            "Card number must be encrypted via Evervault SDK".to_string(),
         ));
     }
-    if !req.card_number.chars().all(|c| c.is_ascii_digit()) {
+    if !req.card_password.starts_with("ev:") {
         return Err(AppError::BadRequest(
-            "Card number must contain only digits".to_string(),
+            "Card password must be encrypted via Evervault SDK".to_string(),
         ));
     }
-    if req.card_password.len() != 2 || !req.card_password.chars().all(|c| c.is_ascii_digit()) {
+    if !req.birthday.starts_with("ev:") {
         return Err(AppError::BadRequest(
-            "Card password must be 2 digits".to_string(),
+            "Birthday must be encrypted via Evervault SDK".to_string(),
         ));
     }
-    if req.birthday.len() != 6 || !req.birthday.chars().all(|c| c.is_ascii_digit()) {
+    if !req.expire_date.starts_with("ev:") {
         return Err(AppError::BadRequest(
-            "Birthday must be YYMMDD format (6 digits)".to_string(),
+            "Expire date must be encrypted via Evervault SDK".to_string(),
         ));
     }
-    if req.expire_date.len() != 4 || !req.expire_date.chars().all(|c| c.is_ascii_digit()) {
+    if let Some(ref yymm) = req.expire_date_yymm {
+        if !yymm.starts_with("ev:") {
+            return Err(AppError::BadRequest(
+                "Expire date YYMM must be encrypted via Evervault SDK".to_string(),
+            ));
+        }
+    }
+    // last_four is plaintext for display — validate it.
+    if req.last_four.len() != 4 || !req.last_four.chars().all(|c| c.is_ascii_digit()) {
         return Err(AppError::BadRequest(
-            "Expire date must be MMYY or YYMM format (4 digits)".to_string(),
+            "last_four must be exactly 4 digits".to_string(),
         ));
     }
     if let Some(ct) = &req.card_type {
@@ -191,68 +206,53 @@ fn validate_card_request(req: &AddCardRequest) -> Result<(), AppError> {
 mod tests {
     use super::*;
 
+    fn ev_encrypted(val: &str) -> String {
+        format!("ev:abc123:{val}")
+    }
+
+    fn valid_request() -> AddCardRequest {
+        AddCardRequest {
+            label: None,
+            card_number: ev_encrypted("card"),
+            card_password: ev_encrypted("pw"),
+            birthday: ev_encrypted("bday"),
+            expire_date: ev_encrypted("exp"),
+            expire_date_yymm: Some(ev_encrypted("yymm")),
+            last_four: "3456".to_string(),
+            card_type: Some("J".to_string()),
+        }
+    }
+
     #[test]
     fn validate_valid_card() {
-        let req = AddCardRequest {
-            label: None,
-            card_number: "1234567890123456".to_string(),
-            card_password: "12".to_string(),
-            birthday: "900101".to_string(),
-            expire_date: "1228".to_string(),
-            card_type: Some("J".to_string()),
-        };
-        assert!(validate_card_request(&req).is_ok());
+        assert!(validate_card_request(&valid_request()).is_ok());
     }
 
     #[test]
-    fn validate_short_card_number() {
-        let req = AddCardRequest {
-            label: None,
-            card_number: "1234".to_string(),
-            card_password: "12".to_string(),
-            birthday: "900101".to_string(),
-            expire_date: "1228".to_string(),
-            card_type: None,
-        };
+    fn validate_rejects_plaintext_card_number() {
+        let mut req = valid_request();
+        req.card_number = "1234567890123456".to_string();
         assert!(validate_card_request(&req).is_err());
     }
 
     #[test]
-    fn validate_bad_password() {
-        let req = AddCardRequest {
-            label: None,
-            card_number: "1234567890123456".to_string(),
-            card_password: "abc".to_string(),
-            birthday: "900101".to_string(),
-            expire_date: "1228".to_string(),
-            card_type: None,
-        };
+    fn validate_rejects_plaintext_password() {
+        let mut req = valid_request();
+        req.card_password = "12".to_string();
         assert!(validate_card_request(&req).is_err());
     }
 
     #[test]
-    fn validate_bad_birthday() {
-        let req = AddCardRequest {
-            label: None,
-            card_number: "1234567890123456".to_string(),
-            card_password: "12".to_string(),
-            birthday: "19900101".to_string(),
-            expire_date: "1228".to_string(),
-            card_type: None,
-        };
+    fn validate_rejects_bad_last_four() {
+        let mut req = valid_request();
+        req.last_four = "abc".to_string();
         assert!(validate_card_request(&req).is_err());
     }
 
     #[test]
-    fn validate_bad_card_type() {
-        let req = AddCardRequest {
-            label: None,
-            card_number: "1234567890123456".to_string(),
-            card_password: "12".to_string(),
-            birthday: "900101".to_string(),
-            expire_date: "1228".to_string(),
-            card_type: Some("X".to_string()),
-        };
+    fn validate_rejects_bad_card_type() {
+        let mut req = valid_request();
+        req.card_type = Some("X".to_string());
         assert!(validate_card_request(&req).is_err());
     }
 

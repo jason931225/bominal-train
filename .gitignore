@@ -1,6 +1,8 @@
 /target
 .env
 !.env.example
+# Generated Tailwind CSS output (built from main.css)
+crates/bominal-frontend/style/output.css
 *.swp
 *.swo
 *~

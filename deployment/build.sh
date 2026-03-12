@@ -13,7 +13,7 @@ cargo leptos build --release
 
 echo "=== Step 2: Process CSS ==="
 if command -v tailwindcss &>/dev/null; then
-    tailwindcss -i style/main.css -o target/site/style.css 2>/dev/null || true
+    tailwindcss -i crates/bominal-frontend/style/main.css -o target/site/style.css --content 'crates/bominal-frontend/src/**/*.rs' 2>/dev/null || true
 fi
 if command -v lightningcss &>/dev/null; then
     lightningcss --minify --bundle target/site/style.css -o target/site/style.min.css 2>/dev/null || true

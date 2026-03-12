@@ -105,7 +105,7 @@ pub async fn logout() -> Result<(), ServerFnError> {
     response.insert_header(
         axum::http::header::SET_COOKIE,
         axum::http::HeaderValue::from_str(
-            "bominal_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0",
+            "bominal_session=; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=0",
         )
         .unwrap(),
     );
@@ -188,7 +188,7 @@ async fn create_session(
     response.insert_header(
         axum::http::header::SET_COOKIE,
         axum::http::HeaderValue::from_str(&format!(
-            "{SESSION_COOKIE_NAME}={session_id}; Path=/; HttpOnly; SameSite=Lax; Max-Age={}",
+            "{SESSION_COOKIE_NAME}={session_id}; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age={}",
             SESSION_TTL_HOURS * 3600
         ))
         .unwrap(),

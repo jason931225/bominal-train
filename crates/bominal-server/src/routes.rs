@@ -3,17 +3,22 @@
 use std::time::Instant;
 
 use axum::body::Body;
-use axum::http::Request;
+use axum::http::{HeaderValue, Method, Request};
 use axum::response::IntoResponse;
 use axum::routing::{delete, get, patch, post};
 use axum::Router;
 use leptos::prelude::provide_context;
+use tower_http::compression::CompressionLayer;
+use tower_http::cors::CorsLayer;
+use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::request_id::{PropagateRequestIdLayer, SetRequestIdLayer};
 use tower_http::services::ServeFile;
+use tower_http::set_header::SetResponseHeaderLayer;
 use tower_http::trace::TraceLayer;
 
 use crate::auth;
 use crate::cards;
+use crate::passkey;
 use crate::config::AppConfig;
 use crate::middleware;
 use crate::providers;
@@ -37,6 +42,11 @@ pub fn api_routes() -> Router<SharedState> {
         .route("/auth/resend-verification", post(auth::resend_verification))
         .route("/auth/forgot-password", post(auth::forgot_password))
         .route("/auth/reset-password", post(auth::reset_password))
+        // Passkey / WebAuthn
+        .route("/auth/passkey/register/start", post(passkey::register_start))
+        .route("/auth/passkey/register/finish", post(passkey::register_finish))
+        .route("/auth/passkey/login/start", post(passkey::login_start))
+        .route("/auth/passkey/login/finish", post(passkey::login_finish))
         // Provider credentials
         .route(
             "/providers",
@@ -77,6 +87,10 @@ pub fn api_routes() -> Router<SharedState> {
             "/reservations/{pnr}/pay",
             post(reservations::pay_reservation),
         )
+        .route(
+            "/reservations/{pnr}/refund",
+            post(reservations::refund_reservation),
+        )
         // Payment cards
         .route(
             "/cards",
@@ -89,7 +103,10 @@ pub fn api_routes() -> Router<SharedState> {
 }
 
 /// Build the Axum router with all middleware layers.
-pub async fn create_router(config: &AppConfig) -> anyhow::Result<Router> {
+pub async fn create_router(
+    config: &AppConfig,
+    prometheus_handle: metrics_exporter_prometheus::PrometheusHandle,
+) -> anyhow::Result<Router> {
     let db = bominal_db::create_pool(&config.database_url).await?;
     let start_time = Instant::now();
 
@@ -98,6 +115,13 @@ pub async fn create_router(config: &AppConfig) -> anyhow::Result<Router> {
     let encryption_key = bominal_domain::crypto::encryption::EncryptionKey::from_hex(
         &config.encryption_key,
     )?;
+    let evervault = crate::evervault::EvervaultConfig::new(
+        &config.ev_team_id,
+        &config.ev_app_id,
+        &config.ev_api_key,
+        &config.ev_srt_domain,
+        &config.ev_ktx_domain,
+    );
 
     // Start the background reservation task runner
     runner::spawn_runner(
@@ -105,6 +129,7 @@ pub async fn create_router(config: &AppConfig) -> anyhow::Result<Router> {
         event_bus.clone(),
         email.clone(),
         encryption_key.clone(),
+        evervault.clone(),
         config.app_base_url.clone(),
     );
 
@@ -114,8 +139,13 @@ pub async fn create_router(config: &AppConfig) -> anyhow::Result<Router> {
         event_bus,
         email,
         encryption_key,
+        evervault,
         app_base_url: config.app_base_url.clone(),
+        prometheus_handle,
     };
+
+    // Spawn session cleanup background job
+    crate::session_cleanup::spawn_cleanup(state.db.clone());
 
     let api = api_routes();
 
@@ -124,6 +154,10 @@ pub async fn create_router(config: &AppConfig) -> anyhow::Result<Router> {
     let sfn_key = state.encryption_key.clone();
     let sfn_email = state.email.clone();
     let sfn_base_url = config.app_base_url.clone();
+    let sfn_ev_ids = bominal_frontend::EvervaultIds {
+        team_id: state.evervault.team_id.clone(),
+        app_id: state.evervault.app_id.clone(),
+    };
     let context_fn = move || {
         provide_context(sfn_db.clone());
         provide_context(sfn_key.clone());
@@ -131,6 +165,7 @@ pub async fn create_router(config: &AppConfig) -> anyhow::Result<Router> {
         provide_context(bominal_frontend::api::auth::AppBaseUrl(
             sfn_base_url.clone(),
         ));
+        provide_context(sfn_ev_ids.clone());
     };
 
     // Server function handler (POST /sfn/*)
@@ -155,11 +190,34 @@ pub async fn create_router(config: &AppConfig) -> anyhow::Result<Router> {
         .route("/sfn/{*fn_name}", post(server_fn_handler))
         .route_service(
             "/style.css",
-            ServeFile::new("crates/bominal-frontend/style/main.css"),
+            ServeFile::new("crates/bominal-frontend/style/output.css"),
+        )
+        .route_service(
+            "/interop.js",
+            ServeFile::new("crates/bominal-frontend/ts/interop.js"),
         )
         .route("/health", get(health_check))
         .route("/metrics", get(metrics_endpoint))
         .fallback(page_renderer)
+        .layer(CompressionLayer::new().gzip(true).br(true))
+        .layer(RequestBodyLimitLayer::new(1_048_576)) // 1 MB
+        .layer(SetResponseHeaderLayer::if_not_present(
+            axum::http::header::X_CONTENT_TYPE_OPTIONS,
+            HeaderValue::from_static("nosniff"),
+        ))
+        .layer(SetResponseHeaderLayer::if_not_present(
+            axum::http::header::X_FRAME_OPTIONS,
+            HeaderValue::from_static("DENY"),
+        ))
+        .layer(SetResponseHeaderLayer::if_not_present(
+            axum::http::header::REFERRER_POLICY,
+            HeaderValue::from_static("strict-origin-when-cross-origin"),
+        ))
+        .layer(CorsLayer::new()
+            .allow_origin(config.app_base_url.parse::<HeaderValue>().unwrap_or_else(|_| HeaderValue::from_static("http://localhost:3000")))
+            .allow_methods([Method::GET, Method::POST, Method::PATCH, Method::DELETE])
+            .allow_credentials(true)
+            .allow_headers([axum::http::header::CONTENT_TYPE, axum::http::header::COOKIE]))
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(|request: &axum::http::Request<_>| {
@@ -212,7 +270,8 @@ async fn health_check(
     }))
 }
 
-async fn metrics_endpoint() -> String {
-    // Prometheus metrics will be collected here
-    String::new()
+async fn metrics_endpoint(
+    axum::extract::State(state): axum::extract::State<SharedState>,
+) -> String {
+    state.prometheus_handle.render()
 }

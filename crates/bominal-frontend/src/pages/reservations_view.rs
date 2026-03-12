@@ -6,6 +6,7 @@ use crate::api::cards::{list_cards, CardInfo};
 use crate::api::reservations::{cancel_reservation, list_reservations, pay_reservation, ReservationInfo};
 use crate::components::glass_panel::GlassPanel;
 use crate::i18n::t;
+use crate::utils::{format_cost, format_date, format_time};
 
 /// Reservations page showing active reservations from SRT and KTX.
 #[component]
@@ -45,7 +46,7 @@ pub fn ReservationsView() -> impl IntoView {
     });
 
     view! {
-        <div class="px-4 pt-6 pb-4 space-y-4">
+        <div class="px-4 pt-6 pb-4 space-y-4 max-w-xl lg:max-w-2xl mx-auto page-enter">
             <h1 class="text-xl font-bold text-[var(--color-text-primary)]">{t("reservation.title")}</h1>
 
             // Provider toggle
@@ -113,7 +114,7 @@ pub fn ReservationsView() -> impl IntoView {
                         <GlassPanel>
                             <div class="p-4 text-center py-12">
                                 <p class="text-[var(--color-text-tertiary)] text-sm">{t("reservation.no_active")}</p>
-                                <a href="/search" class="inline-block mt-3 text-sm text-[var(--color-brand-primary)] font-medium hover:underline">
+                                <a href="/search" class="inline-block mt-3 text-sm text-[var(--color-brand-text)] font-medium hover:underline">
                                     {t("search.title")}
                                 </a>
                             </div>
@@ -202,7 +203,7 @@ fn ReservationCard(
     let (selected_card, set_selected_card) = signal(default_card_id);
 
     view! {
-        <GlassPanel>
+        <GlassPanel variant=crate::components::glass_panel::GlassPanelVariant::Card hover=true>
             <div class="p-4">
                 <div class="flex items-start justify-between mb-2">
                     <div class="flex items-center gap-2">
@@ -281,7 +282,7 @@ fn ReservationCard(
                                         }).collect::<Vec<_>>()}
                                     </select>
                                     <button
-                                        class="px-4 py-2 text-xs font-medium rounded-lg bg-[var(--color-brand-primary)] text-white hover:opacity-90 transition-opacity"
+                                        class="px-4 py-2 text-xs font-medium rounded-lg bg-[var(--color-brand-primary)] text-white hover:opacity-90 active:scale-95 transition-all"
                                         on:click=move |_| {
                                             on_pay(selected_card.get());
                                         }
@@ -293,7 +294,7 @@ fn ReservationCard(
                         })}
                         // Cancel button
                         <button
-                            class="w-full py-2 text-xs font-medium rounded-lg text-[var(--color-status-error)] border border-[var(--color-status-error)]/30 hover:bg-[var(--color-status-error)]/10 transition-colors"
+                            class="w-full py-2 text-xs font-medium rounded-lg text-[var(--color-status-error)] border border-[var(--color-status-error)]/30 hover:bg-[var(--color-status-error)]/10 active:scale-95 transition-all"
                             on:click=move |_| { on_cancel(); }
                         >
                             {t("reservation.cancel")}
@@ -305,36 +306,3 @@ fn ReservationCard(
     }
 }
 
-fn format_time(raw: &str) -> String {
-    if raw.len() >= 4 {
-        format!("{}:{}", &raw[..2], &raw[2..4])
-    } else {
-        raw.to_string()
-    }
-}
-
-fn format_date(raw: &str) -> String {
-    if raw.len() >= 8 {
-        format!("{}-{}-{}", &raw[..4], &raw[4..6], &raw[6..8])
-    } else {
-        raw.to_string()
-    }
-}
-
-fn format_cost(raw: &str) -> String {
-    let digits: String = raw.chars().filter(|c| c.is_ascii_digit()).collect();
-    let n: u64 = digits.parse().unwrap_or(0);
-    // Format with thousands separators
-    if n == 0 {
-        return "0".to_string();
-    }
-    let s = n.to_string();
-    let mut result = String::new();
-    for (i, c) in s.chars().rev().enumerate() {
-        if i > 0 && i % 3 == 0 {
-            result.push(',');
-        }
-        result.push(c);
-    }
-    result.chars().rev().collect()
-}

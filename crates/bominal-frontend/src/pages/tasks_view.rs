@@ -7,6 +7,7 @@ use crate::components::glass_panel::GlassPanel;
 use crate::components::sse_reload::SseReload;
 use crate::components::status_chip::StatusChip;
 use crate::i18n::t;
+use crate::utils::{format_time, status_variant};
 
 /// Tasks dashboard showing active and completed reservation tasks.
 #[component]
@@ -27,7 +28,7 @@ pub fn TasksView() -> impl IntoView {
 
     view! {
         <SseReload />
-        <div class="px-4 pt-6 pb-4 space-y-4">
+        <div class="px-4 pt-6 pb-4 space-y-4 max-w-xl lg:max-w-2xl mx-auto page-enter">
             <h1 class="text-xl font-bold text-[var(--color-text-primary)]">{t("nav.tasks")}</h1>
 
             // Tab toggle
@@ -80,7 +81,7 @@ pub fn TasksView() -> impl IntoView {
                                         <p class="text-[var(--color-text-tertiary)] text-sm">
                                             {if is_active_tab { t("task.no_active") } else { t("task.no_completed") }}
                                         </p>
-                                        <a href="/search" class="inline-block mt-3 text-sm text-[var(--color-brand-primary)] font-medium hover:underline">
+                                        <a href="/search" class="inline-block mt-3 text-sm text-[var(--color-brand-text)] font-medium hover:underline">
                                             {t("task.create_new")}
                                         </a>
                                     </div>
@@ -93,7 +94,7 @@ pub fn TasksView() -> impl IntoView {
                                         let task_id = task.id.to_string();
                                         let is_active = matches!(task.status.as_str(), "queued" | "running" | "idle");
                                         view! {
-                                            <GlassPanel>
+                                            <GlassPanel variant=crate::components::glass_panel::GlassPanelVariant::Card hover=true>
                                                 <div class="p-4">
                                                     <div class="flex items-start justify-between">
                                                         <div class="flex-1">
@@ -103,10 +104,19 @@ pub fn TasksView() -> impl IntoView {
                                                                 </span>
                                                                 <StatusChip label=task.status.clone() variant=status_variant(&task.status) />
                                                             </div>
-                                                            <p class="text-sm font-medium text-[var(--color-text-primary)]">
-                                                                {format!("{} → {}", task.departure_station, task.arrival_station)}
-                                                            </p>
-                                                            <p class="text-xs text-[var(--color-text-tertiary)] mt-0.5">
+                                                            // Route visualization
+                                                            <div class="flex items-center gap-2 mt-1">
+                                                                <div class="flex items-center gap-1.5">
+                                                                    <span class="w-2 h-2 rounded-full bg-[var(--color-brand-text)]"></span>
+                                                                    <span class="text-sm font-medium text-[var(--color-text-primary)]">{task.departure_station.clone()}</span>
+                                                                </div>
+                                                                <div class="flex-1 h-px bg-[var(--color-border-default)]"></div>
+                                                                <div class="flex items-center gap-1.5">
+                                                                    <span class="text-sm font-medium text-[var(--color-text-primary)]">{task.arrival_station.clone()}</span>
+                                                                    <span class="w-2 h-2 rounded-full bg-[var(--color-status-success)]"></span>
+                                                                </div>
+                                                            </div>
+                                                            <p class="text-xs text-[var(--color-text-tertiary)] mt-1">
                                                                 {format!("{} {}", task.travel_date, format_time(&task.departure_time))}
                                                             </p>
                                                             {task.reservation_number.as_ref().map(|pnr| view! {
@@ -122,7 +132,7 @@ pub fn TasksView() -> impl IntoView {
                                                             let id = task_id.clone();
                                                             view! {
                                                                 <button
-                                                                    class="text-xs px-2 py-1 rounded-lg text-[var(--color-status-error)] hover:bg-[var(--color-status-error)]/10 transition-colors"
+                                                                    class="text-xs px-2 py-1 rounded-lg text-[var(--color-status-error)] hover:bg-[var(--color-status-error)]/10 active:scale-95 transition-all"
                                                                     on:click=move |_| { cancel_action.dispatch(id.clone()); }
                                                                 >
                                                                     {t("task.cancel")}
@@ -151,22 +161,3 @@ pub fn TasksView() -> impl IntoView {
     }
 }
 
-fn status_variant(status: &str) -> String {
-    match status {
-        "queued" => "idle",
-        "running" => "running",
-        "confirmed" => "success",
-        "failed" | "error" => "error",
-        "cancelled" => "warning",
-        _ => "info",
-    }
-    .to_string()
-}
-
-fn format_time(raw: &str) -> String {
-    if raw.len() >= 4 {
-        format!("{}:{}", &raw[..2], &raw[2..4])
-    } else {
-        raw.to_string()
-    }
-}

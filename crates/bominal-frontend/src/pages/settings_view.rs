@@ -3,8 +3,9 @@
 use leptos::prelude::*;
 
 use crate::api::auth::{Logout, get_current_user};
-use crate::api::cards::{AddCard, DeleteCard, list_cards, CardInfo};
+use crate::api::cards::{DeleteCard, list_cards, CardInfo};
 use crate::api::providers::{AddProvider, DeleteProvider, list_providers, ProviderInfo};
+use crate::components::card_brand::{detect_brand, format_card_number, strip_non_digits, CardBrand};
 use crate::components::glass_panel::GlassPanel;
 use crate::i18n::t;
 
@@ -18,7 +19,6 @@ pub fn SettingsView() -> impl IntoView {
     let delete_provider_action = ServerAction::<DeleteProvider>::new();
     let add_provider_action = ServerAction::<AddProvider>::new();
     let delete_card_action = ServerAction::<DeleteCard>::new();
-    let add_card_action = ServerAction::<AddCard>::new();
 
     // Refetch after mutations
     Effect::new(move || {
@@ -36,18 +36,13 @@ pub fn SettingsView() -> impl IntoView {
             cards.refetch();
         }
     });
-    Effect::new(move || {
-        if add_card_action.value().get().is_some() {
-            cards.refetch();
-        }
-    });
 
     // Toggle states for inline forms
     let (show_provider_form, set_show_provider_form) = signal(Option::<&'static str>::None);
     let (show_card_form, set_show_card_form) = signal(false);
 
     view! {
-        <div class="px-4 pt-6 pb-4 space-y-4">
+        <div class="px-4 pt-6 pb-4 space-y-4 max-w-xl lg:max-w-2xl mx-auto page-enter">
             <h1 class="text-xl font-bold text-[var(--color-text-primary)]">{t("settings.title")}</h1>
 
             // User info
@@ -68,7 +63,7 @@ pub fn SettingsView() -> impl IntoView {
             // Provider Credentials
             <GlassPanel>
                 <div class="p-4 space-y-3">
-                    <h2 class="text-sm font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider">{t("provider.settings")}</h2>
+                    <h2 class="text-sm font-semibold text-[var(--color-text-secondary)] uppercase tracking-[0.18em]">{t("provider.settings")}</h2>
                     <Suspense fallback=move || view! { <p class="text-xs text-[var(--color-text-tertiary)]">{t("common.loading")}</p> }>
                         {move || providers.get().map(|result| match result {
                             Ok(creds) => {
@@ -138,9 +133,9 @@ pub fn SettingsView() -> impl IntoView {
             <GlassPanel>
                 <div class="p-4 space-y-3">
                     <div class="flex items-center justify-between">
-                        <h2 class="text-sm font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider">{t("payment.card_label")}</h2>
+                        <h2 class="text-sm font-semibold text-[var(--color-text-secondary)] uppercase tracking-[0.18em]">{t("payment.card_label")}</h2>
                         <button
-                            class="text-xs px-2 py-1 rounded-lg text-[var(--color-brand-primary)] hover:bg-[var(--color-brand-primary)]/10 transition-colors"
+                            class="text-xs px-2 py-1 rounded-lg text-[var(--color-brand-text)] hover:bg-[var(--color-brand-primary)]/10 transition-colors"
                             on:click=move |_| set_show_card_form.update(|v| *v = !*v)
                         >
                             {move || if show_card_form.get() { t("common.cancel") } else { t("payment.add_card") }}
@@ -150,21 +145,8 @@ pub fn SettingsView() -> impl IntoView {
                     // Card add form
                     {move || show_card_form.get().then(|| view! {
                         <CardAddForm
-                            add_action=add_card_action
                             on_done=move || set_show_card_form.set(false)
                         />
-                    })}
-
-                    // Card add result feedback
-                    {move || add_card_action.value().get().map(|result| match result {
-                        Ok(card) => view! {
-                            <p class="text-xs text-[var(--color-status-success)]">
-                                {format!("Card ····{} added", card.last_four)}
-                            </p>
-                        }.into_any(),
-                        Err(e) => view! {
-                            <p class="text-xs text-[var(--color-status-error)]">{format!("{e}")}</p>
-                        }.into_any(),
                     })}
 
                     <Suspense fallback=move || view! { <p class="text-xs text-[var(--color-text-tertiary)]">{t("common.loading")}</p> }>
@@ -187,51 +169,54 @@ pub fn SettingsView() -> impl IntoView {
                 </div>
             </GlassPanel>
 
-            // Appearance
+            // Appearance — Theme picker + Mode toggle
             <GlassPanel>
-                <div class="p-4 space-y-3">
-                    <h2 class="text-sm font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider">{t("settings.theme")}</h2>
+                <div class="p-4 space-y-4">
+                    <h2 class="text-sm font-semibold text-[var(--color-text-secondary)] uppercase tracking-[0.18em]">{t("settings.theme")}</h2>
+
+                    // Theme picker — two cards
+                    <div class="grid grid-cols-2 gap-3">
+                        <button
+                            id="theme-rosewood"
+                            class="p-3 rounded-xl border border-[var(--color-border-default)] hover:border-[var(--color-brand-border)] transition-colors text-left"
+                            attr:onclick="window.__bSetTheme('rosewood');document.getElementById('theme-rosewood').classList.add('glass-active');document.getElementById('theme-clearsky').classList.remove('glass-active');"
+                        >
+                            <div class="flex gap-1.5 mb-2">
+                                <span class="w-3 h-3 rounded-full" style="background:#8a6050"></span>
+                                <span class="w-3 h-3 rounded-full" style="background:#5a7a62"></span>
+                                <span class="w-3 h-3 rounded-full" style="background:#9a7a3a"></span>
+                            </div>
+                            <p class="text-xs font-medium text-[var(--color-text-primary)]">"Rosewood Dusk"</p>
+                            <p class="text-[10px] text-[var(--color-text-tertiary)]">"Warm & nostalgic"</p>
+                        </button>
+                        <button
+                            id="theme-clearsky"
+                            class="p-3 rounded-xl border border-[var(--color-border-default)] hover:border-[var(--color-brand-border)] transition-colors text-left"
+                            attr:onclick="window.__bSetTheme('clear-sky');document.getElementById('theme-clearsky').classList.add('glass-active');document.getElementById('theme-rosewood').classList.remove('glass-active');"
+                        >
+                            <div class="flex gap-1.5 mb-2">
+                                <span class="w-3 h-3 rounded-full" style="background:#4a6eaa"></span>
+                                <span class="w-3 h-3 rounded-full" style="background:#3a8a60"></span>
+                                <span class="w-3 h-3 rounded-full" style="background:#9a7a30"></span>
+                            </div>
+                            <p class="text-xs font-medium text-[var(--color-text-primary)]">"Clear Sky"</p>
+                            <p class="text-[10px] text-[var(--color-text-tertiary)]">"Soft & airy"</p>
+                        </button>
+                    </div>
+
+                    // Mode toggle — Light / Dark
                     <div class="flex items-center justify-between py-2">
                         <span class="text-sm text-[var(--color-text-primary)]">{t("settings.dark_mode")}</span>
                         <button
-                            id="dark-mode-toggle"
-                            class="dark-mode-toggle w-10 h-6 rounded-full relative cursor-pointer transition-colors"
-                            attr:onclick="var d=document.documentElement;var t=d.getAttribute('data-theme')==='dark'?'light':'dark';window.__bSetTheme(t);var b=this;b.className=t==='dark'?'dark-mode-toggle w-10 h-6 rounded-full relative cursor-pointer transition-colors bg-[var(--color-brand-primary)]':'dark-mode-toggle w-10 h-6 rounded-full relative cursor-pointer transition-colors bg-[var(--color-bg-sunken)]';b.firstElementChild.style.transform=t==='dark'?'translateX(16px)':'translateX(0)';"
+                            id="mode-toggle"
+                            class="mode-toggle w-10 h-6 rounded-full relative cursor-pointer transition-colors"
+                            attr:onclick="var h=document.documentElement;var m=h.getAttribute('data-mode')==='dark'?'light':'dark';window.__bSetMode(m);var b=this;b.style.backgroundColor=m==='dark'?'var(--color-brand-text)':'var(--color-bg-sunken)';b.firstElementChild.style.transform=m==='dark'?'translateX(16px)':'translateX(0)';"
                         >
                             <div class="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform"></div>
                         </button>
                     </div>
-                    <div class="flex items-center justify-between py-2">
-                        <span class="text-sm text-[var(--color-text-primary)]">{t("settings.theme")}</span>
-                        <select
-                            id="palette-select"
-                            class="text-sm bg-[var(--color-bg-sunken)] text-[var(--color-text-primary)] rounded-lg px-2 py-1 border border-[var(--color-border-subtle)]"
-                            attr:onchange="window.__bSetPalette(this.value);"
-                        >
-                            // Palette names kept as literals (Leptos <option> limitation)
-                            <option value="current">"Default"</option>
-                            <option value="transit-slate">"Transit Slate"</option>
-                            <option value="night-teal">"Night Teal"</option>
-                            <option value="warm-platform">"Warm Platform"</option>
-                        </select>
-                    </div>
-                </div>
-            </GlassPanel>
 
-            // Accessibility
-            <GlassPanel>
-                <div class="p-4 space-y-3">
-                    <h2 class="text-sm font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider">{t("settings.accessibility")}</h2>
-                    <div class="flex items-center justify-between py-2">
-                        <span class="text-sm text-[var(--color-text-primary)]">{t("settings.colorblind")}</span>
-                        <button
-                            id="colorblind-toggle"
-                            class="colorblind-toggle w-10 h-6 rounded-full relative cursor-pointer transition-colors"
-                            attr:onclick="var d=document.documentElement;var c=d.getAttribute('data-colorblind')==='true'?'false':'true';window.__bSetColorblind(c);var b=this;b.className=c==='true'?'colorblind-toggle w-10 h-6 rounded-full relative cursor-pointer transition-colors bg-[var(--color-brand-primary)]':'colorblind-toggle w-10 h-6 rounded-full relative cursor-pointer transition-colors bg-[var(--color-bg-sunken)]';b.firstElementChild.style.transform=c==='true'?'translateX(16px)':'translateX(0)';"
-                        >
-                            <div class="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform"></div>
-                        </button>
-                    </div>
+                    // Language selector
                     <div class="flex items-center justify-between py-2">
                         <span class="text-sm text-[var(--color-text-primary)]">{t("settings.language")}</span>
                         <select
@@ -247,24 +232,23 @@ pub fn SettingsView() -> impl IntoView {
                 </div>
             </GlassPanel>
 
-            // Script to sync toggle states on page load
+            // Script to sync theme/mode toggle states on page load
             <script>{r#"
 (function(){
   var h=document.documentElement;
-  var dm=document.getElementById('dark-mode-toggle');
-  var cb=document.getElementById('colorblind-toggle');
-  var ps=document.getElementById('palette-select');
-  if(dm){
-    var isDark=h.getAttribute('data-theme')==='dark';
-    dm.className=isDark?'dark-mode-toggle w-10 h-6 rounded-full relative cursor-pointer transition-colors bg-[var(--color-brand-primary)]':'dark-mode-toggle w-10 h-6 rounded-full relative cursor-pointer transition-colors bg-[var(--color-bg-sunken)]';
-    if(dm.firstElementChild)dm.firstElementChild.style.transform=isDark?'translateX(16px)':'translateX(0)';
+  var t=h.getAttribute('data-theme')||'rosewood';
+  var m=h.getAttribute('data-mode')||'dark';
+  var tr=document.getElementById('theme-rosewood');
+  var tc=document.getElementById('theme-clearsky');
+  var mt=document.getElementById('mode-toggle');
+  if(tr&&tc){
+    if(t==='rosewood'){tr.classList.add('glass-active');tc.classList.remove('glass-active');}
+    else{tc.classList.add('glass-active');tr.classList.remove('glass-active');}
   }
-  if(cb){
-    var isCb=h.getAttribute('data-colorblind')==='true';
-    cb.className=isCb?'colorblind-toggle w-10 h-6 rounded-full relative cursor-pointer transition-colors bg-[var(--color-brand-primary)]':'colorblind-toggle w-10 h-6 rounded-full relative cursor-pointer transition-colors bg-[var(--color-bg-sunken)]';
-    if(cb.firstElementChild)cb.firstElementChild.style.transform=isCb?'translateX(16px)':'translateX(0)';
+  if(mt){
+    mt.style.backgroundColor=m==='dark'?'var(--color-brand-text)':'var(--color-bg-sunken)';
+    if(mt.firstElementChild)mt.firstElementChild.style.transform=m==='dark'?'translateX(16px)':'translateX(0)';
   }
-  if(ps){ps.value=h.getAttribute('data-palette')||'current';}
 })();
 "#}</script>
 
@@ -341,7 +325,7 @@ fn ProviderSetupRow(
                     <p class="text-xs text-[var(--color-text-tertiary)]">{t("provider.not_configured")}</p>
                 </div>
                 <button
-                    class="text-xs px-2 py-0.5 rounded-full bg-[var(--color-bg-sunken)] text-[var(--color-brand-primary)] hover:bg-[var(--color-brand-primary)]/10 transition-colors"
+                    class="text-xs px-2 py-0.5 rounded-full bg-[var(--color-bg-sunken)] text-[var(--color-brand-text)] hover:bg-[var(--color-brand-primary)]/10 transition-colors"
                     on:click=move |_| {
                         if is_open() {
                             set_show_form.set(None);
@@ -377,7 +361,7 @@ fn ProviderSetupRow(
                         </div>
                         <button
                             type="submit"
-                            class="w-full mt-3 py-2 bg-[var(--color-brand-primary)] text-white font-medium rounded-xl text-sm hover:opacity-90 disabled:opacity-50 transition-all"
+                            class="w-full mt-3 py-2 btn-glass font-medium rounded-xl text-sm disabled:opacity-50 transition-all"
                         >
                             {t("provider.verify_save")}
                         </button>
@@ -388,22 +372,33 @@ fn ProviderSetupRow(
     }
 }
 
-/// Inline form for adding a payment card.
+/// Inline form for adding a payment card with brand detection and formatting.
+/// Encrypts via Evervault JS SDK and POSTs to /api/cards.
 #[component]
 fn CardAddForm(
-    add_action: ServerAction<AddCard>,
     on_done: impl Fn() + Send + Sync + 'static,
 ) -> impl IntoView {
-    // Close form on successful add
-    Effect::new(move || {
-        if let Some(Ok(_)) = add_action.value().get() {
-            on_done();
+    let _ = on_done; // used by JS — form reloads page on success
+
+    // Reactive card number signal (raw digits only)
+    let (card_number_raw, set_card_number_raw) = signal(String::new());
+
+    // Derived: card brand based on leading digits
+    let brand = Memo::new(move |_| detect_brand(&card_number_raw.get()));
+
+    // Derived: formatted display string (e.g. "4111 1111 1111 1111")
+    let formatted_display = Memo::new(move |_| {
+        let raw = card_number_raw.get();
+        if raw.is_empty() {
+            String::new()
+        } else {
+            format_card_number(&raw)
         }
     });
 
     view! {
         <div class="border border-[var(--color-border-default)] rounded-xl p-3 space-y-3 bg-[var(--color-bg-sunken)]/50">
-            <ActionForm action=add_action>
+            <form id="card-add-form">
                 <div class="space-y-2">
                     <input
                         type="text"
@@ -411,15 +406,50 @@ fn CardAddForm(
                         placeholder="Card label (e.g. My Card)"
                         class="w-full px-3 py-2 bg-[var(--color-bg-sunken)] border border-[var(--color-border-default)] rounded-xl text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] focus:outline-none focus:border-[var(--color-border-focus)] transition-colors"
                     />
-                    <input
-                        type="text"
-                        name="card_number"
-                        required
-                        inputmode="numeric"
-                        maxlength="16"
-                        placeholder="Card number (15-16 digits)"
-                        class="w-full px-3 py-2 bg-[var(--color-bg-sunken)] border border-[var(--color-border-default)] rounded-xl text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] focus:outline-none focus:border-[var(--color-border-focus)] transition-colors font-mono"
-                    />
+                    // Card number input with brand badge
+                    <div class="relative">
+                        <input
+                            type="text"
+                            name="card_number"
+                            required
+                            inputmode="numeric"
+                            maxlength="16"
+                            placeholder="Card number (15-16 digits)"
+                            class="w-full px-3 py-2 pr-16 bg-[var(--color-bg-sunken)] border border-[var(--color-border-default)] rounded-xl text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] focus:outline-none focus:border-[var(--color-border-focus)] transition-colors font-mono"
+                            prop:value=card_number_raw
+                            on:input=move |ev| {
+                                let raw = strip_non_digits(&event_target_value(&ev));
+                                // Cap at 16 digits
+                                let capped = if raw.len() > 16 { raw[..16].to_string() } else { raw };
+                                set_card_number_raw.set(capped);
+                            }
+                        />
+                        // Brand badge (absolute-positioned inside the input)
+                        {move || {
+                            let b = brand.get();
+                            (b != CardBrand::Unknown).then(|| {
+                                let label = b.label();
+                                let bg = b.badge_color();
+                                view! {
+                                    <span
+                                        class="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-white px-1.5 py-0.5 rounded"
+                                        style=format!("background-color: {bg}")
+                                    >
+                                        {label}
+                                    </span>
+                                }
+                            })
+                        }}
+                    </div>
+                    // Formatted card number preview
+                    {move || {
+                        let display = formatted_display.get();
+                        (!display.is_empty()).then(|| view! {
+                            <p class="text-xs text-[var(--color-text-tertiary)] font-mono pl-1 -mt-1">
+                                {display}
+                            </p>
+                        })
+                    }}
                     <div class="grid grid-cols-3 gap-2">
                         <input
                             type="password"
@@ -459,11 +489,30 @@ fn CardAddForm(
                 </div>
                 <button
                     type="submit"
-                    class="w-full mt-3 py-2 bg-[var(--color-brand-primary)] text-white font-medium rounded-xl text-sm hover:opacity-90 disabled:opacity-50 transition-all"
+                    class="w-full mt-3 py-2 btn-glass font-medium rounded-xl text-sm disabled:opacity-50 transition-all"
                 >
                     {t("payment.add_card")}
                 </button>
-            </ActionForm>
+            </form>
+            <script>{r#"
+(function(){
+  var form = document.getElementById('card-add-form');
+  if (!form) return;
+  form.onsubmit = function(e) {
+    e.preventDefault();
+    var f = e.target;
+    if (!window.__submitCard) { alert('Encryption not ready'); return; }
+    var btn = f.querySelector('button[type=submit]');
+    if (btn) btn.disabled = true;
+    window.__submitCard(
+      f.label.value, f.card_number.value, f.card_password.value,
+      f.birthday.value, f.expire_date.value, f.card_type.value
+    ).then(function(r) {
+      if (r.ok) { location.reload(); } else { alert(r.error || 'Failed'); if (btn) btn.disabled = false; }
+    });
+  };
+})();
+"#}</script>
         </div>
     }
 }

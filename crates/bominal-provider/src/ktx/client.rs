@@ -112,6 +112,50 @@ impl KtxClient {
         }
     }
 
+    /// Create a new KTX client that proxies through an Evervault Relay.
+    ///
+    /// All requests go through the relay, which transparently decrypts
+    /// `ev:`-prefixed card fields in-flight. Cookies, Host, and UA are
+    /// preserved because the target URL stays `smart.letskorail.com`.
+    pub fn with_relay(relay_domain: &str) -> Self {
+        let proxy = reqwest::Proxy::all(format!("https://{relay_domain}"))
+            .expect("Invalid relay domain");
+
+        let client = reqwest::Client::builder()
+            .cookie_store(true)
+            .user_agent(USER_AGENT)
+            .proxy(proxy)
+            .default_headers({
+                let mut h = reqwest::header::HeaderMap::new();
+                h.insert(
+                    reqwest::header::CONTENT_TYPE,
+                    "application/x-www-form-urlencoded; charset=UTF-8"
+                        .parse()
+                        .unwrap(),
+                );
+                h.insert(
+                    reqwest::header::HOST,
+                    "smart.letskorail.com".parse().unwrap(),
+                );
+                h
+            })
+            .build()
+            .expect("Failed to build KTX client with relay");
+
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("Time went backwards")
+            .as_millis() as u64;
+
+        Self {
+            client,
+            dynapath: DynaPathEngine::new(now),
+            user_info: None,
+            is_logged_in: false,
+            app_start_ts: now,
+        }
+    }
+
     /// Whether the client is currently logged in.
     pub fn is_logged_in(&self) -> bool {
         self.is_logged_in
@@ -513,20 +557,32 @@ impl KtxClient {
 
         let mut reservations = Vec::new();
 
-        for jrny in &journeys {
-            let pnr_no = jrny
-                .get("h_pnr_no")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
+        // Collect non-empty PNR numbers and their journey refs
+        let pnr_journeys: Vec<(&serde_json::Value, String)> = journeys
+            .iter()
+            .filter_map(|jrny| {
+                let pnr_no = jrny.get("h_pnr_no")?.as_str()?;
+                if pnr_no.is_empty() { None } else { Some((jrny, pnr_no.to_string())) }
+            })
+            .collect();
 
-            if pnr_no.is_empty() {
-                continue;
-            }
+        // Fetch all ticket details in parallel
+        let ticket_futures: Vec<_> = pnr_journeys
+            .iter()
+            .map(|(_, pnr)| self.ticket_info(pnr))
+            .collect();
+        let ticket_results = futures_util::future::join_all(ticket_futures).await;
 
-            let tickets = self.ticket_info(pnr_no).await?;
-
-            if let Some(rsv) = KtxReservation::from_json(jrny, tickets) {
-                reservations.push(rsv);
+        for ((jrny, _), tickets_result) in pnr_journeys.iter().zip(ticket_results) {
+            match tickets_result {
+                Ok(tickets) => {
+                    if let Some(rsv) = KtxReservation::from_json(jrny, tickets) {
+                        reservations.push(rsv);
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "Failed to fetch ticket info, skipping reservation");
+                }
             }
         }
 
@@ -738,24 +794,32 @@ impl KtxClient {
         card_expire: &str,
         card_type: &str,
     ) -> Result<(), ProviderError> {
-        let card_digits = card_number.chars().all(|c| c.is_ascii_digit());
-        if !card_digits || card_number.len() < 13 || card_number.len() > 19 {
-            return Err(ProviderError::UnexpectedResponse {
-                status: 400,
-                body: "Card number must be 13-19 digits".to_string(),
-            });
+        // Evervault-encrypted values (ev: prefix) bypass digit validation —
+        // the Outbound Relay decrypts them to plaintext before forwarding.
+        if !card_number.starts_with("ev:") {
+            let card_digits = card_number.chars().all(|c| c.is_ascii_digit());
+            if !card_digits || card_number.len() < 13 || card_number.len() > 19 {
+                return Err(ProviderError::UnexpectedResponse {
+                    status: 400,
+                    body: "Card number must be 13-19 digits".to_string(),
+                });
+            }
         }
-        if card_password.len() != 2 || !card_password.chars().all(|c| c.is_ascii_digit()) {
-            return Err(ProviderError::UnexpectedResponse {
-                status: 400,
-                body: "Card password must be exactly 2 digits".to_string(),
-            });
+        if !card_password.starts_with("ev:") {
+            if card_password.len() != 2 || !card_password.chars().all(|c| c.is_ascii_digit()) {
+                return Err(ProviderError::UnexpectedResponse {
+                    status: 400,
+                    body: "Card password must be exactly 2 digits".to_string(),
+                });
+            }
         }
-        if card_expire.len() != 4 || !card_expire.chars().all(|c| c.is_ascii_digit()) {
-            return Err(ProviderError::UnexpectedResponse {
-                status: 400,
-                body: "Card expire must be 4 digits (MMYY)".to_string(),
-            });
+        if !card_expire.starts_with("ev:") {
+            if card_expire.len() != 4 || !card_expire.chars().all(|c| c.is_ascii_digit()) {
+                return Err(ProviderError::UnexpectedResponse {
+                    status: 400,
+                    body: "Card expire must be 4 digits (MMYY)".to_string(),
+                });
+            }
         }
         if card_type != "J" && card_type != "S" {
             return Err(ProviderError::UnexpectedResponse {

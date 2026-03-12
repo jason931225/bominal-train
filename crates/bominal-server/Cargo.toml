@@ -39,6 +39,11 @@ rand.workspace = true
 rand_distr.workspace = true
 futures-util.workspace = true
 async-stream.workspace = true
+reqwest.workspace = true
+url.workspace = true
+webauthn-rs.workspace = true
+webauthn-rs-proto.workspace = true
+any_spawner = "0.3"
 
 [dev-dependencies]
 http-body-util = "0.1"

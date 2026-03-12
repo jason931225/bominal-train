@@ -21,28 +21,27 @@ use crate::pages::{
 pub fn shell() -> impl IntoView {
     view! {
         <!DOCTYPE html>
-        <html lang="ko" data-theme="dark" data-palette="current" data-colorblind="false">
+        <html lang="ko" data-theme="rosewood" data-mode="dark">
             <head>
                 <meta charset="utf-8" />
                 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
                 <meta name="color-scheme" content="dark light" />
-                <meta name="theme-color" content="#0f172a" />
+                <meta name="theme-color" content="#1e1a17" />
                 <meta name="apple-mobile-web-app-capable" content="yes" />
                 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
                 <link rel="stylesheet" href="/style.css" />
+                // Evervault JS SDK
+                <script src="https://js.evervault.com/v2"></script>
                 // Theme init script — runs before paint to prevent FOUC
                 <script>{r#"
 (function(){
   var h=document.documentElement;
-  var t=localStorage.getItem('bominal-theme')||'dark';
-  var p=localStorage.getItem('bominal-palette')||'current';
-  var c=localStorage.getItem('bominal-colorblind')||'false';
+  var t=localStorage.getItem('bominal-theme')||'rosewood';
+  var m=localStorage.getItem('bominal-mode')||'dark';
   h.setAttribute('data-theme',t);
-  h.setAttribute('data-palette',p);
-  h.setAttribute('data-colorblind',c);
+  h.setAttribute('data-mode',m);
   window.__bSetTheme=function(v){h.setAttribute('data-theme',v);localStorage.setItem('bominal-theme',v);};
-  window.__bSetPalette=function(v){h.setAttribute('data-palette',v);localStorage.setItem('bominal-palette',v);};
-  window.__bSetColorblind=function(v){h.setAttribute('data-colorblind',v);localStorage.setItem('bominal-colorblind',v);};
+  window.__bSetMode=function(v){h.setAttribute('data-mode',v);localStorage.setItem('bominal-mode',v);};
 })();
 "#}</script>
             </head>

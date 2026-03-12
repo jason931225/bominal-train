@@ -1,7 +1,8 @@
 use anyhow::Result;
+use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
-pub fn init() -> Result<()> {
+pub fn init() -> Result<PrometheusHandle> {
     let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
         EnvFilter::new(
             "bominal_server=info,bominal_provider=info,bominal_domain=info,tower_http=info,warn",
@@ -23,5 +24,9 @@ pub fn init() -> Result<()> {
             .init();
     }
 
-    Ok(())
+    let handle = PrometheusBuilder::new()
+        .install_recorder()
+        .map_err(|e| anyhow::anyhow!("Failed to install Prometheus recorder: {e}"))?;
+
+    Ok(handle)
 }

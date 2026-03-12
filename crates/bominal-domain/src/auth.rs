@@ -51,7 +51,7 @@ pub fn validate_email(email: &str) -> Result<(), &'static str> {
     if parts.len() != 2 || parts[0].is_empty() || parts[1].len() < 3 || !parts[1].contains('.') {
         return Err("Invalid email format");
     }
-    if email.len() > 255 {
+    if email.len() > 254 {
         return Err("Email too long");
     }
     Ok(())

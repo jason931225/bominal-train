@@ -14,6 +14,7 @@ use tower::ServiceExt;
 use uuid::Uuid;
 
 use bominal_domain::crypto::encryption::EncryptionKey;
+use bominal_server::evervault::EvervaultConfig;
 use bominal_server::routes::api_routes;
 use bominal_server::sse::EventBus;
 use bominal_server::state::SharedState;
@@ -77,6 +78,13 @@ impl TestApp {
         .await
         .expect("failed to run initial schema");
 
+        sqlx::raw_sql(include_str!(
+            "../../../bominal-db/migrations/20260312000001_add_passkey_and_expiry_fields.sql"
+        ))
+        .execute(&pool)
+        .await
+        .expect("failed to run passkey/expiry migration");
+
         let encryption_key = EncryptionKey::from_hex(TEST_ENCRYPTION_KEY).unwrap();
 
         let state = SharedState {
@@ -85,7 +93,20 @@ impl TestApp {
             event_bus: EventBus::new(),
             email: bominal_email::EmailClient::new("re_test_dummy", "Test <test@test.com>"),
             encryption_key: encryption_key.clone(),
+            evervault: EvervaultConfig::new(
+                "team_test_dummy",
+                "app_test_dummy",
+                "ev:key:test_dummy",
+                "srt.test.relay.evervault.app",
+                "ktx.test.relay.evervault.app",
+            ),
             app_base_url: "http://localhost:3000".to_string(),
+            prometheus_handle: metrics_exporter_prometheus::PrometheusBuilder::new()
+                .install_recorder()
+                .unwrap_or_else(|_| {
+                    // Recorder already installed by another test — create a handle-only builder
+                    metrics_exporter_prometheus::PrometheusBuilder::new().build_recorder().handle()
+                }),
         };
 
         let router = Router::new()

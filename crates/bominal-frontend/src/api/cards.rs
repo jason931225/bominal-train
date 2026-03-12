@@ -27,61 +27,6 @@ pub async fn list_cards() -> Result<Vec<CardInfo>, ServerFnError> {
     Ok(rows.iter().map(row_to_info).collect())
 }
 
-/// Add a payment card.
-#[server(prefix = "/sfn")]
-pub async fn add_card(
-    card_number: String,
-    card_password: String,
-    birthday: String,
-    expire_date: String,
-    label: Option<String>,
-    card_type: Option<String>,
-) -> Result<CardInfo, ServerFnError> {
-    let (pool, user_id) = super::tasks::require_auth().await?;
-
-    // Validate
-    if card_number.len() < 15
-        || card_number.len() > 16
-        || !card_number.chars().all(|c| c.is_ascii_digit())
-    {
-        return Err(ServerFnError::new("Card number must be 15-16 digits"));
-    }
-    if card_password.len() != 2 || !card_password.chars().all(|c| c.is_ascii_digit()) {
-        return Err(ServerFnError::new("Card password must be 2 digits"));
-    }
-    if birthday.len() != 6 || !birthday.chars().all(|c| c.is_ascii_digit()) {
-        return Err(ServerFnError::new("Birthday must be YYMMDD (6 digits)"));
-    }
-    if expire_date.len() != 4 || !expire_date.chars().all(|c| c.is_ascii_digit()) {
-        return Err(ServerFnError::new("Expiry must be MMYY (4 digits)"));
-    }
-
-    let last_four = &card_number[card_number.len() - 4..];
-    let ct = card_type.as_deref().unwrap_or("J");
-    let lbl = label.as_deref().unwrap_or("My Card");
-
-    // Encrypt sensitive fields
-    let key = use_context::<bominal_domain::crypto::encryption::EncryptionKey>()
-        .ok_or_else(|| ServerFnError::new("Server misconfigured"))?;
-
-    use bominal_domain::crypto::encryption::encrypt;
-    let enc_number = encrypt(&key, &card_number).map_err(|e| ServerFnError::new(format!("{e}")))?;
-    let enc_password =
-        encrypt(&key, &card_password).map_err(|e| ServerFnError::new(format!("{e}")))?;
-    let enc_birthday =
-        encrypt(&key, &birthday).map_err(|e| ServerFnError::new(format!("{e}")))?;
-    let enc_expiry =
-        encrypt(&key, &expire_date).map_err(|e| ServerFnError::new(format!("{e}")))?;
-
-    let row = bominal_db::card::create_card(
-        &pool, user_id, lbl, &enc_number, &enc_password, &enc_birthday, &enc_expiry, ct, last_four,
-    )
-    .await
-    .map_err(|e| ServerFnError::new(format!("Database error: {e}")))?;
-
-    Ok(row_to_info(&row))
-}
-
 /// Delete a payment card.
 #[server(prefix = "/sfn")]
 pub async fn delete_card(card_id: String) -> Result<(), ServerFnError> {

@@ -85,12 +85,13 @@ pub async fn logout(
             .map_err(|e| AppError::Internal(e.into()))?;
     }
 
+    let domain_attr = cookie_domain_attr(&state.app_base_url);
     let mut resp_headers = HeaderMap::new();
     resp_headers.insert(
         SET_COOKIE,
         format!(
-            "{}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0",
-            SESSION_COOKIE_NAME
+            "{}=; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=0{}",
+            SESSION_COOKIE_NAME, domain_attr
         )
         .parse()
         .unwrap(),
@@ -261,6 +262,17 @@ fn generate_token() -> String {
     Uuid::new_v4().to_string()
 }
 
+pub(crate) fn cookie_domain_attr(app_base_url: &str) -> String {
+    if app_base_url.starts_with("https://") {
+        url::Url::parse(app_base_url)
+            .ok()
+            .and_then(|u| u.host_str().map(|h| format!("; Domain={h}")))
+            .unwrap_or_default()
+    } else {
+        String::new()
+    }
+}
+
 async fn create_session_response(
     state: &SharedState,
     user: &bominal_db::user::UserRow,
@@ -272,14 +284,17 @@ async fn create_session_response(
         .await
         .map_err(|e| AppError::Internal(e.into()))?;
 
+    let domain_attr = cookie_domain_attr(&state.app_base_url);
+
     let mut headers = HeaderMap::new();
     headers.insert(
         SET_COOKIE,
         format!(
-            "{}={}; Path=/; HttpOnly; SameSite=Lax; Max-Age={}",
+            "{}={}; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age={}{}",
             SESSION_COOKIE_NAME,
             session_id,
-            SESSION_TTL_HOURS * 3600
+            SESSION_TTL_HOURS * 3600,
+            domain_attr
         )
         .parse()
         .unwrap(),

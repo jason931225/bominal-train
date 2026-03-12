@@ -1,0 +1,75 @@
+<h2>Rosewood Dusk — Dark Mode Contrast Tuning</h2>
+<p class="subtitle">Same light mode. Three dark mode options with progressively lower contrast. Click the one that feels right.</p>
+
+<div class="cards">
+
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:0;overflow:hidden;">
+      <div style="background:linear-gradient(135deg,#181414,#201a18);padding:20px;min-height:220px;display:flex;flex-direction:column;gap:12px;">
+        <div style="font-size:10px;color:#a08878;font-weight:600;letter-spacing:0.12em;">DARK — ORIGINAL</div>
+        <div style="color:#e8ddd6;font-size:18px;font-weight:600;">열차 검색</div>
+        <div style="color:#b8a89a;font-size:13px;">진행 중인 예약이 없습니다</div>
+        <div style="background:rgba(32,26,24,0.85);backdrop-filter:blur(16px);border:1px solid rgba(160,136,120,0.12);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:8px;">
+          <div style="color:#d4c4b8;font-size:13px;font-weight:500;">수서 → 부산</div>
+          <div style="color:#9a8a7e;font-size:11px;">SRT 305 · 2시간 35분</div>
+          <div style="display:flex;gap:8px;margin-top:4px;">
+            <div style="background:#c48a7a;color:#1a1412;font-size:10px;padding:3px 8px;border-radius:6px;font-weight:600;">Running</div>
+            <div style="background:#8aaa92;color:#1a1412;font-size:10px;padding:3px 8px;border-radius:6px;font-weight:600;">Confirmed</div>
+          </div>
+        </div>
+        <div style="background:#b07868;color:#fff;text-align:center;padding:10px;border-radius:12px;font-size:13px;font-weight:600;">검색</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A — Original</h3>
+      <p>Background #181414/#201a18. Text #e8ddd6. High contrast between text and surface. Vivid status badges.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:0;overflow:hidden;">
+      <div style="background:linear-gradient(135deg,#1e1a17,#262220);padding:20px;min-height:220px;display:flex;flex-direction:column;gap:12px;">
+        <div style="font-size:10px;color:#9a8c80;font-weight:600;letter-spacing:0.12em;">DARK — SOFTER</div>
+        <div style="color:#d8ccc4;font-size:18px;font-weight:600;">열차 검색</div>
+        <div style="color:#a89890;font-size:13px;">진행 중인 예약이 없습니다</div>
+        <div style="background:rgba(38,34,32,0.82);backdrop-filter:blur(16px);border:1px solid rgba(160,140,124,0.1);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:8px;">
+          <div style="color:#c8b8ac;font-size:13px;font-weight:500;">수서 → 부산</div>
+          <div style="color:#918478;font-size:11px;">SRT 305 · 2시간 35분</div>
+          <div style="display:flex;gap:8px;margin-top:4px;">
+            <div style="background:rgba(196,138,122,0.2);color:#d4a494;font-size:10px;padding:3px 8px;border-radius:6px;font-weight:600;">Running</div>
+            <div style="background:rgba(138,170,146,0.2);color:#a4c8ac;font-size:10px;padding:3px 8px;border-radius:6px;font-weight:600;">Confirmed</div>
+          </div>
+        </div>
+        <div style="background:#a87268;color:#f8f0ec;text-align:center;padding:10px;border-radius:12px;font-size:13px;font-weight:600;">검색</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B — Softer</h3>
+      <p>Background lifted to #1e1a17/#262220. Text dimmed to #d8ccc4. Status badges use tinted backgrounds instead of solid fills. Less punchy, more cohesive.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:0;overflow:hidden;">
+      <div style="background:linear-gradient(135deg,#22201e,#2a2826);padding:20px;min-height:220px;display:flex;flex-direction:column;gap:12px;">
+        <div style="font-size:10px;color:#908478;font-weight:600;letter-spacing:0.12em;">DARK — MUTED</div>
+        <div style="color:#c8beb6;font-size:18px;font-weight:600;">열차 검색</div>
+        <div style="color:#988c82;font-size:13px;">진행 중인 예약이 없습니다</div>
+        <div style="background:rgba(44,40,38,0.8);backdrop-filter:blur(16px);border:1px solid rgba(148,132,118,0.08);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:8px;">
+          <div style="color:#b8aa9e;font-size:13px;font-weight:500;">수서 → 부산</div>
+          <div style="color:#847a70;font-size:11px;">SRT 305 · 2시간 35분</div>
+          <div style="display:flex;gap:8px;margin-top:4px;">
+            <div style="background:rgba(180,128,114,0.15);color:#c49a8c;font-size:10px;padding:3px 8px;border-radius:6px;font-weight:600;">Running</div>
+            <div style="background:rgba(128,158,136,0.15);color:#98b8a0;font-size:10px;padding:3px 8px;border-radius:6px;font-weight:600;">Confirmed</div>
+          </div>
+        </div>
+        <div style="background:#9a6860;color:#e8dcd6;text-align:center;padding:10px;border-radius:12px;font-size:13px;font-weight:600;">검색</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C — Muted</h3>
+      <p>Background raised to #22201e/#2a2826. Text toned to #c8beb6. Minimum contrast — very calm, almost like reading in dim lamplight. Status badges are subtle tints.</p>
+    </div>
+  </div>
+
+</div>

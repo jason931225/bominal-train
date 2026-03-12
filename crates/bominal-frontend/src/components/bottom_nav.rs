@@ -29,9 +29,9 @@ pub fn BottomNav() -> impl IntoView {
         };
 
         if is_active {
-            "flex flex-col items-center gap-0.5 py-1.5 px-3 text-[var(--color-brand-primary)] transition-colors"
+            "flex flex-col items-center gap-0.5 py-1.5 px-3 rounded-xl bg-[var(--color-brand-primary)] text-[var(--color-brand-text)] transition-colors"
         } else {
-            "flex flex-col items-center gap-0.5 py-1.5 px-3 text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)] transition-colors"
+            "flex flex-col items-center gap-0.5 py-1.5 px-3 rounded-xl text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)] transition-colors"
         }
     };
 
