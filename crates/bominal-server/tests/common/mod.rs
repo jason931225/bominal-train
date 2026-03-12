@@ -23,6 +23,7 @@ use bominal_server::state::SharedState;
 const TEST_ENCRYPTION_KEY: &str =
     "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
+#[allow(dead_code)]
 pub struct TestApp {
     pub router: Router,
     pub pool: PgPool,
@@ -31,6 +32,7 @@ pub struct TestApp {
     admin_pool: PgPool,
 }
 
+#[allow(dead_code)]
 impl TestApp {
     /// Spin up an isolated test environment with its own Postgres schema.
     pub async fn new() -> Self {
@@ -292,6 +294,7 @@ impl TestApp {
 }
 
 /// Extract the `bominal_session` cookie value from a response.
+#[allow(dead_code)]
 fn extract_session_cookie<B>(resp: &axum::http::Response<B>) -> String {
     resp.headers()
         .get_all("set-cookie")

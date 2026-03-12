@@ -14,8 +14,9 @@ use std::collections::HashMap;
 use std::sync::LazyLock;
 
 /// Supported locales.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Locale {
+    #[default]
     Ko,
     En,
     Ja,
@@ -60,11 +61,6 @@ impl Locale {
     }
 }
 
-impl Default for Locale {
-    fn default() -> Self {
-        Locale::Ko
-    }
-}
 
 type Messages = HashMap<&'static str, &'static str>;
 
@@ -97,10 +93,8 @@ pub fn t(locale: Locale, key: &str) -> &'static str {
     }
 
     // Fallback to Korean
-    if locale != Locale::Ko {
-        if let Some(msg) = KO_MESSAGES.get(key) {
-            return msg;
-        }
+    if locale != Locale::Ko && let Some(msg) = KO_MESSAGES.get(key) {
+        return msg;
     }
 
     // Key not found in any locale

@@ -51,21 +51,19 @@ pub fn detect_brand(digits: &str) -> CardBrand {
     }
 
     // Mastercard: 51-55 range
-    if digits.len() >= 2 {
-        if let Ok(two_digit) = digits[..2].parse::<u16>() {
-            if (51..=55).contains(&two_digit) {
-                return CardBrand::Mastercard;
-            }
-        }
+    if digits.len() >= 2
+        && let Ok(two_digit) = digits[..2].parse::<u16>()
+        && (51..=55).contains(&two_digit)
+    {
+        return CardBrand::Mastercard;
     }
 
     // Mastercard: 2221-2720 range
-    if digits.len() >= 4 {
-        if let Ok(four_digit) = digits[..4].parse::<u16>() {
-            if (2221..=2720).contains(&four_digit) {
-                return CardBrand::Mastercard;
-            }
-        }
+    if digits.len() >= 4
+        && let Ok(four_digit) = digits[..4].parse::<u16>()
+        && (2221..=2720).contains(&four_digit)
+    {
+        return CardBrand::Mastercard;
     }
 
     // Visa: starts with 4

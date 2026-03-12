@@ -215,7 +215,7 @@ async fn search_srt(
             available_only,
         )
         .await
-        .map_err(|e| map_provider_error(e))?;
+        .map_err(map_provider_error)?;
 
     let results: Vec<TrainResult> = trains
         .iter()
@@ -253,7 +253,7 @@ async fn search_ktx(
             available_only,
         )
         .await
-        .map_err(|e| map_provider_error(e))?;
+        .map_err(map_provider_error)?;
 
     let results: Vec<TrainResult> = trains
         .iter()

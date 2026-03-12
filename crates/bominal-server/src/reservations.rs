@@ -555,12 +555,12 @@ fn validate_pay_request(req: &PayRequest) -> Result<(), AppError> {
             "Expire date must be encrypted via Evervault SDK".to_string(),
         ));
     }
-    if let Some(ct) = &req.card_type {
-        if ct != "J" && ct != "S" {
-            return Err(AppError::BadRequest(
-                "Card type must be 'J' (credit) or 'S' (debit)".to_string(),
-            ));
-        }
+    if let Some(ct) = &req.card_type
+        && ct != "J" && ct != "S"
+    {
+        return Err(AppError::BadRequest(
+            "Card type must be 'J' (credit) or 'S' (debit)".to_string(),
+        ));
     }
     Ok(())
 }

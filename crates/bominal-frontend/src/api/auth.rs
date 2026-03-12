@@ -68,19 +68,19 @@ pub async fn register(
         .map_err(|e| ServerFnError::new(format!("Database error: {e}")))?;
 
     // Send verification email (best-effort)
-    if let Some(email_client) = use_context::<bominal_email::EmailClient>() {
-        if let Some(app_base_url) = use_context::<AppBaseUrl>() {
-            let token = Uuid::new_v4().to_string();
-            let expires_at = chrono::Utc::now() + chrono::Duration::minutes(30);
-            let _ =
-                bominal_db::user::set_verification_token(&pool, user.id, &token, expires_at).await;
-            let verify_url = format!("{}/verify-email?token={}", app_base_url.0, token);
-            let (subject, html) =
-                bominal_email::templates::verify::render(&user.display_name, &verify_url, 30);
-            email_client
-                .send_best_effort(&user.email, &subject, &html)
-                .await;
-        }
+    if let Some(email_client) = use_context::<bominal_email::EmailClient>()
+        && let Some(app_base_url) = use_context::<AppBaseUrl>()
+    {
+        let token = Uuid::new_v4().to_string();
+        let expires_at = chrono::Utc::now() + chrono::Duration::minutes(30);
+        let _ =
+            bominal_db::user::set_verification_token(&pool, user.id, &token, expires_at).await;
+        let verify_url = format!("{}/verify-email?token={}", app_base_url.0, token);
+        let (subject, html) =
+            bominal_email::templates::verify::render(&user.display_name, &verify_url, 30);
+        email_client
+            .send_best_effort(&user.email, &subject, &html)
+            .await;
     }
 
     create_session(&pool, &user).await?;

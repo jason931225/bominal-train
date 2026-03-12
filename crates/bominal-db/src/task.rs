@@ -31,6 +31,7 @@ pub struct TaskRow {
 }
 
 /// Create a new reservation task.
+#[allow(clippy::too_many_arguments)]
 pub async fn create_task(
     pool: &PgPool,
     user_id: Uuid,

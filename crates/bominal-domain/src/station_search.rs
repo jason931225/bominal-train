@@ -852,11 +852,11 @@ fn compose_compat_jamo_stream(input: &str) -> String {
             }
 
             let mut advance = 2usize;
-            if idx + 2 < chars.len() {
-                if let Some(combined) = combine_vowel(v_char, chars[idx + 2]) {
-                    v_char = combined;
-                    advance = 3;
-                }
+            if idx + 2 < chars.len()
+                && let Some(combined) = combine_vowel(v_char, chars[idx + 2])
+            {
+                v_char = combined;
+                advance = 3;
             }
             let Some(v_index) = jungseong_index(v_char) else {
                 out.push(current);
@@ -874,18 +874,18 @@ fn compose_compat_jamo_stream(input: &str) -> String {
                     {
                         take_as_jong = false;
                     }
-                    if idx + advance + 2 < chars.len() {
-                        let c2 = chars[idx + advance + 1];
-                        if let Some(combined) = combine_jongseong(c1, c2) {
-                            let next_idx = idx + advance + 2;
-                            if next_idx >= chars.len() || jungseong_index(chars[next_idx]).is_none()
-                            {
-                                if let Some(combined_index) = jongseong_index(combined) {
-                                    t_index = combined_index;
-                                    advance += 2;
-                                    take_as_jong = false;
-                                }
-                            }
+                    if idx + advance + 2 < chars.len()
+                        && let Some(combined) =
+                            combine_jongseong(c1, chars[idx + advance + 1])
+                    {
+                        let next_idx = idx + advance + 2;
+                        if (next_idx >= chars.len()
+                            || jungseong_index(chars[next_idx]).is_none())
+                            && let Some(combined_index) = jongseong_index(combined)
+                        {
+                            t_index = combined_index;
+                            advance += 2;
+                            take_as_jong = false;
                         }
                     }
                     if take_as_jong {
@@ -1300,12 +1300,12 @@ fn transliterate_katakana_to_hangul(input: &str) -> String {
         let ch = chars[idx];
 
         // Try compound kana (2-char: base + small ャ/ュ/ョ/ァ/ィ/ェ/ォ) first.
-        if idx + 1 < chars.len() {
-            if let Some(mapped) = compound_katakana_to_jamo(ch, chars[idx + 1]) {
-                jamo.push_str(mapped);
-                idx += 2;
-                continue;
-            }
+        if idx + 1 < chars.len()
+            && let Some(mapped) = compound_katakana_to_jamo(ch, chars[idx + 1])
+        {
+            jamo.push_str(mapped);
+            idx += 2;
+            continue;
         }
 
         // ン → context-dependent nasal jongseong.

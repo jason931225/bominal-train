@@ -15,7 +15,7 @@ use crate::utils::{format_cost, format_date, format_time};
 pub fn ReservationsView() -> impl IntoView {
     let (provider, set_provider) = signal("SRT".to_string());
 
-    let reservations = Resource::new(move || provider.get(), |prov| list_reservations(prov));
+    let reservations = Resource::new(move || provider.get(), list_reservations);
 
     let cards = Resource::new(|| (), |_| list_cards());
 

@@ -21,6 +21,7 @@ pub struct PaymentCardRow {
 }
 
 /// Add a payment card.
+#[allow(clippy::too_many_arguments)]
 pub async fn create_card(
     pool: &PgPool,
     user_id: Uuid,

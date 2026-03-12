@@ -3,6 +3,7 @@
 use leptos::prelude::*;
 
 /// Format a slot index (0-48) as HH:MM.
+#[allow(clippy::manual_is_multiple_of)]
 fn format_time_slot(slot: u32) -> String {
     let hours = slot / 2;
     let minutes = if slot % 2 == 0 { "00" } else { "30" };

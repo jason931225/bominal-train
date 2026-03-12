@@ -710,6 +710,7 @@ impl SrtClient {
     /// - `expire_date`: card expiry in YYMM format (4 digits)
     /// - `installment`: 0 for lump sum, 2-24 for installment months
     /// - `card_type`: "J" for personal, "S" for corporate
+    #[allow(clippy::too_many_arguments)]
     #[instrument(skip(self, card_number, card_password, validation_number))]
     pub async fn pay_with_card(
         &self,
@@ -813,21 +814,21 @@ impl SrtClient {
                 });
             }
         }
-        if !card_password.starts_with("ev:") {
-            if card_password.len() != 2 || !card_password.chars().all(|c| c.is_ascii_digit()) {
-                return Err(ProviderError::UnexpectedResponse {
-                    status: 400,
-                    body: "Card password must be exactly 2 digits".to_string(),
-                });
-            }
+        if !card_password.starts_with("ev:")
+            && (card_password.len() != 2 || !card_password.chars().all(|c| c.is_ascii_digit()))
+        {
+            return Err(ProviderError::UnexpectedResponse {
+                status: 400,
+                body: "Card password must be exactly 2 digits".to_string(),
+            });
         }
-        if !expire_date.starts_with("ev:") {
-            if expire_date.len() != 4 || !expire_date.chars().all(|c| c.is_ascii_digit()) {
-                return Err(ProviderError::UnexpectedResponse {
-                    status: 400,
-                    body: "Expire date must be 4 digits (YYMM)".to_string(),
-                });
-            }
+        if !expire_date.starts_with("ev:")
+            && (expire_date.len() != 4 || !expire_date.chars().all(|c| c.is_ascii_digit()))
+        {
+            return Err(ProviderError::UnexpectedResponse {
+                status: 400,
+                body: "Expire date must be 4 digits (YYMM)".to_string(),
+            });
         }
         if card_type != "J" && card_type != "S" {
             return Err(ProviderError::UnexpectedResponse {

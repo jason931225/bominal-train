@@ -179,12 +179,12 @@ fn validate_card_request(req: &AddCardRequest) -> Result<(), AppError> {
             "Expire date must be encrypted via Evervault SDK".to_string(),
         ));
     }
-    if let Some(ref yymm) = req.expire_date_yymm {
-        if !yymm.starts_with("ev:") {
-            return Err(AppError::BadRequest(
-                "Expire date YYMM must be encrypted via Evervault SDK".to_string(),
-            ));
-        }
+    if let Some(ref yymm) = req.expire_date_yymm
+        && !yymm.starts_with("ev:")
+    {
+        return Err(AppError::BadRequest(
+            "Expire date YYMM must be encrypted via Evervault SDK".to_string(),
+        ));
     }
     // last_four is plaintext for display — validate it.
     if req.last_four.len() != 4 || !req.last_four.chars().all(|c| c.is_ascii_digit()) {
@@ -192,12 +192,12 @@ fn validate_card_request(req: &AddCardRequest) -> Result<(), AppError> {
             "last_four must be exactly 4 digits".to_string(),
         ));
     }
-    if let Some(ct) = &req.card_type {
-        if ct != "J" && ct != "S" {
-            return Err(AppError::BadRequest(
-                "Card type must be 'J' (credit) or 'S' (debit)".to_string(),
-            ));
-        }
+    if let Some(ct) = &req.card_type
+        && ct != "J" && ct != "S"
+    {
+        return Err(AppError::BadRequest(
+            "Card type must be 'J' (credit) or 'S' (debit)".to_string(),
+        ));
     }
     Ok(())
 }

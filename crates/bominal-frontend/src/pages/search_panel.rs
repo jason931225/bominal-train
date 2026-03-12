@@ -30,7 +30,7 @@ pub fn SearchPanel() -> impl IntoView {
     let (selected_card_id, set_selected_card_id) = signal(String::new());
 
     // Fetch stations for the selected provider
-    let stations = Resource::new(move || provider.get(), |prov| list_stations(prov));
+    let stations = Resource::new(move || provider.get(), list_stations);
 
     // Fetch cards for auto-pay selection
     let cards = Resource::new(|| (), |_| list_cards());

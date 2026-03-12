@@ -41,8 +41,8 @@ impl Endpoints {
     const SEARCH: &str = ".seatMovie.ScheduleView";
     const RESERVE: &str = ".certification.TicketReservation";
     const CANCEL: &str = ".reservationCancel.ReservationCancelChk";
-    const TICKETS: &str = ".myTicket.MyTicketList";
-    const TICKET_INFO: &str = ".refunds.SelTicketInfo";
+    const _TICKETS: &str = ".myTicket.MyTicketList";
+    const _TICKET_INFO: &str = ".refunds.SelTicketInfo";
     const RESERVATION_VIEW: &str = ".reservation.ReservationView";
     const RESERVATION_LIST: &str = ".certification.ReservationList";
     const PAYMENT: &str = ".payment.ReservationPayment";
@@ -62,7 +62,7 @@ pub struct KtxClient {
     user_info: Option<KtxUserInfo>,
     is_logged_in: bool,
     /// Set once at client creation, NOT regenerated per call.
-    app_start_ts: u64,
+    _app_start_ts: u64,
 }
 
 /// User info extracted after successful login.
@@ -107,7 +107,7 @@ impl KtxClient {
             dynapath: DynaPathEngine::new(now),
             user_info: None,
             is_logged_in: false,
-            app_start_ts: now,
+            _app_start_ts: now,
         }
     }
 
@@ -151,7 +151,7 @@ impl KtxClient {
             dynapath: DynaPathEngine::new(now),
             user_info: None,
             is_logged_in: false,
-            app_start_ts: now,
+            _app_start_ts: now,
         }
     }
 
@@ -671,6 +671,7 @@ impl KtxClient {
     /// - `card_expire`: MMYY format (note: MMYY, not YYMM like SRT)
     /// - `installment`: "0" for lump sum, "2"-"24" for installment
     /// - `card_type`: "J" for personal, "S" for corporate
+    #[allow(clippy::too_many_arguments)]
     #[instrument(skip(self, card_number, card_password, birthday))]
     pub async fn pay_with_card(
         &self,
@@ -800,21 +801,21 @@ impl KtxClient {
                 });
             }
         }
-        if !card_password.starts_with("ev:") {
-            if card_password.len() != 2 || !card_password.chars().all(|c| c.is_ascii_digit()) {
-                return Err(ProviderError::UnexpectedResponse {
-                    status: 400,
-                    body: "Card password must be exactly 2 digits".to_string(),
-                });
-            }
+        if !card_password.starts_with("ev:")
+            && (card_password.len() != 2 || !card_password.chars().all(|c| c.is_ascii_digit()))
+        {
+            return Err(ProviderError::UnexpectedResponse {
+                status: 400,
+                body: "Card password must be exactly 2 digits".to_string(),
+            });
         }
-        if !card_expire.starts_with("ev:") {
-            if card_expire.len() != 4 || !card_expire.chars().all(|c| c.is_ascii_digit()) {
-                return Err(ProviderError::UnexpectedResponse {
-                    status: 400,
-                    body: "Card expire must be 4 digits (MMYY)".to_string(),
-                });
-            }
+        if !card_expire.starts_with("ev:")
+            && (card_expire.len() != 4 || !card_expire.chars().all(|c| c.is_ascii_digit()))
+        {
+            return Err(ProviderError::UnexpectedResponse {
+                status: 400,
+                body: "Card expire must be 4 digits (MMYY)".to_string(),
+            });
         }
         if card_type != "J" && card_type != "S" {
             return Err(ProviderError::UnexpectedResponse {

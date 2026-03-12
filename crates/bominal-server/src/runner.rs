@@ -171,24 +171,24 @@ async fn run_srt_task(
             }
             _ => {}
         }
-        if let Some(ref t) = current {
-            if t.attempt_count >= MAX_ATTEMPTS {
-                warn!(task_id = %task.id, attempts = t.attempt_count, "Max attempts reached");
-                bominal_db::task::update_status(db, task.id, "failed").await?;
-                event_bus
-                    .publish(
-                        task.user_id,
-                        TaskEvent {
-                            task_id: task.id,
-                            status: "failed".to_string(),
-                            message: format!("Max attempts ({MAX_ATTEMPTS}) reached"),
-                            attempt_count: t.attempt_count,
-                            reservation_number: None,
-                        },
-                    )
-                    .await;
-                return Ok(());
-            }
+        if let Some(ref t) = current
+            && t.attempt_count >= MAX_ATTEMPTS
+        {
+            warn!(task_id = %task.id, attempts = t.attempt_count, "Max attempts reached");
+            bominal_db::task::update_status(db, task.id, "failed").await?;
+            event_bus
+                .publish(
+                    task.user_id,
+                    TaskEvent {
+                        task_id: task.id,
+                        status: "failed".to_string(),
+                        message: format!("Max attempts ({MAX_ATTEMPTS}) reached"),
+                        attempt_count: t.attempt_count,
+                        reservation_number: None,
+                    },
+                )
+                .await;
+            return Ok(());
         }
 
         // Record attempt
@@ -409,24 +409,24 @@ async fn run_ktx_task(
             }
             _ => {}
         }
-        if let Some(ref t) = current {
-            if t.attempt_count >= MAX_ATTEMPTS {
-                warn!(task_id = %task.id, attempts = t.attempt_count, "Max attempts reached");
-                bominal_db::task::update_status(db, task.id, "failed").await?;
-                event_bus
-                    .publish(
-                        task.user_id,
-                        TaskEvent {
-                            task_id: task.id,
-                            status: "failed".to_string(),
-                            message: format!("Max attempts ({MAX_ATTEMPTS}) reached"),
-                            attempt_count: t.attempt_count,
-                            reservation_number: None,
-                        },
-                    )
-                    .await;
-                return Ok(());
-            }
+        if let Some(ref t) = current
+            && t.attempt_count >= MAX_ATTEMPTS
+        {
+            warn!(task_id = %task.id, attempts = t.attempt_count, "Max attempts reached");
+            bominal_db::task::update_status(db, task.id, "failed").await?;
+            event_bus
+                .publish(
+                    task.user_id,
+                    TaskEvent {
+                        task_id: task.id,
+                        status: "failed".to_string(),
+                        message: format!("Max attempts ({MAX_ATTEMPTS}) reached"),
+                        attempt_count: t.attempt_count,
+                        reservation_number: None,
+                    },
+                )
+                .await;
+            return Ok(());
         }
 
         bominal_db::task::record_attempt(db, task.id).await?;
@@ -592,6 +592,7 @@ async fn run_ktx_task(
 ///
 /// Logs warnings on failure but never fails the task — the reservation
 /// is still valid even if payment doesn't go through.
+#[allow(clippy::too_many_arguments)]
 async fn try_auto_pay_srt(
     db: &DbPool,
     client: &SrtClient,
@@ -699,6 +700,7 @@ async fn try_auto_pay_srt(
 }
 
 /// Attempt automatic payment for a KTX reservation.
+#[allow(clippy::too_many_arguments)]
 async fn try_auto_pay_ktx(
     db: &DbPool,
     client: &KtxClient,

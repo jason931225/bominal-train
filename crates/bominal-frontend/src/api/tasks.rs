@@ -40,6 +40,7 @@ pub async fn list_tasks() -> Result<Vec<TaskInfo>, ServerFnError> {
 }
 
 /// Create a new reservation task.
+#[allow(clippy::too_many_arguments)]
 #[server(prefix = "/sfn")]
 pub async fn create_task(
     provider: String,
