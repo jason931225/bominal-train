@@ -46,9 +46,17 @@ RUN find crates -name "*.rs" -exec touch {} +
 # Install esbuild globally for TypeScript compilation
 RUN npm install -g esbuild
 
-# Install Tailwind CSS v4 standalone binary — bundles the framework, no node_modules needed
-RUN curl -fsSL https://github.com/tailwindlabs/tailwindcss/releases/latest/download/tailwindcss-linux-x64 \
-    -o /usr/local/bin/tailwindcss && chmod +x /usr/local/bin/tailwindcss
+# Install Tailwind CSS v4 standalone binary — arch-aware, bundles framework internally
+RUN set -eux; \
+    ARCH="$(uname -m)"; \
+    case "$ARCH" in \
+        x86_64)  TW_ARCH="x64"   ;; \
+        aarch64) TW_ARCH="arm64" ;; \
+        *) echo "Unsupported arch: $ARCH" && exit 1 ;; \
+    esac; \
+    curl -fsSL "https://github.com/tailwindlabs/tailwindcss/releases/latest/download/tailwindcss-linux-${TW_ARCH}" \
+        -o /usr/local/bin/tailwindcss; \
+    chmod +x /usr/local/bin/tailwindcss
 
 # Compile TypeScript interop
 RUN esbuild crates/bominal-frontend/ts/interop.ts \
