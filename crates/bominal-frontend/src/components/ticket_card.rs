@@ -78,7 +78,7 @@ pub fn TicketCard(
             <div class="p-4">
                 <div class="flex items-center justify-between mb-2">
                     <div class="flex items-center gap-2">
-                        <span class="text-sm font-semibold text-[var(--theme-text-strong)]">
+                        <span class="text-sm font-semibold text-[var(--color-text-primary)]">
                             {train_number.clone()}
                         </span>
                         {status.clone().map(|s| {
@@ -96,15 +96,15 @@ pub fn TicketCard(
                     </div>
                 </div>
                 <div class="flex items-center gap-2 text-sm">
-                    <span class="font-medium text-[var(--theme-text-primary)]">{dep_time.clone()}</span>
-                    <span class="text-[var(--theme-text-subtle)]">{departure.clone()}</span>
-                    <span class="text-[var(--theme-text-subtle)]">{"\u{2192}"}</span>
-                    <span class="font-medium text-[var(--theme-text-primary)]">{arr_time.clone()}</span>
-                    <span class="text-[var(--theme-text-subtle)]">{arrival.clone()}</span>
+                    <span class="font-medium text-[var(--color-text-primary)]">{dep_time.clone()}</span>
+                    <span class="text-[var(--color-text-disabled)]">{departure.clone()}</span>
+                    <span class="text-[var(--color-text-disabled)]">{"\u{2192}"}</span>
+                    <span class="font-medium text-[var(--color-text-primary)]">{arr_time.clone()}</span>
+                    <span class="text-[var(--color-text-disabled)]">{arrival.clone()}</span>
                 </div>
             </div>
             // Expand toggle
-            <button class="w-full px-4 py-2 text-xs text-[var(--theme-text-muted)] hover:bg-[var(--theme-surface-hover)] border-t border-[var(--theme-border-subtle)] flex items-center justify-center gap-1"
+            <button class="w-full px-4 py-2 text-xs text-[var(--color-text-tertiary)] hover:bg-[var(--color-interactive-hover)] border-t border-[var(--color-border-default)] flex items-center justify-center gap-1"
                     on:click=move |e| {
                         e.stop_propagation();
                         set_expanded.update(|v| *v = !*v);
@@ -114,17 +114,17 @@ pub fn TicketCard(
             // Expanded details
             <div class="overflow-hidden transition-all duration-300"
                  style=move || if expanded.get() { "max-height: 200px; opacity: 1;" } else { "max-height: 0; opacity: 0;" }>
-                <div class="px-4 pb-4 space-y-2 border-t border-[var(--theme-border-subtle)]">
+                <div class="px-4 pb-4 space-y-2 border-t border-[var(--color-border-default)]">
                     <div class="flex justify-between pt-3">
-                        <span class="text-xs text-[var(--theme-text-muted)]">"Price"</span>
-                        <span class="text-sm font-semibold text-[var(--theme-accent-text)]">{price.clone()}</span>
+                        <span class="text-xs text-[var(--color-text-tertiary)]">"Price"</span>
+                        <span class="text-sm font-semibold text-[var(--color-brand-text)]">{price.clone()}</span>
                     </div>
                     <div class="flex justify-between">
-                        <span class="text-xs text-[var(--theme-text-muted)]">"Economy"</span>
+                        <span class="text-xs text-[var(--color-text-tertiary)]">"Economy"</span>
                         <span class=move || format!("text-xs font-medium {}", match economy {
-                            SeatAvailability::Available => "text-[var(--theme-positive-text)]",
-                            SeatAvailability::Limited => "text-[var(--theme-warning-text)]",
-                            SeatAvailability::SoldOut => "text-[var(--theme-text-subtle)]",
+                            SeatAvailability::Available => "text-[var(--color-status-success)]",
+                            SeatAvailability::Limited => "text-[var(--color-status-warning)]",
+                            SeatAvailability::SoldOut => "text-[var(--color-text-disabled)]",
                         })>{match economy {
                             SeatAvailability::Available => "Available",
                             SeatAvailability::Limited => "Limited",
@@ -132,11 +132,11 @@ pub fn TicketCard(
                         }}</span>
                     </div>
                     <div class="flex justify-between">
-                        <span class="text-xs text-[var(--theme-text-muted)]">"Premium"</span>
+                        <span class="text-xs text-[var(--color-text-tertiary)]">"Premium"</span>
                         <span class=move || format!("text-xs font-medium {}", match premium {
-                            SeatAvailability::Available => "text-[var(--theme-positive-text)]",
-                            SeatAvailability::Limited => "text-[var(--theme-warning-text)]",
-                            SeatAvailability::SoldOut => "text-[var(--theme-text-subtle)]",
+                            SeatAvailability::Available => "text-[var(--color-status-success)]",
+                            SeatAvailability::Limited => "text-[var(--color-status-warning)]",
+                            SeatAvailability::SoldOut => "text-[var(--color-text-disabled)]",
                         })>{match premium {
                             SeatAvailability::Available => "Available",
                             SeatAvailability::Limited => "Limited",
