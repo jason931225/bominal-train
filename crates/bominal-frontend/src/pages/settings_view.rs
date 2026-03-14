@@ -11,7 +11,7 @@ use crate::components::card_brand::{
 use crate::components::glass_panel::GlassPanel;
 use crate::i18n::t;
 
-/// Settings view with sections for providers, cards, appearance, accessibility.
+/// Settings view with collapsible sectioned hub.
 #[component]
 pub fn SettingsView() -> impl IntoView {
     let user = Resource::new(|| (), |_| get_current_user());
@@ -44,7 +44,14 @@ pub fn SettingsView() -> impl IntoView {
     let (show_card_form, set_show_card_form) = signal(false);
 
     view! {
-        <div class="px-4 pt-6 pb-4 space-y-4 max-w-xl lg:max-w-2xl mx-auto page-enter">
+        <div class="px-4 pt-6 pb-4 space-y-3 max-w-xl lg:max-w-2xl mx-auto page-enter">
+            <style>{r#"
+details summary { list-style: none; cursor: pointer; }
+details summary::-webkit-details-marker { display: none; }
+details[open] .settings-chevron { transform: rotate(180deg); }
+.settings-chevron { transition: transform 0.2s ease; }
+"#}</style>
+
             <h1 class="text-xl font-bold text-[var(--color-text-primary)]">{t("settings.title")}</h1>
 
             // User info
@@ -62,10 +69,25 @@ pub fn SettingsView() -> impl IntoView {
                 })}
             </Suspense>
 
-            // Provider Credentials
-            <GlassPanel>
-                <div class="p-4 space-y-3">
-                    <h2 class="text-sm font-semibold text-[var(--color-text-secondary)] uppercase tracking-[0.18em]">{t("provider.settings")}</h2>
+            // Section: Provider Credentials
+            <details
+                open
+                class="rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] overflow-hidden"
+            >
+                <summary class="flex items-center justify-between px-4 py-3 hover:bg-[var(--color-bg-sunken)]/40 transition-colors">
+                    <div class="flex items-center gap-3">
+                        <div class="w-8 h-8 rounded-xl bg-[var(--color-brand-primary)]/20 flex items-center justify-center flex-shrink-0">
+                            <svg class="w-4 h-4 text-[var(--color-brand-text)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M3 13h2l2-6h10l2 6h2M5 17a2 2 0 104 0m6 0a2 2 0 104 0"/>
+                            </svg>
+                        </div>
+                        <span class="text-sm font-semibold text-[var(--color-text-primary)]">{t("settings.section_provider")}</span>
+                    </div>
+                    <svg class="settings-chevron w-4 h-4 text-[var(--color-text-tertiary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+                    </svg>
+                </summary>
+                <div class="border-t border-[var(--color-border-subtle)] p-4 space-y-3">
                     <Suspense fallback=move || view! { <p class="text-xs text-[var(--color-text-tertiary)]">{t("common.loading")}</p> }>
                         {move || providers.get().map(|result| match result {
                             Ok(creds) => {
@@ -74,10 +96,7 @@ pub fn SettingsView() -> impl IntoView {
                                 view! {
                                     <div class="space-y-2">
                                         {creds.into_iter().map(|cred| view! {
-                                            <ProviderRow
-                                                cred=cred
-                                                delete_action=delete_provider_action
-                                            />
+                                            <ProviderRow cred=cred delete_action=delete_provider_action />
                                         }).collect::<Vec<_>>()}
                                         {(!has_srt).then(|| view! {
                                             <ProviderSetupRow
@@ -116,8 +135,6 @@ pub fn SettingsView() -> impl IntoView {
                             }.into_any(),
                         })}
                     </Suspense>
-
-                    // Add provider result feedback
                     {move || add_provider_action.value().get().map(|result| match result {
                         Ok(info) => view! {
                             <p class="text-xs text-[var(--color-status-success)]">
@@ -129,13 +146,30 @@ pub fn SettingsView() -> impl IntoView {
                         }.into_any(),
                     })}
                 </div>
-            </GlassPanel>
+            </details>
 
-            // Payment Cards
-            <GlassPanel>
-                <div class="p-4 space-y-3">
+            // Section: Payment Cards
+            <details
+                open
+                class="rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] overflow-hidden"
+            >
+                <summary class="flex items-center justify-between px-4 py-3 hover:bg-[var(--color-bg-sunken)]/40 transition-colors">
+                    <div class="flex items-center gap-3">
+                        <div class="w-8 h-8 rounded-xl bg-[var(--color-brand-primary)]/20 flex items-center justify-center flex-shrink-0">
+                            <svg class="w-4 h-4 text-[var(--color-brand-text)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                                <rect x="2" y="5" width="20" height="14" rx="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M2 10h20"/>
+                            </svg>
+                        </div>
+                        <span class="text-sm font-semibold text-[var(--color-text-primary)]">{t("settings.section_payment")}</span>
+                    </div>
+                    <svg class="settings-chevron w-4 h-4 text-[var(--color-text-tertiary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+                    </svg>
+                </summary>
+                <div class="border-t border-[var(--color-border-subtle)] p-4 space-y-3">
                     <div class="flex items-center justify-between">
-                        <h2 class="text-sm font-semibold text-[var(--color-text-secondary)] uppercase tracking-[0.18em]">{t("payment.card_label")}</h2>
+                        <span class="text-xs text-[var(--color-text-tertiary)]">{t("payment.card_label")}</span>
                         <button
                             class="text-xs px-2 py-1 rounded-lg text-[var(--color-brand-text)] hover:bg-[var(--color-brand-primary)]/10 transition-colors"
                             on:click=move |_| set_show_card_form.update(|v| *v = !*v)
@@ -143,14 +177,9 @@ pub fn SettingsView() -> impl IntoView {
                             {move || if show_card_form.get() { t("common.cancel") } else { t("payment.add_card") }}
                         </button>
                     </div>
-
-                    // Card add form
                     {move || show_card_form.get().then(|| view! {
-                        <CardAddForm
-                            on_done=move || set_show_card_form.set(false)
-                        />
+                        <CardAddForm on_done=move || set_show_card_form.set(false) />
                     })}
-
                     <Suspense fallback=move || view! { <p class="text-xs text-[var(--color-text-tertiary)]">{t("common.loading")}</p> }>
                         {move || cards.get().map(|result| match result {
                             Ok(card_list) if card_list.is_empty() => view! {
@@ -169,45 +198,61 @@ pub fn SettingsView() -> impl IntoView {
                         })}
                     </Suspense>
                 </div>
-            </GlassPanel>
+            </details>
 
-            // Appearance — Theme picker + Mode toggle
-            <GlassPanel>
-                <div class="p-4 space-y-4">
-                    <h2 class="text-sm font-semibold text-[var(--color-text-secondary)] uppercase tracking-[0.18em]">{t("settings.theme")}</h2>
-
-                    // Theme picker — two cards
-                    <div class="grid grid-cols-2 gap-3">
-                        <button
-                            id="theme-rosewood"
-                            class="p-3 rounded-xl border border-[var(--color-border-default)] hover:border-[var(--color-brand-border)] transition-colors text-left"
-                            attr:onclick="window.__bSetTheme('rosewood');document.getElementById('theme-rosewood').classList.add('glass-active');document.getElementById('theme-clearsky').classList.remove('glass-active');"
-                        >
-                            <div class="flex gap-1.5 mb-2">
-                                <span class="w-3 h-3 rounded-full" style="background:#8a6050"></span>
-                                <span class="w-3 h-3 rounded-full" style="background:#5a7a62"></span>
-                                <span class="w-3 h-3 rounded-full" style="background:#9a7a3a"></span>
-                            </div>
-                            <p class="text-xs font-medium text-[var(--color-text-primary)]">"Rosewood Dusk"</p>
-                            <p class="text-[10px] text-[var(--color-text-tertiary)]">"Warm & nostalgic"</p>
-                        </button>
-                        <button
-                            id="theme-clearsky"
-                            class="p-3 rounded-xl border border-[var(--color-border-default)] hover:border-[var(--color-brand-border)] transition-colors text-left"
-                            attr:onclick="window.__bSetTheme('clear-sky');document.getElementById('theme-clearsky').classList.add('glass-active');document.getElementById('theme-rosewood').classList.remove('glass-active');"
-                        >
-                            <div class="flex gap-1.5 mb-2">
-                                <span class="w-3 h-3 rounded-full" style="background:#4a6eaa"></span>
-                                <span class="w-3 h-3 rounded-full" style="background:#3a8a60"></span>
-                                <span class="w-3 h-3 rounded-full" style="background:#9a7a30"></span>
-                            </div>
-                            <p class="text-xs font-medium text-[var(--color-text-primary)]">"Clear Sky"</p>
-                            <p class="text-[10px] text-[var(--color-text-tertiary)]">"Soft & airy"</p>
-                        </button>
+            // Section: Appearance
+            <details
+                class="rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] overflow-hidden"
+            >
+                <summary class="flex items-center justify-between px-4 py-3 hover:bg-[var(--color-bg-sunken)]/40 transition-colors">
+                    <div class="flex items-center gap-3">
+                        <div class="w-8 h-8 rounded-xl bg-[var(--color-brand-primary)]/20 flex items-center justify-center flex-shrink-0">
+                            <svg class="w-4 h-4 text-[var(--color-brand-text)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M12 3a9 9 0 100 18A9 9 0 0012 3zm0 0v18M3 12h18"/>
+                            </svg>
+                        </div>
+                        <span class="text-sm font-semibold text-[var(--color-text-primary)]">{t("settings.section_appearance")}</span>
+                    </div>
+                    <svg class="settings-chevron w-4 h-4 text-[var(--color-text-tertiary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+                    </svg>
+                </summary>
+                <div class="border-t border-[var(--color-border-subtle)] p-4 space-y-4">
+                    // Theme picker
+                    <div class="space-y-2">
+                        <p class="text-xs text-[var(--color-text-tertiary)]">{t("settings.theme")}</p>
+                        <div class="grid grid-cols-2 gap-3">
+                            <button
+                                id="theme-rosewood"
+                                class="p-3 rounded-xl border border-[var(--color-border-default)] hover:border-[var(--color-brand-border)] transition-colors text-left"
+                                attr:onclick="window.__bSetTheme('rosewood');document.getElementById('theme-rosewood').classList.add('glass-active');document.getElementById('theme-clearsky').classList.remove('glass-active');"
+                            >
+                                <div class="flex gap-1.5 mb-2">
+                                    <span class="w-3 h-3 rounded-full" style="background:#8a6050"></span>
+                                    <span class="w-3 h-3 rounded-full" style="background:#5a7a62"></span>
+                                    <span class="w-3 h-3 rounded-full" style="background:#9a7a3a"></span>
+                                </div>
+                                <p class="text-xs font-medium text-[var(--color-text-primary)]">"Rosewood Dusk"</p>
+                                <p class="text-[10px] text-[var(--color-text-tertiary)]">"Warm & nostalgic"</p>
+                            </button>
+                            <button
+                                id="theme-clearsky"
+                                class="p-3 rounded-xl border border-[var(--color-border-default)] hover:border-[var(--color-brand-border)] transition-colors text-left"
+                                attr:onclick="window.__bSetTheme('clear-sky');document.getElementById('theme-clearsky').classList.add('glass-active');document.getElementById('theme-rosewood').classList.remove('glass-active');"
+                            >
+                                <div class="flex gap-1.5 mb-2">
+                                    <span class="w-3 h-3 rounded-full" style="background:#4a6eaa"></span>
+                                    <span class="w-3 h-3 rounded-full" style="background:#3a8a60"></span>
+                                    <span class="w-3 h-3 rounded-full" style="background:#9a7a30"></span>
+                                </div>
+                                <p class="text-xs font-medium text-[var(--color-text-primary)]">"Clear Sky"</p>
+                                <p class="text-[10px] text-[var(--color-text-tertiary)]">"Soft & airy"</p>
+                            </button>
+                        </div>
                     </div>
 
-                    // Mode toggle — Light / Dark
-                    <div class="flex items-center justify-between py-2">
+                    // Dark mode toggle
+                    <div class="flex items-center justify-between py-1">
                         <span class="text-sm text-[var(--color-text-primary)]">{t("settings.dark_mode")}</span>
                         <button
                             id="mode-toggle"
@@ -219,7 +264,7 @@ pub fn SettingsView() -> impl IntoView {
                     </div>
 
                     // Language selector
-                    <div class="flex items-center justify-between py-2">
+                    <div class="flex items-center justify-between py-1">
                         <span class="text-sm text-[var(--color-text-primary)]">{t("settings.language")}</span>
                         <select
                             id="language-select"
@@ -232,7 +277,51 @@ pub fn SettingsView() -> impl IntoView {
                         </select>
                     </div>
                 </div>
-            </GlassPanel>
+            </details>
+
+            // Section: Security (stub)
+            <details
+                class="rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] overflow-hidden"
+            >
+                <summary class="flex items-center justify-between px-4 py-3 hover:bg-[var(--color-bg-sunken)]/40 transition-colors">
+                    <div class="flex items-center gap-3">
+                        <div class="w-8 h-8 rounded-xl bg-[var(--color-brand-primary)]/20 flex items-center justify-center flex-shrink-0">
+                            <svg class="w-4 h-4 text-[var(--color-brand-text)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                            </svg>
+                        </div>
+                        <span class="text-sm font-semibold text-[var(--color-text-primary)]">{t("settings.section_security")}</span>
+                    </div>
+                    <svg class="settings-chevron w-4 h-4 text-[var(--color-text-tertiary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+                    </svg>
+                </summary>
+                <div class="border-t border-[var(--color-border-subtle)] p-4">
+                    <p class="text-xs text-[var(--color-text-disabled)]">"Coming soon"</p>
+                </div>
+            </details>
+
+            // Section: Notifications (stub)
+            <details
+                class="rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] overflow-hidden"
+            >
+                <summary class="flex items-center justify-between px-4 py-3 hover:bg-[var(--color-bg-sunken)]/40 transition-colors">
+                    <div class="flex items-center gap-3">
+                        <div class="w-8 h-8 rounded-xl bg-[var(--color-brand-primary)]/20 flex items-center justify-center flex-shrink-0">
+                            <svg class="w-4 h-4 text-[var(--color-brand-text)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 10-12 0v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
+                            </svg>
+                        </div>
+                        <span class="text-sm font-semibold text-[var(--color-text-primary)]">{t("settings.section_notifications")}</span>
+                    </div>
+                    <svg class="settings-chevron w-4 h-4 text-[var(--color-text-tertiary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+                    </svg>
+                </summary>
+                <div class="border-t border-[var(--color-border-subtle)] p-4">
+                    <p class="text-xs text-[var(--color-text-disabled)]">"Coming soon"</p>
+                </div>
+            </details>
 
             // Script to sync theme/mode toggle states on page load
             <script>{r#"

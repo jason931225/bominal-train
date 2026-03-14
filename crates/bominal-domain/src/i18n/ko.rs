@@ -102,6 +102,11 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
 
     // Settings
     m.insert("settings.title", "설정");
+    m.insert("settings.section_provider", "예매 서비스");
+    m.insert("settings.section_payment", "결제 수단");
+    m.insert("settings.section_appearance", "화면 설정");
+    m.insert("settings.section_security", "보안");
+    m.insert("settings.section_notifications", "알림");
     m.insert("settings.theme", "테마");
     m.insert("settings.dark_mode", "다크 모드");
     m.insert("settings.light_mode", "라이트 모드");
