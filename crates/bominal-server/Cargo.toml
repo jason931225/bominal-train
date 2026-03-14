@@ -17,6 +17,7 @@ bominal-db = { path = "../bominal-db" }
 bominal-email = { path = "../bominal-email" }
 bominal-provider = { path = "../bominal-provider" }
 bominal-frontend = { path = "../bominal-frontend" }
+bominal-service = { path = "../bominal-service" }
 tokio.workspace = true
 axum.workspace = true
 tower.workspace = true
@@ -33,7 +34,6 @@ uuid.workspace = true
 thiserror.workspace = true
 anyhow.workspace = true
 dotenvy.workspace = true
-redis.workspace = true
 chrono.workspace = true
 rand.workspace = true
 rand_distr.workspace = true

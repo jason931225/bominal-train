@@ -22,6 +22,21 @@ struct ErrorResponse {
     error: String,
 }
 
+impl From<bominal_service::error::ServiceError> for AppError {
+    fn from(e: bominal_service::error::ServiceError) -> Self {
+        use bominal_service::error::ServiceError;
+        match e {
+            ServiceError::Validation(msg) => AppError::BadRequest(msg),
+            ServiceError::NotFound(msg) => AppError::NotFound(msg),
+            ServiceError::Unauthorized => AppError::Unauthorized,
+            ServiceError::Database(e) => AppError::Internal(e.into()),
+            ServiceError::Crypto(msg) => AppError::Internal(anyhow::anyhow!(msg)),
+            ServiceError::Provider(e) => AppError::BadRequest(e.to_string()),
+            ServiceError::Internal(msg) => AppError::Internal(anyhow::anyhow!(msg)),
+        }
+    }
+}
+
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let (status, message) = match &self {

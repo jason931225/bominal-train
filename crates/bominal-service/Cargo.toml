@@ -1,0 +1,18 @@
+[package]
+name = "bominal-service"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+bominal-db = { path = "../bominal-db" }
+bominal-provider = { path = "../bominal-provider" }
+bominal-email = { path = "../bominal-email" }
+bominal-domain = { path = "../bominal-domain" }
+uuid.workspace = true
+chrono.workspace = true
+tracing.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+url.workspace = true
+sqlx.workspace = true

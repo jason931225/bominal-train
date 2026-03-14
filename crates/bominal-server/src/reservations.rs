@@ -8,44 +8,11 @@
 
 use axum::Json;
 use axum::extract::{Path, State};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 use crate::error::AppError;
 use crate::extractors::AuthUser;
-use crate::search::map_provider_error;
 use crate::state::SharedState;
-
-/// Reservation summary returned from list endpoint.
-#[derive(Debug, Serialize)]
-pub struct ReservationResponse {
-    pub provider: String,
-    pub reservation_number: String,
-    pub train_number: String,
-    pub train_name: String,
-    pub dep_station: String,
-    pub arr_station: String,
-    pub dep_date: String,
-    pub dep_time: String,
-    pub arr_time: String,
-    pub total_cost: String,
-    pub seat_count: String,
-    pub paid: bool,
-    pub is_waiting: bool,
-    pub payment_deadline_date: String,
-    pub payment_deadline_time: String,
-}
-
-/// Ticket detail within a reservation.
-#[derive(Debug, Serialize)]
-pub struct TicketResponse {
-    pub car: String,
-    pub seat: String,
-    pub seat_type: String,
-    pub passenger_type: String,
-    pub price: i64,
-    pub original_price: i64,
-    pub discount: i64,
-}
 
 /// Payment request body.
 ///
@@ -65,23 +32,28 @@ pub struct PayRequest {
     pub card_type: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct ProviderQuery {
+    pub provider: Option<String>,
+}
+
 /// GET /api/reservations — list active reservations from the provider.
 pub async fn list_reservations(
     user: AuthUser,
     State(state): State<SharedState>,
     axum::extract::Query(params): axum::extract::Query<ProviderQuery>,
-) -> Result<Json<Vec<ReservationResponse>>, AppError> {
+) -> Result<Json<Vec<bominal_service::reservations::ReservationInfo>>, AppError> {
     let provider = params.provider.as_deref().unwrap_or("SRT");
-    let cred = require_credentials(&state, user.user_id, provider).await?;
 
-    let key = &state.encryption_key;
-    match provider {
-        "SRT" => list_srt_reservations(&cred, key).await,
-        "KTX" => list_ktx_reservations(&cred, key).await,
-        _ => Err(AppError::BadRequest(format!(
-            "Invalid provider: {provider}"
-        ))),
-    }
+    let result = bominal_service::reservations::list(
+        &state.db,
+        user.user_id,
+        provider,
+        &state.encryption_key,
+    )
+    .await?;
+
+    Ok(Json(result))
 }
 
 /// GET /api/reservations/:pnr/tickets — ticket detail.
@@ -90,18 +62,19 @@ pub async fn ticket_detail(
     State(state): State<SharedState>,
     Path(pnr): Path<String>,
     axum::extract::Query(params): axum::extract::Query<ProviderQuery>,
-) -> Result<Json<Vec<TicketResponse>>, AppError> {
+) -> Result<Json<Vec<bominal_service::reservations::TicketInfo>>, AppError> {
     let provider = params.provider.as_deref().unwrap_or("SRT");
-    let cred = require_credentials(&state, user.user_id, provider).await?;
 
-    let key = &state.encryption_key;
-    match provider {
-        "SRT" => srt_ticket_detail(&cred, &pnr, key).await,
-        "KTX" => ktx_ticket_detail(&cred, &pnr, key).await,
-        _ => Err(AppError::BadRequest(format!(
-            "Invalid provider: {provider}"
-        ))),
-    }
+    let result = bominal_service::reservations::ticket_detail(
+        &state.db,
+        user.user_id,
+        provider,
+        &pnr,
+        &state.encryption_key,
+    )
+    .await?;
+
+    Ok(Json(result))
 }
 
 /// POST /api/reservations/:pnr/cancel — cancel a reservation.
@@ -112,41 +85,17 @@ pub async fn cancel_reservation(
     axum::extract::Query(params): axum::extract::Query<ProviderQuery>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let provider = params.provider.as_deref().unwrap_or("SRT");
-    let cred = require_credentials(&state, user.user_id, provider).await?;
 
-    let key = &state.encryption_key;
-    match provider {
-        "SRT" => cancel_srt(&cred, &pnr, key).await,
-        "KTX" => cancel_ktx(&cred, &pnr, key).await,
-        _ => Err(AppError::BadRequest(format!(
-            "Invalid provider: {provider}"
-        ))),
-    }
-}
+    bominal_service::reservations::cancel(
+        &state.db,
+        user.user_id,
+        provider,
+        &pnr,
+        &state.encryption_key,
+    )
+    .await?;
 
-/// POST /api/reservations/:pnr/refund — refund a paid reservation.
-pub async fn refund_reservation(
-    user: AuthUser,
-    State(state): State<SharedState>,
-    Path(pnr): Path<String>,
-    axum::extract::Query(params): axum::extract::Query<ProviderQuery>,
-) -> Result<Json<serde_json::Value>, AppError> {
-    let provider = params.provider.as_deref().unwrap_or("SRT");
-    let cred = require_credentials(&state, user.user_id, provider).await?;
-
-    let key = &state.encryption_key;
-    match provider {
-        "SRT" => {
-            // TODO: SRT client does not yet support refund — implement when available
-            Err(AppError::BadRequest(
-                "Refund is not yet supported for SRT reservations".to_string(),
-            ))
-        }
-        "KTX" => refund_ktx(&cred, &pnr, key).await,
-        _ => Err(AppError::BadRequest(format!(
-            "Invalid provider: {provider}"
-        ))),
-    }
+    Ok(Json(serde_json::json!({ "cancelled": true, "pnr": pnr })))
 }
 
 /// POST /api/reservations/:pnr/pay — pay with card.
@@ -160,376 +109,51 @@ pub async fn pay_reservation(
     validate_pay_request(&req)?;
 
     let provider = params.provider.as_deref().unwrap_or("SRT");
-    let cred = require_credentials(&state, user.user_id, provider).await?;
-
-    let key = &state.encryption_key;
-    let ev = &state.evervault;
-    match provider {
-        "SRT" => pay_srt(&cred, &pnr, &req, key, &ev.srt_relay_domain).await,
-        "KTX" => pay_ktx(&cred, &pnr, &req, key, &ev.ktx_relay_domain).await,
-        _ => Err(AppError::BadRequest(format!(
-            "Invalid provider: {provider}"
-        ))),
-    }
-}
-
-// ── Query params ────────────────────────────────────────────────────
-
-#[derive(Debug, Deserialize)]
-pub struct ProviderQuery {
-    pub provider: Option<String>,
-}
-
-// ── Helpers ─────────────────────────────────────────────────────────
-
-async fn require_credentials(
-    state: &SharedState,
-    user_id: uuid::Uuid,
-    provider: &str,
-) -> Result<bominal_db::provider::ProviderCredentialRow, AppError> {
-    let cred = bominal_db::provider::find_by_user_and_provider(&state.db, user_id, provider)
-        .await
-        .map_err(|e| AppError::Internal(e.into()))?
-        .ok_or_else(|| {
-            AppError::BadRequest(format!(
-                "{provider} credentials required. Please add in settings."
-            ))
-        })?;
-
-    if cred.status != "valid" {
-        return Err(AppError::BadRequest(format!(
-            "{provider} credentials are invalid. Please update in settings."
-        )));
-    }
-
-    Ok(cred)
-}
-
-// ── SRT implementation ──────────────────────────────────────────────
-
-async fn login_srt(
-    cred: &bominal_db::provider::ProviderCredentialRow,
-    encryption_key: &bominal_domain::crypto::encryption::EncryptionKey,
-) -> Result<bominal_provider::srt::SrtClient, AppError> {
-    let password =
-        bominal_domain::crypto::encryption::decrypt(encryption_key, &cred.encrypted_password)
-            .map_err(|e| AppError::Internal(e.into()))?;
-
-    let mut client = bominal_provider::srt::SrtClient::new();
-    client
-        .login(&cred.login_id, &password)
-        .await
-        .map_err(map_provider_error)?;
-    Ok(client)
-}
-
-async fn login_srt_with_relay(
-    cred: &bominal_db::provider::ProviderCredentialRow,
-    encryption_key: &bominal_domain::crypto::encryption::EncryptionKey,
-    relay_domain: &str,
-) -> Result<bominal_provider::srt::SrtClient, AppError> {
-    let password =
-        bominal_domain::crypto::encryption::decrypt(encryption_key, &cred.encrypted_password)
-            .map_err(|e| AppError::Internal(e.into()))?;
-
-    let mut client = bominal_provider::srt::SrtClient::with_relay(relay_domain);
-    client
-        .login(&cred.login_id, &password)
-        .await
-        .map_err(map_provider_error)?;
-    Ok(client)
-}
-
-async fn list_srt_reservations(
-    cred: &bominal_db::provider::ProviderCredentialRow,
-    encryption_key: &bominal_domain::crypto::encryption::EncryptionKey,
-) -> Result<Json<Vec<ReservationResponse>>, AppError> {
-    let client = login_srt(cred, encryption_key).await?;
-
-    let reservations = client
-        .get_reservations()
-        .await
-        .map_err(map_provider_error)?;
-
-    let results: Vec<ReservationResponse> = reservations
-        .iter()
-        .map(|r| ReservationResponse {
-            provider: "SRT".to_string(),
-            reservation_number: r.reservation_number.clone(),
-            train_number: r.train_number.clone(),
-            train_name: r.display_name().to_string(),
-            dep_station: r.dep_station_name.clone(),
-            arr_station: r.arr_station_name.clone(),
-            dep_date: r.dep_date.clone(),
-            dep_time: r.dep_time.clone(),
-            arr_time: r.arr_time.clone(),
-            total_cost: r.total_cost.clone(),
-            seat_count: r.seat_count.clone(),
-            paid: r.paid,
-            is_waiting: r.is_waiting,
-            payment_deadline_date: r.payment_date.clone(),
-            payment_deadline_time: r.payment_time.clone(),
-        })
-        .collect();
-
-    Ok(Json(results))
-}
-
-async fn srt_ticket_detail(
-    cred: &bominal_db::provider::ProviderCredentialRow,
-    pnr: &str,
-    encryption_key: &bominal_domain::crypto::encryption::EncryptionKey,
-) -> Result<Json<Vec<TicketResponse>>, AppError> {
-    let client = login_srt(cred, encryption_key).await?;
-
-    let tickets = client.ticket_info(pnr).await.map_err(map_provider_error)?;
-
-    let results: Vec<TicketResponse> = tickets
-        .iter()
-        .map(|t| TicketResponse {
-            car: t.car.clone(),
-            seat: t.seat.clone(),
-            seat_type: t.seat_type.clone(),
-            passenger_type: t.passenger_type.clone(),
-            price: t.price,
-            original_price: t.original_price,
-            discount: t.discount,
-        })
-        .collect();
-
-    Ok(Json(results))
-}
-
-async fn cancel_srt(
-    cred: &bominal_db::provider::ProviderCredentialRow,
-    pnr: &str,
-    encryption_key: &bominal_domain::crypto::encryption::EncryptionKey,
-) -> Result<Json<serde_json::Value>, AppError> {
-    let client = login_srt(cred, encryption_key).await?;
-
-    client.cancel(pnr).await.map_err(map_provider_error)?;
-
-    Ok(Json(serde_json::json!({ "cancelled": true, "pnr": pnr })))
-}
-
-async fn pay_srt(
-    cred: &bominal_db::provider::ProviderCredentialRow,
-    pnr: &str,
-    req: &PayRequest,
-    encryption_key: &bominal_domain::crypto::encryption::EncryptionKey,
-    relay_domain: &str,
-) -> Result<Json<serde_json::Value>, AppError> {
-    let client = login_srt_with_relay(cred, encryption_key, relay_domain).await?;
-
-    // Find the reservation to pass to pay_with_card
-    let reservations = client
-        .get_reservations()
-        .await
-        .map_err(map_provider_error)?;
-
-    let reservation = reservations
-        .iter()
-        .find(|r| r.reservation_number == pnr)
-        .ok_or_else(|| AppError::NotFound(format!("Reservation {pnr} not found")))?;
-
     let installment = req.installment.unwrap_or(0);
     let card_type = req.card_type.as_deref().unwrap_or("J");
 
-    client
-        .pay_with_card(
-            reservation,
-            &req.card_number,
-            &req.card_password,
-            &req.validation_number,
-            &req.expire_date,
-            installment,
-            card_type,
-        )
-        .await
-        .map_err(map_provider_error)?;
+    let relay_domain = match provider {
+        "SRT" => &state.evervault.srt_relay_domain,
+        "KTX" => &state.evervault.ktx_relay_domain,
+        _ => return Err(AppError::BadRequest(format!("Invalid provider: {provider}"))),
+    };
+
+    bominal_service::reservations::pay_with_raw_card(
+        &state.db,
+        user.user_id,
+        provider,
+        &pnr,
+        &req.card_number,
+        &req.card_password,
+        &req.validation_number,
+        &req.expire_date,
+        installment,
+        card_type,
+        &state.encryption_key,
+        relay_domain,
+    )
+    .await?;
 
     Ok(Json(serde_json::json!({ "paid": true, "pnr": pnr })))
 }
 
-// ── KTX implementation ──────────────────────────────────────────────
-
-async fn login_ktx(
-    cred: &bominal_db::provider::ProviderCredentialRow,
-    encryption_key: &bominal_domain::crypto::encryption::EncryptionKey,
-) -> Result<bominal_provider::ktx::KtxClient, AppError> {
-    let password =
-        bominal_domain::crypto::encryption::decrypt(encryption_key, &cred.encrypted_password)
-            .map_err(|e| AppError::Internal(e.into()))?;
-
-    let mut client = bominal_provider::ktx::KtxClient::new();
-    client
-        .login(&cred.login_id, &password)
-        .await
-        .map_err(map_provider_error)?;
-    Ok(client)
-}
-
-async fn login_ktx_with_relay(
-    cred: &bominal_db::provider::ProviderCredentialRow,
-    encryption_key: &bominal_domain::crypto::encryption::EncryptionKey,
-    relay_domain: &str,
-) -> Result<bominal_provider::ktx::KtxClient, AppError> {
-    let password =
-        bominal_domain::crypto::encryption::decrypt(encryption_key, &cred.encrypted_password)
-            .map_err(|e| AppError::Internal(e.into()))?;
-
-    let mut client = bominal_provider::ktx::KtxClient::with_relay(relay_domain);
-    client
-        .login(&cred.login_id, &password)
-        .await
-        .map_err(map_provider_error)?;
-    Ok(client)
-}
-
-async fn list_ktx_reservations(
-    cred: &bominal_db::provider::ProviderCredentialRow,
-    encryption_key: &bominal_domain::crypto::encryption::EncryptionKey,
-) -> Result<Json<Vec<ReservationResponse>>, AppError> {
-    let client = login_ktx(cred, encryption_key).await?;
-
-    let reservations = client
-        .get_reservations()
-        .await
-        .map_err(map_provider_error)?;
-
-    let results: Vec<ReservationResponse> = reservations
-        .iter()
-        .map(|r| ReservationResponse {
-            provider: "KTX".to_string(),
-            reservation_number: r.rsv_id.clone(),
-            train_number: r.train_no.clone(),
-            train_name: r.train_type_name.clone(),
-            dep_station: r.dep_name.clone(),
-            arr_station: r.arr_name.clone(),
-            dep_date: r.dep_date.clone(),
-            dep_time: r.dep_time.clone(),
-            arr_time: r.arr_time.clone(),
-            total_cost: r.price.clone(),
-            seat_count: r.tickets.len().to_string(),
-            paid: r.paid,
-            is_waiting: r.is_waiting,
-            payment_deadline_date: String::new(),
-            payment_deadline_time: String::new(),
-        })
-        .collect();
-
-    Ok(Json(results))
-}
-
-async fn ktx_ticket_detail(
-    cred: &bominal_db::provider::ProviderCredentialRow,
-    pnr: &str,
-    encryption_key: &bominal_domain::crypto::encryption::EncryptionKey,
-) -> Result<Json<Vec<TicketResponse>>, AppError> {
-    let client = login_ktx(cred, encryption_key).await?;
-
-    let tickets = client.ticket_info(pnr).await.map_err(map_provider_error)?;
-
-    let results: Vec<TicketResponse> = tickets
-        .iter()
-        .map(|t| {
-            let price = t.price.parse::<i64>().unwrap_or(0);
-            TicketResponse {
-                car: t.car.clone(),
-                seat: t.seat.clone(),
-                seat_type: t.seat_type.clone(),
-                passenger_type: String::new(),
-                price,
-                original_price: price,
-                discount: 0,
-            }
-        })
-        .collect();
-
-    Ok(Json(results))
-}
-
-async fn cancel_ktx(
-    cred: &bominal_db::provider::ProviderCredentialRow,
-    pnr: &str,
-    encryption_key: &bominal_domain::crypto::encryption::EncryptionKey,
+/// POST /api/reservations/:pnr/refund — refund a paid reservation.
+pub async fn refund_reservation(
+    user: AuthUser,
+    State(state): State<SharedState>,
+    Path(pnr): Path<String>,
+    axum::extract::Query(params): axum::extract::Query<ProviderQuery>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let client = login_ktx(cred, encryption_key).await?;
+    let provider = params.provider.as_deref().unwrap_or("SRT");
 
-    let reservations = client
-        .get_reservations()
-        .await
-        .map_err(map_provider_error)?;
-
-    let reservation = reservations
-        .iter()
-        .find(|r| r.rsv_id == pnr)
-        .ok_or_else(|| AppError::NotFound(format!("Reservation {pnr} not found")))?;
-
-    client
-        .cancel(reservation)
-        .await
-        .map_err(map_provider_error)?;
-
-    Ok(Json(serde_json::json!({ "cancelled": true, "pnr": pnr })))
-}
-
-async fn pay_ktx(
-    cred: &bominal_db::provider::ProviderCredentialRow,
-    pnr: &str,
-    req: &PayRequest,
-    encryption_key: &bominal_domain::crypto::encryption::EncryptionKey,
-    relay_domain: &str,
-) -> Result<Json<serde_json::Value>, AppError> {
-    let client = login_ktx_with_relay(cred, encryption_key, relay_domain).await?;
-
-    let reservations = client
-        .get_reservations()
-        .await
-        .map_err(map_provider_error)?;
-
-    let reservation = reservations
-        .iter()
-        .find(|r| r.rsv_id == pnr)
-        .ok_or_else(|| AppError::NotFound(format!("Reservation {pnr} not found")))?;
-
-    let installment = req.installment.unwrap_or(0).to_string();
-    let card_type = req.card_type.as_deref().unwrap_or("J");
-
-    client
-        .pay_with_card(
-            reservation,
-            &req.card_number,
-            &req.card_password,
-            &req.validation_number,
-            &req.expire_date,
-            &installment,
-            card_type,
-        )
-        .await
-        .map_err(map_provider_error)?;
-
-    Ok(Json(serde_json::json!({ "paid": true, "pnr": pnr })))
-}
-
-async fn refund_ktx(
-    cred: &bominal_db::provider::ProviderCredentialRow,
-    pnr: &str,
-    encryption_key: &bominal_domain::crypto::encryption::EncryptionKey,
-) -> Result<Json<serde_json::Value>, AppError> {
-    let client = login_ktx(cred, encryption_key).await?;
-
-    let tickets = client.ticket_info(pnr).await.map_err(map_provider_error)?;
-
-    if tickets.is_empty() {
-        return Err(AppError::BadRequest(
-            "No tickets found for refund".to_string(),
-        ));
-    }
-
-    for ticket in &tickets {
-        client.refund(ticket).await.map_err(map_provider_error)?;
-    }
+    bominal_service::reservations::refund(
+        &state.db,
+        user.user_id,
+        provider,
+        &pnr,
+        &state.encryption_key,
+    )
+    .await?;
 
     Ok(Json(serde_json::json!({ "refunded": true, "pnr": pnr })))
 }

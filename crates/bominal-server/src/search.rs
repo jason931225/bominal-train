@@ -27,40 +27,13 @@ pub struct SearchRequest {
     pub available_only: Option<bool>,
 }
 
-/// Unified train result (provider-agnostic).
-#[derive(Debug, Serialize)]
-pub struct TrainResult {
-    pub provider: String,
-    pub train_type: String,
-    pub train_type_name: String,
-    pub train_number: String,
-    pub dep_station: String,
-    pub dep_date: String,
-    pub dep_time: String,
-    pub arr_station: String,
-    pub arr_time: String,
-    pub general_available: bool,
-    pub special_available: bool,
-    pub standby_available: bool,
-}
-
-/// Station entry for a provider.
-#[derive(Debug, Serialize)]
-pub struct StationEntry {
-    pub name_ko: String,
-    pub name_en: String,
-    pub name_ja: String,
-}
-
 /// POST /api/search — search for trains.
 pub async fn search_trains(
     user: AuthUser,
     State(state): State<SharedState>,
     Json(req): Json<SearchRequest>,
-) -> Result<Json<Vec<TrainResult>>, AppError> {
-    let available_only = req.available_only.unwrap_or(false);
-
-    // Verify user has valid credentials for this provider
+) -> Result<Json<Vec<bominal_service::search::TrainInfo>>, AppError> {
+    // Verify user has valid credentials for this provider (auth concern stays in handler)
     let cred =
         bominal_db::provider::find_by_user_and_provider(&state.db, user.user_id, &req.provider)
             .await
@@ -82,27 +55,27 @@ pub async fn search_trains(
         }
     }
 
-    match req.provider.as_str() {
-        "SRT" => search_srt(&req, available_only).await,
-        "KTX" => search_ktx(&req, available_only).await,
-        _ => Err(AppError::BadRequest(format!(
-            "Invalid provider: {}",
-            req.provider
-        ))),
-    }
+    let available_only = req.available_only.unwrap_or(false);
+
+    let result = bominal_service::search::search_trains(
+        &req.provider,
+        &req.departure,
+        &req.arrival,
+        req.date.as_deref(),
+        req.time.as_deref(),
+        available_only,
+    )
+    .await?;
+
+    Ok(Json(result))
 }
 
 /// GET /api/stations/:provider — list stations for a provider.
 pub async fn list_stations(
     Path(provider): Path<String>,
-) -> Result<Json<Vec<StationEntry>>, AppError> {
-    match provider.as_str() {
-        "SRT" => Ok(Json(srt_stations())),
-        "KTX" => Ok(Json(ktx_stations())),
-        _ => Err(AppError::BadRequest(format!(
-            "Invalid provider: {provider}"
-        ))),
-    }
+) -> Result<Json<Vec<bominal_service::search::StationInfo>>, AppError> {
+    let result = bominal_service::search::list_stations(&provider)?;
+    Ok(Json(result))
 }
 
 // ── Station suggest ─────────────────────────────────────────────────
@@ -196,126 +169,4 @@ pub async fn suggest_stations(
         corrected_query: result.corrected_query,
         autocorrect_applied: result.autocorrect_applied,
     }))
-}
-
-// ── Provider-specific search ─────────────────────────────────────────
-
-async fn search_srt(
-    req: &SearchRequest,
-    available_only: bool,
-) -> Result<Json<Vec<TrainResult>>, AppError> {
-    let client = bominal_provider::srt::SrtClient::new();
-
-    let trains = client
-        .search_train(
-            &req.departure,
-            &req.arrival,
-            req.date.as_deref(),
-            req.time.as_deref(),
-            available_only,
-        )
-        .await
-        .map_err(map_provider_error)?;
-
-    let results: Vec<TrainResult> = trains
-        .iter()
-        .map(|t| TrainResult {
-            provider: "SRT".to_string(),
-            train_type: t.train_code.clone(),
-            train_type_name: t.display_name().to_string(),
-            train_number: t.train_number.clone(),
-            dep_station: t.dep_station_name.clone(),
-            dep_date: t.dep_date.clone(),
-            dep_time: t.dep_time.clone(),
-            arr_station: t.arr_station_name.clone(),
-            arr_time: t.arr_time.clone(),
-            general_available: t.general_seat_available(),
-            special_available: t.special_seat_available(),
-            standby_available: t.reserve_standby_available(),
-        })
-        .collect();
-
-    Ok(Json(results))
-}
-
-async fn search_ktx(
-    req: &SearchRequest,
-    available_only: bool,
-) -> Result<Json<Vec<TrainResult>>, AppError> {
-    let client = bominal_provider::ktx::KtxClient::new();
-
-    let trains = client
-        .search_train(
-            &req.departure,
-            &req.arrival,
-            req.date.as_deref(),
-            req.time.as_deref(),
-            available_only,
-        )
-        .await
-        .map_err(map_provider_error)?;
-
-    let results: Vec<TrainResult> = trains
-        .iter()
-        .map(|t| TrainResult {
-            provider: "KTX".to_string(),
-            train_type: t.train_type.clone(),
-            train_type_name: t.display_name().to_string(),
-            train_number: t.train_no.clone(),
-            dep_station: t.dep_name.clone(),
-            dep_date: t.dep_date.clone(),
-            dep_time: t.dep_time.clone(),
-            arr_station: t.arr_name.clone(),
-            arr_time: t.arr_time.clone(),
-            general_available: t.general_seat_available(),
-            special_available: t.special_seat_available(),
-            standby_available: t.waiting_available(),
-        })
-        .collect();
-
-    Ok(Json(results))
-}
-
-// ── Station lists ────────────────────────────────────────────────────
-
-fn srt_stations() -> Vec<StationEntry> {
-    bominal_domain::i18n::stations::SRT_STATIONS
-        .iter()
-        .map(|s| StationEntry {
-            name_ko: s.korean.to_string(),
-            name_en: s.english.to_string(),
-            name_ja: s.japanese.to_string(),
-        })
-        .collect()
-}
-
-fn ktx_stations() -> Vec<StationEntry> {
-    bominal_domain::i18n::stations::KTX_STATIONS
-        .iter()
-        .map(|s| StationEntry {
-            name_ko: s.korean.to_string(),
-            name_en: s.english.to_string(),
-            name_ja: s.japanese.to_string(),
-        })
-        .collect()
-}
-
-// ── Error mapping ────────────────────────────────────────────────────
-
-pub(crate) fn map_provider_error(err: bominal_provider::types::ProviderError) -> AppError {
-    use bominal_provider::types::ProviderError;
-    match err {
-        ProviderError::NoResults => AppError::BadRequest("No trains found".to_string()),
-        ProviderError::SessionExpired => AppError::BadRequest(
-            "Provider session expired. Please re-verify credentials.".to_string(),
-        ),
-        ProviderError::NetworkError(e) => {
-            tracing::warn!(error = %e, "Provider network error");
-            AppError::Internal(anyhow::anyhow!("Network error"))
-        }
-        ProviderError::NetFunnelBlocked => {
-            AppError::BadRequest("Server busy. Please try again.".to_string())
-        }
-        other => AppError::BadRequest(other.to_string()),
-    }
 }

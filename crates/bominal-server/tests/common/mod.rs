@@ -3,6 +3,7 @@
 //! Each test gets its own Postgres schema for full isolation and
 //! parallel-safe execution.
 
+use std::sync::Arc;
 use std::time::Instant;
 
 use axum::Router;
@@ -12,6 +13,7 @@ use http_body_util::BodyExt;
 use sqlx::PgPool;
 use tower::ServiceExt;
 use uuid::Uuid;
+use webauthn_rs::WebauthnBuilder;
 
 use bominal_domain::crypto::encryption::EncryptionKey;
 use bominal_server::evervault::EvervaultConfig;
@@ -87,7 +89,22 @@ impl TestApp {
         .await
         .expect("failed to run passkey/expiry migration");
 
+        sqlx::raw_sql(include_str!(
+            "../../../bominal-db/migrations/20260312000002_passkey_challenge_state.sql"
+        ))
+        .execute(&pool)
+        .await
+        .expect("failed to run passkey challenge state migration");
+
         let encryption_key = EncryptionKey::from_hex(TEST_ENCRYPTION_KEY).unwrap();
+
+        let rp_origin = url::Url::parse("http://localhost:3000").unwrap();
+        let webauthn = WebauthnBuilder::new("localhost", &rp_origin)
+            .expect("Invalid WebAuthn config")
+            .rp_name("Bominal Test")
+            .allow_any_port(true)
+            .build()
+            .expect("Failed to build WebAuthn");
 
         let state = SharedState {
             db: pool.clone(),
@@ -111,6 +128,7 @@ impl TestApp {
                         .build_recorder()
                         .handle()
                 }),
+            webauthn: Arc::new(webauthn),
         };
 
         let router = Router::new().nest("/api", api_routes()).with_state(state);

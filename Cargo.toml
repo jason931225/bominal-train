@@ -7,6 +7,7 @@ members = [
     "crates/bominal-db",
     "crates/bominal-email",
     "crates/bominal-frontend",
+    "crates/bominal-service",
 ]
 
 [workspace.package]
@@ -31,7 +32,7 @@ leptos_meta = "0.8"
 leptos_router = { version = "0.8", features = ["ssr"] }
 
 # Database
-sqlx = { version = "0.8", features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "chrono", "json"] }
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "derive", "uuid", "chrono", "json"] }
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
@@ -49,16 +50,12 @@ base64 = "0.22"
 
 # Date/time
 chrono = { version = "0.4", features = ["serde"] }
-chrono-tz = "0.10"
 
 # Observability
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 metrics = "0.24"
 metrics-exporter-prometheus = "0.18"
-
-# Cache
-redis = { version = "1", features = ["tokio-comp", "connection-manager"] }
 
 # Random / distributions
 rand = "0.9"
@@ -74,7 +71,7 @@ thiserror = "2"
 anyhow = "1"
 dotenvy = "0.15"
 url = "2"
-webauthn-rs = { version = "0.5", features = ["danger-allow-state-serialisation"] }
+webauthn-rs = { version = "0.5", features = ["danger-allow-state-serialisation", "conditional-ui"] }
 webauthn-rs-proto = "0.5"
 
 # Testing
