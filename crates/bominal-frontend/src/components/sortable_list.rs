@@ -50,24 +50,24 @@ pub fn SortableList(
                         <div class="glass-card rounded-xl p-3 flex items-center justify-between page-enter"
                              style=format!("animation-delay: {}ms", idx * 50)>
                             <div class="flex items-center gap-3">
-                                <span class="w-6 h-6 rounded-full bg-[var(--theme-accent-soft)] text-[var(--theme-accent-text)] flex items-center justify-center text-xs font-bold">
+                                <span class="w-6 h-6 rounded-full bg-[var(--color-brand-primary)]/20 text-[var(--color-brand-text)] flex items-center justify-center text-xs font-bold">
                                     {idx + 1}
                                 </span>
-                                <span class="text-sm font-medium text-[var(--theme-text-primary)]">{label}</span>
+                                <span class="text-sm font-medium text-[var(--color-text-primary)]">{label}</span>
                             </div>
                             <div class="flex items-center gap-1">
                                 <button
-                                    class="p-1.5 rounded-lg hover:bg-[var(--theme-surface-hover)] text-[var(--theme-text-muted)] disabled:opacity-30"
+                                    class="p-1.5 rounded-lg hover:bg-[var(--color-interactive-hover)] text-[var(--color-text-tertiary)] disabled:opacity-30"
                                     on:click=move |_| move_up(idx)
                                     disabled=move || idx == 0
                                 >"\u{2191}"</button>
                                 <button
-                                    class="p-1.5 rounded-lg hover:bg-[var(--theme-surface-hover)] text-[var(--theme-text-muted)] disabled:opacity-30"
+                                    class="p-1.5 rounded-lg hover:bg-[var(--color-interactive-hover)] text-[var(--color-text-tertiary)] disabled:opacity-30"
                                     on:click=move |_| move_down(idx)
                                     disabled=move || { idx >= len - 1 }
                                 >"\u{2193}"</button>
                                 <button
-                                    class="p-1.5 rounded-lg hover:bg-[var(--theme-danger-soft)] text-[var(--theme-danger-text)]"
+                                    class="p-1.5 rounded-lg hover:bg-[var(--color-status-error)]/20 text-[var(--color-status-error)]"
                                     on:click=move |_| remove(idx)
                                 >"\u{00D7}"</button>
                             </div>

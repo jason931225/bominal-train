@@ -1,4 +1,4 @@
-//! Passenger type selector — counter grid for different passenger types.
+//! Passenger type selector — vertical list of counters with max total enforcement.
 
 use leptos::prelude::*;
 
@@ -7,12 +7,16 @@ use leptos::prelude::*;
 pub struct PassengerCount {
     pub ptype: String,
     pub label: String,
+    pub description: String,
     pub count: u8,
     pub min: u8,
     pub max: u8,
 }
 
-/// Grid of passenger type counters.
+/// Max total passengers across all types.
+const MAX_TOTAL: u8 = 9;
+
+/// Vertical list of passenger type counters with max total enforcement.
 #[component]
 pub fn PassengerSelector(
     /// Current passenger counts.
@@ -21,16 +25,12 @@ pub fn PassengerSelector(
     on_change: Callback<Vec<PassengerCount>>,
 ) -> impl IntoView {
     view! {
-        <div class="grid grid-cols-2 gap-3">
-            {move || passengers.get().into_iter().enumerate().map(|(idx, p)| {
-                let label = p.label.clone();
-                let count = p.count;
-                let min = p.min;
-                let max = p.max;
-
+        <div class="flex flex-col gap-4">
+            {move || passengers.get().into_iter().enumerate().map(|(idx, _p)| {
                 let decrement = move |_| {
                     let mut current = passengers.get();
-                    if current[idx].count > min {
+                    let total: u8 = current.iter().map(|p| p.count).sum();
+                    if current[idx].count > current[idx].min && total > 1 {
                         current[idx].count -= 1;
                         on_change.run(current);
                     }
@@ -38,28 +38,44 @@ pub fn PassengerSelector(
 
                 let increment = move |_| {
                     let mut current = passengers.get();
-                    if current[idx].count < max {
+                    let total: u8 = current.iter().map(|p| p.count).sum();
+                    if current[idx].count < current[idx].max && total < MAX_TOTAL {
                         current[idx].count += 1;
                         on_change.run(current);
                     }
                 };
 
                 view! {
-                    <div class="glass-card rounded-xl p-3 flex items-center justify-between">
-                        <span class="text-sm font-medium text-[var(--theme-text-primary)]">{label}</span>
-                        <div class="flex items-center gap-2">
+                    <div class="flex items-center justify-between">
+                        <div class="flex flex-col">
+                            <span class="font-semibold text-sm text-[var(--color-text-primary)]">
+                                {move || passengers.get()[idx].label.clone()}
+                            </span>
+                            <span class="text-xs text-[var(--color-text-disabled)]">
+                                {move || passengers.get()[idx].description.clone()}
+                            </span>
+                        </div>
+                        <div class="flex items-center gap-3">
                             <button
-                                class="w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold bg-[var(--theme-surface-muted)] text-[var(--theme-text-muted)] hover:bg-[var(--theme-surface-hover)] disabled:opacity-30"
+                                class="w-8 h-8 rounded-full flex items-center justify-center border border-[var(--color-border-default)] text-[var(--color-text-tertiary)] hover:border-[var(--color-border-focus)] disabled:opacity-30 transition-colors bg-[var(--color-bg-elevated)] shadow-sm"
                                 on:click=decrement
-                                disabled=move || count <= min
+                                disabled=move || {
+                                    let current = passengers.get();
+                                    let total: u8 = current.iter().map(|p| p.count).sum();
+                                    current[idx].count <= current[idx].min || total <= 1
+                                }
                             >"-"</button>
-                            <span class="w-6 text-center text-sm font-semibold text-[var(--theme-text-strong)]">
-                                {count}
+                            <span class="w-4 text-center text-sm font-semibold text-[var(--color-text-primary)]">
+                                {move || passengers.get()[idx].count}
                             </span>
                             <button
-                                class="w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold bg-[var(--theme-accent-soft)] text-[var(--theme-accent-text)] hover:bg-[var(--theme-accent-soft-strong)] disabled:opacity-30"
+                                class="w-8 h-8 rounded-full flex items-center justify-center border border-[var(--color-border-default)] text-[var(--color-text-tertiary)] hover:border-[var(--color-border-focus)] disabled:opacity-30 transition-colors bg-[var(--color-bg-elevated)] shadow-sm"
                                 on:click=increment
-                                disabled=move || count >= max
+                                disabled=move || {
+                                    let current = passengers.get();
+                                    let total: u8 = current.iter().map(|p| p.count).sum();
+                                    current[idx].count >= current[idx].max || total >= MAX_TOTAL
+                                }
                             >"+"</button>
                         </div>
                     </div>

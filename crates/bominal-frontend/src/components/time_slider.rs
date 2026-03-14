@@ -2,18 +2,17 @@
 
 use leptos::prelude::*;
 
-/// Format a slot index (0-48) as HH:MM.
-#[allow(clippy::manual_is_multiple_of)]
+/// Format a slot index (0-47) as HH:MM.
 fn format_time_slot(slot: u32) -> String {
     let hours = slot / 2;
     let minutes = if slot % 2 == 0 { "00" } else { "30" };
     format!("{hours:02}:{minutes}")
 }
 
-/// A time range slider with 30-minute intervals.
+/// A time range slider with 30-minute intervals (0-47 → 00:00–23:30).
 #[component]
 pub fn TimeSlider(
-    /// Current slot value (0-48).
+    /// Current slot value (0-47).
     value: ReadSignal<u32>,
     /// Callback when value changes.
     on_change: Callback<u32>,
@@ -24,15 +23,15 @@ pub fn TimeSlider(
     view! {
         <div class="space-y-2">
             <div class="flex items-center justify-between">
-                <label class="text-sm font-medium text-[var(--theme-text-primary)]">{label}</label>
-                <span class="text-sm font-semibold text-[var(--theme-accent-text)] bg-[var(--theme-accent-soft)] px-2 py-0.5 rounded-md">
+                <label class="text-sm font-medium text-[var(--color-text-primary)]">{label}</label>
+                <span class="text-sm font-semibold text-[var(--color-brand-text)] bg-[var(--color-brand-primary)]/20 px-2 py-0.5 rounded-md">
                     {move || format_time_slot(value.get())}
                 </span>
             </div>
             <input
                 type="range"
                 min="0"
-                max="48"
+                max="47"
                 step="1"
                 class="w-full h-2 rounded-full appearance-none cursor-pointer theme-range"
                 prop:value=move || value.get().to_string()
@@ -41,8 +40,13 @@ pub fn TimeSlider(
                         on_change.run(v);
                     }
                 }
-                style=move || format!("--slider-progress: {}%", (value.get() as f64 / 48.0) * 100.0)
+                style=move || format!("--slider-progress: {}%", (value.get() as f64 / 47.0) * 100.0)
             />
+            <div class="flex justify-between text-[10px] text-[var(--color-text-disabled)] font-medium">
+                <span>"00:00"</span>
+                <span>"12:00"</span>
+                <span>"23:30"</span>
+            </div>
         </div>
     }
 }

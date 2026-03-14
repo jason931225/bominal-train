@@ -17,7 +17,7 @@ pub fn BottomSheet(
     let title_view = title.map(|t| {
         view! {
             <div class="px-6 pb-3">
-                <h3 class="text-lg font-semibold text-[var(--theme-text-strong)]">{t}</h3>
+                <h3 class="text-lg font-semibold text-[var(--color-text-primary)]">{t}</h3>
             </div>
         }
     });
@@ -34,7 +34,7 @@ pub fn BottomSheet(
             <div class="absolute bottom-0 left-0 right-0 glass-panel rounded-t-3xl sheet-enter safe-area-pb">
                 // Drag handle
                 <div class="flex justify-center pt-3 pb-2">
-                    <div class="w-10 h-1 rounded-full bg-[var(--theme-text-subtle)] opacity-40"></div>
+                    <div class="w-10 h-1 rounded-full bg-[var(--color-text-disabled)] opacity-40"></div>
                 </div>
                 // Title
                 {title_view}
