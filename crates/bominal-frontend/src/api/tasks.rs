@@ -65,12 +65,13 @@ pub async fn create_task(
     Ok(task)
 }
 
-/// Update a task (status, notify, target_trains).
+/// Update a task (status, notify, auto_retry, target_trains).
 #[server(prefix = "/sfn")]
 pub async fn update_task(
     task_id: String,
     status: Option<String>,
     notify_enabled: Option<bool>,
+    auto_retry: Option<bool>,
     target_trains: Option<String>,
 ) -> Result<TaskInfo, ServerFnError> {
     let (pool, user_id) = require_auth().await?;
@@ -89,6 +90,7 @@ pub async fn update_task(
         user_id,
         status.as_deref(),
         notify_enabled,
+        auto_retry,
         trains.as_ref(),
     )
     .await

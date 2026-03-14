@@ -97,6 +97,7 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     m.insert("task.cancelling", "Cancelling...");
     m.insert("task.resume", "Resume");
     m.insert("task.pause", "Pause");
+    m.insert("task.auto_retry", "Auto Retry");
     m.insert("task.created", "Reservation task created!");
 
     // Settings

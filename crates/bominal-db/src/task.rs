@@ -189,6 +189,7 @@ pub async fn update_task(
     user_id: Uuid,
     status: Option<&str>,
     notify_enabled: Option<bool>,
+    auto_retry: Option<bool>,
     target_trains: Option<&serde_json::Value>,
 ) -> Result<Option<TaskRow>, sqlx::Error> {
     // Build dynamic SET clause
@@ -201,6 +202,10 @@ pub async fn update_task(
     }
     if notify_enabled.is_some() {
         sets.push(format!("notify_enabled = ${param_idx}"));
+        param_idx += 1;
+    }
+    if auto_retry.is_some() {
+        sets.push(format!("auto_retry = ${param_idx}"));
         param_idx += 1;
     }
     if target_trains.is_some() {
@@ -225,6 +230,9 @@ pub async fn update_task(
     }
     if let Some(n) = notify_enabled {
         q = q.bind(n);
+    }
+    if let Some(r) = auto_retry {
+        q = q.bind(r);
     }
     if let Some(t) = target_trains {
         q = q.bind(t);

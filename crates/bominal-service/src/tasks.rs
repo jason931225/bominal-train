@@ -22,6 +22,7 @@ pub struct TaskInfo {
     pub auto_pay: bool,
     pub payment_card_id: Option<Uuid>,
     pub notify_enabled: bool,
+    pub auto_retry: bool,
     pub status: String,
     pub reservation_number: Option<String>,
     pub attempt_count: i32,
@@ -125,20 +126,21 @@ pub async fn create(
     Ok(row_to_info(&row))
 }
 
-/// Update a task (status, notify, target_trains).
+/// Update a task (status, notify, auto_retry, target_trains).
 pub async fn update(
     db: &DbPool,
     task_id: Uuid,
     user_id: Uuid,
     status: Option<&str>,
     notify_enabled: Option<bool>,
+    auto_retry: Option<bool>,
     target_trains: Option<&serde_json::Value>,
 ) -> Result<TaskInfo, ServiceError> {
     if let Some(s) = status {
         validate_status_update(s)?;
     }
 
-    let row = bominal_db::task::update_task(db, task_id, user_id, status, notify_enabled, target_trains)
+    let row = bominal_db::task::update_task(db, task_id, user_id, status, notify_enabled, auto_retry, target_trains)
         .await?
         .ok_or_else(|| ServiceError::not_found("Task not found"))?;
 
@@ -174,6 +176,7 @@ fn row_to_info(row: &bominal_db::task::TaskRow) -> TaskInfo {
         auto_pay: row.auto_pay,
         payment_card_id: row.payment_card_id,
         notify_enabled: row.notify_enabled,
+        auto_retry: row.auto_retry,
         status: row.status.clone(),
         reservation_number: row.reservation_number.clone(),
         attempt_count: row.attempt_count,

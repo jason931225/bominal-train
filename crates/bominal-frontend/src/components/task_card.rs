@@ -303,6 +303,7 @@ pub fn TaskCard(
                 {show_actions.then(|| {
                     let task_id_notify = task_id.clone();
                     let task_id_pause = task_id.clone();
+                    let task_id_retry = task_id.clone();
                     let cancel_btn_id_ref = cancel_btn_id.clone();
                     let _cancel_modal_id_ref = cancel_modal_id.clone();
                     view! {
@@ -320,7 +321,7 @@ pub fn TaskCard(
                             })}
 
                             // Action button grid
-                            <div class="grid grid-cols-3 gap-2">
+                            <div class="grid grid-cols-4 gap-2">
                                 // Notify toggle
                                 <ActionForm action=update_action>
                                     <input type="hidden" name="task_id" value=task_id_notify />
@@ -370,6 +371,26 @@ pub fn TaskCard(
                                             }.into_any()
                                         }}
                                         {if task.status == "idle" { t("task.resume") } else { t("task.pause") }}
+                                    </button>
+                                </ActionForm>
+
+                                // Auto-retry toggle
+                                <ActionForm action=update_action>
+                                    <input type="hidden" name="task_id" value=task_id_retry />
+                                    <input type="hidden" name="auto_retry" value=(!task.auto_retry).to_string() />
+                                    <button type="submit" class=format!(
+                                        "w-full min-h-[2.5rem] px-2 rounded-xl font-medium text-xs flex items-center justify-center gap-1.5 border transition-colors {}",
+                                        if task.auto_retry {
+                                            "bg-[var(--color-brand-primary)]/20 border-[var(--color-brand-text)]/30 text-[var(--color-brand-text)]"
+                                        } else {
+                                            "bg-[var(--color-bg-elevated)] border-[var(--color-border-default)] text-[var(--color-text-tertiary)] hover:bg-[var(--color-interactive-hover)]"
+                                        }
+                                    )>
+                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                                            <polyline points="1 4 1 10 7 10" />
+                                            <path d="M3.51 15a9 9 0 102.13-9.36L1 10" />
+                                        </svg>
+                                        {t("task.auto_retry")}
                                     </button>
                                 </ActionForm>
 

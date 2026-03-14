@@ -36,6 +36,7 @@ pub struct CreateTaskRequest {
 pub struct UpdateTaskRequest {
     pub status: Option<String>,
     pub notify_enabled: Option<bool>,
+    pub auto_retry: Option<bool>,
     pub target_trains: Option<serde_json::Value>,
 }
 
@@ -97,6 +98,7 @@ pub async fn update_task(
         user.user_id,
         req.status.as_deref(),
         req.notify_enabled,
+        req.auto_retry,
         req.target_trains.as_ref(),
     )
     .await?;

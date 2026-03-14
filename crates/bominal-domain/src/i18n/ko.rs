@@ -97,6 +97,7 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     m.insert("task.cancelling", "취소 중...");
     m.insert("task.resume", "재개");
     m.insert("task.pause", "일시정지");
+    m.insert("task.auto_retry", "자동 재시도");
     m.insert("task.created", "예약 작업이 생성되었습니다");
 
     // Settings

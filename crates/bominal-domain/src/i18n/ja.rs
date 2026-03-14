@@ -97,6 +97,7 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     m.insert("task.cancelling", "キャンセル中...");
     m.insert("task.resume", "再開");
     m.insert("task.pause", "一時停止");
+    m.insert("task.auto_retry", "自動リトライ");
     m.insert("task.created", "予約タスクが作成されました");
 
     // Settings
