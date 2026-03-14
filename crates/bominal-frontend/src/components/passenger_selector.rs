@@ -11,6 +11,8 @@ pub struct PassengerCount {
     pub count: u8,
     pub min: u8,
     pub max: u8,
+    /// If true, the row is greyed out and non-interactive (not yet implemented).
+    pub disabled: bool,
 }
 
 /// Max total passengers across all types.
@@ -45,12 +47,21 @@ pub fn PassengerSelector(
                     }
                 };
 
+                let is_disabled = move || passengers.get()[idx].disabled;
+
                 view! {
-                    <div class="flex items-center justify-between">
+                    <div class=move || if is_disabled() { "flex items-center justify-between opacity-40" } else { "flex items-center justify-between" }>
                         <div class="flex flex-col">
-                            <span class="font-semibold text-sm text-[var(--color-text-primary)]">
-                                {move || passengers.get()[idx].label.clone()}
-                            </span>
+                            <div class="flex items-center gap-2">
+                                <span class="font-semibold text-sm text-[var(--color-text-primary)]">
+                                    {move || passengers.get()[idx].label.clone()}
+                                </span>
+                                {move || is_disabled().then(|| view! {
+                                    <span class="text-[10px] px-1.5 py-0.5 rounded bg-[var(--color-bg-sunken)] text-[var(--color-text-disabled)] border border-[var(--color-border-subtle)]">
+                                        "—"
+                                    </span>
+                                })}
+                            </div>
                             <span class="text-xs text-[var(--color-text-disabled)]">
                                 {move || passengers.get()[idx].description.clone()}
                             </span>
@@ -62,7 +73,7 @@ pub fn PassengerSelector(
                                 disabled=move || {
                                     let current = passengers.get();
                                     let total: u8 = current.iter().map(|p| p.count).sum();
-                                    current[idx].count <= current[idx].min || total <= 1
+                                    is_disabled() || current[idx].count <= current[idx].min || total <= 1
                                 }
                             >"-"</button>
                             <span class="w-4 text-center text-sm font-semibold text-[var(--color-text-primary)]">
@@ -74,7 +85,7 @@ pub fn PassengerSelector(
                                 disabled=move || {
                                     let current = passengers.get();
                                     let total: u8 = current.iter().map(|p| p.count).sum();
-                                    current[idx].count >= current[idx].max || total >= MAX_TOTAL
+                                    is_disabled() || current[idx].count >= current[idx].max || total >= MAX_TOTAL
                                 }
                             >"+"</button>
                         </div>

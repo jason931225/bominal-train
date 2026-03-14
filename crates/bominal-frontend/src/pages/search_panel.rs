@@ -27,6 +27,7 @@ struct SelectedTrain {
 }
 
 /// Build default passenger counts (7 types).
+/// `infant` and `merit` are greyed out — not yet supported end-to-end for KTX.
 fn default_passengers() -> Vec<PassengerCount> {
     vec![
         PassengerCount {
@@ -36,6 +37,7 @@ fn default_passengers() -> Vec<PassengerCount> {
             count: 1,
             min: 0,
             max: 9,
+            disabled: false,
         },
         PassengerCount {
             ptype: "child".into(),
@@ -44,14 +46,7 @@ fn default_passengers() -> Vec<PassengerCount> {
             count: 0,
             min: 0,
             max: 9,
-        },
-        PassengerCount {
-            ptype: "infant".into(),
-            label: t("passenger.infant").into(),
-            description: t("passenger.infant_desc").into(),
-            count: 0,
-            min: 0,
-            max: 9,
+            disabled: false,
         },
         PassengerCount {
             ptype: "senior".into(),
@@ -60,6 +55,7 @@ fn default_passengers() -> Vec<PassengerCount> {
             count: 0,
             min: 0,
             max: 9,
+            disabled: false,
         },
         PassengerCount {
             ptype: "severe".into(),
@@ -68,6 +64,7 @@ fn default_passengers() -> Vec<PassengerCount> {
             count: 0,
             min: 0,
             max: 9,
+            disabled: false,
         },
         PassengerCount {
             ptype: "mild".into(),
@@ -76,6 +73,17 @@ fn default_passengers() -> Vec<PassengerCount> {
             count: 0,
             min: 0,
             max: 9,
+            disabled: false,
+        },
+        // Not yet supported end-to-end for KTX — greyed out until runner parity is complete.
+        PassengerCount {
+            ptype: "infant".into(),
+            label: t("passenger.infant").into(),
+            description: t("passenger.infant_desc").into(),
+            count: 0,
+            min: 0,
+            max: 9,
+            disabled: true,
         },
         PassengerCount {
             ptype: "merit".into(),
@@ -84,6 +92,7 @@ fn default_passengers() -> Vec<PassengerCount> {
             count: 0,
             min: 0,
             max: 9,
+            disabled: true,
         },
     ]
 }
