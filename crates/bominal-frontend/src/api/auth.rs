@@ -142,6 +142,28 @@ pub async fn logout() -> Result<(), ServerFnError> {
     Ok(())
 }
 
+/// Verify email address using token from verification email.
+#[server(prefix = "/sfn")]
+pub async fn verify_email(token: String) -> Result<(), ServerFnError> {
+    let pool = use_context::<bominal_service::DbPool>()
+        .ok_or_else(|| ServerFnError::new("Server misconfigured"))?;
+
+    bominal_service::auth::verify_email(&pool, &token)
+        .await
+        .map_err(|e| ServerFnError::new(e.to_string()))
+}
+
+/// Reset password using token from reset email.
+#[server(prefix = "/sfn")]
+pub async fn reset_password(token: String, new_password: String) -> Result<(), ServerFnError> {
+    let pool = use_context::<bominal_service::DbPool>()
+        .ok_or_else(|| ServerFnError::new("Server misconfigured"))?;
+
+    bominal_service::auth::reset_password(&pool, &token, &new_password)
+        .await
+        .map_err(|e| ServerFnError::new(e.to_string()))
+}
+
 /// Get current authenticated user info (used for auth checks on page load).
 #[server(prefix = "/sfn")]
 pub async fn get_current_user() -> Result<Option<UserInfo>, ServerFnError> {

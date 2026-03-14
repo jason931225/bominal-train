@@ -59,6 +59,14 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     m.insert("auth.get_started", "몇 초 만에 시작하세요");
     m.insert("auth.enter_email_password", "이메일과 비밀번호를 입력하세요");
     m.insert("auth.reset_link_sent", "재설정 링크를 보냈습니다! 이메일을 확인하세요.");
+    m.insert("auth.verifying", "인증 중...");
+    m.insert("auth.email_verified", "이메일 인증 완료");
+    m.insert("auth.email_verified_desc", "이메일이 성공적으로 인증되었습니다.");
+    m.insert("auth.verify_failed", "인증 실패");
+    m.insert("auth.go_to_login", "로그인으로 돌아가기");
+    m.insert("auth.new_password", "새 비밀번호");
+    m.insert("auth.password_reset_success", "비밀번호가 재설정되었습니다.");
+    m.insert("auth.missing_token", "유효하지 않은 링크입니다.");
 
     // Search
     m.insert("search.departure", "출발역");

@@ -59,6 +59,14 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     m.insert("auth.get_started", "Get started in seconds");
     m.insert("auth.enter_email_password", "Enter your email and password");
     m.insert("auth.reset_link_sent", "Reset link sent! Check your email.");
+    m.insert("auth.verifying", "Verifying...");
+    m.insert("auth.email_verified", "Email Verified");
+    m.insert("auth.email_verified_desc", "Your email has been verified successfully.");
+    m.insert("auth.verify_failed", "Verification Failed");
+    m.insert("auth.go_to_login", "Go to Login");
+    m.insert("auth.new_password", "New password");
+    m.insert("auth.password_reset_success", "Password has been reset successfully.");
+    m.insert("auth.missing_token", "Invalid or missing link.");
 
     // Search
     m.insert("search.departure", "Departure");

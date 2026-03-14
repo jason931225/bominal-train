@@ -59,6 +59,14 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     m.insert("auth.get_started", "数秒で始められます");
     m.insert("auth.enter_email_password", "メールアドレスとパスワードを入力");
     m.insert("auth.reset_link_sent", "リセットリンクを送信しました！メールを確認してください。");
+    m.insert("auth.verifying", "認証中...");
+    m.insert("auth.email_verified", "メール認証完了");
+    m.insert("auth.email_verified_desc", "メールが正常に認証されました。");
+    m.insert("auth.verify_failed", "認証失敗");
+    m.insert("auth.go_to_login", "ログインに戻る");
+    m.insert("auth.new_password", "新しいパスワード");
+    m.insert("auth.password_reset_success", "パスワードが再設定されました。");
+    m.insert("auth.missing_token", "無効なリンクです。");
 
     // Search
     m.insert("search.departure", "出発駅");

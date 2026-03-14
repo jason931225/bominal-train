@@ -12,9 +12,15 @@ use leptos_router::{
 use crate::components::bottom_nav::BottomNav;
 use crate::i18n::t;
 use crate::pages::{
-    auth_page::AuthPage, home_view::HomeView, reservations_view::ReservationsView,
-    schedule_results::ScheduleResults, search_panel::SearchPanel, settings_view::SettingsView,
+    auth_page::AuthPage,
+    home_view::HomeView,
+    reservations_view::ReservationsView,
+    reset_password_page::ResetPasswordPage,
+    schedule_results::ScheduleResults,
+    search_panel::SearchPanel,
+    settings_view::SettingsView,
     tasks_view::TasksView,
+    verify_email_page::VerifyEmailPage,
 };
 
 /// HTML shell for SSR — renders the full `<html>` document.
@@ -85,6 +91,8 @@ pub fn App() -> impl IntoView {
                         <Route path=path!("/tasks") view=TasksView />
                         <Route path=path!("/reservations") view=ReservationsView />
                         <Route path=path!("/settings") view=SettingsView />
+                        <Route path=path!("/verify-email") view=VerifyEmailPage />
+                        <Route path=path!("/reset-password") view=ResetPasswordPage />
                     </Routes>
                 </main>
                 <BottomNav />
