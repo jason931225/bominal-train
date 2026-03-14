@@ -30,8 +30,9 @@ pub fn shell() -> impl IntoView {
                 <meta name="apple-mobile-web-app-capable" content="yes" />
                 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
                 <link rel="stylesheet" href="/style.css" />
-                // Evervault JS SDK
+                // Evervault JS SDK + interop
                 <script src="https://js.evervault.com/v2"></script>
+                <script src="/interop.js" defer></script>
                 // Theme init script — runs before paint to prevent FOUC
                 <script>{r#"
 (function(){
@@ -57,10 +58,17 @@ pub fn shell() -> impl IntoView {
 pub fn App() -> impl IntoView {
     provide_meta_context();
 
+    let ev_ids = use_context::<crate::EvervaultIds>();
+
     view! {
         <Title text="Bominal" />
         <Meta name="description" content="Korean train reservation assistant" />
         <Stylesheet href="/style.css" />
+
+        {move || ev_ids.as_ref().map(|ids| view! {
+            <Meta name="ev-team-id" content=ids.team_id.clone() />
+            <Meta name="ev-app-id" content=ids.app_id.clone() />
+        })}
 
         <Router>
             <div class="relative min-h-screen pb-16">
