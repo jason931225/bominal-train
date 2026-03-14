@@ -39,11 +39,29 @@ pub fn format_cost(raw: &str) -> String {
 /// Map a task status string to a UI variant name for `StatusChip`.
 pub fn status_variant(status: &str) -> &'static str {
     match status {
-        "queued" => "idle",
+        "queued" => "queued",
         "running" => "running",
+        "idle" => "warning",
+        "awaiting_payment" => "info",
         "confirmed" => "success",
         "failed" | "error" => "error",
         "cancelled" => "warning",
-        _ => "info",
+        _ => "neutral",
     }
+}
+
+/// Convert a time slot (0-47) to "HHMMSS" format for the server.
+/// Slot 0 = "000000", slot 1 = "003000", slot 16 = "080000", slot 47 = "233000".
+pub fn slot_to_time_string(slot: u32) -> String {
+    let hours = slot / 2;
+    let minutes = if slot % 2 == 0 { 0 } else { 30 };
+    format!("{hours:02}{minutes:02}00")
+}
+
+/// Format a time slot (0-47) for display as "HH:MM".
+/// Slot 0 = "00:00", slot 16 = "08:00", slot 47 = "23:30".
+pub fn format_time_slot(slot: u32) -> String {
+    let hours = slot / 2;
+    let minutes = if slot % 2 == 0 { "00" } else { "30" };
+    format!("{hours:02}:{minutes}")
 }

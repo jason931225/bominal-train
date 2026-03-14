@@ -12,5 +12,6 @@ pub mod skeleton;
 pub mod sortable_list;
 pub mod sse_reload;
 pub mod status_chip;
+pub mod task_card;
 pub mod ticket_card;
 pub mod time_slider;
