@@ -43,8 +43,12 @@ COPY crates/ crates/
 # Touch source files so cargo detects changes over the stubs
 RUN find crates -name "*.rs" -exec touch {} +
 
-# Install Tailwind CSS v4 CLI globally
-RUN npm install -g @tailwindcss/cli esbuild
+# Install esbuild globally for TypeScript compilation
+RUN npm install -g esbuild
+
+# Install Tailwind CSS v4 standalone binary — bundles the framework, no node_modules needed
+RUN curl -fsSL https://github.com/tailwindlabs/tailwindcss/releases/latest/download/tailwindcss-linux-x64 \
+    -o /usr/local/bin/tailwindcss && chmod +x /usr/local/bin/tailwindcss
 
 # Compile TypeScript interop
 RUN esbuild crates/bominal-frontend/ts/interop.ts \
