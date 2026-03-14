@@ -1,7 +1,7 @@
 //! SRT passenger types and form-encoding for reservation requests.
 //!
 //! Ported from `third_party/srt/SRT/passenger.py`.
-//! Type codes: "1"=adult, "5"=child, "4"=senior, "2"=disability1-3, "3"=disability4-6.
+//! Type codes: "1"=adult, "5"=child, "4"=senior, "2"=severe disability, "3"=mild disability.
 
 /// Passenger type for SRT reservations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -12,10 +12,10 @@ pub enum PassengerType {
     Child,
     /// 경로 (Senior) — type code "4"
     Senior,
-    /// 장애 1~3급 (Disability grade 1-3) — type code "2"
-    Disability1To3,
-    /// 장애 4~6급 (Disability grade 4-6) — type code "3"
-    Disability4To6,
+    /// 중증장애 (Severe Disability, grades 1-3) — type code "2"
+    SevereDisability,
+    /// 경증장애 (Mild Disability, grades 4-6) — type code "3"
+    MildDisability,
 }
 
 impl PassengerType {
@@ -25,8 +25,8 @@ impl PassengerType {
             Self::Adult => "1",
             Self::Child => "5",
             Self::Senior => "4",
-            Self::Disability1To3 => "2",
-            Self::Disability4To6 => "3",
+            Self::SevereDisability => "2",
+            Self::MildDisability => "3",
         }
     }
 }
@@ -157,8 +157,8 @@ mod tests {
         assert_eq!(PassengerType::Adult.type_code(), "1");
         assert_eq!(PassengerType::Child.type_code(), "5");
         assert_eq!(PassengerType::Senior.type_code(), "4");
-        assert_eq!(PassengerType::Disability1To3.type_code(), "2");
-        assert_eq!(PassengerType::Disability4To6.type_code(), "3");
+        assert_eq!(PassengerType::SevereDisability.type_code(), "2");
+        assert_eq!(PassengerType::MildDisability.type_code(), "3");
     }
 
     #[test]

@@ -892,8 +892,10 @@ fn parse_passengers(passengers: &serde_json::Value) -> Vec<PassengerGroup> {
                         "adult" => PassengerType::Adult,
                         "child" => PassengerType::Child,
                         "senior" => PassengerType::Senior,
-                        "disability1to3" => PassengerType::Disability1To3,
-                        "disability4to6" => PassengerType::Disability4To6,
+                        "severe" => PassengerType::SevereDisability,
+                        "mild" => PassengerType::MildDisability,
+                        // infant/merit not yet supported by provider — skip silently
+                        "infant" | "merit" => return None,
                         _ => return None,
                     };
                     Some(PassengerGroup::new(passenger_type, count))
@@ -1011,5 +1013,30 @@ mod tests {
         let groups = parse_passengers(&json);
         assert_eq!(groups.len(), 1);
         assert_eq!(groups[0].passenger_type, PassengerType::Child);
+    }
+
+    #[test]
+    fn parse_passengers_disability_types() {
+        let json = serde_json::json!([
+            {"type": "adult", "count": 1},
+            {"type": "severe", "count": 1},
+            {"type": "mild", "count": 1}
+        ]);
+        let groups = parse_passengers(&json);
+        assert_eq!(groups.len(), 3);
+        assert_eq!(groups[1].passenger_type, PassengerType::SevereDisability);
+        assert_eq!(groups[2].passenger_type, PassengerType::MildDisability);
+    }
+
+    #[test]
+    fn parse_passengers_skips_infant_and_merit() {
+        let json = serde_json::json!([
+            {"type": "adult", "count": 1},
+            {"type": "infant", "count": 1},
+            {"type": "merit", "count": 1}
+        ]);
+        let groups = parse_passengers(&json);
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].passenger_type, PassengerType::Adult);
     }
 }
