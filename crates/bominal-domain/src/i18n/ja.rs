@@ -20,6 +20,45 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     m.insert("auth.logout", "ログアウト");
     m.insert("auth.login_subtitle", "列車チケットの予約を始めましょう");
     m.insert("auth.email_exists", "既に登録されたメールアドレスです");
+    m.insert("auth.passkey_signin", "パスキーでサインイン");
+    m.insert("auth.welcome_back", "おかえりなさい");
+    m.insert("auth.passkey_subtitle", "パスキーまたはパスワードでサインイン");
+    m.insert("auth.continue_email", "メールで続ける");
+    m.insert("auth.use_passkey", "パスキーを使用");
+    m.insert("auth.sign_in", "サインイン");
+    m.insert("auth.create_account", "アカウント作成");
+    m.insert("auth.no_account", "アカウントをお持ちでないですか？");
+    m.insert("auth.signup_link", "新規登録");
+    m.insert("auth.has_account", "既にアカウントをお持ちですか？");
+    m.insert("auth.signin_link", "サインイン");
+    m.insert("auth.forgot_password", "パスワードをお忘れですか？");
+    m.insert("auth.reset_password", "パスワードリセット");
+    m.insert("auth.reset_subtitle", "メールでリセットリンクをお送りします");
+    m.insert("auth.send_reset_link", "リセットリンクを送信");
+    m.insert("auth.back_to_signin", "サインインに戻る");
+    m.insert("auth.back_to_signup", "新規登録に戻る");
+    m.insert("auth.confirm_password", "パスワード確認");
+    m.insert("auth.passwords_match", "パスワードが一致しています");
+    m.insert("auth.passwords_mismatch", "パスワードが一致しません");
+    m.insert("auth.pw_weak", "弱い");
+    m.insert("auth.pw_fair", "普通");
+    m.insert("auth.pw_good", "良好");
+    m.insert("auth.pw_strong", "強い");
+    m.insert("auth.check_email", "メールを確認してください");
+    m.insert("auth.verify_sent_to", "確認リンクを送信しました：");
+    m.insert("auth.verify_click_link", "リンクをクリックしてアカウントを確認してください。");
+    m.insert("auth.resend_prompt", "届きませんか？迷惑メールを確認するか");
+    m.insert("auth.resend_link", "メールを再送信");
+    m.insert("auth.verified_continue", "メールを認証しました");
+    m.insert("auth.add_passkey", "パスキーを追加しますか？");
+    m.insert("auth.passkey_benefit_1", "パスワード不要で即座にサインイン");
+    m.insert("auth.passkey_benefit_2", "デバイスの生体認証で保護");
+    m.insert("auth.passkey_benefit_3", "すべてのデバイスで同期");
+    m.insert("auth.add_passkey_now", "今すぐパスキーを追加");
+    m.insert("auth.skip_for_now", "後で設定する");
+    m.insert("auth.get_started", "数秒で始められます");
+    m.insert("auth.enter_email_password", "メールアドレスとパスワードを入力");
+    m.insert("auth.reset_link_sent", "リセットリンクを送信しました！メールを確認してください。");
 
     // Search
     m.insert("search.departure", "出発駅");
@@ -175,10 +214,56 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     m.insert("task.no_completed", "完了したタスクはありません");
     m.insert("task.create_new", "新しい予約を作成");
     m.insert("task.attempts", "試行回数");
+    m.insert("task.view_details", "詳細を見る");
+    m.insert("task.hide_details", "詳細を隠す");
+    m.insert("task.notify", "通知");
+    m.insert("task.retry", "リトライ");
+    m.insert("task.started_at", "開始時間");
+    m.insert("task.last_attempt", "最終試行");
+    m.insert("task.not_started", "未開始");
+    m.insert("task.no_attempt", "試行なし");
+    m.insert("task.schedules_title", "対象列車");
+    m.insert("task.total", "合計");
+    m.insert("task.cancel_title", "タスク取消");
+    m.insert("task.cancel_description", "このタスクを取り消しますか？");
+    m.insert("task.cancel_confirm", "はい、取消");
+    m.insert("task.keep", "維持");
+    m.insert("task.pay_fare", "運賃支払");
+    m.insert("task.seat_class", "座席クラス");
+    m.insert("task.passengers_label", "乗客");
 
     // Seat labels
     m.insert("seat.general", "一般");
     m.insert("seat.special", "特室");
+
+    // Passenger types
+    m.insert("passenger.adult", "大人");
+    m.insert("passenger.adult_desc", "13歳以上");
+    m.insert("passenger.child", "子供");
+    m.insert("passenger.child_desc", "6〜12歳");
+    m.insert("passenger.infant", "幼児");
+    m.insert("passenger.infant_desc", "6歳未満");
+    m.insert("passenger.senior", "シニア");
+    m.insert("passenger.senior_desc", "65歳以上");
+    m.insert("passenger.severe", "重度障害");
+    m.insert("passenger.severe_desc", "重度障害者");
+    m.insert("passenger.mild", "軽度障害");
+    m.insert("passenger.mild_desc", "軽度障害者");
+    m.insert("passenger.merit", "有功者");
+    m.insert("passenger.merit_desc", "国家有功者");
+    m.insert("passenger.title", "乗客選択");
+    m.insert("passenger.total", "合計");
+
+    // Calendar/time modal
+    m.insert("calendar.title", "日時選択");
+    m.insert("calendar.apply", "適用");
+
+    // Search — station labels
+    m.insert("search.from", "出発");
+    m.insert("search.to", "到着");
+
+    // Review modal — extended
+    m.insert("review.reorder_hint", "矢印で順序変更");
 
     // Provider — extended
     m.insert("provider.setup", "設定");

@@ -20,6 +20,45 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     m.insert("auth.logout", "Log Out");
     m.insert("auth.login_subtitle", "Start booking train tickets");
     m.insert("auth.email_exists", "Email already registered");
+    m.insert("auth.passkey_signin", "Sign in with Passkey");
+    m.insert("auth.welcome_back", "Welcome back");
+    m.insert("auth.passkey_subtitle", "Sign in with your passkey or password");
+    m.insert("auth.continue_email", "Continue with Email");
+    m.insert("auth.use_passkey", "Use Passkey Instead");
+    m.insert("auth.sign_in", "Sign In");
+    m.insert("auth.create_account", "Create Account");
+    m.insert("auth.no_account", "Don\u{2019}t have an account?");
+    m.insert("auth.signup_link", "Sign up");
+    m.insert("auth.has_account", "Already have an account?");
+    m.insert("auth.signin_link", "Sign in");
+    m.insert("auth.forgot_password", "Forgot password?");
+    m.insert("auth.reset_password", "Reset password");
+    m.insert("auth.reset_subtitle", "We\u{2019}ll send a reset link to your email");
+    m.insert("auth.send_reset_link", "Send Reset Link");
+    m.insert("auth.back_to_signin", "Back to Sign In");
+    m.insert("auth.back_to_signup", "Back to sign up");
+    m.insert("auth.confirm_password", "Confirm password");
+    m.insert("auth.passwords_match", "Passwords match");
+    m.insert("auth.passwords_mismatch", "Passwords do not match");
+    m.insert("auth.pw_weak", "Weak");
+    m.insert("auth.pw_fair", "Fair");
+    m.insert("auth.pw_good", "Good");
+    m.insert("auth.pw_strong", "Strong");
+    m.insert("auth.check_email", "Check your email");
+    m.insert("auth.verify_sent_to", "We sent a verification link to");
+    m.insert("auth.verify_click_link", "Click the link to confirm your account.");
+    m.insert("auth.resend_prompt", "Didn\u{2019}t get it? Check spam, or");
+    m.insert("auth.resend_link", "resend the email");
+    m.insert("auth.verified_continue", "I\u{2019}ve verified my email");
+    m.insert("auth.add_passkey", "Add a Passkey?");
+    m.insert("auth.passkey_benefit_1", "Sign in instantly \u{2014} no passwords needed");
+    m.insert("auth.passkey_benefit_2", "Protected by your device biometrics");
+    m.insert("auth.passkey_benefit_3", "Synced across all your devices");
+    m.insert("auth.add_passkey_now", "Add Passkey Now");
+    m.insert("auth.skip_for_now", "Skip for now");
+    m.insert("auth.get_started", "Get started in seconds");
+    m.insert("auth.enter_email_password", "Enter your email and password");
+    m.insert("auth.reset_link_sent", "Reset link sent! Check your email.");
 
     // Search
     m.insert("search.departure", "Departure");
@@ -178,10 +217,56 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     m.insert("task.no_completed", "No completed tasks");
     m.insert("task.create_new", "Create a new task");
     m.insert("task.attempts", "Attempts");
+    m.insert("task.view_details", "View Details");
+    m.insert("task.hide_details", "Hide Details");
+    m.insert("task.notify", "Notify");
+    m.insert("task.retry", "Retry");
+    m.insert("task.started_at", "Started at");
+    m.insert("task.last_attempt", "Last attempt");
+    m.insert("task.not_started", "Not started");
+    m.insert("task.no_attempt", "No attempt yet");
+    m.insert("task.schedules_title", "Target Trains");
+    m.insert("task.total", "total");
+    m.insert("task.cancel_title", "Cancel Task?");
+    m.insert("task.cancel_description", "Are you sure you want to cancel this task?");
+    m.insert("task.cancel_confirm", "Yes, Cancel Task");
+    m.insert("task.keep", "Keep Task");
+    m.insert("task.pay_fare", "Pay Fare");
+    m.insert("task.seat_class", "Seat Class");
+    m.insert("task.passengers_label", "Passengers");
 
     // Seat labels
     m.insert("seat.general", "General");
     m.insert("seat.special", "Special");
+
+    // Passenger types
+    m.insert("passenger.adult", "Adult");
+    m.insert("passenger.adult_desc", "13 or older");
+    m.insert("passenger.child", "Child");
+    m.insert("passenger.child_desc", "6 to 12");
+    m.insert("passenger.infant", "Infant");
+    m.insert("passenger.infant_desc", "Below 6");
+    m.insert("passenger.senior", "Senior");
+    m.insert("passenger.senior_desc", "65 or older");
+    m.insert("passenger.severe", "Severe Disability");
+    m.insert("passenger.severe_desc", "Severely disabled");
+    m.insert("passenger.mild", "Mild Disability");
+    m.insert("passenger.mild_desc", "Mildly disabled");
+    m.insert("passenger.merit", "Merit");
+    m.insert("passenger.merit_desc", "Person of merit");
+    m.insert("passenger.title", "Select Passengers");
+    m.insert("passenger.total", "Total");
+
+    // Calendar/time modal
+    m.insert("calendar.title", "Date & Time");
+    m.insert("calendar.apply", "Apply");
+
+    // Search — station labels
+    m.insert("search.from", "From");
+    m.insert("search.to", "To");
+
+    // Review modal — extended
+    m.insert("review.reorder_hint", "Reorder with arrows");
 
     // Provider — extended
     m.insert("provider.setup", "Setup");
