@@ -34,7 +34,7 @@ pub struct LoginRequest {
 }
 
 /// Session info returned after successful auth.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthResponse {
     pub user_id: uuid::Uuid,
     pub email: String,

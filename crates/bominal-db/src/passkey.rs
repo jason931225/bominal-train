@@ -21,22 +21,29 @@ pub struct PasskeyChallengeRow {
     pub id: Uuid,
     pub user_id: Option<Uuid>,
     pub challenge_id: String,
+    pub state: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
+/// Store a registration challenge with the serialized webauthn-rs ceremony state.
 pub async fn store_challenge(
     pool: &PgPool,
     user_id: Uuid,
     challenge_id: &str,
+    state: &str,
 ) -> Result<(), sqlx::Error> {
-    sqlx::query("INSERT INTO passkey_challenges (user_id, challenge_id) VALUES ($1, $2)")
-        .bind(user_id)
-        .bind(challenge_id)
-        .execute(pool)
-        .await?;
+    sqlx::query(
+        "INSERT INTO passkey_challenges (user_id, challenge_id, state) VALUES ($1, $2, $3)",
+    )
+    .bind(user_id)
+    .bind(challenge_id)
+    .bind(state)
+    .execute(pool)
+    .await?;
     Ok(())
 }
 
+/// Consume and return a valid registration challenge.
 pub async fn verify_challenge(
     pool: &PgPool,
     user_id: Uuid,
@@ -54,14 +61,21 @@ pub async fn verify_challenge(
     .await
 }
 
-pub async fn store_login_challenge(pool: &PgPool, challenge_id: &str) -> Result<(), sqlx::Error> {
-    sqlx::query("INSERT INTO passkey_challenges (challenge_id) VALUES ($1)")
+/// Store a login challenge with the serialized webauthn-rs ceremony state.
+pub async fn store_login_challenge(
+    pool: &PgPool,
+    challenge_id: &str,
+    state: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query("INSERT INTO passkey_challenges (challenge_id, state) VALUES ($1, $2)")
         .bind(challenge_id)
+        .bind(state)
         .execute(pool)
         .await?;
     Ok(())
 }
 
+/// Consume and return a valid login challenge.
 pub async fn verify_login_challenge(
     pool: &PgPool,
     challenge_id: &str,
@@ -75,6 +89,16 @@ pub async fn verify_login_challenge(
     .bind(challenge_id)
     .fetch_optional(pool)
     .await
+}
+
+/// Delete expired passkey challenges (older than 5 minutes).
+pub async fn delete_expired_challenges(pool: &PgPool) -> Result<u64, sqlx::Error> {
+    let result = sqlx::query(
+        "DELETE FROM passkey_challenges WHERE created_at < NOW() - INTERVAL '5 minutes'",
+    )
+    .execute(pool)
+    .await?;
+    Ok(result.rows_affected())
 }
 
 pub async fn store_credential(

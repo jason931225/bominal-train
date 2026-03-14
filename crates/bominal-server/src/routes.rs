@@ -1,5 +1,6 @@
 //! Router setup with all routes and middleware layers.
 
+use std::sync::Arc;
 use std::time::Instant;
 
 use axum::Router;
@@ -15,6 +16,7 @@ use tower_http::request_id::{PropagateRequestIdLayer, SetRequestIdLayer};
 use tower_http::services::ServeFile;
 use tower_http::set_header::SetResponseHeaderLayer;
 use tower_http::trace::TraceLayer;
+use webauthn_rs::WebauthnBuilder;
 
 use crate::auth;
 use crate::cards;
@@ -122,6 +124,23 @@ pub async fn create_router(
         &config.ev_ktx_domain,
     );
 
+    // Build the WebAuthn instance from the app's origin
+    let rp_origin = url::Url::parse(&config.app_base_url)
+        .map_err(|e| anyhow::anyhow!("Invalid app_base_url: {e}"))?;
+    let rp_id = rp_origin
+        .host_str()
+        .ok_or_else(|| anyhow::anyhow!("app_base_url has no host"))?;
+    let mut wa_builder = WebauthnBuilder::new(rp_id, &rp_origin)
+        .map_err(|e| anyhow::anyhow!("WebAuthn config error: {e}"))?
+        .rp_name("Bominal");
+    // Only skip port checks for non-HTTPS (local dev) origins
+    if !config.app_base_url.starts_with("https://") {
+        wa_builder = wa_builder.allow_any_port(true);
+    }
+    let webauthn = wa_builder
+        .build()
+        .map_err(|e| anyhow::anyhow!("WebAuthn build error: {e}"))?;
+
     // Start the background reservation task runner
     runner::spawn_runner(
         db.clone(),
@@ -141,6 +160,7 @@ pub async fn create_router(
         evervault,
         app_base_url: config.app_base_url.clone(),
         prometheus_handle,
+        webauthn: Arc::new(webauthn),
     };
 
     // Spawn session cleanup background job
@@ -157,6 +177,10 @@ pub async fn create_router(
         team_id: state.evervault.team_id.clone(),
         app_id: state.evervault.app_id.clone(),
     };
+    let sfn_ev_relay = bominal_frontend::EvervaultRelay {
+        srt_domain: state.evervault.srt_relay_domain.clone(),
+        ktx_domain: state.evervault.ktx_relay_domain.clone(),
+    };
     let context_fn = move || {
         provide_context(sfn_db.clone());
         provide_context(sfn_key.clone());
@@ -165,6 +189,7 @@ pub async fn create_router(
             sfn_base_url.clone(),
         ));
         provide_context(sfn_ev_ids.clone());
+        provide_context(sfn_ev_relay.clone());
     };
 
     // Server function handler (POST /sfn/*)

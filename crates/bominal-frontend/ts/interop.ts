@@ -70,6 +70,15 @@ function getEvervault(): any {
   }
 };
 
+// ── Helpers ──────────────────────────────────────────────────────
+
+function toBase64url(buffer: ArrayBuffer): string {
+  return btoa(String.fromCharCode(...new Uint8Array(buffer)))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+}
+
 // ── WebAuthn — Passkey Registration ──────────────────────────────
 
 (window as any).__startPasskeyRegistration = async function(optionsJson: string): Promise<string> {
@@ -80,7 +89,9 @@ function getEvervault(): any {
     c => c.charCodeAt(0),
   );
   if (options.user?.id) {
-    options.user.id = new TextEncoder().encode(options.user.id);
+    // Decode base64url user.id back to raw UUID bytes (16 bytes)
+    const b64 = options.user.id.replace(/-/g, '+').replace(/_/g, '/');
+    options.user.id = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
   }
   if (options.excludeCredentials) {
     options.excludeCredentials = options.excludeCredentials.map((c: any) => ({
@@ -95,11 +106,11 @@ function getEvervault(): any {
   const response = credential.response as AuthenticatorAttestationResponse;
   return JSON.stringify({
     id: credential.id,
-    rawId: btoa(String.fromCharCode(...new Uint8Array(credential.rawId))),
+    rawId: toBase64url(credential.rawId),
     type: credential.type,
     response: {
-      attestationObject: btoa(String.fromCharCode(...new Uint8Array(response.attestationObject))),
-      clientDataJSON: btoa(String.fromCharCode(...new Uint8Array(response.clientDataJSON))),
+      attestationObject: toBase64url(response.attestationObject),
+      clientDataJSON: toBase64url(response.clientDataJSON),
     },
   });
 };
@@ -125,14 +136,14 @@ function getEvervault(): any {
   const response = assertion.response as AuthenticatorAssertionResponse;
   return JSON.stringify({
     id: assertion.id,
-    rawId: btoa(String.fromCharCode(...new Uint8Array(assertion.rawId))),
+    rawId: toBase64url(assertion.rawId),
     type: assertion.type,
     response: {
-      authenticatorData: btoa(String.fromCharCode(...new Uint8Array(response.authenticatorData))),
-      clientDataJSON: btoa(String.fromCharCode(...new Uint8Array(response.clientDataJSON))),
-      signature: btoa(String.fromCharCode(...new Uint8Array(response.signature))),
+      authenticatorData: toBase64url(response.authenticatorData),
+      clientDataJSON: toBase64url(response.clientDataJSON),
+      signature: toBase64url(response.signature),
       userHandle: response.userHandle
-        ? btoa(String.fromCharCode(...new Uint8Array(response.userHandle)))
+        ? toBase64url(response.userHandle)
         : null,
     },
   });
