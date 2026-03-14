@@ -1,7 +1,15 @@
 {
   "permissions": {
     "allow": [
-      "Bash(gh api:*)"
+      "Bash(gh api:*)",
+      "Bash(gh pr:*)",
+      "Bash(gh run:*)",
+      "Bash(cargo audit:*)",
+      "Bash(cargo tree:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(find ~/projects/bominal-train-reservation -maxdepth 2 -type d -name *vite* -o -type d -name *react*)",
+      "Bash(cargo check:*)"
     ]
   }
 }

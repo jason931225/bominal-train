@@ -640,13 +640,18 @@ async fn try_auto_pay_srt(
     // Card fields are Evervault-encrypted (ev: prefix). The Evervault Outbound
     // Relay decrypts them in-flight when the provider payment request passes
     // through the relay proxy. We pass the encrypted values directly.
+    // SRT expects YYMM expiry format; fall back to MMYY if YYMM not stored.
+    let srt_expiry = card
+        .encrypted_expiry_yymm
+        .as_deref()
+        .unwrap_or(&card.encrypted_expiry);
     match client
         .pay_with_card(
             reservation,
             &card.encrypted_number,
             &card.encrypted_password,
             &card.encrypted_birthday,
-            &card.encrypted_expiry,
+            srt_expiry,
             0, // 일시불 (lump-sum)
             &card.card_type,
         )

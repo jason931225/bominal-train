@@ -4,7 +4,6 @@ use anyhow::{Context, Result};
 pub struct AppConfig {
     pub port: u16,
     pub database_url: String,
-    pub valkey_url: Option<String>,
     pub encryption_key: String,
     pub environment: Environment,
     pub resend_api_key: String,
@@ -39,7 +38,6 @@ impl AppConfig {
                 .parse()
                 .context("Invalid PORT")?,
             database_url: std::env::var("DATABASE_URL").context("DATABASE_URL is required")?,
-            valkey_url: std::env::var("VALKEY_URL").ok(),
             encryption_key: std::env::var("ENCRYPTION_KEY")
                 .context("ENCRYPTION_KEY is required")?,
             resend_api_key: std::env::var("RESEND_API_KEY")
