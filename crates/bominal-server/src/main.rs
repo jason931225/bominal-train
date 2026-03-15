@@ -1,5 +1,3 @@
-#![recursion_limit = "512"]
-
 use std::net::SocketAddr;
 
 use bominal_server::{config, routes, telemetry};

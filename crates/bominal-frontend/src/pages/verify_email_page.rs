@@ -16,7 +16,7 @@ pub fn VerifyEmailPage() -> impl IntoView {
     let token = move || query.get().get("token").unwrap_or_default().to_string();
 
     let result = Resource::new(
-        move || token(),
+        token,
         |tok| async move {
             if tok.is_empty() {
                 Err("missing_token".to_string())

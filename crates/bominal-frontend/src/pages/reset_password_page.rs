@@ -15,12 +15,24 @@ pub fn ResetPasswordPage() -> impl IntoView {
     let query = use_query_map();
     let token = move || query.get().get("token").unwrap_or_default().to_string();
     let reset_action = ServerAction::<ResetPassword>::new();
+    let new_password = RwSignal::new(String::new());
+    let confirm_password = RwSignal::new(String::new());
 
     let succeeded = move || {
         reset_action
             .value()
             .get()
             .is_some_and(|r: Result<(), _>| r.is_ok())
+    };
+
+    let passwords_match = move || {
+        let password = new_password.get();
+        let confirm = confirm_password.get();
+        !password.is_empty() && !confirm.is_empty() && password == confirm
+    };
+    let passwords_mismatch = move || {
+        let confirm = confirm_password.get();
+        !confirm.is_empty() && new_password.get() != confirm
     };
 
     view! {
@@ -56,7 +68,14 @@ pub fn ResetPasswordPage() -> impl IntoView {
                         {move || {
                             let tok = token();
                             (!succeeded() && !tok.is_empty()).then(|| view! {
-                                <ActionForm action=reset_action>
+                                <ActionForm
+                                    action=reset_action
+                                    on:submit=move |ev| {
+                                        if passwords_mismatch() {
+                                            ev.prevent_default();
+                                        }
+                                    }
+                                >
                                     <input type="hidden" name="token" value=tok />
                                     <div class="space-y-3">
                                         <input
@@ -65,6 +84,8 @@ pub fn ResetPasswordPage() -> impl IntoView {
                                             required
                                             minlength="8"
                                             placeholder=t("auth.new_password")
+                                            prop:value=move || new_password.get()
+                                            on:input=move |ev| new_password.set(event_target_value(&ev))
                                             class="w-full px-4 py-3 bg-[var(--color-bg-sunken)] border border-[var(--color-border-default)] rounded-xl text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] focus:outline-none focus:border-[var(--color-border-focus)] transition-colors"
                                         />
                                         <input
@@ -73,31 +94,47 @@ pub fn ResetPasswordPage() -> impl IntoView {
                                             required
                                             minlength="8"
                                             placeholder=t("auth.confirm_password")
-                                            class="w-full px-4 py-3 bg-[var(--color-bg-sunken)] border border-[var(--color-border-default)] rounded-xl text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] focus:outline-none focus:border-[var(--color-border-focus)] transition-colors"
+                                            prop:value=move || confirm_password.get()
+                                            on:input=move |ev| confirm_password.set(event_target_value(&ev))
+                                            class=move || {
+                                                let base = "w-full px-4 py-3 bg-[var(--color-bg-sunken)] border rounded-xl text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] focus:outline-none transition-colors";
+                                                if passwords_mismatch() {
+                                                    format!("{base} border-red-300 focus:border-red-400")
+                                                } else if passwords_match() {
+                                                    format!("{base} border-emerald-300 focus:border-emerald-400")
+                                                } else {
+                                                    format!("{base} border-[var(--color-border-default)] focus:border-[var(--color-border-focus)]")
+                                                }
+                                            }
                                         />
+                                        {move || if passwords_mismatch() {
+                                            Some(view! {
+                                                <p class="text-xs text-red-500 font-medium pl-1">
+                                                    {t("auth.passwords_mismatch")}
+                                                </p>
+                                            })
+                                        } else if passwords_match() {
+                                            Some(view! {
+                                                <p class="text-xs text-emerald-600 font-medium pl-1">
+                                                    {t("auth.passwords_match")}
+                                                </p>
+                                            })
+                                        } else {
+                                            None
+                                        }}
                                         <button
                                             type="submit"
                                             class="w-full py-3 btn-glass font-semibold rounded-xl text-sm transition-all"
+                                            disabled=move || reset_action.pending().get() || passwords_mismatch()
                                         >
-                                            {t("auth.reset_password")}
+                                            {move || if reset_action.pending().get() {
+                                                t("common.loading")
+                                            } else {
+                                                t("auth.reset_password")
+                                            }}
                                         </button>
                                     </div>
                                 </ActionForm>
-                                // Client-side password match check
-                                <script>{r#"
-(function() {
-  var form = document.currentScript.previousElementSibling;
-  if (!form) return;
-  form.addEventListener('submit', function(e) {
-    var pw = form.querySelector('[name=new_password]');
-    var confirm = form.querySelector('[name=confirm_password]');
-    if (pw && confirm && pw.value !== confirm.value) {
-      e.preventDefault();
-      alert('Passwords do not match');
-    }
-  });
-})();
-"#}</script>
                             })
                         }}
                     </div>

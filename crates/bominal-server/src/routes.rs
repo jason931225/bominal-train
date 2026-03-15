@@ -8,7 +8,7 @@ use axum::body::Body;
 use axum::http::{HeaderValue, Method, Request};
 use axum::response::IntoResponse;
 use axum::routing::{delete, get, patch, post};
-use leptos::prelude::provide_context;
+use leptos::prelude::{provide_context, use_context};
 use tower_http::compression::CompressionLayer;
 use tower_http::cors::CorsLayer;
 use tower_http::limit::RequestBodyLimitLayer;
@@ -182,6 +182,14 @@ pub async fn create_router(
         ktx_domain: state.evervault.ktx_relay_domain.clone(),
     };
     let context_fn = move || {
+        let parts = use_context::<axum::http::request::Parts>();
+        let cookie_header = parts
+            .as_ref()
+            .and_then(|parts| parts.headers.get("cookie"))
+            .and_then(|value| value.to_str().ok());
+        let theme_prefs = bominal_frontend::theme::ThemePrefs::from_cookie_header(cookie_header);
+        let locale = bominal_frontend::i18n::locale_from_cookie_header(cookie_header);
+
         provide_context(sfn_db.clone());
         provide_context(sfn_key.clone());
         provide_context(sfn_email.clone());
@@ -190,6 +198,8 @@ pub async fn create_router(
         ));
         provide_context(sfn_ev_ids.clone());
         provide_context(sfn_ev_relay.clone());
+        provide_context(theme_prefs);
+        provide_context(locale);
     };
 
     // Server function handler (POST /sfn/*)

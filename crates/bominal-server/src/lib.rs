@@ -1,5 +1,3 @@
-#![recursion_limit = "512"]
-
 pub mod auth;
 pub mod cards;
 pub mod config;

@@ -5,6 +5,7 @@ use leptos::prelude::*;
 use crate::api::auth::{Logout, get_current_user};
 use crate::api::cards::{CardInfo, DeleteCard, list_cards};
 use crate::api::providers::{AddProvider, DeleteProvider, ProviderInfo, list_providers};
+use crate::browser;
 use crate::components::card_brand::{
     CardBrand, detect_brand, format_card_number, strip_non_digits,
 };
@@ -42,6 +43,26 @@ pub fn SettingsView() -> impl IntoView {
     // Toggle states for inline forms
     let (show_provider_form, set_show_provider_form) = signal(Option::<&'static str>::None);
     let (show_card_form, set_show_card_form) = signal(false);
+    let theme = RwSignal::new(browser::current_theme());
+    let mode = RwSignal::new(browser::current_mode());
+    let locale = RwSignal::new(browser::current_locale());
+
+    let set_theme_choice = move |next: &'static str| {
+        theme.set(next.to_string());
+        browser::set_theme(next);
+    };
+    let toggle_mode = move |_| {
+        let next = if mode.get() == "dark" { "light" } else { "dark" };
+        mode.set(next.to_string());
+        browser::set_mode(next);
+    };
+    let update_locale = move |ev| {
+        let next = event_target_value(&ev);
+        locale.set(next.clone());
+        browser::set_locale(&next);
+        browser::reload_page();
+    };
+    let cards_for_form = cards;
 
     view! {
         <div class="px-4 pt-6 pb-4 space-y-3 max-w-xl lg:max-w-2xl mx-auto page-enter">
@@ -178,7 +199,10 @@ details[open] .settings-chevron { transform: rotate(180deg); }
                         </button>
                     </div>
                     {move || show_card_form.get().then(|| view! {
-                        <CardAddForm on_done=move || set_show_card_form.set(false) />
+                        <CardAddForm on_done=move || {
+                            set_show_card_form.set(false);
+                            cards_for_form.refetch();
+                        } />
                     })}
                     <Suspense fallback=move || view! { <p class="text-xs text-[var(--color-text-tertiary)]">{t("common.loading")}</p> }>
                         {move || cards.get().map(|result| match result {
@@ -223,9 +247,15 @@ details[open] .settings-chevron { transform: rotate(180deg); }
                         <p class="text-xs text-[var(--color-text-tertiary)]">{t("settings.theme")}</p>
                         <div class="grid grid-cols-2 gap-3">
                             <button
-                                id="theme-rosewood"
-                                class="p-3 rounded-xl border border-[var(--color-border-default)] hover:border-[var(--color-brand-border)] transition-colors text-left"
-                                attr:onclick="window.__bSetTheme('rosewood');document.getElementById('theme-rosewood').classList.add('glass-active');document.getElementById('theme-clearsky').classList.remove('glass-active');"
+                                class=move || {
+                                    let base = "p-3 rounded-xl border transition-colors text-left";
+                                    if theme.get() == "rosewood" {
+                                        format!("{base} glass-active border-[var(--color-brand-border)]")
+                                    } else {
+                                        format!("{base} border-[var(--color-border-default)] hover:border-[var(--color-brand-border)]")
+                                    }
+                                }
+                                on:click=move |_| set_theme_choice("rosewood")
                             >
                                 <div class="flex gap-1.5 mb-2">
                                     <span class="w-3 h-3 rounded-full" style="background:#8a6050"></span>
@@ -236,9 +266,15 @@ details[open] .settings-chevron { transform: rotate(180deg); }
                                 <p class="text-[10px] text-[var(--color-text-tertiary)]">"Warm & nostalgic"</p>
                             </button>
                             <button
-                                id="theme-clearsky"
-                                class="p-3 rounded-xl border border-[var(--color-border-default)] hover:border-[var(--color-brand-border)] transition-colors text-left"
-                                attr:onclick="window.__bSetTheme('clear-sky');document.getElementById('theme-clearsky').classList.add('glass-active');document.getElementById('theme-rosewood').classList.remove('glass-active');"
+                                class=move || {
+                                    let base = "p-3 rounded-xl border transition-colors text-left";
+                                    if theme.get() == "clear-sky" {
+                                        format!("{base} glass-active border-[var(--color-brand-border)]")
+                                    } else {
+                                        format!("{base} border-[var(--color-border-default)] hover:border-[var(--color-brand-border)]")
+                                    }
+                                }
+                                on:click=move |_| set_theme_choice("clear-sky")
                             >
                                 <div class="flex gap-1.5 mb-2">
                                     <span class="w-3 h-3 rounded-full" style="background:#4a6eaa"></span>
@@ -255,11 +291,26 @@ details[open] .settings-chevron { transform: rotate(180deg); }
                     <div class="flex items-center justify-between py-1">
                         <span class="text-sm text-[var(--color-text-primary)]">{t("settings.dark_mode")}</span>
                         <button
-                            id="mode-toggle"
-                            class="mode-toggle w-10 h-6 rounded-full relative cursor-pointer transition-colors"
-                            attr:onclick="var h=document.documentElement;var m=h.getAttribute('data-mode')==='dark'?'light':'dark';window.__bSetMode(m);var b=this;b.style.backgroundColor=m==='dark'?'var(--color-brand-text)':'var(--color-bg-sunken)';b.firstElementChild.style.transform=m==='dark'?'translateX(16px)':'translateX(0)';"
+                            class="w-10 h-6 rounded-full relative cursor-pointer transition-colors"
+                            style=move || {
+                                if mode.get() == "dark" {
+                                    "background-color: var(--color-brand-text);".to_string()
+                                } else {
+                                    "background-color: var(--color-bg-sunken);".to_string()
+                                }
+                            }
+                            on:click=toggle_mode
                         >
-                            <div class="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform"></div>
+                            <div
+                                class="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform"
+                                style=move || {
+                                    if mode.get() == "dark" {
+                                        "transform: translateX(16px);".to_string()
+                                    } else {
+                                        "transform: translateX(0);".to_string()
+                                    }
+                                }
+                            ></div>
                         </button>
                     </div>
 
@@ -267,9 +318,9 @@ details[open] .settings-chevron { transform: rotate(180deg); }
                     <div class="flex items-center justify-between py-1">
                         <span class="text-sm text-[var(--color-text-primary)]">{t("settings.language")}</span>
                         <select
-                            id="language-select"
                             class="text-sm bg-[var(--color-bg-sunken)] text-[var(--color-text-primary)] rounded-lg px-2 py-1 border border-[var(--color-border-subtle)]"
-                            attr:onchange="document.cookie='bominal-locale='+this.value+';path=/;max-age=31536000';location.reload();"
+                            prop:value=move || locale.get()
+                            on:change=update_locale
                         >
                             <option value="ko">"한국어"</option>
                             <option value="en">"English"</option>
@@ -322,26 +373,6 @@ details[open] .settings-chevron { transform: rotate(180deg); }
                     <p class="text-xs text-[var(--color-text-disabled)]">"Coming soon"</p>
                 </div>
             </details>
-
-            // Script to sync theme/mode toggle states on page load
-            <script>{r#"
-(function(){
-  var h=document.documentElement;
-  var t=h.getAttribute('data-theme')||'rosewood';
-  var m=h.getAttribute('data-mode')||'dark';
-  var tr=document.getElementById('theme-rosewood');
-  var tc=document.getElementById('theme-clearsky');
-  var mt=document.getElementById('mode-toggle');
-  if(tr&&tc){
-    if(t==='rosewood'){tr.classList.add('glass-active');tc.classList.remove('glass-active');}
-    else{tc.classList.add('glass-active');tr.classList.remove('glass-active');}
-  }
-  if(mt){
-    mt.style.backgroundColor=m==='dark'?'var(--color-brand-text)':'var(--color-bg-sunken)';
-    if(mt.firstElementChild)mt.firstElementChild.style.transform=m==='dark'?'translateX(16px)':'translateX(0)';
-  }
-})();
-"#}</script>
 
             // Sign out
             <GlassPanel>
@@ -464,15 +495,18 @@ fn ProviderSetupRow(
 /// Encrypts via Evervault JS SDK and POSTs to /api/cards.
 #[component]
 fn CardAddForm(on_done: impl Fn() + Send + Sync + 'static) -> impl IntoView {
-    let _ = on_done; // used by JS — form reloads page on success
+    let on_done = std::sync::Arc::new(on_done);
 
-    // Reactive card number signal (raw digits only)
-    let (card_number_raw, set_card_number_raw) = signal(String::new());
+    let label = RwSignal::new(String::new());
+    let card_number_raw = RwSignal::new(String::new());
+    let card_password = RwSignal::new(String::new());
+    let birthday = RwSignal::new(String::new());
+    let expire_date = RwSignal::new(String::new());
+    let card_type = RwSignal::new(String::from("J"));
+    let submit_pending = RwSignal::new(false);
+    let error_msg = RwSignal::new(Option::<String>::None);
 
-    // Derived: card brand based on leading digits
     let brand = Memo::new(move |_| detect_brand(&card_number_raw.get()));
-
-    // Derived: formatted display string (e.g. "4111 1111 1111 1111")
     let formatted_display = Memo::new(move |_| {
         let raw = card_number_raw.get();
         if raw.is_empty() {
@@ -481,33 +515,93 @@ fn CardAddForm(on_done: impl Fn() + Send + Sync + 'static) -> impl IntoView {
             format_card_number(&raw)
         }
     });
+    let form_valid = move || {
+        let card_len = card_number_raw.get().len();
+        (15..=16).contains(&card_len)
+            && card_password.get().len() == 2
+            && birthday.get().len() == 6
+            && expire_date.get().len() == 4
+    };
+
+    let on_submit = move |ev: leptos::ev::SubmitEvent| {
+        ev.prevent_default();
+        if submit_pending.get() || !form_valid() {
+            return;
+        }
+
+        submit_pending.set(true);
+        error_msg.set(None);
+
+        let on_done = on_done.clone();
+        let _label_value = label.get();
+        let _card_number_value = card_number_raw.get();
+        let _card_password_value = card_password.get();
+        let _birthday_value = birthday.get();
+        let _expire_date_value = expire_date.get();
+        let _card_type_value = card_type.get();
+
+        #[cfg(target_arch = "wasm32")]
+        {
+            wasm_bindgen_futures::spawn_local(async move {
+                match browser::submit_card(
+                    &_label_value,
+                    &_card_number_value,
+                    &_card_password_value,
+                    &_birthday_value,
+                    &_expire_date_value,
+                    &_card_type_value,
+                )
+                .await
+                {
+                    Ok(()) => {
+                        submit_pending.set(false);
+                        error_msg.set(None);
+                        (on_done)();
+                    }
+                    Err(error) => {
+                        submit_pending.set(false);
+                        error_msg.set(Some(error));
+                    }
+                }
+            });
+        }
+
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let _ = on_done;
+            submit_pending.set(false);
+            error_msg.set(Some("Card submission is only available in the browser".to_string()));
+        }
+    };
 
     view! {
         <div class="border border-[var(--color-border-default)] rounded-xl p-3 space-y-3 bg-[var(--color-bg-sunken)]/50">
-            <form id="card-add-form">
+            {move || error_msg.get().map(|msg| view! {
+                <p class="text-xs text-[var(--color-status-error)]">{msg}</p>
+            })}
+            <form on:submit=on_submit>
                 <div class="space-y-2">
                     <input
                         type="text"
-                        name="label"
                         placeholder="Card label (e.g. My Card)"
+                        prop:value=move || label.get()
+                        on:input=move |ev| label.set(event_target_value(&ev))
                         class="w-full px-3 py-2 bg-[var(--color-bg-sunken)] border border-[var(--color-border-default)] rounded-xl text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] focus:outline-none focus:border-[var(--color-border-focus)] transition-colors"
                     />
                     // Card number input with brand badge
                     <div class="relative">
                         <input
                             type="text"
-                            name="card_number"
                             required
                             inputmode="numeric"
                             maxlength="16"
                             placeholder="Card number (15-16 digits)"
                             class="w-full px-3 py-2 pr-16 bg-[var(--color-bg-sunken)] border border-[var(--color-border-default)] rounded-xl text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] focus:outline-none focus:border-[var(--color-border-focus)] transition-colors font-mono"
-                            prop:value=card_number_raw
+                            prop:value=move || formatted_display.get()
                             on:input=move |ev| {
                                 let raw = strip_non_digits(&event_target_value(&ev));
-                                // Cap at 16 digits
                                 let capped = if raw.len() > 16 { raw[..16].to_string() } else { raw };
-                                set_card_number_raw.set(capped);
+                                card_number_raw.set(capped);
                             }
                         />
                         // Brand badge (absolute-positioned inside the input)
@@ -539,66 +633,68 @@ fn CardAddForm(on_done: impl Fn() + Send + Sync + 'static) -> impl IntoView {
                     <div class="grid grid-cols-3 gap-2">
                         <input
                             type="password"
-                            name="card_password"
                             required
                             maxlength="2"
                             inputmode="numeric"
                             placeholder="PW (2)"
+                            prop:value=move || card_password.get()
+                            on:input=move |ev| {
+                                let raw = strip_non_digits(&event_target_value(&ev));
+                                let capped = if raw.len() > 2 { raw[..2].to_string() } else { raw };
+                                card_password.set(capped);
+                            }
                             class="px-3 py-2 bg-[var(--color-bg-sunken)] border border-[var(--color-border-default)] rounded-xl text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] focus:outline-none focus:border-[var(--color-border-focus)] transition-colors text-center"
                         />
                         <input
                             type="text"
-                            name="birthday"
                             required
                             maxlength="6"
                             inputmode="numeric"
                             placeholder="YYMMDD"
+                            prop:value=move || birthday.get()
+                            on:input=move |ev| {
+                                let raw = strip_non_digits(&event_target_value(&ev));
+                                let capped = if raw.len() > 6 { raw[..6].to_string() } else { raw };
+                                birthday.set(capped);
+                            }
                             class="px-3 py-2 bg-[var(--color-bg-sunken)] border border-[var(--color-border-default)] rounded-xl text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] focus:outline-none focus:border-[var(--color-border-focus)] transition-colors text-center"
                         />
                         <input
                             type="text"
-                            name="expire_date"
                             required
                             maxlength="4"
                             inputmode="numeric"
                             placeholder="MMYY"
+                            prop:value=move || expire_date.get()
+                            on:input=move |ev| {
+                                let raw = strip_non_digits(&event_target_value(&ev));
+                                let capped = if raw.len() > 4 { raw[..4].to_string() } else { raw };
+                                expire_date.set(capped);
+                            }
                             class="px-3 py-2 bg-[var(--color-bg-sunken)] border border-[var(--color-border-default)] rounded-xl text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] focus:outline-none focus:border-[var(--color-border-focus)] transition-colors text-center"
                         />
                     </div>
                     <select
-                        name="card_type"
+                        prop:value=move || card_type.get()
+                        on:change=move |ev| card_type.set(event_target_value(&ev))
                         class="w-full px-3 py-2 bg-[var(--color-bg-sunken)] border border-[var(--color-border-default)] rounded-xl text-sm text-[var(--color-text-primary)] focus:outline-none focus:border-[var(--color-border-focus)] transition-colors"
                     >
-                        <option value="J" selected>{t("payment.credit_card")}</option>
+                        <option value="J">{t("payment.credit_card")}</option>
                         <option value="S">{t("payment.debit_card")}</option>
                     </select>
                 </div>
                 <button
                     type="submit"
                     class="w-full mt-3 py-2 btn-glass font-medium rounded-xl text-sm disabled:opacity-50 transition-all"
+                    disabled=move || submit_pending.get() || !form_valid()
                 >
-                    {t("payment.add_card")}
+                    {move || if submit_pending.get() {
+                        t("common.loading")
+                    } else {
+                        t("payment.add_card")
+                    }}
                 </button>
             </form>
-            <script>{r#"
-(function(){
-  var form = document.getElementById('card-add-form');
-  if (!form) return;
-  form.onsubmit = function(e) {
-    e.preventDefault();
-    var f = e.target;
-    if (!window.__submitCard) { alert('Encryption not ready'); return; }
-    var btn = f.querySelector('button[type=submit]');
-    if (btn) btn.disabled = true;
-    window.__submitCard(
-      f.label.value, f.card_number.value, f.card_password.value,
-      f.birthday.value, f.expire_date.value, f.card_type.value
-    ).then(function(r) {
-      if (r.ok) { location.reload(); } else { alert(r.error || 'Failed'); if (btn) btn.disabled = false; }
-    });
-  };
-})();
-"#}</script>
         </div>
     }
 }

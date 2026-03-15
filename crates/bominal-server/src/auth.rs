@@ -79,12 +79,11 @@ pub async fn logout(
     State(state): State<SharedState>,
     headers: HeaderMap,
 ) -> Result<HeaderMap, AppError> {
-    if let Some(cookie_header) = headers.get("cookie").and_then(|v| v.to_str().ok()) {
-        if let Some(session_id) =
+    if let Some(cookie_header) = headers.get("cookie").and_then(|v| v.to_str().ok())
+        && let Some(session_id) =
             bominal_service::auth::extract_session_id_from_cookie(cookie_header)
-        {
-            bominal_service::auth::delete_session(&state.db, &session_id).await?;
-        }
+    {
+        bominal_service::auth::delete_session(&state.db, &session_id).await?;
     }
 
     let cookie = bominal_service::auth::clear_session_cookie_value(&state.app_base_url);

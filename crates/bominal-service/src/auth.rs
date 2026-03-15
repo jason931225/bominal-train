@@ -39,17 +39,17 @@ pub async fn register(
 ) -> Result<bominal_db::user::UserRow, ServiceError> {
     use bominal_domain::auth::{validate_display_name, validate_email, validate_password};
 
-    validate_email(email).map_err(|e| ServiceError::validation(e))?;
-    validate_password(password).map_err(|e| ServiceError::validation(e))?;
-    validate_display_name(display_name).map_err(|e| ServiceError::validation(e))?;
+    validate_email(email).map_err(ServiceError::validation)?;
+    validate_password(password).map_err(ServiceError::validation)?;
+    validate_display_name(display_name).map_err(ServiceError::validation)?;
 
     let existing = bominal_db::user::find_by_email(db, email).await?;
     if existing.is_some() {
         return Err(ServiceError::validation("Email already registered"));
     }
 
-    let pw_hash = bominal_domain::crypto::password::hash_password(password)
-        .map_err(|e| ServiceError::internal(e))?;
+    let pw_hash =
+        bominal_domain::crypto::password::hash_password(password).map_err(ServiceError::internal)?;
 
     let user = bominal_db::user::create_user(db, email, display_name, &pw_hash).await?;
 
@@ -158,11 +158,10 @@ pub async fn reset_password(
     token: &str,
     new_password: &str,
 ) -> Result<(), ServiceError> {
-    bominal_domain::auth::validate_password(new_password)
-        .map_err(|e| ServiceError::validation(e))?;
+    bominal_domain::auth::validate_password(new_password).map_err(ServiceError::validation)?;
 
     let pw_hash = bominal_domain::crypto::password::hash_password(new_password)
-        .map_err(|e| ServiceError::internal(e))?;
+        .map_err(ServiceError::internal)?;
 
     let user = bominal_db::user::reset_password(db, token, &pw_hash)
         .await?
