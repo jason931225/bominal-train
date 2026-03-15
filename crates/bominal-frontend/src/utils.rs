@@ -1,5 +1,7 @@
 //! Shared formatting and display utilities used across frontend pages.
 
+use crate::api::tasks::TaskStatus;
+
 /// Format a raw time string (e.g. "0830") into "08:30".
 pub fn format_time(raw: &str) -> String {
     if raw.len() >= 4 {
@@ -36,17 +38,16 @@ pub fn format_cost(raw: &str) -> String {
     result.chars().rev().collect()
 }
 
-/// Map a task status string to a UI variant name for `StatusChip`.
-pub fn status_variant(status: &str) -> &'static str {
+/// Map a task status to a UI variant name for `StatusChip`.
+pub fn status_variant(status: TaskStatus) -> &'static str {
     match status {
-        "queued" => "queued",
-        "running" => "running",
-        "idle" => "warning",
-        "awaiting_payment" => "info",
-        "confirmed" => "success",
-        "failed" | "error" => "error",
-        "cancelled" => "warning",
-        _ => "neutral",
+        TaskStatus::Queued => "queued",
+        TaskStatus::Running => "running",
+        TaskStatus::Idle => "warning",
+        TaskStatus::AwaitingPayment => "info",
+        TaskStatus::Confirmed => "success",
+        TaskStatus::Failed => "error",
+        TaskStatus::Cancelled => "warning",
     }
 }
 
@@ -54,7 +55,7 @@ pub fn status_variant(status: &str) -> &'static str {
 /// Slot 0 = "000000", slot 1 = "003000", slot 16 = "080000", slot 47 = "233000".
 pub fn slot_to_time_string(slot: u32) -> String {
     let hours = slot / 2;
-    let minutes = if slot % 2 == 0 { 0 } else { 30 };
+    let minutes = if slot.is_multiple_of(2) { 0 } else { 30 };
     format!("{hours:02}{minutes:02}00")
 }
 
@@ -62,6 +63,6 @@ pub fn slot_to_time_string(slot: u32) -> String {
 /// Slot 0 = "00:00", slot 16 = "08:00", slot 47 = "23:30".
 pub fn format_time_slot(slot: u32) -> String {
     let hours = slot / 2;
-    let minutes = if slot % 2 == 0 { "00" } else { "30" };
+    let minutes = if slot.is_multiple_of(2) { "00" } else { "30" };
     format!("{hours:02}:{minutes}")
 }

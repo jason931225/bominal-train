@@ -42,6 +42,17 @@ pub fn ReviewModal(
     /// Whether task creation is pending.
     creating: Signal<bool>,
 ) -> impl IntoView {
+    let auto_pay_blocked = Memo::new(move |_| {
+        if !auto_pay.get() {
+            return false;
+        }
+        match cards.get() {
+            Some(Ok(ref list)) if list.is_empty() => true,
+            Some(Ok(_)) => selected_card_id.get().is_empty(),
+            _ => false,
+        }
+    });
+
     view! {
         <Show when=move || open.get()>
             <div class="fixed inset-0 z-[160] flex items-center justify-center p-4"
@@ -127,21 +138,28 @@ pub fn ReviewModal(
                     </div>
 
                     // Footer
-                    <div class="p-4 border-t border-[var(--color-border-default)] flex gap-3 shrink-0">
-                        <button
-                            class="flex-1 py-2.5 rounded-xl text-sm font-medium bg-[var(--color-bg-sunken)] text-[var(--color-text-tertiary)] hover:bg-[var(--color-interactive-hover)] transition-colors"
-                            on:click=move |_| on_cancel.run(())
-                        >{t("common.cancel")}</button>
-                        <button
-                            class="flex-1 py-2.5 rounded-xl text-sm font-medium btn-glass disabled:opacity-50 transition-all"
-                            disabled=creating
-                            on:click=move |_| on_confirm.run(())
-                        >
-                            {move || if creating.get() { t("search.creating_task") } else { t("search.create_task") }}
-                        </button>
+                    <div class="p-4 border-t border-[var(--color-border-default)] shrink-0 space-y-2">
+                        {move || auto_pay_blocked.get().then(|| view! {
+                            <p class="text-xs text-[var(--color-status-error)] text-center">
+                                {t("search.auto_pay_card_required")}
+                            </p>
+                        })}
+                        <div class="flex gap-3">
+                            <button
+                                class="flex-1 py-2.5 rounded-xl text-sm font-medium bg-[var(--color-bg-sunken)] text-[var(--color-text-tertiary)] hover:bg-[var(--color-interactive-hover)] transition-colors"
+                                on:click=move |_| on_cancel.run(())
+                            >{t("common.cancel")}</button>
+                            <button
+                                class="flex-1 py-2.5 rounded-xl text-sm font-medium btn-glass disabled:opacity-50 transition-all"
+                                disabled=move || creating.get() || auto_pay_blocked.get()
+                                on:click=move |_| on_confirm.run(())
+                            >
+                                {move || if creating.get() { t("search.creating_task") } else { t("search.create_task") }}
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
         </Show>
-    }
+    }.into_any()
 }

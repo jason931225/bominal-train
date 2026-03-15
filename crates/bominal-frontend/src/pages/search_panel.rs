@@ -1,12 +1,17 @@
 //! Search panel — station selection, calendar/time modal, passenger modal,
 //! toggle chips, train results, selection prompt, and review modal.
 
+use std::str::FromStr;
+
 use chrono::NaiveDate;
 use leptos::prelude::*;
 
 use crate::api::cards::list_cards;
 use crate::api::search::{StationInfo, TrainInfo, list_stations, search_trains};
-use crate::api::tasks::create_task;
+use crate::api::tasks::{
+    CreateTaskInput, PassengerCount as TaskPassengerCount, PassengerKind, PassengerList, Provider,
+    SeatPreference, TargetTrain, TargetTrainList, create_task,
+};
 use crate::components::bottom_sheet::BottomSheet;
 use crate::components::date_picker::DatePicker;
 use crate::components::glass_panel::GlassPanel;
@@ -85,15 +90,6 @@ fn default_passengers() -> Vec<PassengerCount> {
             max: 9,
             disabled: true,
         },
-        PassengerCount {
-            ptype: "merit".into(),
-            label: t("passenger.merit").into(),
-            description: t("passenger.merit_desc").into(),
-            count: 0,
-            min: 0,
-            max: 9,
-            disabled: true,
-        },
     ]
 }
 
@@ -111,6 +107,27 @@ fn format_passenger_summary(passengers: &[PassengerCount]) -> String {
         format!("{} {}", active[0].count, active[0].label)
     } else {
         format!("{total} {}", t("search.passengers"))
+    }
+}
+
+fn parse_provider(value: &str) -> Provider {
+    Provider::from_str(value).unwrap_or(Provider::Srt)
+}
+
+fn parse_seat_preference(value: &str) -> SeatPreference {
+    SeatPreference::from_str(value).unwrap_or(SeatPreference::GeneralFirst)
+}
+
+fn parse_passenger_kind(value: &str) -> Option<PassengerKind> {
+    match value {
+        "adult" => Some(PassengerKind::Adult),
+        "child" => Some(PassengerKind::Child),
+        "senior" => Some(PassengerKind::Senior),
+        "severe" => Some(PassengerKind::Severe),
+        "mild" => Some(PassengerKind::Mild),
+        "infant" => Some(PassengerKind::Infant),
+        "merit" => Some(PassengerKind::Merit),
+        _ => None,
     }
 }
 
@@ -132,7 +149,7 @@ pub fn SearchPanel() -> impl IntoView {
     // ── Toggle chips ───────────────────────────────────────────────
     let (auto_pay, set_auto_pay) = signal(false);
     let (notify, set_notify) = signal(true);
-    let (auto_retry, set_auto_retry) = signal(true);
+    let (auto_retry, set_auto_retry) = signal(false);
 
     // ── Modal state ────────────────────────────────────────────────
     let (expanded, set_expanded) = signal(true);
@@ -177,7 +194,7 @@ pub fn SearchPanel() -> impl IntoView {
 
     // ── Task creation action ───────────────────────────────────────
     let create_action = Action::new(move |_: &()| {
-        let prov = provider.get_untracked();
+        let prov = parse_provider(&provider.get_untracked());
         let dep = departure.get_untracked();
         let arr = arrival.get_untracked();
         let d = selected_date
@@ -185,29 +202,34 @@ pub fn SearchPanel() -> impl IntoView {
             .map(|d| d.format("%Y%m%d").to_string())
             .unwrap_or_default();
         let items = review_items.get_untracked();
-        let seat_pref = seat_preference.get_untracked();
+        let seat_pref = parse_seat_preference(&seat_preference.get_untracked());
         let pay = auto_pay.get_untracked();
         let card = selected_card_id.get_untracked();
         let pax = passengers.get_untracked();
         let notify_on = notify.get_untracked();
+        let auto_retry_val = auto_retry.get_untracked();
 
-        let target_trains_json = serde_json::json!(
-            items.iter().map(|item| {
-                // SortableItem.id = "train_number:dep_time"
-                let parts: Vec<&str> = item.id.splitn(2, ':').collect();
-                serde_json::json!({
-                    "train_number": parts.first().unwrap_or(&""),
-                    "dep_time": parts.get(1).unwrap_or(&""),
+        let target_trains = TargetTrainList(
+            items.iter()
+                .map(|item| {
+                    let parts: Vec<&str> = item.id.splitn(2, ':').collect();
+                    TargetTrain {
+                        train_number: parts.first().unwrap_or(&"").to_string(),
+                        dep_time: parts.get(1).unwrap_or(&"").to_string(),
+                    }
                 })
-            }).collect::<Vec<_>>()
-        ).to_string();
+                .collect(),
+        );
 
-        let passengers_json = serde_json::json!(
+        let passengers = PassengerList(
             pax.iter()
                 .filter(|p| p.count > 0)
-                .map(|p| serde_json::json!({"type": p.ptype, "count": p.count}))
-                .collect::<Vec<_>>()
-        ).to_string();
+                .filter_map(|p| {
+                    parse_passenger_kind(&p.ptype)
+                        .map(|kind| TaskPassengerCount::new(kind, p.count))
+                })
+                .collect(),
+        );
 
         let dep_time = items
             .first()
@@ -218,19 +240,24 @@ pub fn SearchPanel() -> impl IntoView {
             .unwrap_or_default();
 
         async move {
-            create_task(
-                prov,
-                dep,
-                arr,
-                d,
-                dep_time,
-                passengers_json,
-                seat_pref,
-                target_trains_json,
-                Some(pay),
-                if card.is_empty() { None } else { Some(card) },
-                Some(notify_on),
-            )
+            create_task(CreateTaskInput {
+                provider: prov,
+                departure_station: dep,
+                arrival_station: arr,
+                travel_date: d,
+                departure_time: dep_time,
+                passengers,
+                seat_preference: seat_pref,
+                target_trains,
+                auto_pay: pay,
+                payment_card_id: if card.is_empty() {
+                    None
+                } else {
+                    uuid::Uuid::parse_str(&card).ok()
+                },
+                notify_enabled: notify_on,
+                auto_retry: auto_retry_val,
+            })
             .await
         }
     });
@@ -455,7 +482,7 @@ pub fn SearchPanel() -> impl IntoView {
 
         // ── Date & Time modal ──────────────────────────────────────
         <DatePicker
-            open=date_modal_open.into()
+            open=date_modal_open
             selected=selected_date.get_untracked().unwrap_or_else(|| {
                 let kst = chrono::Utc::now() + chrono::Duration::hours(9);
                 kst.date_naive()
@@ -471,7 +498,7 @@ pub fn SearchPanel() -> impl IntoView {
 
         // ── Passenger modal ────────────────────────────────────────
         <BottomSheet
-            open=passenger_modal_open.into()
+            open=passenger_modal_open
             on_close=Callback::new(move |_| cancel_passengers())
             title=t("passenger.title").to_string()
         >
@@ -483,7 +510,7 @@ pub fn SearchPanel() -> impl IntoView {
                     </span>
                 </div>
                 <PassengerSelector
-                    passengers=temp_passengers.into()
+                    passengers=temp_passengers
                     on_change=Callback::new(move |v| set_temp_passengers.set(v))
                 />
                 // Footer buttons
@@ -502,13 +529,13 @@ pub fn SearchPanel() -> impl IntoView {
 
         // ── Review modal ───────────────────────────────────────────
         <ReviewModal
-            open=review_modal_open.into()
-            items=review_items.into()
+            open=review_modal_open
+            items=review_items
             on_items_change=Callback::new(move |v| set_review_items.set(v))
-            seat_preference=seat_preference.into()
+            seat_preference=seat_preference
             set_seat_preference=set_seat_preference
-            auto_pay=auto_pay.into()
-            selected_card_id=selected_card_id.into()
+            auto_pay=auto_pay
+            selected_card_id=selected_card_id
             set_selected_card_id=set_selected_card_id
             cards=cards
             creating=Signal::from(creating)

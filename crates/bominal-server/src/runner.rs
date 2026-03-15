@@ -15,12 +15,16 @@ const MAX_ATTEMPTS: i32 = 10_000;
 
 use bominal_db::DbPool;
 use bominal_domain::crypto::encryption::{self, EncryptionKey};
+use bominal_domain::task::{
+    PassengerKind, PassengerList, Provider as TaskProvider, ReservationSnapshot,
+    SeatPreference as DomainSeatPreference, TargetTrainList, TaskStatus,
+};
 use bominal_email::EmailClient;
 use bominal_email::templates::reservation::{AlertKind, ReservationDetails};
 use bominal_provider::ktx::KtxClient;
 use bominal_provider::srt::SrtClient;
 use bominal_provider::srt::passenger::{PassengerGroup, PassengerType, WindowSeat, total_count};
-use bominal_provider::types::{ProviderError, SeatPreference};
+use bominal_provider::types::{ProviderError, SeatPreference as ProviderSeatPreference};
 
 use crate::evervault::EvervaultConfig;
 use crate::sse::{EventBus, TaskEvent};
@@ -90,18 +94,14 @@ async fn poll_and_dispatch(
             )
             .await;
 
-            let result = match task.provider.as_str() {
-                "SRT" => run_srt_task(&db, &task, &bus, &email, &key, &ev, &base_url).await,
-                "KTX" => run_ktx_task(&db, &task, &bus, &email, &key, &ev, &base_url).await,
-                _ => {
-                    error!(task_id = %task.id, provider = %task.provider, "Unknown provider");
-                    Err("Unknown provider".into())
-                }
+            let result = match task.provider {
+                TaskProvider::Srt => run_srt_task(&db, &task, &bus, &email, &key, &ev, &base_url).await,
+                TaskProvider::Ktx => run_ktx_task(&db, &task, &bus, &email, &key, &ev, &base_url).await,
             };
 
             if let Err(e) = result {
                 error!(task_id = %task.id, error = %e, "Task failed");
-                if let Err(db_err) = bominal_db::task::update_status(&db, task.id, "failed").await {
+                if let Err(db_err) = bominal_db::task::update_status(&db, task.id, TaskStatus::Failed).await {
                     error!(task_id = %task.id, error = %db_err, "Failed to mark task as failed");
                 }
                 bus.publish(
@@ -147,7 +147,7 @@ async fn run_srt_task(
     let mut client = SrtClient::with_relay(&evervault.srt_relay_domain);
     client.login(&cred.login_id, &password).await?;
 
-    let seat_pref = parse_seat_preference(&task.seat_preference);
+    let seat_pref = parse_seat_preference(task.seat_preference);
     let target_train_numbers = extract_train_numbers(&task.target_trains);
     let passengers = parse_passengers(&task.passengers);
 
@@ -175,7 +175,7 @@ async fn run_srt_task(
             && t.attempt_count >= MAX_ATTEMPTS
         {
             warn!(task_id = %task.id, attempts = t.attempt_count, "Max attempts reached");
-            bominal_db::task::update_status(db, task.id, "failed").await?;
+            bominal_db::task::update_status(db, task.id, TaskStatus::Failed).await?;
             event_bus
                 .publish(
                     task.user_id,
@@ -238,19 +238,20 @@ async fn run_srt_task(
                                     pnr = %reservation.reservation_number,
                                     "Reservation confirmed!"
                                 );
+                                let snapshot = ReservationSnapshot {
+                                    dep_station: reservation.dep_station_name.clone(),
+                                    arr_station: reservation.arr_station_name.clone(),
+                                    dep_date: reservation.dep_date.clone(),
+                                    dep_time: reservation.dep_time.clone(),
+                                    train_number: reservation.train_number.clone(),
+                                    total_cost: reservation.total_cost.clone(),
+                                    is_waiting: reservation.is_waiting,
+                                };
                                 bominal_db::task::mark_confirmed(
                                     db,
                                     task.id,
                                     &reservation.reservation_number,
-                                    &serde_json::json!({
-                                        "dep_station": reservation.dep_station_name,
-                                        "arr_station": reservation.arr_station_name,
-                                        "dep_date": reservation.dep_date,
-                                        "dep_time": reservation.dep_time,
-                                        "train_number": reservation.train_number,
-                                        "total_cost": reservation.total_cost,
-                                        "is_waiting": reservation.is_waiting,
-                                    }),
+                                    &snapshot,
                                 )
                                 .await?;
                                 event_bus
@@ -311,7 +312,7 @@ async fn run_srt_task(
                             }
                             Err(ProviderError::DuplicateReservation) => {
                                 warn!(task_id = %task.id, "Duplicate reservation");
-                                bominal_db::task::update_status(db, task.id, "failed").await?;
+                                bominal_db::task::update_status(db, task.id, TaskStatus::Failed).await?;
                                 event_bus
                                     .publish(
                                         task.user_id,
@@ -342,7 +343,7 @@ async fn run_srt_task(
                 warn!(task_id = %task.id, "Session expired, re-logging in");
                 if let Err(e) = client.login(&cred.login_id, &password).await {
                     error!(task_id = %task.id, error = %e, "Re-login failed");
-                    bominal_db::task::update_status(db, task.id, "failed").await?;
+                    bominal_db::task::update_status(db, task.id, TaskStatus::Failed).await?;
                     return Ok(());
                 }
             }
@@ -350,10 +351,42 @@ async fn run_srt_task(
                 debug!(task_id = %task.id, "NetFunnel blocked, retrying");
             }
             Err(ProviderError::NetworkError(e)) => {
-                warn!(task_id = %task.id, error = %e, "Network error, retrying");
+                warn!(task_id = %task.id, error = %e, "Network error");
+                if !task.auto_retry {
+                    bominal_db::task::update_status(db, task.id, TaskStatus::Failed).await?;
+                    event_bus
+                        .publish(
+                            task.user_id,
+                            TaskEvent {
+                                task_id: task.id,
+                                status: "failed".to_string(),
+                                message: format!("Network error (auto-retry disabled): {e}"),
+                                attempt_count: task.attempt_count,
+                                reservation_number: None,
+                            },
+                        )
+                        .await;
+                    return Ok(());
+                }
             }
             Err(e) => {
-                warn!(task_id = %task.id, error = %e, "Search error, retrying");
+                warn!(task_id = %task.id, error = %e, "Search error");
+                if !task.auto_retry {
+                    bominal_db::task::update_status(db, task.id, TaskStatus::Failed).await?;
+                    event_bus
+                        .publish(
+                            task.user_id,
+                            TaskEvent {
+                                task_id: task.id,
+                                status: "failed".to_string(),
+                                message: format!("Search error (auto-retry disabled): {e}"),
+                                attempt_count: task.attempt_count,
+                                reservation_number: None,
+                            },
+                        )
+                        .await;
+                    return Ok(());
+                }
             }
         }
 
@@ -385,7 +418,7 @@ async fn run_ktx_task(
     let mut client = KtxClient::with_relay(&evervault.ktx_relay_domain);
     client.login(&cred.login_id, &password).await?;
 
-    let seat_pref = parse_seat_preference(&task.seat_preference);
+    let seat_pref = parse_seat_preference(task.seat_preference);
     let target_train_numbers = extract_train_numbers(&task.target_trains);
     let passengers = parse_passengers(&task.passengers);
     let psg_count = total_count(&passengers);
@@ -413,7 +446,7 @@ async fn run_ktx_task(
             && t.attempt_count >= MAX_ATTEMPTS
         {
             warn!(task_id = %task.id, attempts = t.attempt_count, "Max attempts reached");
-            bominal_db::task::update_status(db, task.id, "failed").await?;
+            bominal_db::task::update_status(db, task.id, TaskStatus::Failed).await?;
             event_bus
                 .publish(
                     task.user_id,
@@ -464,19 +497,20 @@ async fn run_ktx_task(
                                     pnr = %reservation.rsv_id,
                                     "KTX reservation confirmed!"
                                 );
+                                let snapshot = ReservationSnapshot {
+                                    dep_station: reservation.dep_name.clone(),
+                                    arr_station: reservation.arr_name.clone(),
+                                    dep_date: reservation.dep_date.clone(),
+                                    dep_time: reservation.dep_time.clone(),
+                                    train_number: reservation.train_no.clone(),
+                                    total_cost: reservation.price.clone(),
+                                    is_waiting: reservation.is_waiting,
+                                };
                                 bominal_db::task::mark_confirmed(
                                     db,
                                     task.id,
                                     &reservation.rsv_id,
-                                    &serde_json::json!({
-                                        "dep_station": reservation.dep_name,
-                                        "arr_station": reservation.arr_name,
-                                        "dep_date": reservation.dep_date,
-                                        "dep_time": reservation.dep_time,
-                                        "train_number": reservation.train_no,
-                                        "total_cost": reservation.price,
-                                        "is_waiting": reservation.is_waiting,
-                                    }),
+                                    &snapshot,
                                 )
                                 .await?;
                                 event_bus
@@ -534,7 +568,7 @@ async fn run_ktx_task(
                             }
                             Err(ProviderError::DuplicateReservation) => {
                                 warn!(task_id = %task.id, "Duplicate reservation");
-                                bominal_db::task::update_status(db, task.id, "failed").await?;
+                                bominal_db::task::update_status(db, task.id, TaskStatus::Failed).await?;
                                 event_bus
                                     .publish(
                                         task.user_id,
@@ -565,15 +599,47 @@ async fn run_ktx_task(
                 warn!(task_id = %task.id, "Session expired, re-logging in");
                 if let Err(e) = client.login(&cred.login_id, &password).await {
                     error!(task_id = %task.id, error = %e, "Re-login failed");
-                    bominal_db::task::update_status(db, task.id, "failed").await?;
+                    bominal_db::task::update_status(db, task.id, TaskStatus::Failed).await?;
                     return Ok(());
                 }
             }
             Err(ProviderError::NetworkError(e)) => {
-                warn!(task_id = %task.id, error = %e, "Network error, retrying");
+                warn!(task_id = %task.id, error = %e, "Network error");
+                if !task.auto_retry {
+                    bominal_db::task::update_status(db, task.id, TaskStatus::Failed).await?;
+                    event_bus
+                        .publish(
+                            task.user_id,
+                            TaskEvent {
+                                task_id: task.id,
+                                status: "failed".to_string(),
+                                message: format!("Network error (auto-retry disabled): {e}"),
+                                attempt_count: task.attempt_count,
+                                reservation_number: None,
+                            },
+                        )
+                        .await;
+                    return Ok(());
+                }
             }
             Err(e) => {
-                warn!(task_id = %task.id, error = %e, "Search error, retrying");
+                warn!(task_id = %task.id, error = %e, "Search error");
+                if !task.auto_retry {
+                    bominal_db::task::update_status(db, task.id, TaskStatus::Failed).await?;
+                    event_bus
+                        .publish(
+                            task.user_id,
+                            TaskEvent {
+                                task_id: task.id,
+                                status: "failed".to_string(),
+                                message: format!("Search error (auto-retry disabled): {e}"),
+                                attempt_count: task.attempt_count,
+                                reservation_number: None,
+                            },
+                        )
+                        .await;
+                    return Ok(());
+                }
             }
         }
 
@@ -617,13 +683,15 @@ async fn try_auto_pay_srt(
         Ok(Some(c)) => c,
         Ok(None) => {
             warn!(task_id = %task.id, card_id = %card_id, "Payment card not found for auto-pay");
+            let _ = bominal_db::task::update_status(db, task.id, TaskStatus::AwaitingPayment).await;
             event_bus
                 .publish(
                     task.user_id,
                     TaskEvent {
                         task_id: task.id,
-                        status: "pay_failed".to_string(),
-                        message: "Auto-pay failed: payment card not found".to_string(),
+                        status: "awaiting_payment".to_string(),
+                        message: "Auto-pay failed: payment card not found. Please pay manually."
+                            .to_string(),
                         attempt_count: task.attempt_count,
                         reservation_number: Some(pnr.to_string()),
                     },
@@ -659,30 +727,20 @@ async fn try_auto_pay_srt(
     {
         Ok(()) => {
             info!(task_id = %task.id, "SRT auto-pay successful");
-            event_bus
-                .publish(
-                    task.user_id,
-                    TaskEvent {
-                        task_id: task.id,
-                        status: "paid".to_string(),
-                        message: "Auto-pay completed successfully".to_string(),
-                        attempt_count: task.attempt_count,
-                        reservation_number: Some(pnr.to_string()),
-                    },
-                )
-                .await;
+            // Task stays 'confirmed' — payment succeeded.
             if task.notify_enabled {
                 send_alert_email(db, email, task, AlertKind::Paid, Some(pnr), app_base_url).await;
             }
         }
         Err(e) => {
             warn!(task_id = %task.id, error = %e, "SRT auto-pay failed");
+            let _ = bominal_db::task::update_status(db, task.id, TaskStatus::AwaitingPayment).await;
             event_bus
                 .publish(
                     task.user_id,
                     TaskEvent {
                         task_id: task.id,
-                        status: "pay_failed".to_string(),
+                        status: "awaiting_payment".to_string(),
                         message: format!("Auto-pay failed: {e}. Please pay manually."),
                         attempt_count: task.attempt_count,
                         reservation_number: Some(pnr.to_string()),
@@ -730,13 +788,15 @@ async fn try_auto_pay_ktx(
         Ok(Some(c)) => c,
         Ok(None) => {
             warn!(task_id = %task.id, card_id = %card_id, "Payment card not found for auto-pay");
+            let _ = bominal_db::task::update_status(db, task.id, TaskStatus::AwaitingPayment).await;
             event_bus
                 .publish(
                     task.user_id,
                     TaskEvent {
                         task_id: task.id,
-                        status: "pay_failed".to_string(),
-                        message: "Auto-pay failed: payment card not found".to_string(),
+                        status: "awaiting_payment".to_string(),
+                        message: "Auto-pay failed: payment card not found. Please pay manually."
+                            .to_string(),
                         attempt_count: task.attempt_count,
                         reservation_number: Some(pnr.to_string()),
                     },
@@ -765,30 +825,20 @@ async fn try_auto_pay_ktx(
     {
         Ok(()) => {
             info!(task_id = %task.id, "KTX auto-pay successful");
-            event_bus
-                .publish(
-                    task.user_id,
-                    TaskEvent {
-                        task_id: task.id,
-                        status: "paid".to_string(),
-                        message: "Auto-pay completed successfully".to_string(),
-                        attempt_count: task.attempt_count,
-                        reservation_number: Some(pnr.to_string()),
-                    },
-                )
-                .await;
+            // Task stays 'confirmed' — payment succeeded.
             if task.notify_enabled {
                 send_alert_email(db, email, task, AlertKind::Paid, Some(pnr), app_base_url).await;
             }
         }
         Err(e) => {
             warn!(task_id = %task.id, error = %e, "KTX auto-pay failed");
+            let _ = bominal_db::task::update_status(db, task.id, TaskStatus::AwaitingPayment).await;
             event_bus
                 .publish(
                     task.user_id,
                     TaskEvent {
                         task_id: task.id,
-                        status: "pay_failed".to_string(),
+                        status: "awaiting_payment".to_string(),
                         message: format!("Auto-pay failed: {e}. Please pay manually."),
                         attempt_count: task.attempt_count,
                         reservation_number: Some(pnr.to_string()),
@@ -827,7 +877,7 @@ async fn send_alert_email(
     };
 
     let details = ReservationDetails {
-        provider: &task.provider,
+        provider: task.provider.as_str(),
         train_number: &extract_train_numbers(&task.target_trains)
             .first()
             .cloned()
@@ -849,60 +899,47 @@ async fn send_alert_email(
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-fn parse_seat_preference(s: &str) -> SeatPreference {
-    match s {
-        "GeneralOnly" => SeatPreference::GeneralOnly,
-        "SpecialOnly" => SeatPreference::SpecialOnly,
-        "SpecialFirst" => SeatPreference::SpecialFirst,
-        _ => SeatPreference::GeneralFirst,
+fn parse_seat_preference(preference: DomainSeatPreference) -> ProviderSeatPreference {
+    match preference {
+        DomainSeatPreference::GeneralFirst => ProviderSeatPreference::GeneralFirst,
+        DomainSeatPreference::SpecialFirst => ProviderSeatPreference::SpecialFirst,
+        DomainSeatPreference::GeneralOnly => ProviderSeatPreference::GeneralOnly,
+        DomainSeatPreference::SpecialOnly => ProviderSeatPreference::SpecialOnly,
     }
 }
 
-fn extract_train_numbers(trains: &serde_json::Value) -> Vec<String> {
+fn extract_train_numbers(trains: &TargetTrainList) -> Vec<String> {
     trains
-        .as_array()
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|v| {
-                    v.get("train_number")
-                        .and_then(|n| n.as_str())
-                        .map(String::from)
-                })
-                .collect()
-        })
-        .unwrap_or_default()
+        .0
+        .iter()
+        .map(|train| train.train_number.clone())
+        .collect()
 }
 
-/// Parse the passengers JSON array into `PassengerGroup` list.
+/// Convert typed passengers into provider groups.
 ///
-/// Expected format: `[{"type": "adult", "count": 1}, {"type": "child", "count": 2}]`
-/// Falls back to 1 adult if parsing fails.
-fn parse_passengers(passengers: &serde_json::Value) -> Vec<PassengerGroup> {
+/// Unsupported types are currently filtered at this boundary until the provider
+/// layer grows explicit mappings for them.
+fn parse_passengers(passengers: &PassengerList) -> Vec<PassengerGroup> {
     let groups: Vec<PassengerGroup> = passengers
-        .as_array()
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|v| {
-                    let ptype = v.get("type").and_then(|t| t.as_str())?;
-                    let count = v.get("count").and_then(|c| c.as_u64())? as u8;
-                    if count == 0 {
-                        return None;
-                    }
-                    let passenger_type = match ptype {
-                        "adult" => PassengerType::Adult,
-                        "child" => PassengerType::Child,
-                        "senior" => PassengerType::Senior,
-                        "severe" => PassengerType::SevereDisability,
-                        "mild" => PassengerType::MildDisability,
-                        // infant/merit not yet supported by provider — skip silently
-                        "infant" | "merit" => return None,
-                        _ => return None,
-                    };
-                    Some(PassengerGroup::new(passenger_type, count))
-                })
-                .collect()
+        .0
+        .iter()
+        .filter_map(|passenger| {
+            if passenger.count == 0 {
+                return None;
+            }
+
+            let passenger_type = match passenger.kind {
+                PassengerKind::Adult => PassengerType::Adult,
+                PassengerKind::Child => PassengerType::Child,
+                PassengerKind::Senior => PassengerType::Senior,
+                PassengerKind::Severe => PassengerType::SevereDisability,
+                PassengerKind::Mild => PassengerType::MildDisability,
+                PassengerKind::Infant | PassengerKind::Merit => return None,
+            };
+            Some(PassengerGroup::new(passenger_type, passenger.count))
         })
-        .unwrap_or_default();
+        .collect();
 
     if groups.is_empty() {
         vec![PassengerGroup::adults(1)]
@@ -918,24 +955,30 @@ mod tests {
     #[test]
     fn parse_seat_preferences() {
         assert_eq!(
-            parse_seat_preference("GeneralFirst"),
-            SeatPreference::GeneralFirst
+            parse_seat_preference(DomainSeatPreference::GeneralFirst),
+            ProviderSeatPreference::GeneralFirst
         );
         assert_eq!(
-            parse_seat_preference("SpecialOnly"),
-            SeatPreference::SpecialOnly
+            parse_seat_preference(DomainSeatPreference::SpecialOnly),
+            ProviderSeatPreference::SpecialOnly
         );
         assert_eq!(
-            parse_seat_preference("unknown"),
-            SeatPreference::GeneralFirst
+            parse_seat_preference(DomainSeatPreference::GeneralOnly),
+            ProviderSeatPreference::GeneralOnly
         );
     }
 
     #[test]
     fn extract_trains() {
-        let trains = serde_json::json!([
-            {"train_number": "305", "dep_time": "090000"},
-            {"train_number": "307", "dep_time": "100000"},
+        let trains = TargetTrainList(vec![
+            bominal_domain::task::TargetTrain {
+                train_number: "305".to_string(),
+                dep_time: "090000".to_string(),
+            },
+            bominal_domain::task::TargetTrain {
+                train_number: "307".to_string(),
+                dep_time: "100000".to_string(),
+            },
         ]);
         let numbers = extract_train_numbers(&trains);
         assert_eq!(numbers, vec!["305", "307"]);
@@ -943,20 +986,17 @@ mod tests {
 
     #[test]
     fn extract_trains_empty() {
-        let trains = serde_json::json!([]);
-        assert!(extract_train_numbers(&trains).is_empty());
-    }
-
-    #[test]
-    fn extract_trains_null() {
-        let trains = serde_json::json!(null);
+        let trains = TargetTrainList(vec![]);
         assert!(extract_train_numbers(&trains).is_empty());
     }
 
     #[test]
     fn parse_passengers_single_adult() {
-        let json = serde_json::json!([{"type": "adult", "count": 1}]);
-        let groups = parse_passengers(&json);
+        let passengers = PassengerList(vec![bominal_domain::task::PassengerCount::new(
+            PassengerKind::Adult,
+            1,
+        )]);
+        let groups = parse_passengers(&passengers);
         assert_eq!(groups.len(), 1);
         assert_eq!(groups[0].passenger_type, PassengerType::Adult);
         assert_eq!(groups[0].count, 1);
@@ -964,12 +1004,12 @@ mod tests {
 
     #[test]
     fn parse_passengers_mixed() {
-        let json = serde_json::json!([
-            {"type": "adult", "count": 2},
-            {"type": "child", "count": 1},
-            {"type": "senior", "count": 1}
+        let passengers = PassengerList(vec![
+            bominal_domain::task::PassengerCount::new(PassengerKind::Adult, 2),
+            bominal_domain::task::PassengerCount::new(PassengerKind::Child, 1),
+            bominal_domain::task::PassengerCount::new(PassengerKind::Senior, 1),
         ]);
-        let groups = parse_passengers(&json);
+        let groups = parse_passengers(&passengers);
         assert_eq!(groups.len(), 3);
         assert_eq!(groups[0].count, 2);
         assert_eq!(groups[1].passenger_type, PassengerType::Child);
@@ -978,51 +1018,32 @@ mod tests {
 
     #[test]
     fn parse_passengers_fallback_on_empty() {
-        let json = serde_json::json!([]);
-        let groups = parse_passengers(&json);
+        let passengers = PassengerList(vec![]);
+        let groups = parse_passengers(&passengers);
         assert_eq!(groups.len(), 1);
         assert_eq!(groups[0].passenger_type, PassengerType::Adult);
         assert_eq!(groups[0].count, 1);
     }
 
     #[test]
-    fn parse_passengers_fallback_on_null() {
-        let json = serde_json::json!(null);
-        let groups = parse_passengers(&json);
-        assert_eq!(groups.len(), 1);
-        assert_eq!(groups[0].passenger_type, PassengerType::Adult);
-    }
-
-    #[test]
-    fn parse_passengers_skips_unknown_type() {
-        let json = serde_json::json!([
-            {"type": "vip", "count": 1},
-            {"type": "adult", "count": 1}
-        ]);
-        let groups = parse_passengers(&json);
-        assert_eq!(groups.len(), 1);
-        assert_eq!(groups[0].passenger_type, PassengerType::Adult);
-    }
-
-    #[test]
     fn parse_passengers_skips_zero_count() {
-        let json = serde_json::json!([
-            {"type": "adult", "count": 0},
-            {"type": "child", "count": 2}
+        let passengers = PassengerList(vec![
+            bominal_domain::task::PassengerCount::new(PassengerKind::Adult, 0),
+            bominal_domain::task::PassengerCount::new(PassengerKind::Child, 2),
         ]);
-        let groups = parse_passengers(&json);
+        let groups = parse_passengers(&passengers);
         assert_eq!(groups.len(), 1);
         assert_eq!(groups[0].passenger_type, PassengerType::Child);
     }
 
     #[test]
     fn parse_passengers_disability_types() {
-        let json = serde_json::json!([
-            {"type": "adult", "count": 1},
-            {"type": "severe", "count": 1},
-            {"type": "mild", "count": 1}
+        let passengers = PassengerList(vec![
+            bominal_domain::task::PassengerCount::new(PassengerKind::Adult, 1),
+            bominal_domain::task::PassengerCount::new(PassengerKind::Severe, 1),
+            bominal_domain::task::PassengerCount::new(PassengerKind::Mild, 1),
         ]);
-        let groups = parse_passengers(&json);
+        let groups = parse_passengers(&passengers);
         assert_eq!(groups.len(), 3);
         assert_eq!(groups[1].passenger_type, PassengerType::SevereDisability);
         assert_eq!(groups[2].passenger_type, PassengerType::MildDisability);
@@ -1030,12 +1051,12 @@ mod tests {
 
     #[test]
     fn parse_passengers_skips_infant_and_merit() {
-        let json = serde_json::json!([
-            {"type": "adult", "count": 1},
-            {"type": "infant", "count": 1},
-            {"type": "merit", "count": 1}
+        let passengers = PassengerList(vec![
+            bominal_domain::task::PassengerCount::new(PassengerKind::Adult, 1),
+            bominal_domain::task::PassengerCount::new(PassengerKind::Infant, 1),
+            bominal_domain::task::PassengerCount::new(PassengerKind::Merit, 1),
         ]);
-        let groups = parse_passengers(&json);
+        let groups = parse_passengers(&passengers);
         assert_eq!(groups.len(), 1);
         assert_eq!(groups[0].passenger_type, PassengerType::Adult);
     }

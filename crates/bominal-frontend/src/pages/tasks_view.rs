@@ -2,7 +2,7 @@
 
 use leptos::prelude::*;
 
-use crate::api::tasks::{TaskInfo, list_tasks};
+use crate::api::tasks::{TaskInfo, TaskStatus, list_tasks};
 use crate::components::glass_panel::GlassPanel;
 use crate::components::sse_reload::SseReload;
 use crate::components::task_card::TaskCard;
@@ -58,8 +58,11 @@ pub fn TasksView() -> impl IntoView {
                             .into_iter()
                             .filter(|task| {
                                 let task_active = matches!(
-                                    task.status.as_str(),
-                                    "queued" | "running" | "idle" | "awaiting_payment"
+                                    task.status,
+                                    TaskStatus::Queued
+                                        | TaskStatus::Running
+                                        | TaskStatus::Idle
+                                        | TaskStatus::AwaitingPayment
                                 );
                                 if is_active_tab { task_active } else { !task_active }
                             })
@@ -83,8 +86,11 @@ pub fn TasksView() -> impl IntoView {
                                 <div class="space-y-3">
                                     {display_tasks.into_iter().map(|task| {
                                         let is_active = matches!(
-                                            task.status.as_str(),
-                                            "queued" | "running" | "idle" | "awaiting_payment"
+                                            task.status,
+                                            TaskStatus::Queued
+                                                | TaskStatus::Running
+                                                | TaskStatus::Idle
+                                                | TaskStatus::AwaitingPayment
                                         );
                                         view! {
                                             <TaskCard task=task is_active=is_active />

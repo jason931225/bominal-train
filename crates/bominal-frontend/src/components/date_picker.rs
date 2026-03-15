@@ -268,7 +268,7 @@ pub fn DatePicker(
 
                         // Time slider
                         <TimeSlider
-                            value=temp_time.into()
+                            value=temp_time
                             on_change=Callback::new(move |v| set_temp_time.set(v))
                             label=t("search.time").to_string()
                         />
@@ -292,5 +292,5 @@ pub fn DatePicker(
                 </div>
             </div>
         </Show>
-    }
+    }.into_any()
 }

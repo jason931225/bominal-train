@@ -5,7 +5,7 @@ use leptos::prelude::*;
 /// Format a slot index (0-47) as HH:MM.
 fn format_time_slot(slot: u32) -> String {
     let hours = slot / 2;
-    let minutes = if slot % 2 == 0 { "00" } else { "30" };
+    let minutes = if slot.is_multiple_of(2) { "00" } else { "30" };
     format!("{hours:02}:{minutes}")
 }
 
@@ -48,5 +48,5 @@ pub fn TimeSlider(
                 <span>"23:30"</span>
             </div>
         </div>
-    }
+    }.into_any()
 }

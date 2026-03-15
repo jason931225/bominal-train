@@ -9,6 +9,7 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     m.insert("nav.home", "홈");
     m.insert("nav.search", "검색");
     m.insert("nav.tasks", "예약");
+    m.insert("nav.reservations", "티켓");
     m.insert("nav.settings", "설정");
 
     // Auth
@@ -80,6 +81,7 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     m.insert("search.edit", "수정");
     m.insert("search.no_results", "검색 결과가 없습니다");
     m.insert("search.auto_pay", "자동 결제");
+    m.insert("search.auto_pay_card_required", "자동 결제 작업에는 결제 카드가 필요합니다");
     m.insert("search.notify", "알림");
     m.insert("search.auto_retry", "자동 재시도");
 

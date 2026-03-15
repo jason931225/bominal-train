@@ -9,6 +9,7 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     m.insert("nav.home", "ホーム");
     m.insert("nav.search", "検索");
     m.insert("nav.tasks", "予約");
+    m.insert("nav.reservations", "チケット");
     m.insert("nav.settings", "設定");
 
     // Auth
@@ -80,6 +81,7 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     m.insert("search.edit", "編集");
     m.insert("search.no_results", "検索結果がありません");
     m.insert("search.auto_pay", "自動決済");
+    m.insert("search.auto_pay_card_required", "自動決済タスクには支払いカードが必要です");
     m.insert("search.notify", "通知");
     m.insert("search.auto_retry", "自動リトライ");
 

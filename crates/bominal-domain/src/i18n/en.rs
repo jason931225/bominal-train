@@ -9,6 +9,7 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     m.insert("nav.home", "Home");
     m.insert("nav.search", "Search");
     m.insert("nav.tasks", "Tasks");
+    m.insert("nav.reservations", "Tickets");
     m.insert("nav.settings", "Settings");
 
     // Auth
@@ -80,6 +81,7 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     m.insert("search.edit", "Edit");
     m.insert("search.no_results", "No results found");
     m.insert("search.auto_pay", "Auto Pay");
+    m.insert("search.auto_pay_card_required", "A payment card is required for auto-pay tasks");
     m.insert("search.notify", "Notify");
     m.insert("search.auto_retry", "Auto Retry");
 
@@ -102,6 +104,11 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
 
     // Settings
     m.insert("settings.title", "Settings");
+    m.insert("settings.section_provider", "Train Services");
+    m.insert("settings.section_payment", "Payment");
+    m.insert("settings.section_appearance", "Appearance");
+    m.insert("settings.section_security", "Security");
+    m.insert("settings.section_notifications", "Notifications");
     m.insert("settings.theme", "Theme");
     m.insert("settings.dark_mode", "Dark Mode");
     m.insert("settings.light_mode", "Light Mode");

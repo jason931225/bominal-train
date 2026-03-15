@@ -2,7 +2,7 @@
 
 use leptos::prelude::*;
 
-use crate::api::tasks::{TaskInfo, list_tasks};
+use crate::api::tasks::{TaskInfo, TaskStatus, list_tasks};
 use crate::components::glass_panel::GlassPanel;
 use crate::components::sse_reload::SseReload;
 use crate::components::status_chip::StatusChip;
@@ -72,7 +72,7 @@ pub fn HomeView() -> impl IntoView {
                             Ok(all_tasks) => {
                                 let active: Vec<TaskInfo> = all_tasks
                                     .into_iter()
-                                    .filter(|t| matches!(t.status.as_str(), "queued" | "running" | "idle"))
+                                    .filter(|t| matches!(t.status, TaskStatus::Queued | TaskStatus::Running | TaskStatus::Idle))
                                     .collect();
 
                                 if active.is_empty() {
@@ -97,7 +97,7 @@ pub fn HomeView() -> impl IntoView {
                                                             {format!("{} {} · {}", task.provider, task.travel_date, task.departure_time)}
                                                         </p>
                                                     </div>
-                                                    <StatusChip label=task.status.clone() variant=status_variant(&task.status) />
+                                                    <StatusChip label=t(task.status.i18n_key()) variant=status_variant(task.status) />
                                                 </div>
                                             }).collect::<Vec<_>>()}
                                         </div>

@@ -9,7 +9,6 @@ use uuid::Uuid;
 pub struct SessionRow {
     pub id: String,
     pub user_id: Uuid,
-    pub data: serde_json::Value,
     pub expires_at: DateTime<Utc>,
     pub created_at: DateTime<Utc>,
 }
@@ -25,7 +24,7 @@ pub async fn create_session(
         r#"
         INSERT INTO sessions (id, user_id, expires_at)
         VALUES ($1, $2, $3)
-        RETURNING id, user_id, data, expires_at, created_at
+        RETURNING id, user_id, expires_at, created_at
         "#,
     )
     .bind(session_id)
@@ -42,7 +41,7 @@ pub async fn find_valid_session(
 ) -> Result<Option<SessionRow>, sqlx::Error> {
     sqlx::query_as::<_, SessionRow>(
         r#"
-        SELECT id, user_id, data, expires_at, created_at
+        SELECT id, user_id, expires_at, created_at
         FROM sessions
         WHERE id = $1 AND expires_at > now()
         "#,
