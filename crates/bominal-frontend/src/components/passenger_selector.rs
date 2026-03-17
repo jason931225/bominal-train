@@ -93,5 +93,5 @@ pub fn PassengerSelector(
                 }
             }).collect::<Vec<_>>()}
         </div>
-    }
+    }.into_any()
 }

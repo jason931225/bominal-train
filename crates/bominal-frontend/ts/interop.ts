@@ -79,6 +79,17 @@ function toBase64url(buffer: ArrayBuffer): string {
     .replace(/=+$/, '');
 }
 
+// ── View Transitions ─────────────────────────────────────────────
+// Wraps a navigation callback in document.startViewTransition() when available.
+
+(window as any).__startViewTransition = function(cb: () => void): void {
+  if ('startViewTransition' in document) {
+    (document as any).startViewTransition(cb);
+  } else {
+    cb();
+  }
+};
+
 // ── WebAuthn — Passkey Registration ──────────────────────────────
 
 (window as any).__startPasskeyRegistration = async function(optionsJson: string): Promise<string> {

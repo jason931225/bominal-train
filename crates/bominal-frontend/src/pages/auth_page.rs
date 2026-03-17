@@ -320,48 +320,89 @@ fn icon_mail_large() -> impl IntoView {
     }
 }
 
-// ── Main component ──────────────────────────────────────────────────
+// ── Sub-components ───────────────────────────────────────────────────
+//
+// Each #[component] creates an opaque `impl IntoView` boundary, preventing
+// the compiler from computing a combined monomorphic tuple type for all 6 views.
 
-/// Auth page with 6-view passkey-first flow matching the prototype.
 #[component]
-pub fn AuthPage() -> impl IntoView {
-    let view = RwSignal::new(AuthView::Passkey);
+fn PasskeyView(
+    auth_view: RwSignal<AuthView>,
+    error_msg: RwSignal<Option<String>>,
+) -> impl IntoView {
+    let on_passkey_login = move |_| {
+        #[cfg(target_arch = "wasm32")]
+        {
+            wasm_bindgen_futures::spawn_local(async {
+                if let Err(e) = do_passkey_login().await {
+                    web_sys::console::error_1(&e.into());
+                }
+            });
+        }
+    };
 
-    // Form state signals
+    view! {
+        <div class="glass-panel p-8 rounded-3xl flex flex-col gap-5">
+            <div class="text-center mb-2">
+                <div class="w-16 h-16 mx-auto mb-4 rounded-2xl flex items-center justify-center ring-1 ring-indigo-200/50"
+                     style="background: linear-gradient(135deg, var(--color-bg-elevated), var(--color-bg-sunken))">
+                    {icon_fingerprint()}
+                </div>
+                <h1 class="text-2xl font-bold text-[var(--color-text-primary)] tracking-tight">{t("auth.welcome_back")}</h1>
+                <p class="text-sm text-[var(--color-text-tertiary)] mt-1.5">{t("auth.passkey_subtitle")}</p>
+            </div>
+
+            <button
+                on:click=on_passkey_login
+                class="w-full py-3.5 btn-glass font-semibold rounded-xl flex items-center justify-center gap-2.5 shadow-lg active:scale-95 transition-all"
+            >
+                {icon_key()}
+                {t("auth.passkey_signin")}
+            </button>
+
+            <div class="flex items-center gap-2">
+                <div class="flex-1 h-px bg-[var(--color-border-subtle)]"></div>
+                <span class="text-xs text-[var(--color-text-disabled)] font-medium">"or"</span>
+                <div class="flex-1 h-px bg-[var(--color-border-subtle)]"></div>
+            </div>
+
+            <button
+                on:click=move |_| { error_msg.set(None); auth_view.set(AuthView::EmailForm); }
+                class="w-full py-3 bg-[var(--color-bg-elevated)] border border-[var(--color-border-default)] text-[var(--color-text-primary)] font-semibold rounded-xl flex items-center justify-center gap-2 shadow-sm hover:bg-[var(--color-interactive-hover)] active:scale-95 transition-all"
+            >
+                <span class="text-[var(--color-text-disabled)]">{icon_mail()}</span>
+                {t("auth.continue_email")}
+            </button>
+
+            <p class="text-center text-xs text-[var(--color-text-disabled)]">
+                {t("auth.no_account")} " "
+                <button
+                    on:click=move |_| { error_msg.set(None); auth_view.set(AuthView::Signup); }
+                    class="text-[var(--color-brand-primary)] font-semibold hover:underline"
+                >
+                    {t("auth.signup_link")}
+                </button>
+            </p>
+        </div>
+    }
+}
+
+#[component]
+fn EmailFormView(
+    auth_view: RwSignal<AuthView>,
+    error_msg: RwSignal<Option<String>>,
+) -> impl IntoView {
     let email = RwSignal::new(String::new());
     let password = RwSignal::new(String::new());
     let show_password = RwSignal::new(false);
 
-    let signup_name = RwSignal::new(String::new());
-    let signup_email = RwSignal::new(String::new());
-    let signup_password = RwSignal::new(String::new());
-    let signup_password_confirm = RwSignal::new(String::new());
-    let show_signup_password = RwSignal::new(false);
-    let show_signup_password2 = RwSignal::new(false);
-
-    let forgot_email = RwSignal::new(String::new());
-
-    // Server actions
     let login_action = ServerAction::<Login>::new();
-    let forgot_action = ServerAction::<ForgotPassword>::new();
-    let resend_action = ServerAction::<ResendVerification>::new();
-
     let login_pending = login_action.pending();
-    let forgot_pending = forgot_action.pending();
-    let resend_pending = resend_action.pending();
 
-    // Error state
-    let error_msg = RwSignal::new(Option::<String>::None);
-
-    // Register is handled manually (not via ActionForm) so we can control the view transition
-    let register_pending = RwSignal::new(false);
-
-    // Watch login action result for errors
     Effect::new(move |_| {
         if let Some(result) = login_action.value().get() {
             match result {
                 Ok(()) => {
-                    // Login succeeded — redirect to home
                     #[cfg(target_arch = "wasm32")]
                     {
                         if let Some(w) = web_sys::window() {
@@ -376,17 +417,126 @@ pub fn AuthPage() -> impl IntoView {
         }
     });
 
-    // Watch forgot-password action result
-    let forgot_sent = RwSignal::new(false);
-    Effect::new(move |_| {
-        if let Some(result) = forgot_action.value().get() {
-            if result.is_ok() {
-                forgot_sent.set(true);
-            }
+    let on_passkey_login = move |_| {
+        #[cfg(target_arch = "wasm32")]
+        {
+            wasm_bindgen_futures::spawn_local(async {
+                if let Err(e) = do_passkey_login().await {
+                    web_sys::console::error_1(&e.into());
+                }
+            });
         }
-    });
+    };
 
-    // Derived signals for password validation
+    view! {
+        <div class="glass-panel p-8 rounded-3xl flex flex-col gap-5">
+            <button
+                on:click=move |_| { error_msg.set(None); auth_view.set(AuthView::Passkey); }
+                class="flex items-center gap-1.5 text-sm text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)] -mb-2 transition-colors w-fit"
+            >
+                {icon_arrow_left()} {t("common.back")}
+            </button>
+
+            <div>
+                <h1 class="text-2xl font-bold text-[var(--color-text-primary)] tracking-tight">{t("auth.sign_in")}</h1>
+                <p class="text-sm text-[var(--color-text-tertiary)] mt-1">{t("auth.enter_email_password")}</p>
+            </div>
+
+            <ActionForm action=login_action>
+                <div class="flex flex-col gap-3">
+                    <div class="relative">
+                        <span class="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--color-text-disabled)]">{icon_mail()}</span>
+                        <input
+                            type="email"
+                            name="email"
+                            required
+                            prop:value=move || email.get()
+                            on:input=move |ev| email.set(event_target_value(&ev))
+                            placeholder="Email address"
+                            class="w-full pl-10 pr-4 py-3 bg-[var(--color-bg-sunken)] border border-[var(--color-border-default)] rounded-xl text-sm font-medium text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-primary)]/50 focus:border-[var(--color-border-focus)] transition-all"
+                        />
+                    </div>
+
+                    <div class="relative">
+                        <span class="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--color-text-disabled)]">{icon_lock()}</span>
+                        <input
+                            type=move || if show_password.get() { "text" } else { "password" }
+                            name="password"
+                            required
+                            prop:value=move || password.get()
+                            on:input=move |ev| password.set(event_target_value(&ev))
+                            placeholder="Password"
+                            class="w-full pl-10 pr-10 py-3 bg-[var(--color-bg-sunken)] border border-[var(--color-border-default)] rounded-xl text-sm font-medium text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-primary)]/50 focus:border-[var(--color-border-focus)] transition-all"
+                        />
+                        <button
+                            type="button"
+                            on:click=move |_| show_password.update(|v| *v = !*v)
+                            class="absolute right-3.5 top-1/2 -translate-y-1/2 text-[var(--color-text-disabled)] hover:text-[var(--color-text-secondary)] transition-colors"
+                        >
+                            {move || if show_password.get() { icon_eye_off().into_any() } else { icon_eye().into_any() }}
+                        </button>
+                    </div>
+
+                    <div class="flex justify-end -mt-1">
+                        <button
+                            type="button"
+                            on:click=move |_| { error_msg.set(None); auth_view.set(AuthView::Forgot); }
+                            class="text-xs text-[var(--color-brand-primary)] font-medium hover:underline"
+                        >
+                            {t("auth.forgot_password")}
+                        </button>
+                    </div>
+                </div>
+
+                <button
+                    type="submit"
+                    class="w-full mt-4 py-3.5 btn-glass font-semibold rounded-xl shadow-lg active:scale-95 transition-all disabled:opacity-50"
+                    disabled=login_pending
+                >
+                    {move || if login_pending.get() { t("common.loading") } else { t("auth.sign_in") }}
+                </button>
+            </ActionForm>
+
+            <div class="flex items-center gap-2">
+                <div class="flex-1 h-px bg-[var(--color-border-subtle)]"></div>
+                <span class="text-xs text-[var(--color-text-disabled)] font-medium">"or"</span>
+                <div class="flex-1 h-px bg-[var(--color-border-subtle)]"></div>
+            </div>
+
+            <button
+                on:click=on_passkey_login
+                class="w-full py-3 bg-[var(--color-bg-elevated)] border border-[var(--color-border-default)] text-[var(--color-text-primary)] font-semibold rounded-xl flex items-center justify-center gap-2 shadow-sm hover:bg-[var(--color-interactive-hover)] active:scale-95 transition-all"
+            >
+                {icon_key()}
+                {t("auth.use_passkey")}
+            </button>
+
+            <p class="text-center text-xs text-[var(--color-text-disabled)]">
+                {t("auth.no_account")} " "
+                <button
+                    on:click=move |_| { error_msg.set(None); auth_view.set(AuthView::Signup); }
+                    class="text-[var(--color-brand-primary)] font-semibold hover:underline"
+                >
+                    {t("auth.signup_link")}
+                </button>
+            </p>
+        </div>
+    }
+}
+
+#[component]
+fn SignupView(
+    auth_view: RwSignal<AuthView>,
+    error_msg: RwSignal<Option<String>>,
+    signup_email: RwSignal<String>,
+) -> impl IntoView {
+    let signup_name = RwSignal::new(String::new());
+    let signup_password = RwSignal::new(String::new());
+    let signup_password_confirm = RwSignal::new(String::new());
+    let show_signup_password = RwSignal::new(false);
+    let show_signup_password2 = RwSignal::new(false);
+    let register_pending = RwSignal::new(false);
+
     let pw_strength = move || password_strength(&signup_password.get());
     let passwords_match = move || {
         let pw = signup_password.get();
@@ -398,7 +548,6 @@ pub fn AuthPage() -> impl IntoView {
         !confirm.is_empty() && signup_password.get() != confirm
     };
 
-    // Handler: manual register submit
     let on_register_submit = move |_| {
         if register_pending.get() {
             return;
@@ -419,7 +568,7 @@ pub fn AuthPage() -> impl IntoView {
                 match register(em, pw, name).await {
                     Ok(()) => {
                         register_pending.set(false);
-                        view.set(AuthView::VerifyEmail);
+                        auth_view.set(AuthView::VerifyEmail);
                     }
                     Err(e) => {
                         register_pending.set(false);
@@ -430,19 +579,270 @@ pub fn AuthPage() -> impl IntoView {
         }
     };
 
-    // Handler: passkey login
-    let on_passkey_login = move |_| {
-        #[cfg(target_arch = "wasm32")]
-        {
-            wasm_bindgen_futures::spawn_local(async {
-                if let Err(e) = do_passkey_login().await {
-                    web_sys::console::error_1(&e.into());
-                }
-            });
-        }
-    };
+    view! {
+        <div class="glass-panel p-8 rounded-3xl flex flex-col gap-5">
+            <button
+                on:click=move |_| { error_msg.set(None); auth_view.set(AuthView::Passkey); }
+                class="flex items-center gap-1.5 text-sm text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)] -mb-2 transition-colors w-fit"
+            >
+                {icon_arrow_left()} {t("common.back")}
+            </button>
 
-    // Handler: passkey register (post-signup)
+            <div class="text-center">
+                <div class="w-14 h-14 mx-auto mb-3 rounded-2xl flex items-center justify-center ring-1 ring-emerald-200/50"
+                     style="background: linear-gradient(135deg, var(--color-bg-elevated), var(--color-bg-sunken))">
+                    {icon_user_plus()}
+                </div>
+                <h1 class="text-2xl font-bold text-[var(--color-text-primary)] tracking-tight">{t("auth.create_account")}</h1>
+                <p class="text-sm text-[var(--color-text-tertiary)] mt-1">{t("auth.get_started")}</p>
+            </div>
+
+            <div class="flex flex-col gap-3">
+                <input
+                    type="text"
+                    prop:value=move || signup_name.get()
+                    on:input=move |ev| signup_name.set(event_target_value(&ev))
+                    placeholder=t("auth.display_name")
+                    class="w-full px-4 py-3 bg-[var(--color-bg-sunken)] border border-[var(--color-border-default)] rounded-xl text-sm font-medium text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-primary)]/50 focus:border-[var(--color-border-focus)] transition-all"
+                />
+                <input
+                    type="email"
+                    prop:value=move || signup_email.get()
+                    on:input=move |ev| signup_email.set(event_target_value(&ev))
+                    placeholder="Email address"
+                    class="w-full px-4 py-3 bg-[var(--color-bg-sunken)] border border-[var(--color-border-default)] rounded-xl text-sm font-medium text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-primary)]/50 focus:border-[var(--color-border-focus)] transition-all"
+                />
+
+                // Password + strength meter
+                <div class="flex flex-col gap-1.5">
+                    <div class="relative">
+                        <input
+                            type=move || if show_signup_password.get() { "text" } else { "password" }
+                            prop:value=move || signup_password.get()
+                            on:input=move |ev| signup_password.set(event_target_value(&ev))
+                            placeholder=t("auth.password")
+                            class="w-full pr-10 px-4 py-3 bg-[var(--color-bg-sunken)] border border-[var(--color-border-default)] rounded-xl text-sm font-medium text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-primary)]/50 focus:border-[var(--color-border-focus)] transition-all"
+                        />
+                        <button
+                            type="button"
+                            on:click=move |_| show_signup_password.update(|v| *v = !*v)
+                            class="absolute right-3.5 top-1/2 -translate-y-1/2 text-[var(--color-text-disabled)] hover:text-[var(--color-text-secondary)]"
+                        >
+                            {move || if show_signup_password.get() { icon_eye_off().into_any() } else { icon_eye().into_any() }}
+                        </button>
+                    </div>
+
+                    // Strength indicator
+                    {move || {
+                        let pw = signup_password.get();
+                        if pw.is_empty() {
+                            None
+                        } else {
+                            let score = pw_strength();
+                            Some(view! {
+                                <div class="flex items-center gap-2">
+                                    <div class="flex gap-1 flex-1">
+                                        {(1..=4).map(|level| {
+                                            let bar_class = if level <= score {
+                                                format!("h-1 flex-1 rounded-full transition-all duration-300 {}", strength_color(score))
+                                            } else {
+                                                "h-1 flex-1 rounded-full transition-all duration-300 bg-[var(--color-border-subtle)]".to_string()
+                                            };
+                                            view! { <div class=bar_class></div> }
+                                        }).collect_view()}
+                                    </div>
+                                    <span class={format!("text-xs font-semibold {}", strength_text_color(score))}>
+                                        {t(strength_label(score))}
+                                    </span>
+                                </div>
+                            })
+                        }
+                    }}
+                </div>
+
+                // Confirm password
+                <div class="flex flex-col gap-1">
+                    <div class="relative">
+                        <input
+                            type=move || if show_signup_password2.get() { "text" } else { "password" }
+                            prop:value=move || signup_password_confirm.get()
+                            on:input=move |ev| signup_password_confirm.set(event_target_value(&ev))
+                            placeholder=t("auth.confirm_password")
+                            class=move || {
+                                let base = "w-full pr-10 px-4 py-3 bg-[var(--color-bg-sunken)] border rounded-xl text-sm font-medium text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] focus:outline-none focus:ring-2 transition-all";
+                                if passwords_mismatch() {
+                                    format!("{base} border-red-300 focus:ring-red-400/50 focus:border-red-400")
+                                } else if passwords_match() {
+                                    format!("{base} border-emerald-300 focus:ring-emerald-400/50 focus:border-emerald-400")
+                                } else {
+                                    format!("{base} border-[var(--color-border-default)] focus:ring-[var(--color-brand-primary)]/50 focus:border-[var(--color-border-focus)]")
+                                }
+                            }
+                        />
+                        <button
+                            type="button"
+                            on:click=move |_| show_signup_password2.update(|v| *v = !*v)
+                            class="absolute right-3.5 top-1/2 -translate-y-1/2 text-[var(--color-text-disabled)] hover:text-[var(--color-text-secondary)]"
+                        >
+                            {move || if show_signup_password2.get() { icon_eye_off().into_any() } else { icon_eye().into_any() }}
+                        </button>
+                    </div>
+                    {move || if passwords_mismatch() {
+                        Some(view! { <p class="text-xs text-red-500 font-medium pl-1">{t("auth.passwords_mismatch")}</p> })
+                    } else if passwords_match() {
+                        Some(view! { <p class="text-xs text-emerald-600 font-medium pl-1">{t("auth.passwords_match")}</p> })
+                    } else {
+                        None
+                    }}
+                </div>
+            </div>
+
+            <button
+                on:click=on_register_submit
+                class="w-full py-3.5 btn-glass font-semibold rounded-xl shadow-lg active:scale-95 transition-all disabled:opacity-50"
+                disabled=move || register_pending.get() || passwords_mismatch()
+            >
+                {move || if register_pending.get() { t("common.loading") } else { t("auth.create_account") }}
+            </button>
+
+            <p class="text-center text-xs text-[var(--color-text-disabled)]">
+                {t("auth.has_account")} " "
+                <button
+                    on:click=move |_| { error_msg.set(None); auth_view.set(AuthView::Passkey); }
+                    class="text-[var(--color-brand-primary)] font-semibold hover:underline"
+                >
+                    {t("auth.signin_link")}
+                </button>
+            </p>
+        </div>
+    }
+}
+
+#[component]
+fn ForgotView(
+    auth_view: RwSignal<AuthView>,
+    error_msg: RwSignal<Option<String>>,
+) -> impl IntoView {
+    let forgot_email = RwSignal::new(String::new());
+    let forgot_sent = RwSignal::new(false);
+    let forgot_action = ServerAction::<ForgotPassword>::new();
+    let forgot_pending = forgot_action.pending();
+
+    Effect::new(move |_| {
+        if let Some(result) = forgot_action.value().get() {
+            if result.is_ok() {
+                forgot_sent.set(true);
+            }
+        }
+    });
+
+    view! {
+        <div class="glass-panel p-8 rounded-3xl flex flex-col gap-5">
+            <button
+                on:click=move |_| { error_msg.set(None); auth_view.set(AuthView::EmailForm); }
+                class="flex items-center gap-1.5 text-sm text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)] -mb-2 transition-colors w-fit"
+            >
+                {icon_arrow_left()} {t("auth.back_to_signin")}
+            </button>
+
+            <div>
+                <h1 class="text-2xl font-bold text-[var(--color-text-primary)] tracking-tight">{t("auth.reset_password")}</h1>
+                <p class="text-sm text-[var(--color-text-tertiary)] mt-1">{t("auth.reset_subtitle")}</p>
+            </div>
+
+            {move || forgot_sent.get().then(|| view! {
+                <div class="px-3 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+                    <p class="text-sm text-emerald-600 font-medium">{t("auth.reset_link_sent")}</p>
+                </div>
+            })}
+
+            <ActionForm action=forgot_action>
+                <div class="relative">
+                    <span class="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--color-text-disabled)]">{icon_mail()}</span>
+                    <input
+                        type="email"
+                        name="email"
+                        required
+                        prop:value=move || forgot_email.get()
+                        on:input=move |ev| forgot_email.set(event_target_value(&ev))
+                        placeholder="Email address"
+                        class="w-full pl-10 pr-4 py-3 bg-[var(--color-bg-sunken)] border border-[var(--color-border-default)] rounded-xl text-sm font-medium text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-primary)]/50 focus:border-[var(--color-border-focus)] transition-all"
+                    />
+                </div>
+
+                <button
+                    type="submit"
+                    class="w-full mt-4 py-3.5 btn-glass font-semibold rounded-xl shadow-lg active:scale-95 transition-all disabled:opacity-50"
+                    disabled=forgot_pending
+                >
+                    {move || if forgot_pending.get() { t("common.loading") } else { t("auth.send_reset_link") }}
+                </button>
+            </ActionForm>
+        </div>
+    }
+}
+
+#[component]
+fn VerifyEmailView(
+    auth_view: RwSignal<AuthView>,
+    error_msg: RwSignal<Option<String>>,
+    signup_email: RwSignal<String>,
+) -> impl IntoView {
+    let resend_action = ServerAction::<ResendVerification>::new();
+    let resend_pending = resend_action.pending();
+
+    view! {
+        <div class="glass-panel p-8 rounded-3xl flex flex-col gap-6">
+            <div class="text-center">
+                <div class="w-16 h-16 mx-auto mb-4 rounded-2xl flex items-center justify-center ring-1 ring-amber-200/50"
+                     style="background: linear-gradient(135deg, var(--color-bg-elevated), var(--color-bg-sunken))">
+                    {icon_mail_large()}
+                </div>
+                <h1 class="text-2xl font-bold text-[var(--color-text-primary)] tracking-tight">{t("auth.check_email")}</h1>
+                <p class="text-sm text-[var(--color-text-tertiary)] mt-2 leading-relaxed">
+                    {t("auth.verify_sent_to")} " "
+                    <span class="font-semibold text-[var(--color-text-primary)]">
+                        {move || {
+                            let em = signup_email.get();
+                            if em.is_empty() { "your email".to_string() } else { em }
+                        }}
+                    </span>
+                    ". " {t("auth.verify_click_link")}
+                </p>
+            </div>
+
+            <div class="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-4 text-sm text-amber-600 font-medium text-center">
+                {t("auth.resend_prompt")} " "
+                <ActionForm action=resend_action attr:class="inline">
+                    <button
+                        type="submit"
+                        class="underline font-semibold hover:text-amber-700"
+                        disabled=resend_pending
+                    >
+                        {move || if resend_pending.get() { t("common.loading") } else { t("auth.resend_link") }}
+                    </button>
+                </ActionForm>
+            </div>
+
+            <button
+                on:click=move |_| auth_view.set(AuthView::AddPasskey)
+                class="w-full py-3.5 btn-glass font-semibold rounded-xl shadow-lg active:scale-95 transition-all"
+            >
+                {t("auth.verified_continue")} " \u{2192}"
+            </button>
+
+            <button
+                on:click=move |_| { error_msg.set(None); auth_view.set(AuthView::Signup); }
+                class="w-full py-2.5 text-sm text-[var(--color-text-disabled)] font-medium hover:text-[var(--color-text-secondary)] transition-colors"
+            >
+                "\u{2190} " {t("auth.back_to_signup")}
+            </button>
+        </div>
+    }
+}
+
+#[component]
+fn AddPasskeyView() -> impl IntoView {
     let on_passkey_register = move |_| {
         #[cfg(target_arch = "wasm32")]
         {
@@ -454,7 +854,6 @@ pub fn AuthPage() -> impl IntoView {
         }
     };
 
-    // Handler: skip passkey → go home
     let on_skip_passkey = move |_| {
         #[cfg(target_arch = "wasm32")]
         {
@@ -463,6 +862,62 @@ pub fn AuthPage() -> impl IntoView {
             }
         }
     };
+
+    view! {
+        <div class="glass-panel p-8 rounded-3xl flex flex-col gap-6">
+            <div class="text-center">
+                <div class="w-16 h-16 mx-auto mb-4 rounded-2xl flex items-center justify-center ring-1 ring-violet-200/50"
+                     style="background: linear-gradient(135deg, var(--color-bg-elevated), var(--color-bg-sunken))">
+                    {icon_fingerprint()}
+                </div>
+                <h1 class="text-2xl font-bold text-[var(--color-text-primary)] tracking-tight">{t("auth.add_passkey")}</h1>
+                <p class="text-sm text-[var(--color-text-tertiary)] mt-2 leading-relaxed">
+                    {t("auth.passkey_subtitle")}
+                </p>
+            </div>
+
+            <div class="bg-[var(--color-bg-sunken)] rounded-2xl p-4 flex flex-col gap-2.5">
+                <div class="flex items-center gap-3 text-sm text-[var(--color-text-secondary)]">
+                    <span class="text-base shrink-0">"&#x1F680;"</span>
+                    <span>{t("auth.passkey_benefit_1")}</span>
+                </div>
+                <div class="flex items-center gap-3 text-sm text-[var(--color-text-secondary)]">
+                    <span class="text-base shrink-0">"&#x1F512;"</span>
+                    <span>{t("auth.passkey_benefit_2")}</span>
+                </div>
+                <div class="flex items-center gap-3 text-sm text-[var(--color-text-secondary)]">
+                    <span class="text-base shrink-0">"&#x1F310;"</span>
+                    <span>{t("auth.passkey_benefit_3")}</span>
+                </div>
+            </div>
+
+            <button
+                on:click=on_passkey_register
+                class="w-full py-3.5 btn-glass font-semibold rounded-xl flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-all"
+            >
+                {icon_key()}
+                {t("auth.add_passkey_now")}
+            </button>
+
+            <button
+                on:click=on_skip_passkey
+                class="w-full py-3 text-sm text-[var(--color-text-disabled)] font-medium hover:text-[var(--color-text-secondary)] transition-colors"
+            >
+                {t("auth.skip_for_now")}
+            </button>
+        </div>
+    }
+}
+
+// ── Main component ──────────────────────────────────────────────────
+
+/// Auth page with 6-view passkey-first flow matching the prototype.
+#[component]
+pub fn AuthPage() -> impl IntoView {
+    let auth_view = RwSignal::new(AuthView::Passkey);
+    let error_msg = RwSignal::new(Option::<String>::None);
+    // Shared between SignupView (write) and VerifyEmailView (read)
+    let signup_email = RwSignal::new(String::new());
 
     view! {
         <div class="min-h-screen w-full flex items-center justify-center px-4 relative overflow-hidden">
@@ -491,427 +946,23 @@ pub fn AuthPage() -> impl IntoView {
                     </div>
                 })}
 
-                // ─── PASSKEY VIEW (default) ───
-                <Show when=move || view.get() == AuthView::Passkey>
-                    <div class="glass-panel p-8 rounded-3xl flex flex-col gap-5">
-                        <div class="text-center mb-2">
-                            <div class="w-16 h-16 mx-auto mb-4 rounded-2xl flex items-center justify-center ring-1 ring-indigo-200/50"
-                                 style="background: linear-gradient(135deg, var(--color-bg-elevated), var(--color-bg-sunken))">
-                                {icon_fingerprint()}
-                            </div>
-                            <h1 class="text-2xl font-bold text-[var(--color-text-primary)] tracking-tight">{t("auth.welcome_back")}</h1>
-                            <p class="text-sm text-[var(--color-text-tertiary)] mt-1.5">{t("auth.passkey_subtitle")}</p>
-                        </div>
-
-                        <button
-                            on:click=on_passkey_login
-                            class="w-full py-3.5 btn-glass font-semibold rounded-xl flex items-center justify-center gap-2.5 shadow-lg active:scale-95 transition-all"
-                        >
-                            {icon_key()}
-                            {t("auth.passkey_signin")}
-                        </button>
-
-                        <div class="flex items-center gap-2">
-                            <div class="flex-1 h-px bg-[var(--color-border-subtle)]"></div>
-                            <span class="text-xs text-[var(--color-text-disabled)] font-medium">"or"</span>
-                            <div class="flex-1 h-px bg-[var(--color-border-subtle)]"></div>
-                        </div>
-
-                        <button
-                            on:click=move |_| { error_msg.set(None); view.set(AuthView::EmailForm); }
-                            class="w-full py-3 bg-[var(--color-bg-elevated)] border border-[var(--color-border-default)] text-[var(--color-text-primary)] font-semibold rounded-xl flex items-center justify-center gap-2 shadow-sm hover:bg-[var(--color-interactive-hover)] active:scale-95 transition-all"
-                        >
-                            <span class="text-[var(--color-text-disabled)]">{icon_mail()}</span>
-                            {t("auth.continue_email")}
-                        </button>
-
-                        <p class="text-center text-xs text-[var(--color-text-disabled)]">
-                            {t("auth.no_account")} " "
-                            <button
-                                on:click=move |_| { error_msg.set(None); view.set(AuthView::Signup); }
-                                class="text-[var(--color-brand-primary)] font-semibold hover:underline"
-                            >
-                                {t("auth.signup_link")}
-                            </button>
-                        </p>
-                    </div>
+                <Show when=move || auth_view.get() == AuthView::Passkey>
+                    <PasskeyView auth_view=auth_view error_msg=error_msg />
                 </Show>
-
-                // ─── EMAIL FORM VIEW ───
-                <Show when=move || view.get() == AuthView::EmailForm>
-                    <div class="glass-panel p-8 rounded-3xl flex flex-col gap-5">
-                        <button
-                            on:click=move |_| { error_msg.set(None); view.set(AuthView::Passkey); }
-                            class="flex items-center gap-1.5 text-sm text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)] -mb-2 transition-colors w-fit"
-                        >
-                            {icon_arrow_left()} {t("common.back")}
-                        </button>
-
-                        <div>
-                            <h1 class="text-2xl font-bold text-[var(--color-text-primary)] tracking-tight">{t("auth.sign_in")}</h1>
-                            <p class="text-sm text-[var(--color-text-tertiary)] mt-1">{t("auth.enter_email_password")}</p>
-                        </div>
-
-                        <ActionForm action=login_action>
-                            <div class="flex flex-col gap-3">
-                                <div class="relative">
-                                    <span class="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--color-text-disabled)]">{icon_mail()}</span>
-                                    <input
-                                        type="email"
-                                        name="email"
-                                        required
-                                        prop:value=move || email.get()
-                                        on:input=move |ev| email.set(event_target_value(&ev))
-                                        placeholder="Email address"
-                                        class="w-full pl-10 pr-4 py-3 bg-[var(--color-bg-sunken)] border border-[var(--color-border-default)] rounded-xl text-sm font-medium text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-primary)]/50 focus:border-[var(--color-border-focus)] transition-all"
-                                    />
-                                </div>
-
-                                <div class="relative">
-                                    <span class="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--color-text-disabled)]">{icon_lock()}</span>
-                                    <input
-                                        type=move || if show_password.get() { "text" } else { "password" }
-                                        name="password"
-                                        required
-                                        prop:value=move || password.get()
-                                        on:input=move |ev| password.set(event_target_value(&ev))
-                                        placeholder="Password"
-                                        class="w-full pl-10 pr-10 py-3 bg-[var(--color-bg-sunken)] border border-[var(--color-border-default)] rounded-xl text-sm font-medium text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-primary)]/50 focus:border-[var(--color-border-focus)] transition-all"
-                                    />
-                                    <button
-                                        type="button"
-                                        on:click=move |_| show_password.update(|v| *v = !*v)
-                                        class="absolute right-3.5 top-1/2 -translate-y-1/2 text-[var(--color-text-disabled)] hover:text-[var(--color-text-secondary)] transition-colors"
-                                    >
-                                        {move || if show_password.get() { icon_eye_off().into_any() } else { icon_eye().into_any() }}
-                                    </button>
-                                </div>
-
-                                <div class="flex justify-end -mt-1">
-                                    <button
-                                        type="button"
-                                        on:click=move |_| { error_msg.set(None); forgot_sent.set(false); view.set(AuthView::Forgot); }
-                                        class="text-xs text-[var(--color-brand-primary)] font-medium hover:underline"
-                                    >
-                                        {t("auth.forgot_password")}
-                                    </button>
-                                </div>
-                            </div>
-
-                            <button
-                                type="submit"
-                                class="w-full mt-4 py-3.5 btn-glass font-semibold rounded-xl shadow-lg active:scale-95 transition-all disabled:opacity-50"
-                                disabled=login_pending
-                            >
-                                {move || if login_pending.get() { t("common.loading") } else { t("auth.sign_in") }}
-                            </button>
-                        </ActionForm>
-
-                        <div class="flex items-center gap-2">
-                            <div class="flex-1 h-px bg-[var(--color-border-subtle)]"></div>
-                            <span class="text-xs text-[var(--color-text-disabled)] font-medium">"or"</span>
-                            <div class="flex-1 h-px bg-[var(--color-border-subtle)]"></div>
-                        </div>
-
-                        <button
-                            on:click=on_passkey_login
-                            class="w-full py-3 bg-[var(--color-bg-elevated)] border border-[var(--color-border-default)] text-[var(--color-text-primary)] font-semibold rounded-xl flex items-center justify-center gap-2 shadow-sm hover:bg-[var(--color-interactive-hover)] active:scale-95 transition-all"
-                        >
-                            {icon_key()}
-                            {t("auth.use_passkey")}
-                        </button>
-
-                        <p class="text-center text-xs text-[var(--color-text-disabled)]">
-                            {t("auth.no_account")} " "
-                            <button
-                                on:click=move |_| { error_msg.set(None); view.set(AuthView::Signup); }
-                                class="text-[var(--color-brand-primary)] font-semibold hover:underline"
-                            >
-                                {t("auth.signup_link")}
-                            </button>
-                        </p>
-                    </div>
+                <Show when=move || auth_view.get() == AuthView::EmailForm>
+                    <EmailFormView auth_view=auth_view error_msg=error_msg />
                 </Show>
-
-                // ─── SIGNUP VIEW ───
-                <Show when=move || view.get() == AuthView::Signup>
-                    <div class="glass-panel p-8 rounded-3xl flex flex-col gap-5">
-                        <button
-                            on:click=move |_| { error_msg.set(None); view.set(AuthView::Passkey); }
-                            class="flex items-center gap-1.5 text-sm text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)] -mb-2 transition-colors w-fit"
-                        >
-                            {icon_arrow_left()} {t("common.back")}
-                        </button>
-
-                        <div class="text-center">
-                            <div class="w-14 h-14 mx-auto mb-3 rounded-2xl flex items-center justify-center ring-1 ring-emerald-200/50"
-                                 style="background: linear-gradient(135deg, var(--color-bg-elevated), var(--color-bg-sunken))">
-                                {icon_user_plus()}
-                            </div>
-                            <h1 class="text-2xl font-bold text-[var(--color-text-primary)] tracking-tight">{t("auth.create_account")}</h1>
-                            <p class="text-sm text-[var(--color-text-tertiary)] mt-1">{t("auth.get_started")}</p>
-                        </div>
-
-                        <div class="flex flex-col gap-3">
-                            <input
-                                type="text"
-                                prop:value=move || signup_name.get()
-                                on:input=move |ev| signup_name.set(event_target_value(&ev))
-                                placeholder=t("auth.display_name")
-                                class="w-full px-4 py-3 bg-[var(--color-bg-sunken)] border border-[var(--color-border-default)] rounded-xl text-sm font-medium text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-primary)]/50 focus:border-[var(--color-border-focus)] transition-all"
-                            />
-                            <input
-                                type="email"
-                                prop:value=move || signup_email.get()
-                                on:input=move |ev| signup_email.set(event_target_value(&ev))
-                                placeholder="Email address"
-                                class="w-full px-4 py-3 bg-[var(--color-bg-sunken)] border border-[var(--color-border-default)] rounded-xl text-sm font-medium text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-primary)]/50 focus:border-[var(--color-border-focus)] transition-all"
-                            />
-
-                            // Password + strength meter
-                            <div class="flex flex-col gap-1.5">
-                                <div class="relative">
-                                    <input
-                                        type=move || if show_signup_password.get() { "text" } else { "password" }
-                                        prop:value=move || signup_password.get()
-                                        on:input=move |ev| signup_password.set(event_target_value(&ev))
-                                        placeholder=t("auth.password")
-                                        class="w-full pr-10 px-4 py-3 bg-[var(--color-bg-sunken)] border border-[var(--color-border-default)] rounded-xl text-sm font-medium text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-primary)]/50 focus:border-[var(--color-border-focus)] transition-all"
-                                    />
-                                    <button
-                                        type="button"
-                                        on:click=move |_| show_signup_password.update(|v| *v = !*v)
-                                        class="absolute right-3.5 top-1/2 -translate-y-1/2 text-[var(--color-text-disabled)] hover:text-[var(--color-text-secondary)]"
-                                    >
-                                        {move || if show_signup_password.get() { icon_eye_off().into_any() } else { icon_eye().into_any() }}
-                                    </button>
-                                </div>
-
-                                // Strength indicator
-                                {move || {
-                                    let pw = signup_password.get();
-                                    if pw.is_empty() {
-                                        None
-                                    } else {
-                                        let score = pw_strength();
-                                        Some(view! {
-                                            <div class="flex items-center gap-2">
-                                                <div class="flex gap-1 flex-1">
-                                                    {(1..=4).map(|level| {
-                                                        let bar_class = if level <= score {
-                                                            format!("h-1 flex-1 rounded-full transition-all duration-300 {}", strength_color(score))
-                                                        } else {
-                                                            "h-1 flex-1 rounded-full transition-all duration-300 bg-[var(--color-border-subtle)]".to_string()
-                                                        };
-                                                        view! { <div class=bar_class></div> }
-                                                    }).collect_view()}
-                                                </div>
-                                                <span class={format!("text-xs font-semibold {}", strength_text_color(score))}>
-                                                    {t(strength_label(score))}
-                                                </span>
-                                            </div>
-                                        })
-                                    }
-                                }}
-                            </div>
-
-                            // Confirm password
-                            <div class="flex flex-col gap-1">
-                                <div class="relative">
-                                    <input
-                                        type=move || if show_signup_password2.get() { "text" } else { "password" }
-                                        prop:value=move || signup_password_confirm.get()
-                                        on:input=move |ev| signup_password_confirm.set(event_target_value(&ev))
-                                        placeholder=t("auth.confirm_password")
-                                        class=move || {
-                                            let base = "w-full pr-10 px-4 py-3 bg-[var(--color-bg-sunken)] border rounded-xl text-sm font-medium text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] focus:outline-none focus:ring-2 transition-all";
-                                            if passwords_mismatch() {
-                                                format!("{base} border-red-300 focus:ring-red-400/50 focus:border-red-400")
-                                            } else if passwords_match() {
-                                                format!("{base} border-emerald-300 focus:ring-emerald-400/50 focus:border-emerald-400")
-                                            } else {
-                                                format!("{base} border-[var(--color-border-default)] focus:ring-[var(--color-brand-primary)]/50 focus:border-[var(--color-border-focus)]")
-                                            }
-                                        }
-                                    />
-                                    <button
-                                        type="button"
-                                        on:click=move |_| show_signup_password2.update(|v| *v = !*v)
-                                        class="absolute right-3.5 top-1/2 -translate-y-1/2 text-[var(--color-text-disabled)] hover:text-[var(--color-text-secondary)]"
-                                    >
-                                        {move || if show_signup_password2.get() { icon_eye_off().into_any() } else { icon_eye().into_any() }}
-                                    </button>
-                                </div>
-                                {move || if passwords_mismatch() {
-                                    Some(view! { <p class="text-xs text-red-500 font-medium pl-1">{t("auth.passwords_mismatch")}</p> })
-                                } else if passwords_match() {
-                                    Some(view! { <p class="text-xs text-emerald-600 font-medium pl-1">{t("auth.passwords_match")}</p> })
-                                } else {
-                                    None
-                                }}
-                            </div>
-                        </div>
-
-                        <button
-                            on:click=on_register_submit
-                            class="w-full py-3.5 btn-glass font-semibold rounded-xl shadow-lg active:scale-95 transition-all disabled:opacity-50"
-                            disabled=move || register_pending.get() || passwords_mismatch()
-                        >
-                            {move || if register_pending.get() { t("common.loading") } else { t("auth.create_account") }}
-                        </button>
-
-                        <p class="text-center text-xs text-[var(--color-text-disabled)]">
-                            {t("auth.has_account")} " "
-                            <button
-                                on:click=move |_| { error_msg.set(None); view.set(AuthView::Passkey); }
-                                class="text-[var(--color-brand-primary)] font-semibold hover:underline"
-                            >
-                                {t("auth.signin_link")}
-                            </button>
-                        </p>
-                    </div>
+                <Show when=move || auth_view.get() == AuthView::Signup>
+                    <SignupView auth_view=auth_view error_msg=error_msg signup_email=signup_email />
                 </Show>
-
-                // ─── FORGOT PASSWORD VIEW ───
-                <Show when=move || view.get() == AuthView::Forgot>
-                    <div class="glass-panel p-8 rounded-3xl flex flex-col gap-5">
-                        <button
-                            on:click=move |_| { error_msg.set(None); forgot_sent.set(false); view.set(AuthView::EmailForm); }
-                            class="flex items-center gap-1.5 text-sm text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)] -mb-2 transition-colors w-fit"
-                        >
-                            {icon_arrow_left()} {t("auth.back_to_signin")}
-                        </button>
-
-                        <div>
-                            <h1 class="text-2xl font-bold text-[var(--color-text-primary)] tracking-tight">{t("auth.reset_password")}</h1>
-                            <p class="text-sm text-[var(--color-text-tertiary)] mt-1">{t("auth.reset_subtitle")}</p>
-                        </div>
-
-                        {move || forgot_sent.get().then(|| view! {
-                            <div class="px-3 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
-                                <p class="text-sm text-emerald-600 font-medium">{t("auth.reset_link_sent")}</p>
-                            </div>
-                        })}
-
-                        <ActionForm action=forgot_action>
-                            <div class="relative">
-                                <span class="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--color-text-disabled)]">{icon_mail()}</span>
-                                <input
-                                    type="email"
-                                    name="email"
-                                    required
-                                    prop:value=move || forgot_email.get()
-                                    on:input=move |ev| forgot_email.set(event_target_value(&ev))
-                                    placeholder="Email address"
-                                    class="w-full pl-10 pr-4 py-3 bg-[var(--color-bg-sunken)] border border-[var(--color-border-default)] rounded-xl text-sm font-medium text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-primary)]/50 focus:border-[var(--color-border-focus)] transition-all"
-                                />
-                            </div>
-
-                            <button
-                                type="submit"
-                                class="w-full mt-4 py-3.5 btn-glass font-semibold rounded-xl shadow-lg active:scale-95 transition-all disabled:opacity-50"
-                                disabled=forgot_pending
-                            >
-                                {move || if forgot_pending.get() { t("common.loading") } else { t("auth.send_reset_link") }}
-                            </button>
-                        </ActionForm>
-                    </div>
+                <Show when=move || auth_view.get() == AuthView::Forgot>
+                    <ForgotView auth_view=auth_view error_msg=error_msg />
                 </Show>
-
-                // ─── VERIFY EMAIL VIEW ───
-                <Show when=move || view.get() == AuthView::VerifyEmail>
-                    <div class="glass-panel p-8 rounded-3xl flex flex-col gap-6">
-                        <div class="text-center">
-                            <div class="w-16 h-16 mx-auto mb-4 rounded-2xl flex items-center justify-center ring-1 ring-amber-200/50"
-                                 style="background: linear-gradient(135deg, var(--color-bg-elevated), var(--color-bg-sunken))">
-                                {icon_mail_large()}
-                            </div>
-                            <h1 class="text-2xl font-bold text-[var(--color-text-primary)] tracking-tight">{t("auth.check_email")}</h1>
-                            <p class="text-sm text-[var(--color-text-tertiary)] mt-2 leading-relaxed">
-                                {t("auth.verify_sent_to")} " "
-                                <span class="font-semibold text-[var(--color-text-primary)]">
-                                    {move || {
-                                        let em = signup_email.get();
-                                        if em.is_empty() { "your email".to_string() } else { em }
-                                    }}
-                                </span>
-                                ". " {t("auth.verify_click_link")}
-                            </p>
-                        </div>
-
-                        <div class="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-4 text-sm text-amber-600 font-medium text-center">
-                            {t("auth.resend_prompt")} " "
-                            <ActionForm action=resend_action attr:class="inline">
-                                <button
-                                    type="submit"
-                                    class="underline font-semibold hover:text-amber-700"
-                                    disabled=resend_pending
-                                >
-                                    {move || if resend_pending.get() { t("common.loading") } else { t("auth.resend_link") }}
-                                </button>
-                            </ActionForm>
-                        </div>
-
-                        <button
-                            on:click=move |_| view.set(AuthView::AddPasskey)
-                            class="w-full py-3.5 btn-glass font-semibold rounded-xl shadow-lg active:scale-95 transition-all"
-                        >
-                            {t("auth.verified_continue")} " \u{2192}"
-                        </button>
-
-                        <button
-                            on:click=move |_| { error_msg.set(None); view.set(AuthView::Signup); }
-                            class="w-full py-2.5 text-sm text-[var(--color-text-disabled)] font-medium hover:text-[var(--color-text-secondary)] transition-colors"
-                        >
-                            "\u{2190} " {t("auth.back_to_signup")}
-                        </button>
-                    </div>
+                <Show when=move || auth_view.get() == AuthView::VerifyEmail>
+                    <VerifyEmailView auth_view=auth_view error_msg=error_msg signup_email=signup_email />
                 </Show>
-
-                // ─── ADD PASSKEY VIEW ───
-                <Show when=move || view.get() == AuthView::AddPasskey>
-                    <div class="glass-panel p-8 rounded-3xl flex flex-col gap-6">
-                        <div class="text-center">
-                            <div class="w-16 h-16 mx-auto mb-4 rounded-2xl flex items-center justify-center ring-1 ring-violet-200/50"
-                                 style="background: linear-gradient(135deg, var(--color-bg-elevated), var(--color-bg-sunken))">
-                                {icon_fingerprint()}
-                            </div>
-                            <h1 class="text-2xl font-bold text-[var(--color-text-primary)] tracking-tight">{t("auth.add_passkey")}</h1>
-                            <p class="text-sm text-[var(--color-text-tertiary)] mt-2 leading-relaxed">
-                                {t("auth.passkey_subtitle")}
-                            </p>
-                        </div>
-
-                        <div class="bg-[var(--color-bg-sunken)] rounded-2xl p-4 flex flex-col gap-2.5">
-                            <div class="flex items-center gap-3 text-sm text-[var(--color-text-secondary)]">
-                                <span class="text-base shrink-0">"&#x1F680;"</span>
-                                <span>{t("auth.passkey_benefit_1")}</span>
-                            </div>
-                            <div class="flex items-center gap-3 text-sm text-[var(--color-text-secondary)]">
-                                <span class="text-base shrink-0">"&#x1F512;"</span>
-                                <span>{t("auth.passkey_benefit_2")}</span>
-                            </div>
-                            <div class="flex items-center gap-3 text-sm text-[var(--color-text-secondary)]">
-                                <span class="text-base shrink-0">"&#x1F310;"</span>
-                                <span>{t("auth.passkey_benefit_3")}</span>
-                            </div>
-                        </div>
-
-                        <button
-                            on:click=on_passkey_register
-                            class="w-full py-3.5 btn-glass font-semibold rounded-xl flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-all"
-                        >
-                            {icon_key()}
-                            {t("auth.add_passkey_now")}
-                        </button>
-
-                        <button
-                            on:click=on_skip_passkey
-                            class="w-full py-3 text-sm text-[var(--color-text-disabled)] font-medium hover:text-[var(--color-text-secondary)] transition-colors"
-                        >
-                            {t("auth.skip_for_now")}
-                        </button>
-                    </div>
+                <Show when=move || auth_view.get() == AuthView::AddPasskey>
+                    <AddPasskeyView />
                 </Show>
             </div>
         </div>

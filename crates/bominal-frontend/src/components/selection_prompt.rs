@@ -32,5 +32,5 @@ pub fn SelectionPrompt(
                 </div>
             </div>
         </Show>
-    }
+    }.into_any()
 }

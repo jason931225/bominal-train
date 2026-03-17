@@ -76,5 +76,5 @@ pub fn SortableList(
                 }).collect::<Vec<_>>()
             }}
         </div>
-    }
+    }.into_any()
 }

@@ -44,5 +44,5 @@ pub fn BottomSheet(
                 </div>
             </div>
         </div>
-    }
+    }.into_any()
 }

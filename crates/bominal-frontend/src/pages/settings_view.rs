@@ -1,4 +1,7 @@
 //! Settings page — providers, cards, appearance, accessibility.
+//!
+//! Each collapsible section is its own `#[component]` so the view types
+//! stay within the default `recursion_limit`.
 
 use leptos::prelude::*;
 
@@ -12,10 +15,383 @@ use crate::components::card_brand::{
 use crate::components::glass_panel::GlassPanel;
 use crate::i18n::t;
 
+// ── Shared chevron SVG ──────────────────────────────────────────────
+
+fn chevron_svg() -> impl IntoView {
+    view! {
+        <svg class="settings-chevron w-4 h-4 text-[var(--color-text-tertiary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+        </svg>
+    }
+}
+
+// ── Section: User info ──────────────────────────────────────────────
+
+#[component]
+fn UserInfoSection() -> impl IntoView {
+    let user = Resource::new(|| (), |_| get_current_user());
+
+    view! {
+        <Suspense>
+            {move || user.get().map(|result| match result {
+                Ok(Some(info)) => view! {
+                    <GlassPanel>
+                        <div class="p-4">
+                            <p class="text-sm font-medium text-[var(--color-text-primary)]">{info.display_name.clone()}</p>
+                            <p class="text-xs text-[var(--color-text-tertiary)]">{info.email.clone()}</p>
+                        </div>
+                    </GlassPanel>
+                }.into_any(),
+                _ => view! { <div></div> }.into_any(),
+            })}
+        </Suspense>
+    }.into_any()
+}
+
+// ── Section: Provider Credentials ───────────────────────────────────
+
+#[component]
+fn ProviderSection(
+    providers: Resource<Result<Vec<ProviderInfo>, ServerFnError>>,
+    delete_provider_action: ServerAction<DeleteProvider>,
+    add_provider_action: ServerAction<AddProvider>,
+    show_provider_form: ReadSignal<Option<&'static str>>,
+    set_show_provider_form: WriteSignal<Option<&'static str>>,
+) -> impl IntoView {
+    view! {
+        <details
+            open
+            class="rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] overflow-hidden"
+        >
+            <summary class="flex items-center justify-between px-4 py-3 hover:bg-[var(--color-bg-sunken)]/40 transition-colors">
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-xl bg-[var(--color-brand-primary)]/20 flex items-center justify-center flex-shrink-0">
+                        <svg class="w-4 h-4 text-[var(--color-brand-text)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M3 13h2l2-6h10l2 6h2M5 17a2 2 0 104 0m6 0a2 2 0 104 0"/>
+                        </svg>
+                    </div>
+                    <span class="text-sm font-semibold text-[var(--color-text-primary)]">{t("settings.section_provider")}</span>
+                </div>
+                {chevron_svg()}
+            </summary>
+            <div class="border-t border-[var(--color-border-subtle)] p-4 space-y-3">
+                <Suspense fallback=move || view! { <p class="text-xs text-[var(--color-text-tertiary)]">{t("common.loading")}</p> }>
+                    {move || providers.get().map(|result| match result {
+                        Ok(creds) => {
+                            let has_srt = creds.iter().any(|c| c.provider == "SRT");
+                            let has_ktx = creds.iter().any(|c| c.provider == "KTX");
+                            view! {
+                                <div class="space-y-2">
+                                    {creds.into_iter().map(|cred| view! {
+                                        <ProviderRow cred=cred delete_action=delete_provider_action />
+                                    }).collect::<Vec<_>>()}
+                                    {(!has_srt).then(|| view! {
+                                        <ProviderSetupRow
+                                            provider="SRT"
+                                            show_form=show_provider_form
+                                            set_show_form=set_show_provider_form
+                                            add_action=add_provider_action
+                                        />
+                                    })}
+                                    {(!has_ktx).then(|| view! {
+                                        <ProviderSetupRow
+                                            provider="KTX"
+                                            show_form=show_provider_form
+                                            set_show_form=set_show_provider_form
+                                            add_action=add_provider_action
+                                        />
+                                    })}
+                                </div>
+                            }.into_any()
+                        }
+                        Err(_) => view! {
+                            <div class="space-y-2">
+                                <ProviderSetupRow
+                                    provider="SRT"
+                                    show_form=show_provider_form
+                                    set_show_form=set_show_provider_form
+                                    add_action=add_provider_action
+                                />
+                                <ProviderSetupRow
+                                    provider="KTX"
+                                    show_form=show_provider_form
+                                    set_show_form=set_show_provider_form
+                                    add_action=add_provider_action
+                                />
+                            </div>
+                        }.into_any(),
+                    })}
+                </Suspense>
+                {move || add_provider_action.value().get().map(|result| match result {
+                    Ok(info) => view! {
+                        <p class="text-xs text-[var(--color-status-success)]">
+                            {format!("{} — {}", info.provider, t("provider.saved"))}
+                        </p>
+                    }.into_any(),
+                    Err(e) => view! {
+                        <p class="text-xs text-[var(--color-status-error)]">{format!("{e}")}</p>
+                    }.into_any(),
+                })}
+            </div>
+        </details>
+    }.into_any()
+}
+
+// ── Section: Payment Cards ──────────────────────────────────────────
+
+#[component]
+fn PaymentSection(
+    cards: Resource<Result<Vec<CardInfo>, ServerFnError>>,
+    delete_card_action: ServerAction<DeleteCard>,
+    show_card_form: ReadSignal<bool>,
+    set_show_card_form: WriteSignal<bool>,
+) -> impl IntoView {
+    let cards_for_form = cards;
+
+    view! {
+        <details
+            open
+            class="rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] overflow-hidden"
+        >
+            <summary class="flex items-center justify-between px-4 py-3 hover:bg-[var(--color-bg-sunken)]/40 transition-colors">
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-xl bg-[var(--color-brand-primary)]/20 flex items-center justify-center flex-shrink-0">
+                        <svg class="w-4 h-4 text-[var(--color-brand-text)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                            <rect x="2" y="5" width="20" height="14" rx="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M2 10h20"/>
+                        </svg>
+                    </div>
+                    <span class="text-sm font-semibold text-[var(--color-text-primary)]">{t("settings.section_payment")}</span>
+                </div>
+                {chevron_svg()}
+            </summary>
+            <div class="border-t border-[var(--color-border-subtle)] p-4 space-y-3">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs text-[var(--color-text-tertiary)]">{t("payment.card_label")}</span>
+                    <button
+                        class="text-xs px-2 py-1 rounded-lg text-[var(--color-brand-text)] hover:bg-[var(--color-brand-primary)]/10 transition-colors"
+                        on:click=move |_| set_show_card_form.update(|v| *v = !*v)
+                    >
+                        {move || if show_card_form.get() { t("common.cancel") } else { t("payment.add_card") }}
+                    </button>
+                </div>
+                {move || show_card_form.get().then(|| view! {
+                    <CardAddForm on_done=move || {
+                        set_show_card_form.set(false);
+                        cards_for_form.refetch();
+                    } />
+                })}
+                <Suspense fallback=move || view! { <p class="text-xs text-[var(--color-text-tertiary)]">{t("common.loading")}</p> }>
+                    {move || cards.get().map(|result| match result {
+                        Ok(card_list) if card_list.is_empty() => view! {
+                            <p class="text-xs text-[var(--color-text-tertiary)] py-2">{t("payment.no_cards")}</p>
+                        }.into_any(),
+                        Ok(card_list) => view! {
+                            <div class="space-y-2">
+                                {card_list.into_iter().map(|card| view! {
+                                    <CardRow card=card delete_action=delete_card_action />
+                                }).collect::<Vec<_>>()}
+                            </div>
+                        }.into_any(),
+                        Err(_) => view! {
+                            <p class="text-xs text-[var(--color-text-tertiary)] py-2">{t("error.load_failed")}</p>
+                        }.into_any(),
+                    })}
+                </Suspense>
+            </div>
+        </details>
+    }.into_any()
+}
+
+// ── Section: Appearance ─────────────────────────────────────────────
+
+#[component]
+fn AppearanceSection() -> impl IntoView {
+    let theme = RwSignal::new(browser::current_theme());
+    let mode = RwSignal::new(browser::current_mode());
+    let locale = RwSignal::new(browser::current_locale());
+
+    let set_theme_choice = move |next: &'static str| {
+        theme.set(next.to_string());
+        browser::set_theme(next);
+    };
+    let toggle_mode = move |_| {
+        let next = if mode.get() == "dark" { "light" } else { "dark" };
+        mode.set(next.to_string());
+        browser::set_mode(next);
+    };
+    let update_locale = move |ev| {
+        let next = event_target_value(&ev);
+        locale.set(next.clone());
+        browser::set_locale(&next);
+        browser::reload_page();
+    };
+
+    view! {
+        <details
+            class="rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] overflow-hidden"
+        >
+            <summary class="flex items-center justify-between px-4 py-3 hover:bg-[var(--color-bg-sunken)]/40 transition-colors">
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-xl bg-[var(--color-brand-primary)]/20 flex items-center justify-center flex-shrink-0">
+                        <svg class="w-4 h-4 text-[var(--color-brand-text)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 3a9 9 0 100 18A9 9 0 0012 3zm0 0v18M3 12h18"/>
+                        </svg>
+                    </div>
+                    <span class="text-sm font-semibold text-[var(--color-text-primary)]">{t("settings.section_appearance")}</span>
+                </div>
+                {chevron_svg()}
+            </summary>
+            <div class="border-t border-[var(--color-border-subtle)] p-4 space-y-4">
+                <ThemePicker theme set_theme_choice />
+                <DarkModeToggle mode toggle_mode />
+                <LanguageSelector locale update_locale />
+            </div>
+        </details>
+    }.into_any()
+}
+
+#[component]
+fn ThemePicker(
+    theme: RwSignal<String>,
+    set_theme_choice: impl Fn(&'static str) + Copy + Send + Sync + 'static,
+) -> impl IntoView {
+    view! {
+        <div class="space-y-2">
+            <p class="text-xs text-[var(--color-text-tertiary)]">{t("settings.theme")}</p>
+            <div class="grid grid-cols-2 gap-3">
+                <button
+                    class=move || {
+                        let base = "p-3 rounded-xl border transition-colors text-left";
+                        if theme.get() == "rosewood" {
+                            format!("{base} glass-active border-[var(--color-brand-border)]")
+                        } else {
+                            format!("{base} border-[var(--color-border-default)] hover:border-[var(--color-brand-border)]")
+                        }
+                    }
+                    on:click=move |_| set_theme_choice("rosewood")
+                >
+                    <div class="flex gap-1.5 mb-2">
+                        <span class="w-3 h-3 rounded-full" style="background:#8a6050"></span>
+                        <span class="w-3 h-3 rounded-full" style="background:#5a7a62"></span>
+                        <span class="w-3 h-3 rounded-full" style="background:#9a7a3a"></span>
+                    </div>
+                    <p class="text-xs font-medium text-[var(--color-text-primary)]">"Rosewood Dusk"</p>
+                    <p class="text-[10px] text-[var(--color-text-tertiary)]">"Warm & nostalgic"</p>
+                </button>
+                <button
+                    class=move || {
+                        let base = "p-3 rounded-xl border transition-colors text-left";
+                        if theme.get() == "clear-sky" {
+                            format!("{base} glass-active border-[var(--color-brand-border)]")
+                        } else {
+                            format!("{base} border-[var(--color-border-default)] hover:border-[var(--color-brand-border)]")
+                        }
+                    }
+                    on:click=move |_| set_theme_choice("clear-sky")
+                >
+                    <div class="flex gap-1.5 mb-2">
+                        <span class="w-3 h-3 rounded-full" style="background:#4a6eaa"></span>
+                        <span class="w-3 h-3 rounded-full" style="background:#3a8a60"></span>
+                        <span class="w-3 h-3 rounded-full" style="background:#9a7a30"></span>
+                    </div>
+                    <p class="text-xs font-medium text-[var(--color-text-primary)]">"Clear Sky"</p>
+                    <p class="text-[10px] text-[var(--color-text-tertiary)]">"Soft & airy"</p>
+                </button>
+            </div>
+        </div>
+    }.into_any()
+}
+
+#[component]
+fn DarkModeToggle(
+    mode: RwSignal<String>,
+    toggle_mode: impl Fn(leptos::ev::MouseEvent) + Copy + Send + Sync + 'static,
+) -> impl IntoView {
+    view! {
+        <div class="flex items-center justify-between py-1">
+            <span class="text-sm text-[var(--color-text-primary)]">{t("settings.dark_mode")}</span>
+            <button
+                class="w-10 h-6 rounded-full relative cursor-pointer transition-colors"
+                style=move || {
+                    if mode.get() == "dark" {
+                        "background-color: var(--color-brand-text);".to_string()
+                    } else {
+                        "background-color: var(--color-bg-sunken);".to_string()
+                    }
+                }
+                on:click=toggle_mode
+            >
+                <div
+                    class="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform"
+                    style=move || {
+                        if mode.get() == "dark" {
+                            "transform: translateX(16px);".to_string()
+                        } else {
+                            "transform: translateX(0);".to_string()
+                        }
+                    }
+                ></div>
+            </button>
+        </div>
+    }.into_any()
+}
+
+#[component]
+fn LanguageSelector(
+    locale: RwSignal<String>,
+    update_locale: impl Fn(leptos::ev::Event) + Copy + Send + Sync + 'static,
+) -> impl IntoView {
+    view! {
+        <div class="flex items-center justify-between py-1">
+            <span class="text-sm text-[var(--color-text-primary)]">{t("settings.language")}</span>
+            <select
+                class="text-sm bg-[var(--color-bg-sunken)] text-[var(--color-text-primary)] rounded-lg px-2 py-1 border border-[var(--color-border-subtle)]"
+                prop:value=move || locale.get()
+                on:change=update_locale
+            >
+                <option value="ko">"한국어"</option>
+                <option value="en">"English"</option>
+                <option value="ja">"日本語"</option>
+            </select>
+        </div>
+    }.into_any()
+}
+
+// ── Stub sections ───────────────────────────────────────────────────
+
+#[component]
+fn StubSection(
+    icon_path: &'static str,
+    title_key: &'static str,
+) -> impl IntoView {
+    view! {
+        <details
+            class="rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] overflow-hidden"
+        >
+            <summary class="flex items-center justify-between px-4 py-3 hover:bg-[var(--color-bg-sunken)]/40 transition-colors">
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-xl bg-[var(--color-brand-primary)]/20 flex items-center justify-center flex-shrink-0">
+                        <svg class="w-4 h-4 text-[var(--color-brand-text)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                            <path stroke-linecap="round" stroke-linejoin="round" d=icon_path/>
+                        </svg>
+                    </div>
+                    <span class="text-sm font-semibold text-[var(--color-text-primary)]">{t(title_key)}</span>
+                </div>
+                {chevron_svg()}
+            </summary>
+            <div class="border-t border-[var(--color-border-subtle)] p-4">
+                <p class="text-xs text-[var(--color-text-disabled)]">"Coming soon"</p>
+            </div>
+        </details>
+    }.into_any()
+}
+
+// ── Main component ──────────────────────────────────────────────────
+
 /// Settings view with collapsible sectioned hub.
 #[component]
 pub fn SettingsView() -> impl IntoView {
-    let user = Resource::new(|| (), |_| get_current_user());
     let providers = Resource::new(|| (), |_| list_providers());
     let cards = Resource::new(|| (), |_| list_cards());
     let logout_action = ServerAction::<Logout>::new();
@@ -40,29 +416,8 @@ pub fn SettingsView() -> impl IntoView {
         }
     });
 
-    // Toggle states for inline forms
     let (show_provider_form, set_show_provider_form) = signal(Option::<&'static str>::None);
     let (show_card_form, set_show_card_form) = signal(false);
-    let theme = RwSignal::new(browser::current_theme());
-    let mode = RwSignal::new(browser::current_mode());
-    let locale = RwSignal::new(browser::current_locale());
-
-    let set_theme_choice = move |next: &'static str| {
-        theme.set(next.to_string());
-        browser::set_theme(next);
-    };
-    let toggle_mode = move |_| {
-        let next = if mode.get() == "dark" { "light" } else { "dark" };
-        mode.set(next.to_string());
-        browser::set_mode(next);
-    };
-    let update_locale = move |ev| {
-        let next = event_target_value(&ev);
-        locale.set(next.clone());
-        browser::set_locale(&next);
-        browser::reload_page();
-    };
-    let cards_for_form = cards;
 
     view! {
         <div class="px-4 pt-6 pb-4 space-y-3 max-w-xl lg:max-w-2xl mx-auto page-enter">
@@ -75,306 +430,13 @@ details[open] .settings-chevron { transform: rotate(180deg); }
 
             <h1 class="text-xl font-bold text-[var(--color-text-primary)]">{t("settings.title")}</h1>
 
-            // User info
-            <Suspense>
-                {move || user.get().map(|result| match result {
-                    Ok(Some(info)) => view! {
-                        <GlassPanel>
-                            <div class="p-4">
-                                <p class="text-sm font-medium text-[var(--color-text-primary)]">{info.display_name.clone()}</p>
-                                <p class="text-xs text-[var(--color-text-tertiary)]">{info.email.clone()}</p>
-                            </div>
-                        </GlassPanel>
-                    }.into_any(),
-                    _ => view! { <div></div> }.into_any(),
-                })}
-            </Suspense>
+            <UserInfoSection />
+            <ProviderSection providers delete_provider_action add_provider_action show_provider_form set_show_provider_form />
+            <PaymentSection cards delete_card_action show_card_form set_show_card_form />
+            <AppearanceSection />
+            <StubSection icon_path="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" title_key="settings.section_security" />
+            <StubSection icon_path="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 10-12 0v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" title_key="settings.section_notifications" />
 
-            // Section: Provider Credentials
-            <details
-                open
-                class="rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] overflow-hidden"
-            >
-                <summary class="flex items-center justify-between px-4 py-3 hover:bg-[var(--color-bg-sunken)]/40 transition-colors">
-                    <div class="flex items-center gap-3">
-                        <div class="w-8 h-8 rounded-xl bg-[var(--color-brand-primary)]/20 flex items-center justify-center flex-shrink-0">
-                            <svg class="w-4 h-4 text-[var(--color-brand-text)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M3 13h2l2-6h10l2 6h2M5 17a2 2 0 104 0m6 0a2 2 0 104 0"/>
-                            </svg>
-                        </div>
-                        <span class="text-sm font-semibold text-[var(--color-text-primary)]">{t("settings.section_provider")}</span>
-                    </div>
-                    <svg class="settings-chevron w-4 h-4 text-[var(--color-text-tertiary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
-                    </svg>
-                </summary>
-                <div class="border-t border-[var(--color-border-subtle)] p-4 space-y-3">
-                    <Suspense fallback=move || view! { <p class="text-xs text-[var(--color-text-tertiary)]">{t("common.loading")}</p> }>
-                        {move || providers.get().map(|result| match result {
-                            Ok(creds) => {
-                                let has_srt = creds.iter().any(|c| c.provider == "SRT");
-                                let has_ktx = creds.iter().any(|c| c.provider == "KTX");
-                                view! {
-                                    <div class="space-y-2">
-                                        {creds.into_iter().map(|cred| view! {
-                                            <ProviderRow cred=cred delete_action=delete_provider_action />
-                                        }).collect::<Vec<_>>()}
-                                        {(!has_srt).then(|| view! {
-                                            <ProviderSetupRow
-                                                provider="SRT"
-                                                show_form=show_provider_form
-                                                set_show_form=set_show_provider_form
-                                                add_action=add_provider_action
-                                            />
-                                        })}
-                                        {(!has_ktx).then(|| view! {
-                                            <ProviderSetupRow
-                                                provider="KTX"
-                                                show_form=show_provider_form
-                                                set_show_form=set_show_provider_form
-                                                add_action=add_provider_action
-                                            />
-                                        })}
-                                    </div>
-                                }.into_any()
-                            }
-                            Err(_) => view! {
-                                <div class="space-y-2">
-                                    <ProviderSetupRow
-                                        provider="SRT"
-                                        show_form=show_provider_form
-                                        set_show_form=set_show_provider_form
-                                        add_action=add_provider_action
-                                    />
-                                    <ProviderSetupRow
-                                        provider="KTX"
-                                        show_form=show_provider_form
-                                        set_show_form=set_show_provider_form
-                                        add_action=add_provider_action
-                                    />
-                                </div>
-                            }.into_any(),
-                        })}
-                    </Suspense>
-                    {move || add_provider_action.value().get().map(|result| match result {
-                        Ok(info) => view! {
-                            <p class="text-xs text-[var(--color-status-success)]">
-                                {format!("{} — {}", info.provider, t("provider.saved"))}
-                            </p>
-                        }.into_any(),
-                        Err(e) => view! {
-                            <p class="text-xs text-[var(--color-status-error)]">{format!("{e}")}</p>
-                        }.into_any(),
-                    })}
-                </div>
-            </details>
-
-            // Section: Payment Cards
-            <details
-                open
-                class="rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] overflow-hidden"
-            >
-                <summary class="flex items-center justify-between px-4 py-3 hover:bg-[var(--color-bg-sunken)]/40 transition-colors">
-                    <div class="flex items-center gap-3">
-                        <div class="w-8 h-8 rounded-xl bg-[var(--color-brand-primary)]/20 flex items-center justify-center flex-shrink-0">
-                            <svg class="w-4 h-4 text-[var(--color-brand-text)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
-                                <rect x="2" y="5" width="20" height="14" rx="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M2 10h20"/>
-                            </svg>
-                        </div>
-                        <span class="text-sm font-semibold text-[var(--color-text-primary)]">{t("settings.section_payment")}</span>
-                    </div>
-                    <svg class="settings-chevron w-4 h-4 text-[var(--color-text-tertiary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
-                    </svg>
-                </summary>
-                <div class="border-t border-[var(--color-border-subtle)] p-4 space-y-3">
-                    <div class="flex items-center justify-between">
-                        <span class="text-xs text-[var(--color-text-tertiary)]">{t("payment.card_label")}</span>
-                        <button
-                            class="text-xs px-2 py-1 rounded-lg text-[var(--color-brand-text)] hover:bg-[var(--color-brand-primary)]/10 transition-colors"
-                            on:click=move |_| set_show_card_form.update(|v| *v = !*v)
-                        >
-                            {move || if show_card_form.get() { t("common.cancel") } else { t("payment.add_card") }}
-                        </button>
-                    </div>
-                    {move || show_card_form.get().then(|| view! {
-                        <CardAddForm on_done=move || {
-                            set_show_card_form.set(false);
-                            cards_for_form.refetch();
-                        } />
-                    })}
-                    <Suspense fallback=move || view! { <p class="text-xs text-[var(--color-text-tertiary)]">{t("common.loading")}</p> }>
-                        {move || cards.get().map(|result| match result {
-                            Ok(card_list) if card_list.is_empty() => view! {
-                                <p class="text-xs text-[var(--color-text-tertiary)] py-2">{t("payment.no_cards")}</p>
-                            }.into_any(),
-                            Ok(card_list) => view! {
-                                <div class="space-y-2">
-                                    {card_list.into_iter().map(|card| view! {
-                                        <CardRow card=card delete_action=delete_card_action />
-                                    }).collect::<Vec<_>>()}
-                                </div>
-                            }.into_any(),
-                            Err(_) => view! {
-                                <p class="text-xs text-[var(--color-text-tertiary)] py-2">{t("error.load_failed")}</p>
-                            }.into_any(),
-                        })}
-                    </Suspense>
-                </div>
-            </details>
-
-            // Section: Appearance
-            <details
-                class="rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] overflow-hidden"
-            >
-                <summary class="flex items-center justify-between px-4 py-3 hover:bg-[var(--color-bg-sunken)]/40 transition-colors">
-                    <div class="flex items-center gap-3">
-                        <div class="w-8 h-8 rounded-xl bg-[var(--color-brand-primary)]/20 flex items-center justify-center flex-shrink-0">
-                            <svg class="w-4 h-4 text-[var(--color-brand-text)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M12 3a9 9 0 100 18A9 9 0 0012 3zm0 0v18M3 12h18"/>
-                            </svg>
-                        </div>
-                        <span class="text-sm font-semibold text-[var(--color-text-primary)]">{t("settings.section_appearance")}</span>
-                    </div>
-                    <svg class="settings-chevron w-4 h-4 text-[var(--color-text-tertiary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
-                    </svg>
-                </summary>
-                <div class="border-t border-[var(--color-border-subtle)] p-4 space-y-4">
-                    // Theme picker
-                    <div class="space-y-2">
-                        <p class="text-xs text-[var(--color-text-tertiary)]">{t("settings.theme")}</p>
-                        <div class="grid grid-cols-2 gap-3">
-                            <button
-                                class=move || {
-                                    let base = "p-3 rounded-xl border transition-colors text-left";
-                                    if theme.get() == "rosewood" {
-                                        format!("{base} glass-active border-[var(--color-brand-border)]")
-                                    } else {
-                                        format!("{base} border-[var(--color-border-default)] hover:border-[var(--color-brand-border)]")
-                                    }
-                                }
-                                on:click=move |_| set_theme_choice("rosewood")
-                            >
-                                <div class="flex gap-1.5 mb-2">
-                                    <span class="w-3 h-3 rounded-full" style="background:#8a6050"></span>
-                                    <span class="w-3 h-3 rounded-full" style="background:#5a7a62"></span>
-                                    <span class="w-3 h-3 rounded-full" style="background:#9a7a3a"></span>
-                                </div>
-                                <p class="text-xs font-medium text-[var(--color-text-primary)]">"Rosewood Dusk"</p>
-                                <p class="text-[10px] text-[var(--color-text-tertiary)]">"Warm & nostalgic"</p>
-                            </button>
-                            <button
-                                class=move || {
-                                    let base = "p-3 rounded-xl border transition-colors text-left";
-                                    if theme.get() == "clear-sky" {
-                                        format!("{base} glass-active border-[var(--color-brand-border)]")
-                                    } else {
-                                        format!("{base} border-[var(--color-border-default)] hover:border-[var(--color-brand-border)]")
-                                    }
-                                }
-                                on:click=move |_| set_theme_choice("clear-sky")
-                            >
-                                <div class="flex gap-1.5 mb-2">
-                                    <span class="w-3 h-3 rounded-full" style="background:#4a6eaa"></span>
-                                    <span class="w-3 h-3 rounded-full" style="background:#3a8a60"></span>
-                                    <span class="w-3 h-3 rounded-full" style="background:#9a7a30"></span>
-                                </div>
-                                <p class="text-xs font-medium text-[var(--color-text-primary)]">"Clear Sky"</p>
-                                <p class="text-[10px] text-[var(--color-text-tertiary)]">"Soft & airy"</p>
-                            </button>
-                        </div>
-                    </div>
-
-                    // Dark mode toggle
-                    <div class="flex items-center justify-between py-1">
-                        <span class="text-sm text-[var(--color-text-primary)]">{t("settings.dark_mode")}</span>
-                        <button
-                            class="w-10 h-6 rounded-full relative cursor-pointer transition-colors"
-                            style=move || {
-                                if mode.get() == "dark" {
-                                    "background-color: var(--color-brand-text);".to_string()
-                                } else {
-                                    "background-color: var(--color-bg-sunken);".to_string()
-                                }
-                            }
-                            on:click=toggle_mode
-                        >
-                            <div
-                                class="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform"
-                                style=move || {
-                                    if mode.get() == "dark" {
-                                        "transform: translateX(16px);".to_string()
-                                    } else {
-                                        "transform: translateX(0);".to_string()
-                                    }
-                                }
-                            ></div>
-                        </button>
-                    </div>
-
-                    // Language selector
-                    <div class="flex items-center justify-between py-1">
-                        <span class="text-sm text-[var(--color-text-primary)]">{t("settings.language")}</span>
-                        <select
-                            class="text-sm bg-[var(--color-bg-sunken)] text-[var(--color-text-primary)] rounded-lg px-2 py-1 border border-[var(--color-border-subtle)]"
-                            prop:value=move || locale.get()
-                            on:change=update_locale
-                        >
-                            <option value="ko">"한국어"</option>
-                            <option value="en">"English"</option>
-                            <option value="ja">"日本語"</option>
-                        </select>
-                    </div>
-                </div>
-            </details>
-
-            // Section: Security (stub)
-            <details
-                class="rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] overflow-hidden"
-            >
-                <summary class="flex items-center justify-between px-4 py-3 hover:bg-[var(--color-bg-sunken)]/40 transition-colors">
-                    <div class="flex items-center gap-3">
-                        <div class="w-8 h-8 rounded-xl bg-[var(--color-brand-primary)]/20 flex items-center justify-center flex-shrink-0">
-                            <svg class="w-4 h-4 text-[var(--color-brand-text)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                            </svg>
-                        </div>
-                        <span class="text-sm font-semibold text-[var(--color-text-primary)]">{t("settings.section_security")}</span>
-                    </div>
-                    <svg class="settings-chevron w-4 h-4 text-[var(--color-text-tertiary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
-                    </svg>
-                </summary>
-                <div class="border-t border-[var(--color-border-subtle)] p-4">
-                    <p class="text-xs text-[var(--color-text-disabled)]">"Coming soon"</p>
-                </div>
-            </details>
-
-            // Section: Notifications (stub)
-            <details
-                class="rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] overflow-hidden"
-            >
-                <summary class="flex items-center justify-between px-4 py-3 hover:bg-[var(--color-bg-sunken)]/40 transition-colors">
-                    <div class="flex items-center gap-3">
-                        <div class="w-8 h-8 rounded-xl bg-[var(--color-brand-primary)]/20 flex items-center justify-center flex-shrink-0">
-                            <svg class="w-4 h-4 text-[var(--color-brand-text)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 10-12 0v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
-                            </svg>
-                        </div>
-                        <span class="text-sm font-semibold text-[var(--color-text-primary)]">{t("settings.section_notifications")}</span>
-                    </div>
-                    <svg class="settings-chevron w-4 h-4 text-[var(--color-text-tertiary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
-                    </svg>
-                </summary>
-                <div class="border-t border-[var(--color-border-subtle)] p-4">
-                    <p class="text-xs text-[var(--color-text-disabled)]">"Coming soon"</p>
-                </div>
-            </details>
-
-            // Sign out
             <GlassPanel>
                 <div class="p-4">
                     <ActionForm action=logout_action>
@@ -390,6 +452,8 @@ details[open] .settings-chevron { transform: rotate(180deg); }
         </div>
     }
 }
+
+// ── Row components ──────────────────────────────────────────────────
 
 /// Display row for an existing provider credential.
 #[component]
@@ -580,109 +644,7 @@ fn CardAddForm(on_done: impl Fn() + Send + Sync + 'static) -> impl IntoView {
                 <p class="text-xs text-[var(--color-status-error)]">{msg}</p>
             })}
             <form on:submit=on_submit>
-                <div class="space-y-2">
-                    <input
-                        type="text"
-                        placeholder="Card label (e.g. My Card)"
-                        prop:value=move || label.get()
-                        on:input=move |ev| label.set(event_target_value(&ev))
-                        class="w-full px-3 py-2 bg-[var(--color-bg-sunken)] border border-[var(--color-border-default)] rounded-xl text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] focus:outline-none focus:border-[var(--color-border-focus)] transition-colors"
-                    />
-                    // Card number input with brand badge
-                    <div class="relative">
-                        <input
-                            type="text"
-                            required
-                            inputmode="numeric"
-                            maxlength="16"
-                            placeholder="Card number (15-16 digits)"
-                            class="w-full px-3 py-2 pr-16 bg-[var(--color-bg-sunken)] border border-[var(--color-border-default)] rounded-xl text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] focus:outline-none focus:border-[var(--color-border-focus)] transition-colors font-mono"
-                            prop:value=move || formatted_display.get()
-                            on:input=move |ev| {
-                                let raw = strip_non_digits(&event_target_value(&ev));
-                                let capped = if raw.len() > 16 { raw[..16].to_string() } else { raw };
-                                card_number_raw.set(capped);
-                            }
-                        />
-                        // Brand badge (absolute-positioned inside the input)
-                        {move || {
-                            let b = brand.get();
-                            (b != CardBrand::Unknown).then(|| {
-                                let label = b.label();
-                                let bg = b.badge_color();
-                                view! {
-                                    <span
-                                        class="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-white px-1.5 py-0.5 rounded"
-                                        style=format!("background-color: {bg}")
-                                    >
-                                        {label}
-                                    </span>
-                                }
-                            })
-                        }}
-                    </div>
-                    // Formatted card number preview
-                    {move || {
-                        let display = formatted_display.get();
-                        (!display.is_empty()).then(|| view! {
-                            <p class="text-xs text-[var(--color-text-tertiary)] font-mono pl-1 -mt-1">
-                                {display}
-                            </p>
-                        })
-                    }}
-                    <div class="grid grid-cols-3 gap-2">
-                        <input
-                            type="password"
-                            required
-                            maxlength="2"
-                            inputmode="numeric"
-                            placeholder="PW (2)"
-                            prop:value=move || card_password.get()
-                            on:input=move |ev| {
-                                let raw = strip_non_digits(&event_target_value(&ev));
-                                let capped = if raw.len() > 2 { raw[..2].to_string() } else { raw };
-                                card_password.set(capped);
-                            }
-                            class="px-3 py-2 bg-[var(--color-bg-sunken)] border border-[var(--color-border-default)] rounded-xl text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] focus:outline-none focus:border-[var(--color-border-focus)] transition-colors text-center"
-                        />
-                        <input
-                            type="text"
-                            required
-                            maxlength="6"
-                            inputmode="numeric"
-                            placeholder="YYMMDD"
-                            prop:value=move || birthday.get()
-                            on:input=move |ev| {
-                                let raw = strip_non_digits(&event_target_value(&ev));
-                                let capped = if raw.len() > 6 { raw[..6].to_string() } else { raw };
-                                birthday.set(capped);
-                            }
-                            class="px-3 py-2 bg-[var(--color-bg-sunken)] border border-[var(--color-border-default)] rounded-xl text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] focus:outline-none focus:border-[var(--color-border-focus)] transition-colors text-center"
-                        />
-                        <input
-                            type="text"
-                            required
-                            maxlength="4"
-                            inputmode="numeric"
-                            placeholder="MMYY"
-                            prop:value=move || expire_date.get()
-                            on:input=move |ev| {
-                                let raw = strip_non_digits(&event_target_value(&ev));
-                                let capped = if raw.len() > 4 { raw[..4].to_string() } else { raw };
-                                expire_date.set(capped);
-                            }
-                            class="px-3 py-2 bg-[var(--color-bg-sunken)] border border-[var(--color-border-default)] rounded-xl text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] focus:outline-none focus:border-[var(--color-border-focus)] transition-colors text-center"
-                        />
-                    </div>
-                    <select
-                        prop:value=move || card_type.get()
-                        on:change=move |ev| card_type.set(event_target_value(&ev))
-                        class="w-full px-3 py-2 bg-[var(--color-bg-sunken)] border border-[var(--color-border-default)] rounded-xl text-sm text-[var(--color-text-primary)] focus:outline-none focus:border-[var(--color-border-focus)] transition-colors"
-                    >
-                        <option value="J">{t("payment.credit_card")}</option>
-                        <option value="S">{t("payment.debit_card")}</option>
-                    </select>
-                </div>
+                <CardFormFields label card_number_raw card_password birthday expire_date card_type formatted_display brand />
                 <button
                     type="submit"
                     class="w-full mt-3 py-2 btn-glass font-medium rounded-xl text-sm disabled:opacity-50 transition-all"
@@ -697,6 +659,123 @@ fn CardAddForm(on_done: impl Fn() + Send + Sync + 'static) -> impl IntoView {
             </form>
         </div>
     }
+}
+
+#[component]
+fn CardFormFields(
+    label: RwSignal<String>,
+    card_number_raw: RwSignal<String>,
+    card_password: RwSignal<String>,
+    birthday: RwSignal<String>,
+    expire_date: RwSignal<String>,
+    card_type: RwSignal<String>,
+    formatted_display: Memo<String>,
+    brand: Memo<CardBrand>,
+) -> impl IntoView {
+    view! {
+        <div class="space-y-2">
+            <input
+                type="text"
+                placeholder="Card label (e.g. My Card)"
+                prop:value=move || label.get()
+                on:input=move |ev| label.set(event_target_value(&ev))
+                class="w-full px-3 py-2 bg-[var(--color-bg-sunken)] border border-[var(--color-border-default)] rounded-xl text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] focus:outline-none focus:border-[var(--color-border-focus)] transition-colors"
+            />
+            // Card number input with brand badge
+            <div class="relative">
+                <input
+                    type="text"
+                    required
+                    inputmode="numeric"
+                    maxlength="16"
+                    placeholder="Card number (15-16 digits)"
+                    class="w-full px-3 py-2 pr-16 bg-[var(--color-bg-sunken)] border border-[var(--color-border-default)] rounded-xl text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] focus:outline-none focus:border-[var(--color-border-focus)] transition-colors font-mono"
+                    prop:value=move || formatted_display.get()
+                    on:input=move |ev| {
+                        let raw = strip_non_digits(&event_target_value(&ev));
+                        let capped = if raw.len() > 16 { raw[..16].to_string() } else { raw };
+                        card_number_raw.set(capped);
+                    }
+                />
+                {move || {
+                    let b = brand.get();
+                    (b != CardBrand::Unknown).then(|| {
+                        let label = b.label();
+                        let bg = b.badge_color();
+                        view! {
+                            <span
+                                class="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-white px-1.5 py-0.5 rounded"
+                                style=format!("background-color: {bg}")
+                            >
+                                {label}
+                            </span>
+                        }
+                    })
+                }}
+            </div>
+            // Formatted card number preview
+            {move || {
+                let display = formatted_display.get();
+                (!display.is_empty()).then(|| view! {
+                    <p class="text-xs text-[var(--color-text-tertiary)] font-mono pl-1 -mt-1">
+                        {display}
+                    </p>
+                })
+            }}
+            <div class="grid grid-cols-3 gap-2">
+                <input
+                    type="password"
+                    required
+                    maxlength="2"
+                    inputmode="numeric"
+                    placeholder="PW (2)"
+                    prop:value=move || card_password.get()
+                    on:input=move |ev| {
+                        let raw = strip_non_digits(&event_target_value(&ev));
+                        let capped = if raw.len() > 2 { raw[..2].to_string() } else { raw };
+                        card_password.set(capped);
+                    }
+                    class="px-3 py-2 bg-[var(--color-bg-sunken)] border border-[var(--color-border-default)] rounded-xl text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] focus:outline-none focus:border-[var(--color-border-focus)] transition-colors text-center"
+                />
+                <input
+                    type="text"
+                    required
+                    maxlength="6"
+                    inputmode="numeric"
+                    placeholder="YYMMDD"
+                    prop:value=move || birthday.get()
+                    on:input=move |ev| {
+                        let raw = strip_non_digits(&event_target_value(&ev));
+                        let capped = if raw.len() > 6 { raw[..6].to_string() } else { raw };
+                        birthday.set(capped);
+                    }
+                    class="px-3 py-2 bg-[var(--color-bg-sunken)] border border-[var(--color-border-default)] rounded-xl text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] focus:outline-none focus:border-[var(--color-border-focus)] transition-colors text-center"
+                />
+                <input
+                    type="text"
+                    required
+                    maxlength="4"
+                    inputmode="numeric"
+                    placeholder="MMYY"
+                    prop:value=move || expire_date.get()
+                    on:input=move |ev| {
+                        let raw = strip_non_digits(&event_target_value(&ev));
+                        let capped = if raw.len() > 4 { raw[..4].to_string() } else { raw };
+                        expire_date.set(capped);
+                    }
+                    class="px-3 py-2 bg-[var(--color-bg-sunken)] border border-[var(--color-border-default)] rounded-xl text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] focus:outline-none focus:border-[var(--color-border-focus)] transition-colors text-center"
+                />
+            </div>
+            <select
+                prop:value=move || card_type.get()
+                on:change=move |ev| card_type.set(event_target_value(&ev))
+                class="w-full px-3 py-2 bg-[var(--color-bg-sunken)] border border-[var(--color-border-default)] rounded-xl text-sm text-[var(--color-text-primary)] focus:outline-none focus:border-[var(--color-border-focus)] transition-colors"
+            >
+                <option value="J">{t("payment.credit_card")}</option>
+                <option value="S">{t("payment.debit_card")}</option>
+            </select>
+        </div>
+    }.into_any()
 }
 
 /// Display row for a payment card.

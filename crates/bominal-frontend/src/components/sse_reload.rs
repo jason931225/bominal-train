@@ -33,7 +33,13 @@ fn init_task_events() {
             crate::browser::reload_page();
         }));
         let on_error = Closure::<dyn FnMut(Event)>::wrap(Box::new(move |_| {
-            crate::browser::reload_page();
+            TASK_EVENT_SOURCE.with(|source_cell| {
+                if let Some(src) = source_cell.borrow().as_ref() {
+                    if src.ready_state() == 2 {
+                        crate::browser::reload_page();
+                    }
+                }
+            });
         }));
 
         let _ = source.add_event_listener_with_callback(

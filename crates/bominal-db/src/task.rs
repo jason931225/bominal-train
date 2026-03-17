@@ -7,7 +7,7 @@ use bominal_domain::task::{
     TargetTrain, TargetTrainList, TaskStatus,
 };
 use chrono::{DateTime, Utc};
-use sqlx::PgPool;
+use sqlx::{PgConnection, PgPool};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, sqlx::FromRow)]
@@ -138,7 +138,8 @@ pub async fn find_by_user(pool: &PgPool, user_id: Uuid) -> Result<Vec<TaskRow>, 
     .bind(user_id)
     .fetch_all(pool)
     .await?;
-    hydrate_tasks(pool, cores).await
+    let mut conn = pool.acquire().await?;
+    hydrate_tasks(&mut *conn, cores).await
 }
 
 pub async fn find_by_id(
@@ -154,7 +155,10 @@ pub async fn find_by_id(
             .await?;
 
     match core {
-        Some(row) => Ok(hydrate_tasks(pool, vec![row]).await?.into_iter().next()),
+        Some(row) => {
+            let mut conn = pool.acquire().await?;
+            Ok(hydrate_tasks(&mut *conn, vec![row]).await?.into_iter().next())
+        }
         None => Ok(None),
     }
 }
@@ -166,7 +170,8 @@ pub async fn find_by_status(pool: &PgPool, status: TaskStatus) -> Result<Vec<Tas
     .bind(status.as_str())
     .fetch_all(pool)
     .await?;
-    hydrate_tasks(pool, cores).await
+    let mut conn = pool.acquire().await?;
+    hydrate_tasks(&mut *conn, cores).await
 }
 
 pub async fn claim_queued_tasks(pool: &PgPool) -> Result<Vec<TaskRow>, sqlx::Error> {
@@ -185,7 +190,8 @@ pub async fn claim_queued_tasks(pool: &PgPool) -> Result<Vec<TaskRow>, sqlx::Err
     )
     .fetch_all(pool)
     .await?;
-    hydrate_tasks(pool, cores).await
+    let mut conn = pool.acquire().await?;
+    hydrate_tasks(&mut *conn, cores).await
 }
 
 pub async fn update_status(pool: &PgPool, task_id: Uuid, status: TaskStatus) -> Result<(), sqlx::Error> {
@@ -273,6 +279,7 @@ pub async fn update_task(
     }
     if auto_retry.is_some() {
         sets.push(format!("auto_retry = ${param_idx}"));
+        param_idx += 1;
     }
 
     let core = if sets.is_empty() {
@@ -317,9 +324,8 @@ pub async fn update_task(
         insert_targets(&mut tx, core.id, trains).await?;
     }
 
+    let tasks = hydrate_tasks(&mut *tx, vec![core]).await?;
     tx.commit().await?;
-
-    let tasks = hydrate_tasks(pool, vec![core]).await?;
     Ok(tasks.into_iter().next())
 }
 
@@ -377,7 +383,10 @@ async fn insert_targets(
     Ok(())
 }
 
-async fn hydrate_tasks(pool: &PgPool, cores: Vec<TaskCoreRow>) -> Result<Vec<TaskRow>, sqlx::Error> {
+async fn hydrate_tasks(
+    conn: &mut PgConnection,
+    cores: Vec<TaskCoreRow>,
+) -> Result<Vec<TaskRow>, sqlx::Error> {
     if cores.is_empty() {
         return Ok(Vec::new());
     }
@@ -392,7 +401,7 @@ async fn hydrate_tasks(pool: &PgPool, cores: Vec<TaskCoreRow>) -> Result<Vec<Tas
         "#,
     )
     .bind(&task_ids)
-    .fetch_all(pool)
+    .fetch_all(&mut *conn)
     .await?;
 
     let target_rows = sqlx::query_as::<_, TaskTargetRow>(
@@ -404,7 +413,7 @@ async fn hydrate_tasks(pool: &PgPool, cores: Vec<TaskCoreRow>) -> Result<Vec<Tas
         "#,
     )
     .bind(&task_ids)
-    .fetch_all(pool)
+    .fetch_all(&mut *conn)
     .await?;
 
     let mut passengers_by_task: HashMap<Uuid, PassengerList> = HashMap::new();
