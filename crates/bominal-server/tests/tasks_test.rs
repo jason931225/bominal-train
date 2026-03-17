@@ -47,7 +47,7 @@ fn valid_task_body() -> serde_json::Value {
         "departure_time": "090000",
         "passengers": [{"type": "adult", "count": 1}],
         "seat_preference": "GeneralFirst",
-        "target_trains": [{"train_number": "305"}],
+        "target_trains": [{"train_number": "305", "dep_time": "090000"}],
         "auto_pay": false,
         "notify_enabled": false,
         "auto_retry": true,
