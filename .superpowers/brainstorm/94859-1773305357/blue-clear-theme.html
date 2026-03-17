@@ -1,0 +1,221 @@
+<h2>Blue-Clear Theme — Softer Vite Style</h2>
+<p class="subtitle">Inspired by the current Vite prototype's blue/white glass look, but toned down to match our softer aesthetic. Pick your favorite.</p>
+
+<div class="cards">
+
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:0;overflow:hidden;">
+      <div style="display:flex;height:280px;">
+        <!-- Light -->
+        <div style="flex:1;background:linear-gradient(160deg,#f8fafe,#eef4fb);position:relative;font-family:-apple-system,system-ui,sans-serif;overflow:hidden;">
+          <div style="position:absolute;top:-30px;left:-40px;width:160px;height:160px;background:radial-gradient(circle,rgba(100,140,200,0.1),transparent 70%);"></div>
+          <div style="position:absolute;bottom:20px;right:-20px;width:120px;height:120px;background:radial-gradient(circle,rgba(140,120,180,0.06),transparent 70%);"></div>
+          <div style="position:relative;padding:16px;">
+            <div style="font-size:9px;color:#6a88aa;font-weight:600;letter-spacing:0.12em;margin-bottom:10px;">LIGHT</div>
+            <div style="background:rgba(248,250,254,0.72);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.6);border-radius:16px;padding:14px;box-shadow:0 12px 28px rgba(80,100,140,0.06);margin-bottom:10px;">
+              <div style="font-size:14px;font-weight:700;color:#2a3a4e;margin-bottom:8px;">열차 검색</div>
+              <div style="background:rgba(238,244,251,0.8);border:1px solid rgba(100,140,200,0.1);border-radius:10px;padding:8px 10px;margin-bottom:6px;">
+                <div style="font-size:8px;color:#6a88aa;font-weight:600;letter-spacing:0.15em;">FROM</div>
+                <div style="font-size:13px;color:#2a3a4e;font-weight:500;">수서</div>
+              </div>
+              <div style="display:flex;gap:6px;margin-bottom:8px;">
+                <div style="flex:1;background:rgba(238,244,251,0.8);border:1px solid rgba(100,140,200,0.1);border-radius:10px;padding:8px 10px;">
+                  <div style="font-size:8px;color:#6a88aa;font-weight:600;">DATE</div>
+                  <div style="font-size:11px;color:#2a3a4e;">Mar 12</div>
+                </div>
+                <div style="flex:1;background:rgba(238,244,251,0.8);border:1px solid rgba(100,140,200,0.1);border-radius:10px;padding:8px 10px;">
+                  <div style="font-size:8px;color:#6a88aa;font-weight:600;">PAX</div>
+                  <div style="font-size:11px;color:#2a3a4e;">1 Adult</div>
+                </div>
+              </div>
+              <div style="background:rgba(90,130,190,0.1);color:#5a7aaa;text-align:center;padding:9px;border-radius:10px;font-size:12px;font-weight:600;border:1px solid rgba(90,130,190,0.15);">검색</div>
+            </div>
+            <div style="display:flex;gap:6px;">
+              <div style="background:rgba(80,160,120,0.12);color:#4a8a5e;font-size:9px;padding:3px 7px;border-radius:5px;font-weight:600;">Confirmed</div>
+              <div style="background:rgba(90,130,190,0.12);color:#5a7aaa;font-size:9px;padding:3px 7px;border-radius:5px;font-weight:600;">Running</div>
+              <div style="background:rgba(200,100,80,0.1);color:#b06050;font-size:9px;padding:3px 7px;border-radius:5px;font-weight:600;">Failed</div>
+            </div>
+          </div>
+        </div>
+        <!-- Dark -->
+        <div style="flex:1;background:linear-gradient(160deg,#141a22,#1a2230);position:relative;font-family:-apple-system,system-ui,sans-serif;overflow:hidden;">
+          <div style="position:absolute;top:-30px;left:-40px;width:160px;height:160px;background:radial-gradient(circle,rgba(80,120,180,0.06),transparent 70%);"></div>
+          <div style="position:relative;padding:16px;">
+            <div style="font-size:9px;color:#7a94b0;font-weight:600;letter-spacing:0.12em;margin-bottom:10px;">DARK</div>
+            <div style="background:rgba(26,34,48,0.75);backdrop-filter:blur(20px);border:1px solid rgba(100,130,180,0.08);border-radius:16px;padding:14px;box-shadow:0 12px 28px rgba(0,0,0,0.2);margin-bottom:10px;">
+              <div style="font-size:14px;font-weight:700;color:#c8d4e2;margin-bottom:8px;">열차 검색</div>
+              <div style="background:rgba(20,26,34,0.6);border:1px solid rgba(100,130,180,0.06);border-radius:10px;padding:8px 10px;margin-bottom:6px;">
+                <div style="font-size:8px;color:#7a94b0;font-weight:600;letter-spacing:0.15em;">FROM</div>
+                <div style="font-size:13px;color:#c8d4e2;font-weight:500;">수서</div>
+              </div>
+              <div style="display:flex;gap:6px;margin-bottom:8px;">
+                <div style="flex:1;background:rgba(20,26,34,0.6);border:1px solid rgba(100,130,180,0.06);border-radius:10px;padding:8px 10px;">
+                  <div style="font-size:8px;color:#7a94b0;font-weight:600;">DATE</div>
+                  <div style="font-size:11px;color:#c8d4e2;">Mar 12</div>
+                </div>
+                <div style="flex:1;background:rgba(20,26,34,0.6);border:1px solid rgba(100,130,180,0.06);border-radius:10px;padding:8px 10px;">
+                  <div style="font-size:8px;color:#7a94b0;font-weight:600;">PAX</div>
+                  <div style="font-size:11px;color:#c8d4e2;">1 Adult</div>
+                </div>
+              </div>
+              <div style="background:rgba(90,130,190,0.12);color:#8ab0d4;text-align:center;padding:9px;border-radius:10px;font-size:12px;font-weight:600;border:1px solid rgba(90,130,190,0.1);">검색</div>
+            </div>
+            <div style="display:flex;gap:6px;">
+              <div style="background:rgba(100,180,140,0.12);color:#8ac4a0;font-size:9px;padding:3px 7px;border-radius:5px;font-weight:600;">Confirmed</div>
+              <div style="background:rgba(100,140,200,0.12);color:#8ab0d4;font-size:9px;padding:3px 7px;border-radius:5px;font-weight:600;">Running</div>
+              <div style="background:rgba(200,110,90,0.12);color:#d4887a;font-size:9px;padding:3px 7px;border-radius:5px;font-weight:600;">Failed</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A — Soft Steel</h3>
+      <p>Muted blue-grey. Like the Vite prototype but desaturated — feels professional, calm. Accent is dusty slate-blue. Dark mode is deep navy with low-contrast glass.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:0;overflow:hidden;">
+      <div style="display:flex;height:280px;">
+        <!-- Light -->
+        <div style="flex:1;background:linear-gradient(160deg,#f6f9fd,#edf3fa);position:relative;font-family:-apple-system,system-ui,sans-serif;overflow:hidden;">
+          <div style="position:absolute;top:-30px;left:-40px;width:160px;height:160px;background:radial-gradient(circle,rgba(80,120,200,0.08),transparent 70%);"></div>
+          <div style="position:absolute;bottom:20px;right:-20px;width:120px;height:120px;background:radial-gradient(circle,rgba(120,100,200,0.05),transparent 70%);"></div>
+          <div style="position:relative;padding:16px;">
+            <div style="font-size:9px;color:#5a7ab0;font-weight:600;letter-spacing:0.12em;margin-bottom:10px;">LIGHT</div>
+            <div style="background:rgba(246,249,253,0.72);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.55);border-radius:16px;padding:14px;box-shadow:0 12px 28px rgba(60,90,140,0.06);margin-bottom:10px;">
+              <div style="font-size:14px;font-weight:700;color:#1e2e42;margin-bottom:8px;">열차 검색</div>
+              <div style="background:rgba(237,243,250,0.8);border:1px solid rgba(80,120,200,0.08);border-radius:10px;padding:8px 10px;margin-bottom:6px;">
+                <div style="font-size:8px;color:#5a7ab0;font-weight:600;letter-spacing:0.15em;">FROM</div>
+                <div style="font-size:13px;color:#1e2e42;font-weight:500;">수서</div>
+              </div>
+              <div style="display:flex;gap:6px;margin-bottom:8px;">
+                <div style="flex:1;background:rgba(237,243,250,0.8);border:1px solid rgba(80,120,200,0.08);border-radius:10px;padding:8px 10px;">
+                  <div style="font-size:8px;color:#5a7ab0;font-weight:600;">DATE</div>
+                  <div style="font-size:11px;color:#1e2e42;">Mar 12</div>
+                </div>
+                <div style="flex:1;background:rgba(237,243,250,0.8);border:1px solid rgba(80,120,200,0.08);border-radius:10px;padding:8px 10px;">
+                  <div style="font-size:8px;color:#5a7ab0;font-weight:600;">PAX</div>
+                  <div style="font-size:11px;color:#1e2e42;">1 Adult</div>
+                </div>
+              </div>
+              <div style="background:rgba(70,110,180,0.1);color:#4a6eaa;text-align:center;padding:9px;border-radius:10px;font-size:12px;font-weight:600;border:1px solid rgba(70,110,180,0.12);">검색</div>
+            </div>
+            <div style="display:flex;gap:6px;">
+              <div style="background:rgba(60,150,110,0.1);color:#3a8a60;font-size:9px;padding:3px 7px;border-radius:5px;font-weight:600;">Confirmed</div>
+              <div style="background:rgba(70,110,180,0.1);color:#4a6eaa;font-size:9px;padding:3px 7px;border-radius:5px;font-weight:600;">Running</div>
+              <div style="background:rgba(190,80,60,0.1);color:#a85040;font-size:9px;padding:3px 7px;border-radius:5px;font-weight:600;">Failed</div>
+            </div>
+          </div>
+        </div>
+        <!-- Dark -->
+        <div style="flex:1;background:linear-gradient(160deg,#10161e,#182030);position:relative;font-family:-apple-system,system-ui,sans-serif;overflow:hidden;">
+          <div style="position:absolute;top:-30px;left:-40px;width:160px;height:160px;background:radial-gradient(circle,rgba(70,110,180,0.05),transparent 70%);"></div>
+          <div style="position:relative;padding:16px;">
+            <div style="font-size:9px;color:#6a8aba;font-weight:600;letter-spacing:0.12em;margin-bottom:10px;">DARK</div>
+            <div style="background:rgba(24,32,48,0.75);backdrop-filter:blur(20px);border:1px solid rgba(80,110,160,0.08);border-radius:16px;padding:14px;box-shadow:0 12px 28px rgba(0,0,0,0.2);margin-bottom:10px;">
+              <div style="font-size:14px;font-weight:700;color:#c0d0e4;margin-bottom:8px;">열차 검색</div>
+              <div style="background:rgba(16,22,30,0.6);border:1px solid rgba(80,110,160,0.06);border-radius:10px;padding:8px 10px;margin-bottom:6px;">
+                <div style="font-size:8px;color:#6a8aba;font-weight:600;letter-spacing:0.15em;">FROM</div>
+                <div style="font-size:13px;color:#c0d0e4;font-weight:500;">수서</div>
+              </div>
+              <div style="display:flex;gap:6px;margin-bottom:8px;">
+                <div style="flex:1;background:rgba(16,22,30,0.6);border:1px solid rgba(80,110,160,0.06);border-radius:10px;padding:8px 10px;">
+                  <div style="font-size:8px;color:#6a8aba;font-weight:600;">DATE</div>
+                  <div style="font-size:11px;color:#c0d0e4;">Mar 12</div>
+                </div>
+                <div style="flex:1;background:rgba(16,22,30,0.6);border:1px solid rgba(80,110,160,0.06);border-radius:10px;padding:8px 10px;">
+                  <div style="font-size:8px;color:#6a8aba;font-weight:600;">PAX</div>
+                  <div style="font-size:11px;color:#c0d0e4;">1 Adult</div>
+                </div>
+              </div>
+              <div style="background:rgba(80,120,190,0.1);color:#7aa0d0;text-align:center;padding:9px;border-radius:10px;font-size:12px;font-weight:600;border:1px solid rgba(80,120,190,0.08);">검색</div>
+            </div>
+            <div style="display:flex;gap:6px;">
+              <div style="background:rgba(80,170,120,0.12);color:#80c0a0;font-size:9px;padding:3px 7px;border-radius:5px;font-weight:600;">Confirmed</div>
+              <div style="background:rgba(80,120,190,0.1);color:#7aa0d0;font-size:9px;padding:3px 7px;border-radius:5px;font-weight:600;">Running</div>
+              <div style="background:rgba(200,100,80,0.12);color:#d08070;font-size:9px;padding:3px 7px;border-radius:5px;font-weight:600;">Failed</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B — Clear Sky</h3>
+      <p>Slightly more blue than A. Closer to the Vite prototype but pulled back. Background has a hint of periwinkle. Dark mode is deeper midnight blue. Clean, airy.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:0;overflow:hidden;">
+      <div style="display:flex;height:280px;">
+        <!-- Light -->
+        <div style="flex:1;background:linear-gradient(160deg,#fafbfe,#f0f4fa);position:relative;font-family:-apple-system,system-ui,sans-serif;overflow:hidden;">
+          <div style="position:absolute;top:-30px;left:-40px;width:160px;height:160px;background:radial-gradient(circle,rgba(100,120,180,0.08),transparent 70%);"></div>
+          <div style="position:relative;padding:16px;">
+            <div style="font-size:9px;color:#7080a8;font-weight:600;letter-spacing:0.12em;margin-bottom:10px;">LIGHT</div>
+            <div style="background:rgba(250,251,254,0.72);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.55);border-radius:16px;padding:14px;box-shadow:0 12px 28px rgba(70,80,120,0.05);margin-bottom:10px;">
+              <div style="font-size:14px;font-weight:700;color:#2a2e3e;margin-bottom:8px;">열차 검색</div>
+              <div style="background:rgba(240,244,250,0.8);border:1px solid rgba(100,120,180,0.08);border-radius:10px;padding:8px 10px;margin-bottom:6px;">
+                <div style="font-size:8px;color:#7080a8;font-weight:600;letter-spacing:0.15em;">FROM</div>
+                <div style="font-size:13px;color:#2a2e3e;font-weight:500;">수서</div>
+              </div>
+              <div style="display:flex;gap:6px;margin-bottom:8px;">
+                <div style="flex:1;background:rgba(240,244,250,0.8);border:1px solid rgba(100,120,180,0.08);border-radius:10px;padding:8px 10px;">
+                  <div style="font-size:8px;color:#7080a8;font-weight:600;">DATE</div>
+                  <div style="font-size:11px;color:#2a2e3e;">Mar 12</div>
+                </div>
+                <div style="flex:1;background:rgba(240,244,250,0.8);border:1px solid rgba(100,120,180,0.08);border-radius:10px;padding:8px 10px;">
+                  <div style="font-size:8px;color:#7080a8;font-weight:600;">PAX</div>
+                  <div style="font-size:11px;color:#2a2e3e;">1 Adult</div>
+                </div>
+              </div>
+              <div style="background:rgba(90,100,150,0.08);color:#6070a0;text-align:center;padding:9px;border-radius:10px;font-size:12px;font-weight:600;border:1px solid rgba(90,100,150,0.1);">검색</div>
+            </div>
+            <div style="display:flex;gap:6px;">
+              <div style="background:rgba(70,140,100,0.1);color:#4a8a60;font-size:9px;padding:3px 7px;border-radius:5px;font-weight:600;">Confirmed</div>
+              <div style="background:rgba(90,100,150,0.1);color:#6070a0;font-size:9px;padding:3px 7px;border-radius:5px;font-weight:600;">Running</div>
+              <div style="background:rgba(180,80,70,0.1);color:#a05040;font-size:9px;padding:3px 7px;border-radius:5px;font-weight:600;">Failed</div>
+            </div>
+          </div>
+        </div>
+        <!-- Dark -->
+        <div style="flex:1;background:linear-gradient(160deg,#141620,#1a1e2e);position:relative;font-family:-apple-system,system-ui,sans-serif;overflow:hidden;">
+          <div style="position:absolute;top:-30px;left:-40px;width:160px;height:160px;background:radial-gradient(circle,rgba(90,100,160,0.05),transparent 70%);"></div>
+          <div style="position:relative;padding:16px;">
+            <div style="font-size:9px;color:#7a84a8;font-weight:600;letter-spacing:0.12em;margin-bottom:10px;">DARK</div>
+            <div style="background:rgba(26,30,46,0.75);backdrop-filter:blur(20px);border:1px solid rgba(100,110,150,0.08);border-radius:16px;padding:14px;box-shadow:0 12px 28px rgba(0,0,0,0.2);margin-bottom:10px;">
+              <div style="font-size:14px;font-weight:700;color:#c4c8d8;margin-bottom:8px;">열차 검색</div>
+              <div style="background:rgba(20,22,32,0.6);border:1px solid rgba(100,110,150,0.06);border-radius:10px;padding:8px 10px;margin-bottom:6px;">
+                <div style="font-size:8px;color:#7a84a8;font-weight:600;letter-spacing:0.15em;">FROM</div>
+                <div style="font-size:13px;color:#c4c8d8;font-weight:500;">수서</div>
+              </div>
+              <div style="display:flex;gap:6px;margin-bottom:8px;">
+                <div style="flex:1;background:rgba(20,22,32,0.6);border:1px solid rgba(100,110,150,0.06);border-radius:10px;padding:8px 10px;">
+                  <div style="font-size:8px;color:#7a84a8;font-weight:600;">DATE</div>
+                  <div style="font-size:11px;color:#c4c8d8;">Mar 12</div>
+                </div>
+                <div style="flex:1;background:rgba(20,22,32,0.6);border:1px solid rgba(100,110,150,0.06);border-radius:10px;padding:8px 10px;">
+                  <div style="font-size:8px;color:#7a84a8;font-weight:600;">PAX</div>
+                  <div style="font-size:11px;color:#c4c8d8;">1 Adult</div>
+                </div>
+              </div>
+              <div style="background:rgba(100,110,160,0.1);color:#8a94c0;text-align:center;padding:9px;border-radius:10px;font-size:12px;font-weight:600;border:1px solid rgba(100,110,160,0.08);">검색</div>
+            </div>
+            <div style="display:flex;gap:6px;">
+              <div style="background:rgba(80,160,110,0.12);color:#80b898;font-size:9px;padding:3px 7px;border-radius:5px;font-weight:600;">Confirmed</div>
+              <div style="background:rgba(100,110,160,0.1);color:#8a94c0;font-size:9px;padding:3px 7px;border-radius:5px;font-weight:600;">Running</div>
+              <div style="background:rgba(190,90,80,0.12);color:#c88070;font-size:9px;padding:3px 7px;border-radius:5px;font-weight:600;">Failed</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C — Lavender Fog</h3>
+      <p>Blue-violet undertone. More neutral than A or B — the blue is cooler with a touch of purple. Feels quieter, almost monochrome. Dark mode is charcoal-indigo.</p>
+    </div>
+  </div>
+
+</div>

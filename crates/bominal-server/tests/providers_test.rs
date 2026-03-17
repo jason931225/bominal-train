@@ -32,7 +32,9 @@ async fn get_user_id(app: &TestApp, session: &str) -> Uuid {
 #[tokio::test]
 async fn list_providers_empty() {
     let app = TestApp::new().await;
-    let session = app.register_user("prov0@example.com", "password123", "P0").await;
+    let session = app
+        .register_user("prov0@example.com", "password123", "P0")
+        .await;
 
     let req = app.authed_get("/api/providers", &session);
     let (status, json) = app.send(req).await;
@@ -46,7 +48,9 @@ async fn list_providers_empty() {
 #[tokio::test]
 async fn list_providers_with_data() {
     let app = TestApp::new().await;
-    let session = app.register_user("prov1@example.com", "password123", "P1").await;
+    let session = app
+        .register_user("prov1@example.com", "password123", "P1")
+        .await;
     let user_id = get_user_id(&app, &session).await;
 
     insert_cred(&app, user_id, "SRT").await;
@@ -71,12 +75,16 @@ async fn list_providers_own_only() {
     let app = TestApp::new().await;
 
     // User A has a credential
-    let session_a = app.register_user("prova@example.com", "password123", "PA").await;
+    let session_a = app
+        .register_user("prova@example.com", "password123", "PA")
+        .await;
     let user_a = get_user_id(&app, &session_a).await;
     insert_cred(&app, user_a, "SRT").await;
 
     // User B should see empty
-    let session_b = app.register_user("provb@example.com", "password123", "PB").await;
+    let session_b = app
+        .register_user("provb@example.com", "password123", "PB")
+        .await;
     let req = app.authed_get("/api/providers", &session_b);
     let (status, json) = app.send(req).await;
 
@@ -89,7 +97,9 @@ async fn list_providers_own_only() {
 #[tokio::test]
 async fn delete_provider_success() {
     let app = TestApp::new().await;
-    let session = app.register_user("del@example.com", "password123", "Del").await;
+    let session = app
+        .register_user("del@example.com", "password123", "Del")
+        .await;
     let user_id = get_user_id(&app, &session).await;
 
     insert_cred(&app, user_id, "SRT").await;
@@ -111,7 +121,9 @@ async fn delete_provider_success() {
 #[tokio::test]
 async fn delete_provider_not_found() {
     let app = TestApp::new().await;
-    let session = app.register_user("delnf@example.com", "password123", "DelNF").await;
+    let session = app
+        .register_user("delnf@example.com", "password123", "DelNF")
+        .await;
 
     let req = app.authed_delete("/api/providers/SRT", &session);
     let (status, _) = app.send(req).await;
@@ -125,12 +137,16 @@ async fn delete_provider_not_found() {
 async fn delete_provider_other_user() {
     let app = TestApp::new().await;
 
-    let session_a = app.register_user("owna@example.com", "password123", "OwnA").await;
+    let session_a = app
+        .register_user("owna@example.com", "password123", "OwnA")
+        .await;
     let user_a = get_user_id(&app, &session_a).await;
     insert_cred(&app, user_a, "SRT").await;
 
     // User B tries to delete A's provider
-    let session_b = app.register_user("ownb@example.com", "password123", "OwnB").await;
+    let session_b = app
+        .register_user("ownb@example.com", "password123", "OwnB")
+        .await;
     let req = app.authed_delete("/api/providers/SRT", &session_b);
     let (status, _) = app.send(req).await;
 

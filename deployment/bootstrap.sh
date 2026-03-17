@@ -121,8 +121,6 @@ setup_rust() {
     command_exists cargo-leptos   || cargo_tools+=("cargo-leptos")
     command_exists sqlx           || cargo_tools+=("sqlx-cli --no-default-features --features rustls,postgres")
     command_exists cargo-llvm-cov || cargo_tools+=("cargo-llvm-cov")
-    command_exists cargo-deny     || cargo_tools+=("cargo-deny")
-    command_exists cargo-audit    || cargo_tools+=("cargo-audit")
 
     for tool in "${cargo_tools[@]}"; do
         info "Installing $tool..."
@@ -176,11 +174,6 @@ setup_css_tools() {
         curl -sLO "https://github.com/tailwindlabs/tailwindcss/releases/latest/download/tailwindcss-${tw_arch}"
         mv "tailwindcss-${tw_arch}" "$bin_dir/tailwindcss"
         chmod +x "$bin_dir/tailwindcss"
-    fi
-
-    # Lightning CSS CLI (via npm for now — lightweight)
-    if ! command_exists lightningcss; then
-        npm install -g lightningcss-cli 2>/dev/null || warn "lightningcss-cli install failed; will use npm locally"
     fi
 
     ok "CSS tools ready"

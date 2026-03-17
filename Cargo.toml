@@ -7,6 +7,7 @@ members = [
     "crates/bominal-db",
     "crates/bominal-email",
     "crates/bominal-frontend",
+    "crates/bominal-service",
 ]
 
 [workspace.package]
@@ -16,13 +17,13 @@ rust-version = "1.85"
 license = "MIT"
 
 [workspace.dependencies]
-# Async runtime
-tokio = { version = "1", features = ["full"] }
+# Async runtime — scoped to actual usage (no "full")
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time", "net"] }
 
-# Web framework
+# Web framework — scoped to actual usage (no "full")
 axum = { version = "0.8", features = ["macros"] }
-tower = { version = "0.5", features = ["full"] }
-tower-http = { version = "0.6", features = ["cors", "compression-br", "compression-gzip", "trace", "request-id", "util", "fs"] }
+tower = { version = "0.5", features = ["util"] }
+tower-http = { version = "0.6", features = ["trace", "request-id", "fs", "cors", "compression-gzip", "compression-br", "limit", "set-header"] }
 
 # Leptos
 leptos = { version = "0.8", features = ["ssr"] }
@@ -31,7 +32,7 @@ leptos_meta = "0.8"
 leptos_router = { version = "0.8", features = ["ssr"] }
 
 # Database
-sqlx = { version = "0.8", features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "chrono", "json"] }
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "derive", "uuid", "chrono", "json"] }
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
@@ -49,16 +50,12 @@ base64 = "0.22"
 
 # Date/time
 chrono = { version = "0.4", features = ["serde"] }
-chrono-tz = "0.10"
 
 # Observability
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 metrics = "0.24"
 metrics-exporter-prometheus = "0.18"
-
-# Cache
-redis = { version = "1", features = ["tokio-comp", "connection-manager"] }
 
 # Random / distributions
 rand = "0.9"
@@ -74,12 +71,29 @@ thiserror = "2"
 anyhow = "1"
 dotenvy = "0.15"
 url = "2"
+webauthn-rs = { version = "0.5", features = ["danger-allow-state-serialisation", "conditional-ui"] }
+webauthn-rs-proto = "0.5"
 
 # Testing
 proptest = "1"
 
+# Dev: small optimization for local crates, full optimization for dependencies
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
+
+# Release: maximum runtime performance for VM deployment
 [profile.release]
 opt-level = 3
-lto = "thin"
 codegen-units = 1
-strip = true
+lto = "thin"
+
+# WASM release: optimize for size to reduce load times and bandwidth.
+# Use: cargo build --profile wasm-release --target wasm32-unknown-unknown
+# Post-process with: wasm-opt -Os --output output.wasm input.wasm
+[profile.wasm-release]
+inherits = "release"
+opt-level = "s"
+strip = "debuginfo"

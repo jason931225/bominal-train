@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh api:*)",
+      "Bash(gh pr:*)",
+      "Bash(gh run:*)",
+      "Bash(cargo audit:*)",
+      "Bash(cargo tree:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(find ~/projects/bominal-train-reservation -maxdepth 2 -type d -name *vite* -o -type d -name *react*)",
+      "Bash(cargo check:*)",
+      "Bash(ls /Users/jasonlee/projects/bominal/crates/bominal-frontend/package*.json)",
+      "Bash(cargo test:*)",
+      "Bash(/Users/jasonlee/projects/bominal/crates/bominal-frontend/src/pages/mod.rs:*)",
+      "Bash(cargo build:*)"
+    ]
+  }
+}

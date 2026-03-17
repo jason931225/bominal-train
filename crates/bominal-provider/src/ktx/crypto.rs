@@ -14,7 +14,7 @@ const SID_KEY: &[u8; 16] = b"2485dd54d9deaa36";
 
 /// Encrypt a KTX password using AES-CBC with the server-provided key.
 ///
-/// 1. AES-CBC encrypt with: key = full key bytes, IV = key[:16]
+/// 1. AES-CBC encrypt with: key = full key bytes, IV = first 16 bytes of key
 /// 2. Double base64: base64(base64(ciphertext))
 ///
 /// Ported from `ktx.py:662-678` (`__enc_password`).

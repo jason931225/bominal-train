@@ -25,7 +25,9 @@ async fn insert_provider_credential(app: &TestApp, user_id: Uuid, provider: &str
 
 /// Helper: register + insert SRT creds, return (session, user_id).
 async fn setup_user_with_creds(app: &TestApp) -> (String, Uuid) {
-    let session = app.register_user("tasks@example.com", "password123", "TaskUser").await;
+    let session = app
+        .register_user("tasks@example.com", "password123", "TaskUser")
+        .await;
 
     // Get user_id from /me
     let req = app.authed_get("/api/auth/me", &session);
@@ -45,7 +47,10 @@ fn valid_task_body() -> serde_json::Value {
         "departure_time": "090000",
         "passengers": [{"type": "adult", "count": 1}],
         "seat_preference": "GeneralFirst",
-        "target_trains": [{"train_number": "305"}],
+        "target_trains": [{"train_number": "305", "dep_time": "090000"}],
+        "auto_pay": false,
+        "notify_enabled": false,
+        "auto_retry": true,
     })
 }
 
@@ -91,7 +96,8 @@ async fn create_task_invalid_provider() {
     let req = app.authed_post("/api/tasks", &session, &body);
     let (status, _) = app.send(req).await;
 
-    assert_eq!(status, StatusCode::BAD_REQUEST);
+    // Axum returns 422 when serde deserialization fails (invalid provider variant)
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
 
     app.cleanup().await;
 }

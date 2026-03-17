@@ -117,10 +117,8 @@ mod tests {
     use base64::{Engine, engine::general_purpose::STANDARD};
 
     fn test_key() -> EncryptionKey {
-        EncryptionKey::from_hex(
-            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-        )
-        .unwrap()
+        EncryptionKey::from_hex("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+            .unwrap()
     }
 
     #[test]
@@ -181,18 +179,22 @@ mod tests {
 
     #[test]
     fn key_from_hex_valid() {
-        assert!(EncryptionKey::from_hex(
-            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-        )
-        .is_ok());
+        assert!(
+            EncryptionKey::from_hex(
+                "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+            )
+            .is_ok()
+        );
     }
 
     #[test]
     fn key_from_hex_uppercase() {
-        assert!(EncryptionKey::from_hex(
-            "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF"
-        )
-        .is_ok());
+        assert!(
+            EncryptionKey::from_hex(
+                "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF"
+            )
+            .is_ok()
+        );
     }
 
     #[test]
@@ -202,10 +204,12 @@ mod tests {
 
     #[test]
     fn key_from_hex_invalid_chars() {
-        assert!(EncryptionKey::from_hex(
-            "ghijklmnopqrstuv0123456789abcdef0123456789abcdef0123456789abcdef"
-        )
-        .is_err());
+        assert!(
+            EncryptionKey::from_hex(
+                "ghijklmnopqrstuv0123456789abcdef0123456789abcdef0123456789abcdef"
+            )
+            .is_err()
+        );
     }
 
     #[test]

@@ -8,13 +8,22 @@ pub fn StatusChip(
     /// The status text to display.
     #[prop(into)]
     label: String,
-    /// CSS color variable name (e.g. "success", "warning", "error").
+    /// CSS variant name (e.g. "success", "warning", "error", "queued", "running").
     #[prop(into)]
     variant: String,
 ) -> impl IntoView {
+    let status_class = match variant.as_str() {
+        "queued" => "status-queued",
+        "running" => "status-running",
+        "success" => "status-success",
+        "error" => "status-error",
+        "warning" => "status-warning",
+        "info" => "status-info",
+        _ => "status-neutral",
+    };
+
     let class = format!(
-        "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-[var(--color-status-{v})]/20 text-[var(--color-status-{v})]",
-        v = variant
+        "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium {status_class}"
     );
 
     view! {

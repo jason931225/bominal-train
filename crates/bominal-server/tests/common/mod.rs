@@ -3,17 +3,20 @@
 //! Each test gets its own Postgres schema for full isolation and
 //! parallel-safe execution.
 
+use std::sync::Arc;
 use std::time::Instant;
 
+use axum::Router;
 use axum::body::Body;
 use axum::http::{Method, Request, StatusCode};
-use axum::Router;
 use http_body_util::BodyExt;
 use sqlx::PgPool;
 use tower::ServiceExt;
 use uuid::Uuid;
+use webauthn_rs::WebauthnBuilder;
 
 use bominal_domain::crypto::encryption::EncryptionKey;
+use bominal_server::evervault::EvervaultConfig;
 use bominal_server::routes::api_routes;
 use bominal_server::sse::EventBus;
 use bominal_server::state::SharedState;
@@ -22,6 +25,7 @@ use bominal_server::state::SharedState;
 const TEST_ENCRYPTION_KEY: &str =
     "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
+#[allow(dead_code)]
 pub struct TestApp {
     pub router: Router,
     pub pool: PgPool,
@@ -30,6 +34,7 @@ pub struct TestApp {
     admin_pool: PgPool,
 }
 
+#[allow(dead_code)]
 impl TestApp {
     /// Spin up an isolated test environment with its own Postgres schema.
     pub async fn new() -> Self {
@@ -77,7 +82,29 @@ impl TestApp {
         .await
         .expect("failed to run initial schema");
 
+        sqlx::raw_sql(include_str!(
+            "../../../bominal-db/migrations/20260312000001_add_passkey_and_expiry_fields.sql"
+        ))
+        .execute(&pool)
+        .await
+        .expect("failed to run passkey/expiry migration");
+
+        sqlx::raw_sql(include_str!(
+            "../../../bominal-db/migrations/20260312000002_passkey_challenge_state.sql"
+        ))
+        .execute(&pool)
+        .await
+        .expect("failed to run passkey challenge state migration");
+
         let encryption_key = EncryptionKey::from_hex(TEST_ENCRYPTION_KEY).unwrap();
+
+        let rp_origin = url::Url::parse("http://localhost:3000").unwrap();
+        let webauthn = WebauthnBuilder::new("localhost", &rp_origin)
+            .expect("Invalid WebAuthn config")
+            .rp_name("Bominal Test")
+            .allow_any_port(true)
+            .build()
+            .expect("Failed to build WebAuthn");
 
         let state = SharedState {
             db: pool.clone(),
@@ -85,12 +112,26 @@ impl TestApp {
             event_bus: EventBus::new(),
             email: bominal_email::EmailClient::new("re_test_dummy", "Test <test@test.com>"),
             encryption_key: encryption_key.clone(),
+            evervault: EvervaultConfig::new(
+                "team_test_dummy",
+                "app_test_dummy",
+                "ev:key:test_dummy",
+                "srt.test.relay.evervault.app",
+                "ktx.test.relay.evervault.app",
+            ),
             app_base_url: "http://localhost:3000".to_string(),
+            prometheus_handle: metrics_exporter_prometheus::PrometheusBuilder::new()
+                .install_recorder()
+                .unwrap_or_else(|_| {
+                    // Recorder already installed by another test — create a handle-only builder
+                    metrics_exporter_prometheus::PrometheusBuilder::new()
+                        .build_recorder()
+                        .handle()
+                }),
+            webauthn: Arc::new(webauthn),
         };
 
-        let router = Router::new()
-            .nest("/api", api_routes())
-            .with_state(state);
+        let router = Router::new().nest("/api", api_routes()).with_state(state);
 
         Self {
             router,
@@ -104,12 +145,7 @@ impl TestApp {
     // ── Auth helpers ────────────────────────────────────────────────────
 
     /// Register a user and return the session cookie value.
-    pub async fn register_user(
-        &self,
-        email: &str,
-        password: &str,
-        display_name: &str,
-    ) -> String {
+    pub async fn register_user(&self, email: &str, password: &str, display_name: &str) -> String {
         let body = serde_json::json!({
             "email": email,
             "password": password,
@@ -172,12 +208,7 @@ impl TestApp {
             .unwrap()
     }
 
-    pub fn authed_post(
-        &self,
-        uri: &str,
-        session: &str,
-        body: &serde_json::Value,
-    ) -> Request<Body> {
+    pub fn authed_post(&self, uri: &str, session: &str, body: &serde_json::Value) -> Request<Body> {
         Request::builder()
             .method(Method::POST)
             .uri(uri)
@@ -232,7 +263,8 @@ impl TestApp {
         let json = if bytes.is_empty() {
             serde_json::json!(null)
         } else {
-            serde_json::from_slice(&bytes).unwrap_or(serde_json::json!({"raw": String::from_utf8_lossy(&bytes).to_string()}))
+            serde_json::from_slice(&bytes)
+                .unwrap_or(serde_json::json!({"raw": String::from_utf8_lossy(&bytes).to_string()}))
         };
 
         (status, json)
@@ -280,6 +312,7 @@ impl TestApp {
 }
 
 /// Extract the `bominal_session` cookie value from a response.
+#[allow(dead_code)]
 fn extract_session_cookie<B>(resp: &axum::http::Response<B>) -> String {
     resp.headers()
         .get_all("set-cookie")

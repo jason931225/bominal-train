@@ -13,8 +13,8 @@ use axum::extract::State;
 use axum::response::sse::{Event, KeepAlive, Sse};
 use futures_util::stream::Stream;
 use serde::Serialize;
-use tokio::sync::broadcast;
 use tokio::sync::RwLock;
+use tokio::sync::broadcast;
 use uuid::Uuid;
 
 use crate::error::AppError;
@@ -169,11 +169,7 @@ mod tests {
         bus.publish(user_a, event).await;
 
         // user_b should not receive user_a's event
-        let result = tokio::time::timeout(
-            std::time::Duration::from_millis(50),
-            rx_b.recv(),
-        )
-        .await;
+        let result = tokio::time::timeout(std::time::Duration::from_millis(50), rx_b.recv()).await;
         assert!(result.is_err()); // timeout = no message
     }
 

@@ -76,14 +76,45 @@ impl SrtClient {
             .user_agent(USER_AGENT)
             .default_headers({
                 let mut h = reqwest::header::HeaderMap::new();
-                h.insert(
-                    reqwest::header::ACCEPT,
-                    "application/json".parse().unwrap(),
-                );
+                h.insert(reqwest::header::ACCEPT, "application/json".parse().unwrap());
                 h
             })
             .build()
             .expect("Failed to build SRT API client");
+
+        let netfunnel_client = reqwest::Client::builder()
+            .cookie_store(true)
+            .build()
+            .expect("Failed to build SRT NetFunnel client");
+
+        Self {
+            api_client,
+            netfunnel_client,
+            user_info: None,
+            is_logged_in: false,
+        }
+    }
+
+    /// Create a new SRT client that proxies through an Evervault Relay.
+    ///
+    /// All requests go through the relay, which transparently decrypts
+    /// `ev:`-prefixed card fields in-flight. Cookies, Host, and UA are
+    /// preserved because the target URL stays `app.srail.or.kr`.
+    pub fn with_relay(relay_domain: &str) -> Self {
+        let proxy =
+            reqwest::Proxy::all(format!("https://{relay_domain}")).expect("Invalid relay domain");
+
+        let api_client = reqwest::Client::builder()
+            .cookie_store(true)
+            .user_agent(USER_AGENT)
+            .proxy(proxy)
+            .default_headers({
+                let mut h = reqwest::header::HeaderMap::new();
+                h.insert(reqwest::header::ACCEPT, "application/json".parse().unwrap());
+                h
+            })
+            .build()
+            .expect("Failed to build SRT API client with relay");
 
         let netfunnel_client = reqwest::Client::builder()
             .cookie_store(true)
@@ -138,11 +169,7 @@ impl SrtClient {
     /// Error detection uses Korean string search in the raw response body,
     /// NOT JSON status codes, because SRT returns errors as HTTP 200.
     #[instrument(skip(self, password), fields(login_type))]
-    pub async fn login(
-        &mut self,
-        login_id: &str,
-        password: &str,
-    ) -> Result<(), ProviderError> {
+    pub async fn login(&mut self, login_id: &str, password: &str) -> Result<(), ProviderError> {
         let login_type = Self::auth_code(login_id);
         let normalized_id = Self::normalize_id(login_id);
         let login_referer = Endpoints::url(Endpoints::MAIN);
@@ -192,12 +219,11 @@ impl SrtClient {
         }
 
         // Parse successful login response
-        let json: serde_json::Value = serde_json::from_str(&body).map_err(|_| {
-            ProviderError::UnexpectedResponse {
+        let json: serde_json::Value =
+            serde_json::from_str(&body).map_err(|_| ProviderError::UnexpectedResponse {
                 status: 200,
                 body: body.clone(),
-            }
-        })?;
+            })?;
 
         let user_map = json
             .get("userMap")
@@ -251,10 +277,7 @@ impl SrtClient {
 
         if !resp.status().is_success() {
             let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::UnexpectedResponse {
-                status: 500,
-                body,
-            });
+            return Err(ProviderError::UnexpectedResponse { status: 500, body });
         }
 
         self.is_logged_in = false;
@@ -367,8 +390,15 @@ impl SrtClient {
         window_seat: WindowSeat,
     ) -> Result<SrtReservation, ProviderError> {
         self.require_login()?;
-        self.reserve_internal(JOB_ID_PERSONAL, train, passengers, seat_pref, window_seat, None)
-            .await
+        self.reserve_internal(
+            JOB_ID_PERSONAL,
+            train,
+            passengers,
+            seat_pref,
+            window_seat,
+            None,
+        )
+        .await
     }
 
     /// Reserve standby (waiting list).
@@ -423,12 +453,14 @@ impl SrtClient {
             SeatPreference::SpecialFirst => train.special_seat_available(),
         };
 
-        let train_number: u32 = train.train_number.parse().map_err(|_| {
-            ProviderError::UnexpectedResponse {
-                status: 400,
-                body: format!("Invalid train number: {}", train.train_number),
-            }
-        })?;
+        let train_number: u32 =
+            train
+                .train_number
+                .parse()
+                .map_err(|_| ProviderError::UnexpectedResponse {
+                    status: 400,
+                    body: format!("Invalid train number: {}", train.train_number),
+                })?;
         let train_number_padded = format!("{train_number:05}");
         let phone_str = phone.unwrap_or("");
 
@@ -460,14 +492,8 @@ impl SrtClient {
                 "arvStnConsOrdr1".into(),
                 train.arr_station_constitution_order.clone(),
             ),
-            (
-                "dptStnRunOrdr1".into(),
-                train.dep_station_run_order.clone(),
-            ),
-            (
-                "arvStnRunOrdr1".into(),
-                train.arr_station_run_order.clone(),
-            ),
+            ("dptStnRunOrdr1".into(), train.dep_station_run_order.clone()),
+            ("arvStnRunOrdr1".into(), train.arr_station_run_order.clone()),
             ("mblPhone".into(), phone_str.to_string()),
         ];
 
@@ -540,11 +566,7 @@ impl SrtClient {
 
         let class_change_flag = if agree_class_change { "Y" } else { "N" };
         let sms_flag = if agree_sms { "Y" } else { "N" };
-        let tel = if agree_sms {
-            phone.unwrap_or("")
-        } else {
-            ""
-        };
+        let tel = if agree_sms { phone.unwrap_or("") } else { "" };
 
         let form: Vec<(&str, &str)> = vec![
             ("pnrNo", pnr_no),
@@ -602,10 +624,7 @@ impl SrtClient {
         let mut reservations = Vec::new();
 
         for (train, pay) in train_data.iter().zip(pay_data.iter()) {
-            let pnr_no = train
-                .get("pnrNo")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
+            let pnr_no = train.get("pnrNo").and_then(|v| v.as_str()).unwrap_or("");
 
             let tickets = self.ticket_info(pnr_no).await?;
 
@@ -659,11 +678,7 @@ impl SrtClient {
     pub async fn cancel(&self, pnr_no: &str) -> Result<(), ProviderError> {
         self.require_login()?;
 
-        let form: Vec<(&str, &str)> = vec![
-            ("pnrNo", pnr_no),
-            ("jrnyCnt", "1"),
-            ("rsvChgTno", "0"),
-        ];
+        let form: Vec<(&str, &str)> = vec![("pnrNo", pnr_no), ("jrnyCnt", "1"), ("rsvChgTno", "0")];
 
         let resp = self
             .api_client
@@ -695,6 +710,7 @@ impl SrtClient {
     /// - `expire_date`: card expiry in YYMM format (4 digits)
     /// - `installment`: 0 for lump sum, 2-24 for installment months
     /// - `card_type`: "J" for personal, "S" for corporate
+    #[allow(clippy::too_many_arguments)]
     #[instrument(skip(self, card_number, card_password, validation_number))]
     pub async fn pay_with_card(
         &self,
@@ -787,20 +803,28 @@ impl SrtClient {
         card_type: &str,
         installment: u8,
     ) -> Result<(), ProviderError> {
-        let card_digits = card_number.chars().all(|c| c.is_ascii_digit());
-        if !card_digits || card_number.len() < 13 || card_number.len() > 19 {
-            return Err(ProviderError::UnexpectedResponse {
-                status: 400,
-                body: "Card number must be 13-19 digits".to_string(),
-            });
+        // Evervault-encrypted values (ev: prefix) bypass digit validation —
+        // the Outbound Relay decrypts them to plaintext before forwarding.
+        if !card_number.starts_with("ev:") {
+            let card_digits = card_number.chars().all(|c| c.is_ascii_digit());
+            if !card_digits || card_number.len() < 13 || card_number.len() > 19 {
+                return Err(ProviderError::UnexpectedResponse {
+                    status: 400,
+                    body: "Card number must be 13-19 digits".to_string(),
+                });
+            }
         }
-        if card_password.len() != 2 || !card_password.chars().all(|c| c.is_ascii_digit()) {
+        if !card_password.starts_with("ev:")
+            && (card_password.len() != 2 || !card_password.chars().all(|c| c.is_ascii_digit()))
+        {
             return Err(ProviderError::UnexpectedResponse {
                 status: 400,
                 body: "Card password must be exactly 2 digits".to_string(),
             });
         }
-        if expire_date.len() != 4 || !expire_date.chars().all(|c| c.is_ascii_digit()) {
+        if !expire_date.starts_with("ev:")
+            && (expire_date.len() != 4 || !expire_date.chars().all(|c| c.is_ascii_digit()))
+        {
             return Err(ProviderError::UnexpectedResponse {
                 status: 400,
                 body: "Expire date must be 4 digits (YYMM)".to_string(),
@@ -895,30 +919,22 @@ mod tests {
 
     #[test]
     fn validate_card_bad_password() {
-        assert!(
-            SrtClient::validate_card_inputs("4111111111111111", "1", "2612", "J", 0).is_err()
-        );
+        assert!(SrtClient::validate_card_inputs("4111111111111111", "1", "2612", "J", 0).is_err());
     }
 
     #[test]
     fn validate_card_bad_expiry() {
-        assert!(
-            SrtClient::validate_card_inputs("4111111111111111", "12", "26", "J", 0).is_err()
-        );
+        assert!(SrtClient::validate_card_inputs("4111111111111111", "12", "26", "J", 0).is_err());
     }
 
     #[test]
     fn validate_card_bad_type() {
-        assert!(
-            SrtClient::validate_card_inputs("4111111111111111", "12", "2612", "X", 0).is_err()
-        );
+        assert!(SrtClient::validate_card_inputs("4111111111111111", "12", "2612", "X", 0).is_err());
     }
 
     #[test]
     fn validate_card_bad_installment() {
-        assert!(
-            SrtClient::validate_card_inputs("4111111111111111", "12", "2612", "J", 1).is_err()
-        );
+        assert!(SrtClient::validate_card_inputs("4111111111111111", "12", "2612", "J", 1).is_err());
         assert!(
             SrtClient::validate_card_inputs("4111111111111111", "12", "2612", "J", 25).is_err()
         );

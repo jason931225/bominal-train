@@ -12,39 +12,40 @@ use leptos_router::{
 use crate::components::bottom_nav::BottomNav;
 use crate::i18n::t;
 use crate::pages::{
-    auth_page::AuthPage, home_view::HomeView, reservations_view::ReservationsView,
-    schedule_results::ScheduleResults, search_panel::SearchPanel,
-    settings_view::SettingsView, tasks_view::TasksView,
+    auth::{AddPasskeyPage, AuthVerifyPage, ForgotPage, LoginPage, PasskeyPage, SignupPage},
+    home_view::HomeView,
+    reservations_view::ReservationsView,
+    reset_password_page::ResetPasswordPage,
+    schedule_results::ScheduleResults,
+    search_panel::SearchPanel,
+    settings_view::SettingsView,
+    tasks_view::TasksView,
+    verify_email_page::VerifyEmailPage,
 };
 
 /// HTML shell for SSR — renders the full `<html>` document.
 pub fn shell() -> impl IntoView {
+    let locale = use_context::<bominal_domain::i18n::Locale>().unwrap_or_default();
+    let theme_prefs = use_context::<crate::theme::ThemePrefs>().unwrap_or_default();
+
     view! {
         <!DOCTYPE html>
-        <html lang="ko" data-theme="dark" data-palette="current" data-colorblind="false">
+        <html
+            lang=locale.code()
+            data-theme=theme_prefs.theme.as_str()
+            data-mode=theme_prefs.mode.as_str()
+        >
             <head>
                 <meta charset="utf-8" />
                 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-                <meta name="color-scheme" content="dark light" />
-                <meta name="theme-color" content="#0f172a" />
+                <meta name="color-scheme" content="light dark" />
+                <meta name="theme-color" content="#f2f2f7" />
                 <meta name="apple-mobile-web-app-capable" content="yes" />
                 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
                 <link rel="stylesheet" href="/style.css" />
-                // Theme init script — runs before paint to prevent FOUC
-                <script>{r#"
-(function(){
-  var h=document.documentElement;
-  var t=localStorage.getItem('bominal-theme')||'dark';
-  var p=localStorage.getItem('bominal-palette')||'current';
-  var c=localStorage.getItem('bominal-colorblind')||'false';
-  h.setAttribute('data-theme',t);
-  h.setAttribute('data-palette',p);
-  h.setAttribute('data-colorblind',c);
-  window.__bSetTheme=function(v){h.setAttribute('data-theme',v);localStorage.setItem('bominal-theme',v);};
-  window.__bSetPalette=function(v){h.setAttribute('data-palette',v);localStorage.setItem('bominal-palette',v);};
-  window.__bSetColorblind=function(v){h.setAttribute('data-colorblind',v);localStorage.setItem('bominal-colorblind',v);};
-})();
-"#}</script>
+                // Evervault JS SDK + interop
+                <script src="https://js.evervault.com/v2"></script>
+                <script src="/interop.js" defer></script>
             </head>
             <body class="min-h-screen bg-[var(--color-bg-primary)] text-[var(--color-text-primary)] font-[var(--font-sans)] antialiased">
                 <App />
@@ -58,10 +59,17 @@ pub fn shell() -> impl IntoView {
 pub fn App() -> impl IntoView {
     provide_meta_context();
 
+    let ev_ids = use_context::<crate::EvervaultIds>();
+
     view! {
         <Title text="Bominal" />
         <Meta name="description" content="Korean train reservation assistant" />
         <Stylesheet href="/style.css" />
+
+        {move || ev_ids.as_ref().map(|ids| view! {
+            <Meta name="ev-team-id" content=ids.team_id.clone() />
+            <Meta name="ev-app-id" content=ids.app_id.clone() />
+        })}
 
         <Router>
             <div class="relative min-h-screen pb-16">
@@ -71,13 +79,25 @@ pub fn App() -> impl IntoView {
                             <p class="text-[var(--color-text-secondary)]">{t("error.not_found")}</p>
                         </div>
                     }>
-                        <Route path=path!("/") view=AuthPage />
+                        // Root and auth entry point both serve PasskeyPage
+                        <Route path=path!("/") view=PasskeyPage />
+                        <Route path=path!("/auth") view=PasskeyPage />
+                        <Route path=path!("/auth/login") view=LoginPage />
+                        <Route path=path!("/auth/signup") view=SignupPage />
+                        <Route path=path!("/auth/forgot") view=ForgotPage />
+                        <Route path=path!("/forgot-password") view=ForgotPage />
+                        <Route path=path!("/auth/verify") view=AuthVerifyPage />
+                        <Route path=path!("/auth/add-passkey") view=AddPasskeyPage />
+                        // Authenticated app routes
                         <Route path=path!("/home") view=HomeView />
                         <Route path=path!("/search") view=SearchPanel />
                         <Route path=path!("/search/results") view=ScheduleResults />
                         <Route path=path!("/tasks") view=TasksView />
                         <Route path=path!("/reservations") view=ReservationsView />
                         <Route path=path!("/settings") view=SettingsView />
+                        // Email link landing pages
+                        <Route path=path!("/verify-email") view=VerifyEmailPage />
+                        <Route path=path!("/reset-password") view=ResetPasswordPage />
                     </Routes>
                 </main>
                 <BottomNav />

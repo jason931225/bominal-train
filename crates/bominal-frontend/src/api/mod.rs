@@ -5,6 +5,7 @@
 
 pub mod auth;
 pub mod cards;
+pub mod passkey;
 pub mod providers;
 pub mod reservations;
 pub mod search;

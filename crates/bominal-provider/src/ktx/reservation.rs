@@ -145,19 +145,21 @@ mod tests {
             "h_wct_no": "W001",
             "h_stl_flg": "N"
         });
-        let tickets = vec![KtxTicket::from_json(&json!({
-            "h_srcar_no": "5",
-            "h_seat_no": "12A",
-            "h_psrm_cl_nm": "일반실",
-            "h_rcvd_amt": "59800",
-            "h_pnr_no": "1234567890",
-            "h_trn_no": "101",
-            "h_orgtk_sale_wct_no": "W001",
-            "h_orgtk_sale_dt": "20260315",
-            "h_orgtk_sale_sqno": "001",
-            "h_orgtk_ret_pwd": "XXXX"
-        }))
-        .unwrap()];
+        let tickets = vec![
+            KtxTicket::from_json(&json!({
+                "h_srcar_no": "5",
+                "h_seat_no": "12A",
+                "h_psrm_cl_nm": "일반실",
+                "h_rcvd_amt": "59800",
+                "h_pnr_no": "1234567890",
+                "h_trn_no": "101",
+                "h_orgtk_sale_wct_no": "W001",
+                "h_orgtk_sale_dt": "20260315",
+                "h_orgtk_sale_sqno": "001",
+                "h_orgtk_ret_pwd": "XXXX"
+            }))
+            .unwrap(),
+        ];
 
         let rsv = KtxReservation::from_json(&data, tickets).unwrap();
         assert_eq!(rsv.rsv_id, "1234567890");
@@ -182,15 +184,17 @@ mod tests {
             "h_arv_tm": "083500",
             "h_stl_flg": "N"
         });
-        let tickets = vec![KtxTicket::from_json(&json!({
-            "h_srcar_no": "5",
-            "h_seat_no": "",
-            "h_psrm_cl_nm": "일반실",
-            "h_rcvd_amt": "0",
-            "h_pnr_no": "9999999999",
-            "h_trn_no": "101"
-        }))
-        .unwrap()];
+        let tickets = vec![
+            KtxTicket::from_json(&json!({
+                "h_srcar_no": "5",
+                "h_seat_no": "",
+                "h_psrm_cl_nm": "일반실",
+                "h_rcvd_amt": "0",
+                "h_pnr_no": "9999999999",
+                "h_trn_no": "101"
+            }))
+            .unwrap(),
+        ];
 
         let rsv = KtxReservation::from_json(&data, tickets).unwrap();
         assert!(rsv.is_waiting);

@@ -1,0 +1,30 @@
+# ── Linker ────────────────────────────────────────────────────────────
+# macOS ARM64: Apple's linker is fast; no override needed.
+# Linux CI/deploy: uncomment mold for ~5-10x faster linking.
+# [target.x86_64-unknown-linux-gnu]
+# linker = "clang"
+# rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+
+# ── Build ─────────────────────────────────────────────────────────────
+[build]
+# Parallel frontend jobs (WASM + native)
+jobs = 8
+
+# ── Nightly-only (uncomment with channel = "nightly") ─────────────────
+# Cranelift: ~30% faster codegen than LLVM. Linux-only (macOS can crash).
+# [unstable]
+# codegen-backend = true
+#
+# [profile.dev]
+# codegen-backend = "cranelift"
+#
+# Generic sharing: reduces monomorphization bloat across crates.
+# Significant win for axum/tokio/serde-heavy workspaces.
+# [target.'cfg(all())']
+# rustflags = ["-Zshare-generics=y"]
+
+# ── Aliases ───────────────────────────────────────────────────────────
+[alias]
+dev = "run -p bominal-server"
+t = "test --lib"
+ti = "test --test"

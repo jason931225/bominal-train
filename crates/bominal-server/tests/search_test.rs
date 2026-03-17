@@ -202,10 +202,7 @@ async fn suggest_submit_mode_autocorrect() {
 
     assert_eq!(status, StatusCode::OK);
     assert!(json["autocorrect_applied"].as_bool().unwrap_or(false));
-    assert_eq!(
-        json["corrected_query"].as_str().unwrap_or(""),
-        "수서"
-    );
+    assert_eq!(json["corrected_query"].as_str().unwrap_or(""), "수서");
 
     app.cleanup().await;
 }

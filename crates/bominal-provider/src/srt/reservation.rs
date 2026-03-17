@@ -177,16 +177,18 @@ mod tests {
             "iseLmtTm": "100000",
             "stlFlg": "N"
         });
-        let tickets = vec![SrtTicket::from_json(&json!({
-            "scarNo": "18",
-            "seatNo": "9C",
-            "psrmClCd": "1",
-            "psgTpCd": "1",
-            "rcvdAmt": "52300",
-            "stdrPrc": "52900",
-            "dcntPrc": "600"
-        }))
-        .unwrap()];
+        let tickets = vec![
+            SrtTicket::from_json(&json!({
+                "scarNo": "18",
+                "seatNo": "9C",
+                "psrmClCd": "1",
+                "psgTpCd": "1",
+                "rcvdAmt": "52300",
+                "stdrPrc": "52900",
+                "dcntPrc": "600"
+            }))
+            .unwrap(),
+        ];
 
         let reservation = SrtReservation::from_json(&train, &pay, tickets).unwrap();
         assert_eq!(reservation.reservation_number, "1234567890");
@@ -239,16 +241,18 @@ mod tests {
             "iseLmtTm": "100000",
             "stlFlg": "N"
         });
-        let tickets = vec![SrtTicket::from_json(&json!({
-            "scarNo": "18",
-            "seatNo": "",
-            "psrmClCd": "1",
-            "psgTpCd": "1",
-            "rcvdAmt": "0",
-            "stdrPrc": "0",
-            "dcntPrc": "0"
-        }))
-        .unwrap()];
+        let tickets = vec![
+            SrtTicket::from_json(&json!({
+                "scarNo": "18",
+                "seatNo": "",
+                "psrmClCd": "1",
+                "psgTpCd": "1",
+                "rcvdAmt": "0",
+                "stdrPrc": "0",
+                "dcntPrc": "0"
+            }))
+            .unwrap(),
+        ];
 
         let reservation = SrtReservation::from_json(&train, &pay, tickets).unwrap();
         assert!(reservation.is_waiting);

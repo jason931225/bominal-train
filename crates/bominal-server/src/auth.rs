@@ -1,59 +1,44 @@
 //! Auth route handlers: register, login, logout, email verification, password reset.
 
-use axum::extract::State;
-use axum::http::header::SET_COOKIE;
-use axum::http::HeaderMap;
 use axum::Json;
-use chrono::{Duration, Utc};
+use axum::extract::State;
+use axum::http::HeaderMap;
+use axum::http::header::SET_COOKIE;
 use serde::Deserialize;
-use uuid::Uuid;
 
-use bominal_domain::auth::{
-    AuthResponse, LoginRequest, RegisterRequest, validate_display_name, validate_email,
-    validate_password,
-};
-use bominal_domain::crypto::password::{hash_password, verify_password};
+use bominal_domain::auth::{AuthResponse, LoginRequest, RegisterRequest};
 
 use crate::error::AppError;
 use crate::state::SharedState;
-
-const SESSION_COOKIE_NAME: &str = "bominal_session";
-const SESSION_TTL_HOURS: i64 = 24;
-const VERIFY_TOKEN_TTL_MINUTES: i64 = 30;
-const RESET_TOKEN_TTL_MINUTES: i64 = 15;
 
 /// POST /api/auth/register
 pub async fn register(
     State(state): State<SharedState>,
     Json(req): Json<RegisterRequest>,
 ) -> Result<(HeaderMap, Json<AuthResponse>), AppError> {
-    validate_email(&req.email).map_err(|e| AppError::BadRequest(e.to_string()))?;
-    validate_password(&req.password).map_err(|e| AppError::BadRequest(e.to_string()))?;
-    validate_display_name(&req.display_name).map_err(|e| AppError::BadRequest(e.to_string()))?;
-
-    // Check for existing user
-    let existing = bominal_db::user::find_by_email(&state.db, &req.email)
-        .await
-        .map_err(|e| AppError::Internal(e.into()))?;
-
-    if existing.is_some() {
-        return Err(AppError::BadRequest("Email already registered".to_string()));
-    }
-
-    // Hash password
-    let pw_hash =
-        hash_password(&req.password).map_err(|e| AppError::Internal(anyhow::anyhow!("{}", e)))?;
-
-    // Create user
-    let user_row = bominal_db::user::create_user(&state.db, &req.email, &req.display_name, &pw_hash)
-        .await
-        .map_err(|e| AppError::Internal(e.into()))?;
+    let user =
+        bominal_service::auth::register(&state.db, &req.email, &req.password, &req.display_name)
+            .await?;
 
     // Send verification email (best-effort, don't block registration)
-    send_verification_email(&state, user_row.id, &user_row.email, &user_row.display_name).await;
+    let ctx = service_context(&state);
+    bominal_service::auth::send_verification_email(&ctx, user.id, &user.email, &user.display_name)
+        .await;
 
     // Create session
-    let (headers, response) = create_session_response(&state, &user_row).await?;
+    let session_id = bominal_service::auth::create_session(&state.db, user.id).await?;
+    let cookie = bominal_service::auth::session_cookie_value(&session_id, &state.app_base_url);
+
+    let mut headers = HeaderMap::new();
+    headers.insert(SET_COOKIE, cookie.parse().unwrap());
+
+    let response = AuthResponse {
+        user_id: user.id,
+        email: user.email,
+        display_name: user.display_name,
+        preferred_locale: user.preferred_locale,
+    };
+
     Ok((headers, Json(response)))
 }
 
@@ -62,15 +47,21 @@ pub async fn login(
     State(state): State<SharedState>,
     Json(req): Json<LoginRequest>,
 ) -> Result<(HeaderMap, Json<AuthResponse>), AppError> {
-    let user_row = bominal_db::user::find_by_email(&state.db, &req.email)
-        .await
-        .map_err(|e| AppError::Internal(e.into()))?
-        .ok_or(AppError::Unauthorized)?;
+    let user = bominal_service::auth::authenticate(&state.db, &req.email, &req.password).await?;
 
-    verify_password(&req.password, &user_row.password_hash)
-        .map_err(|_| AppError::Unauthorized)?;
+    let session_id = bominal_service::auth::create_session(&state.db, user.id).await?;
+    let cookie = bominal_service::auth::session_cookie_value(&session_id, &state.app_base_url);
 
-    let (headers, response) = create_session_response(&state, &user_row).await?;
+    let mut headers = HeaderMap::new();
+    headers.insert(SET_COOKIE, cookie.parse().unwrap());
+
+    let response = AuthResponse {
+        user_id: user.id,
+        email: user.email,
+        display_name: user.display_name,
+        preferred_locale: user.preferred_locale,
+    };
+
     Ok((headers, Json(response)))
 }
 
@@ -79,22 +70,16 @@ pub async fn logout(
     State(state): State<SharedState>,
     headers: HeaderMap,
 ) -> Result<HeaderMap, AppError> {
-    if let Some(session_id) = extract_session_id(&headers) {
-        bominal_db::session::delete_session(&state.db, &session_id)
-            .await
-            .map_err(|e| AppError::Internal(e.into()))?;
+    if let Some(cookie_header) = headers.get("cookie").and_then(|v| v.to_str().ok())
+        && let Some(session_id) =
+            bominal_service::auth::extract_session_id_from_cookie(cookie_header)
+    {
+        bominal_service::auth::delete_session(&state.db, &session_id).await?;
     }
 
+    let cookie = bominal_service::auth::clear_session_cookie_value(&state.app_base_url);
     let mut resp_headers = HeaderMap::new();
-    resp_headers.insert(
-        SET_COOKIE,
-        format!(
-            "{}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0",
-            SESSION_COOKIE_NAME
-        )
-        .parse()
-        .unwrap(),
-    );
+    resp_headers.insert(SET_COOKIE, cookie.parse().unwrap());
     Ok(resp_headers)
 }
 
@@ -103,23 +88,23 @@ pub async fn me(
     State(state): State<SharedState>,
     headers: HeaderMap,
 ) -> Result<Json<AuthResponse>, AppError> {
-    let session_id = extract_session_id(&headers).ok_or(AppError::Unauthorized)?;
-
-    let session = bominal_db::session::find_valid_session(&state.db, &session_id)
-        .await
-        .map_err(|e| AppError::Internal(e.into()))?
+    let cookie_header = headers
+        .get("cookie")
+        .and_then(|v| v.to_str().ok())
         .ok_or(AppError::Unauthorized)?;
 
-    let user = bominal_db::user::find_by_id(&state.db, session.user_id)
-        .await
-        .map_err(|e| AppError::Internal(e.into()))?
+    let session_id = bominal_service::auth::extract_session_id_from_cookie(cookie_header)
+        .ok_or(AppError::Unauthorized)?;
+
+    let user_info = bominal_service::auth::get_user_from_session(&state.db, &session_id)
+        .await?
         .ok_or(AppError::Unauthorized)?;
 
     Ok(Json(AuthResponse {
-        user_id: user.id,
-        email: user.email,
-        display_name: user.display_name,
-        preferred_locale: user.preferred_locale,
+        user_id: user_info.user_id,
+        email: user_info.email,
+        display_name: user_info.display_name,
+        preferred_locale: user_info.preferred_locale,
     }))
 }
 
@@ -135,13 +120,7 @@ pub async fn verify_email(
     State(state): State<SharedState>,
     Json(req): Json<VerifyEmailRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let user = bominal_db::user::verify_email(&state.db, &req.token)
-        .await
-        .map_err(|e| AppError::Internal(e.into()))?
-        .ok_or_else(|| AppError::BadRequest("Invalid or expired verification link".to_string()))?;
-
-    tracing::info!(user_id = %user.id, "Email verified");
-
+    bominal_service::auth::verify_email(&state.db, &req.token).await?;
     Ok(Json(serde_json::json!({ "verified": true })))
 }
 
@@ -150,13 +129,20 @@ pub async fn resend_verification(
     State(state): State<SharedState>,
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let session_id = extract_session_id(&headers).ok_or(AppError::Unauthorized)?;
-    let session = bominal_db::session::find_valid_session(&state.db, &session_id)
-        .await
-        .map_err(|e| AppError::Internal(e.into()))?
+    let cookie_header = headers
+        .get("cookie")
+        .and_then(|v| v.to_str().ok())
         .ok_or(AppError::Unauthorized)?;
 
-    let user = bominal_db::user::find_by_id(&state.db, session.user_id)
+    let session_id = bominal_service::auth::extract_session_id_from_cookie(cookie_header)
+        .ok_or(AppError::Unauthorized)?;
+
+    let user_info = bominal_service::auth::get_user_from_session(&state.db, &session_id)
+        .await?
+        .ok_or(AppError::Unauthorized)?;
+
+    // Need the full user row to check email_verified
+    let user = bominal_db::user::find_by_id(&state.db, user_info.user_id)
         .await
         .map_err(|e| AppError::Internal(e.into()))?
         .ok_or(AppError::Unauthorized)?;
@@ -165,7 +151,9 @@ pub async fn resend_verification(
         return Err(AppError::BadRequest("Email already verified".to_string()));
     }
 
-    send_verification_email(&state, user.id, &user.email, &user.display_name).await;
+    let ctx = service_context(&state);
+    bominal_service::auth::send_verification_email(&ctx, user.id, &user.email, &user.display_name)
+        .await;
 
     Ok(Json(serde_json::json!({ "sent": true })))
 }
@@ -190,29 +178,8 @@ pub async fn forgot_password(
     State(state): State<SharedState>,
     Json(req): Json<ForgotPasswordRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    // Always return success (don't leak email existence)
-    let user = bominal_db::user::find_by_email(&state.db, &req.email)
-        .await
-        .map_err(|e| AppError::Internal(e.into()))?;
-
-    if let Some(user) = user {
-        let token = generate_token();
-        let expires_at = Utc::now() + Duration::minutes(RESET_TOKEN_TTL_MINUTES);
-
-        bominal_db::user::set_reset_token(&state.db, user.id, &token, expires_at)
-            .await
-            .map_err(|e| AppError::Internal(e.into()))?;
-
-        let reset_url = format!("{}/reset-password?token={}", state.app_base_url, token);
-        let (subject, html) = bominal_email::templates::reset::render(
-            &user.display_name,
-            &reset_url,
-            RESET_TOKEN_TTL_MINUTES as u32,
-        );
-
-        state.email.send_best_effort(&user.email, &subject, &html).await;
-    }
-
+    let ctx = service_context(&state);
+    bominal_service::auth::forgot_password(&ctx, &req.email).await?;
     Ok(Json(serde_json::json!({ "sent": true })))
 }
 
@@ -221,124 +188,61 @@ pub async fn reset_password(
     State(state): State<SharedState>,
     Json(req): Json<ResetPasswordRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    validate_password(&req.new_password).map_err(|e| AppError::BadRequest(e.to_string()))?;
-
-    let pw_hash = hash_password(&req.new_password)
-        .map_err(|e| AppError::Internal(anyhow::anyhow!("{}", e)))?;
-
-    let user = bominal_db::user::reset_password(&state.db, &req.token, &pw_hash)
-        .await
-        .map_err(|e| AppError::Internal(e.into()))?
-        .ok_or_else(|| AppError::BadRequest("Invalid or expired reset link".to_string()))?;
-
-    tracing::info!(user_id = %user.id, "Password reset completed");
-
+    bominal_service::auth::reset_password(&state.db, &req.token, &req.new_password).await?;
     Ok(Json(serde_json::json!({ "reset": true })))
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-async fn send_verification_email(state: &SharedState, user_id: Uuid, email: &str, display_name: &str) {
-    let token = generate_token();
-    let expires_at = Utc::now() + Duration::minutes(VERIFY_TOKEN_TTL_MINUTES);
-
-    if let Err(e) = bominal_db::user::set_verification_token(&state.db, user_id, &token, expires_at).await {
-        tracing::error!(user_id = %user_id, error = %e, "Failed to set verification token");
-        return;
+fn service_context(state: &SharedState) -> bominal_service::ServiceContext {
+    bominal_service::ServiceContext {
+        db: state.db.clone(),
+        encryption_key: state.encryption_key.clone(),
+        email: state.email.clone(),
+        app_base_url: state.app_base_url.clone(),
     }
-
-    let verify_url = format!("{}/verify-email?token={}", state.app_base_url, token);
-    let (subject, html) = bominal_email::templates::verify::render(
-        display_name,
-        &verify_url,
-        VERIFY_TOKEN_TTL_MINUTES as u32,
-    );
-
-    state.email.send_best_effort(email, &subject, &html).await;
 }
 
-fn generate_token() -> String {
-    Uuid::new_v4().to_string()
-}
-
-async fn create_session_response(
-    state: &SharedState,
-    user: &bominal_db::user::UserRow,
-) -> Result<(HeaderMap, AuthResponse), AppError> {
-    let session_id = Uuid::new_v4().to_string();
-    let expires_at = Utc::now() + Duration::hours(SESSION_TTL_HOURS);
-
-    bominal_db::session::create_session(&state.db, &session_id, user.id, expires_at)
-        .await
-        .map_err(|e| AppError::Internal(e.into()))?;
-
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        SET_COOKIE,
-        format!(
-            "{}={}; Path=/; HttpOnly; SameSite=Lax; Max-Age={}",
-            SESSION_COOKIE_NAME,
-            session_id,
-            SESSION_TTL_HOURS * 3600
-        )
-        .parse()
-        .unwrap(),
-    );
-
-    let response = AuthResponse {
-        user_id: user.id,
-        email: user.email.clone(),
-        display_name: user.display_name.clone(),
-        preferred_locale: user.preferred_locale.clone(),
-    };
-
-    Ok((headers, response))
-}
-
-fn extract_session_id(headers: &HeaderMap) -> Option<String> {
-    let cookie_header = headers.get("cookie")?.to_str().ok()?;
-    for part in cookie_header.split(';') {
-        let part = part.trim();
-        if let Some(value) = part.strip_prefix(&format!("{}=", SESSION_COOKIE_NAME)) {
-            let value = value.trim();
-            if !value.is_empty() {
-                return Some(value.to_string());
-            }
-        }
+/// Returns `"; Secure"` when the app runs over HTTPS, or empty for HTTP/localhost.
+pub(crate) fn cookie_secure_attr(app_base_url: &str) -> &'static str {
+    if app_base_url.starts_with("https://") {
+        "; Secure"
+    } else {
+        ""
     }
-    None
+}
+
+pub(crate) fn cookie_domain_attr(app_base_url: &str) -> String {
+    if app_base_url.starts_with("https://") {
+        url::Url::parse(app_base_url)
+            .ok()
+            .and_then(|u| u.host_str().map(|h| format!("; Domain={h}")))
+            .unwrap_or_default()
+    } else {
+        String::new()
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use bominal_service::auth::extract_session_id_from_cookie;
 
     #[test]
     fn extract_session_from_cookie() {
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            "cookie",
-            "bominal_session=abc-123; other=val".parse().unwrap(),
+        let cookie = "bominal_session=abc-123; other=val";
+        assert_eq!(
+            extract_session_id_from_cookie(cookie),
+            Some("abc-123".to_string())
         );
-        assert_eq!(extract_session_id(&headers), Some("abc-123".to_string()));
     }
 
     #[test]
     fn extract_session_missing() {
-        let headers = HeaderMap::new();
-        assert_eq!(extract_session_id(&headers), None);
+        assert_eq!(extract_session_id_from_cookie("other=val"), None);
     }
 
     #[test]
     fn extract_session_no_match() {
-        let mut headers = HeaderMap::new();
-        headers.insert("cookie", "other=val".parse().unwrap());
-        assert_eq!(extract_session_id(&headers), None);
-    }
-
-    #[test]
-    fn generate_token_is_uuid() {
-        let token = generate_token();
-        assert!(Uuid::parse_str(&token).is_ok());
+        assert_eq!(extract_session_id_from_cookie("other=val"), None);
     }
 }

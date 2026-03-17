@@ -11,15 +11,22 @@
 use rand_distr::{Distribution, Gamma};
 use tracing::{debug, error, info, warn};
 
+const MAX_ATTEMPTS: i32 = 10_000;
+
 use bominal_db::DbPool;
 use bominal_domain::crypto::encryption::{self, EncryptionKey};
+use bominal_domain::task::{
+    PassengerKind, PassengerList, Provider as TaskProvider, ReservationSnapshot,
+    SeatPreference as DomainSeatPreference, TargetTrainList, TaskStatus,
+};
 use bominal_email::EmailClient;
 use bominal_email::templates::reservation::{AlertKind, ReservationDetails};
 use bominal_provider::ktx::KtxClient;
 use bominal_provider::srt::SrtClient;
 use bominal_provider::srt::passenger::{PassengerGroup, PassengerType, WindowSeat, total_count};
-use bominal_provider::types::{ProviderError, SeatPreference};
+use bominal_provider::types::{ProviderError, SeatPreference as ProviderSeatPreference};
 
+use crate::evervault::EvervaultConfig;
 use crate::sse::{EventBus, TaskEvent};
 
 /// Start the task runner background loop.
@@ -30,12 +37,22 @@ pub fn spawn_runner(
     event_bus: EventBus,
     email: EmailClient,
     encryption_key: EncryptionKey,
+    evervault: EvervaultConfig,
     app_base_url: String,
 ) {
     tokio::spawn(async move {
         info!("Task runner started");
         loop {
-            if let Err(e) = poll_and_dispatch(&db, &event_bus, &email, &encryption_key, &app_base_url).await {
+            if let Err(e) = poll_and_dispatch(
+                &db,
+                &event_bus,
+                &email,
+                &encryption_key,
+                &evervault,
+                &app_base_url,
+            )
+            .await
+            {
                 error!(error = %e, "Task runner poll error");
             }
             tokio::time::sleep(std::time::Duration::from_secs(5)).await;
@@ -49,6 +66,7 @@ async fn poll_and_dispatch(
     event_bus: &EventBus,
     email: &EmailClient,
     encryption_key: &EncryptionKey,
+    evervault: &EvervaultConfig,
     app_base_url: &str,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let tasks = bominal_db::task::claim_queued_tasks(db).await?;
@@ -58,40 +76,51 @@ async fn poll_and_dispatch(
         let bus = event_bus.clone();
         let email = email.clone();
         let key = encryption_key.clone();
+        let ev = evervault.clone();
         let base_url = app_base_url.to_string();
 
         tokio::spawn(async move {
             info!(task_id = %task.id, provider = %task.provider, "Starting reservation worker");
 
-            bus.publish(task.user_id, TaskEvent {
-                task_id: task.id,
-                status: "running".to_string(),
-                message: "Reservation worker started".to_string(),
-                attempt_count: 0,
-                reservation_number: None,
-            }).await;
+            bus.publish(
+                task.user_id,
+                TaskEvent {
+                    task_id: task.id,
+                    status: "running".to_string(),
+                    message: "Reservation worker started".to_string(),
+                    attempt_count: 0,
+                    reservation_number: None,
+                },
+            )
+            .await;
 
-            let result = match task.provider.as_str() {
-                "SRT" => run_srt_task(&db, &task, &bus, &email, &key, &base_url).await,
-                "KTX" => run_ktx_task(&db, &task, &bus, &email, &key, &base_url).await,
-                _ => {
-                    error!(task_id = %task.id, provider = %task.provider, "Unknown provider");
-                    Err("Unknown provider".into())
+            let result = match task.provider {
+                TaskProvider::Srt => {
+                    run_srt_task(&db, &task, &bus, &email, &key, &ev, &base_url).await
+                }
+                TaskProvider::Ktx => {
+                    run_ktx_task(&db, &task, &bus, &email, &key, &ev, &base_url).await
                 }
             };
 
             if let Err(e) = result {
                 error!(task_id = %task.id, error = %e, "Task failed");
-                if let Err(db_err) = bominal_db::task::update_status(&db, task.id, "failed").await {
+                if let Err(db_err) =
+                    bominal_db::task::update_status(&db, task.id, TaskStatus::Failed).await
+                {
                     error!(task_id = %task.id, error = %db_err, "Failed to mark task as failed");
                 }
-                bus.publish(task.user_id, TaskEvent {
-                    task_id: task.id,
-                    status: "failed".to_string(),
-                    message: format!("Task failed: {e}"),
-                    attempt_count: 0,
-                    reservation_number: None,
-                }).await;
+                bus.publish(
+                    task.user_id,
+                    TaskEvent {
+                        task_id: task.id,
+                        status: "failed".to_string(),
+                        message: format!("Task failed: {e}"),
+                        attempt_count: 0,
+                        reservation_number: None,
+                    },
+                )
+                .await;
 
                 // Send failure email if notifications enabled
                 if task.notify_enabled {
@@ -111,6 +140,7 @@ async fn run_srt_task(
     event_bus: &EventBus,
     email: &EmailClient,
     encryption_key: &EncryptionKey,
+    evervault: &EvervaultConfig,
     app_base_url: &str,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Fetch stored credentials and decrypt password
@@ -119,11 +149,11 @@ async fn run_srt_task(
         .ok_or("No SRT credentials found")?;
     let password = encryption::decrypt(encryption_key, &cred.encrypted_password)?;
 
-    // Create client and login (single-owner, no Arc/Mutex needed)
-    let mut client = SrtClient::new();
+    // Create client with Evervault Relay proxy (decrypts ev: card fields in-flight).
+    let mut client = SrtClient::with_relay(&evervault.srt_relay_domain);
     client.login(&cred.login_id, &password).await?;
 
-    let seat_pref = parse_seat_preference(&task.seat_preference);
+    let seat_pref = parse_seat_preference(task.seat_preference);
     let target_train_numbers = extract_train_numbers(&task.target_trains);
     let passengers = parse_passengers(&task.passengers);
 
@@ -138,7 +168,7 @@ async fn run_srt_task(
     );
 
     loop {
-        // Check if task was cancelled
+        // Check if task was cancelled or max attempts reached
         let current = bominal_db::task::find_by_id(db, task.id, task.user_id).await?;
         match current.as_ref().map(|t| t.status.as_str()) {
             Some("cancelled") | Some("confirmed") | Some("failed") | None => {
@@ -146,6 +176,25 @@ async fn run_srt_task(
                 return Ok(());
             }
             _ => {}
+        }
+        if let Some(ref t) = current
+            && t.attempt_count >= MAX_ATTEMPTS
+        {
+            warn!(task_id = %task.id, attempts = t.attempt_count, "Max attempts reached");
+            bominal_db::task::update_status(db, task.id, TaskStatus::Failed).await?;
+            event_bus
+                .publish(
+                    task.user_id,
+                    TaskEvent {
+                        task_id: task.id,
+                        status: "failed".to_string(),
+                        message: format!("Max attempts ({MAX_ATTEMPTS}) reached"),
+                        attempt_count: t.attempt_count,
+                        reservation_number: None,
+                    },
+                )
+                .await;
+            return Ok(());
         }
 
         // Record attempt
@@ -180,21 +229,11 @@ async fn run_srt_task(
 
                         let reserve_result = if train.seat_available() {
                             client
-                                .reserve(
-                                    train,
-                                    &passengers,
-                                    seat_pref,
-                                    WindowSeat::None,
-                                )
+                                .reserve(train, &passengers, seat_pref, WindowSeat::None)
                                 .await
                         } else {
                             client
-                                .reserve_standby(
-                                    train,
-                                    &passengers,
-                                    seat_pref,
-                                    None,
-                                )
+                                .reserve_standby(train, &passengers, seat_pref, None)
                                 .await
                         };
 
@@ -205,31 +244,40 @@ async fn run_srt_task(
                                     pnr = %reservation.reservation_number,
                                     "Reservation confirmed!"
                                 );
+                                let snapshot = ReservationSnapshot {
+                                    dep_station: reservation.dep_station_name.clone(),
+                                    arr_station: reservation.arr_station_name.clone(),
+                                    dep_date: reservation.dep_date.clone(),
+                                    dep_time: reservation.dep_time.clone(),
+                                    train_number: reservation.train_number.clone(),
+                                    total_cost: reservation.total_cost.clone(),
+                                    is_waiting: reservation.is_waiting,
+                                };
                                 bominal_db::task::mark_confirmed(
                                     db,
                                     task.id,
                                     &reservation.reservation_number,
-                                    &serde_json::json!({
-                                        "dep_station": reservation.dep_station_name,
-                                        "arr_station": reservation.arr_station_name,
-                                        "dep_date": reservation.dep_date,
-                                        "dep_time": reservation.dep_time,
-                                        "train_number": reservation.train_number,
-                                        "total_cost": reservation.total_cost,
-                                        "is_waiting": reservation.is_waiting,
-                                    }),
+                                    &snapshot,
                                 )
                                 .await?;
-                                event_bus.publish(task.user_id, TaskEvent {
-                                    task_id: task.id,
-                                    status: "confirmed".to_string(),
-                                    message: format!(
-                                        "Reservation confirmed! Train {} — PNR {}",
-                                        reservation.train_number, reservation.reservation_number
-                                    ),
-                                    attempt_count: task.attempt_count,
-                                    reservation_number: Some(reservation.reservation_number.clone()),
-                                }).await;
+                                event_bus
+                                    .publish(
+                                        task.user_id,
+                                        TaskEvent {
+                                            task_id: task.id,
+                                            status: "confirmed".to_string(),
+                                            message: format!(
+                                                "Reservation confirmed! Train {} — PNR {}",
+                                                reservation.train_number,
+                                                reservation.reservation_number
+                                            ),
+                                            attempt_count: task.attempt_count,
+                                            reservation_number: Some(
+                                                reservation.reservation_number.clone(),
+                                            ),
+                                        },
+                                    )
+                                    .await;
 
                                 // Send confirmation email
                                 if task.notify_enabled {
@@ -238,30 +286,52 @@ async fn run_srt_task(
                                     } else {
                                         AlertKind::Confirmed
                                     };
-                                    send_alert_email(db, email, task, kind, Some(&reservation.reservation_number), app_base_url).await;
+                                    send_alert_email(
+                                        db,
+                                        email,
+                                        task,
+                                        kind,
+                                        Some(&reservation.reservation_number),
+                                        app_base_url,
+                                    )
+                                    .await;
                                 }
 
                                 // Auto-pay if configured (skip for standby/waiting reservations)
                                 if task.auto_pay && !reservation.is_waiting {
                                     let pnr = reservation.reservation_number.clone();
                                     try_auto_pay_srt(
-                                        db, &client, task, &reservation, &pnr, event_bus, email,
-                                        encryption_key, app_base_url,
-                                    ).await;
+                                        db,
+                                        &client,
+                                        task,
+                                        &reservation,
+                                        &pnr,
+                                        event_bus,
+                                        email,
+                                        evervault,
+                                        app_base_url,
+                                    )
+                                    .await;
                                 }
 
                                 return Ok(());
                             }
                             Err(ProviderError::DuplicateReservation) => {
                                 warn!(task_id = %task.id, "Duplicate reservation");
-                                bominal_db::task::update_status(db, task.id, "failed").await?;
-                                event_bus.publish(task.user_id, TaskEvent {
-                                    task_id: task.id,
-                                    status: "failed".to_string(),
-                                    message: "Duplicate reservation detected".to_string(),
-                                    attempt_count: task.attempt_count,
-                                    reservation_number: None,
-                                }).await;
+                                bominal_db::task::update_status(db, task.id, TaskStatus::Failed)
+                                    .await?;
+                                event_bus
+                                    .publish(
+                                        task.user_id,
+                                        TaskEvent {
+                                            task_id: task.id,
+                                            status: "failed".to_string(),
+                                            message: "Duplicate reservation detected".to_string(),
+                                            attempt_count: task.attempt_count,
+                                            reservation_number: None,
+                                        },
+                                    )
+                                    .await;
                                 return Ok(());
                             }
                             Err(e) => {
@@ -280,7 +350,7 @@ async fn run_srt_task(
                 warn!(task_id = %task.id, "Session expired, re-logging in");
                 if let Err(e) = client.login(&cred.login_id, &password).await {
                     error!(task_id = %task.id, error = %e, "Re-login failed");
-                    bominal_db::task::update_status(db, task.id, "failed").await?;
+                    bominal_db::task::update_status(db, task.id, TaskStatus::Failed).await?;
                     return Ok(());
                 }
             }
@@ -288,10 +358,42 @@ async fn run_srt_task(
                 debug!(task_id = %task.id, "NetFunnel blocked, retrying");
             }
             Err(ProviderError::NetworkError(e)) => {
-                warn!(task_id = %task.id, error = %e, "Network error, retrying");
+                warn!(task_id = %task.id, error = %e, "Network error");
+                if !task.auto_retry {
+                    bominal_db::task::update_status(db, task.id, TaskStatus::Failed).await?;
+                    event_bus
+                        .publish(
+                            task.user_id,
+                            TaskEvent {
+                                task_id: task.id,
+                                status: "failed".to_string(),
+                                message: format!("Network error (auto-retry disabled): {e}"),
+                                attempt_count: task.attempt_count,
+                                reservation_number: None,
+                            },
+                        )
+                        .await;
+                    return Ok(());
+                }
             }
             Err(e) => {
-                warn!(task_id = %task.id, error = %e, "Search error, retrying");
+                warn!(task_id = %task.id, error = %e, "Search error");
+                if !task.auto_retry {
+                    bominal_db::task::update_status(db, task.id, TaskStatus::Failed).await?;
+                    event_bus
+                        .publish(
+                            task.user_id,
+                            TaskEvent {
+                                task_id: task.id,
+                                status: "failed".to_string(),
+                                message: format!("Search error (auto-retry disabled): {e}"),
+                                attempt_count: task.attempt_count,
+                                reservation_number: None,
+                            },
+                        )
+                        .await;
+                    return Ok(());
+                }
             }
         }
 
@@ -312,6 +414,7 @@ async fn run_ktx_task(
     event_bus: &EventBus,
     email: &EmailClient,
     encryption_key: &EncryptionKey,
+    evervault: &EvervaultConfig,
     app_base_url: &str,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let cred = bominal_db::provider::find_by_user_and_provider(db, task.user_id, "KTX")
@@ -319,10 +422,10 @@ async fn run_ktx_task(
         .ok_or("No KTX credentials found")?;
     let password = encryption::decrypt(encryption_key, &cred.encrypted_password)?;
 
-    let mut client = KtxClient::new();
+    let mut client = KtxClient::with_relay(&evervault.ktx_relay_domain);
     client.login(&cred.login_id, &password).await?;
 
-    let seat_pref = parse_seat_preference(&task.seat_preference);
+    let seat_pref = parse_seat_preference(task.seat_preference);
     let target_train_numbers = extract_train_numbers(&task.target_trains);
     let passengers = parse_passengers(&task.passengers);
     let psg_count = total_count(&passengers);
@@ -337,7 +440,7 @@ async fn run_ktx_task(
     );
 
     loop {
-        // Check if task was cancelled
+        // Check if task was cancelled or max attempts reached
         let current = bominal_db::task::find_by_id(db, task.id, task.user_id).await?;
         match current.as_ref().map(|t| t.status.as_str()) {
             Some("cancelled") | Some("confirmed") | Some("failed") | None => {
@@ -345,6 +448,25 @@ async fn run_ktx_task(
                 return Ok(());
             }
             _ => {}
+        }
+        if let Some(ref t) = current
+            && t.attempt_count >= MAX_ATTEMPTS
+        {
+            warn!(task_id = %task.id, attempts = t.attempt_count, "Max attempts reached");
+            bominal_db::task::update_status(db, task.id, TaskStatus::Failed).await?;
+            event_bus
+                .publish(
+                    task.user_id,
+                    TaskEvent {
+                        task_id: task.id,
+                        status: "failed".to_string(),
+                        message: format!("Max attempts ({MAX_ATTEMPTS}) reached"),
+                        attempt_count: t.attempt_count,
+                        reservation_number: None,
+                    },
+                )
+                .await;
+            return Ok(());
         }
 
         bominal_db::task::record_attempt(db, task.id).await?;
@@ -363,8 +485,7 @@ async fn run_ktx_task(
             Ok(trains) => {
                 for target_no in &target_train_numbers {
                     let matching = trains.iter().find(|t| {
-                        t.train_no == *target_no
-                            && (t.seat_available() || t.waiting_available())
+                        t.train_no == *target_no && (t.seat_available() || t.waiting_available())
                     });
 
                     if let Some(train) = matching {
@@ -374,9 +495,7 @@ async fn run_ktx_task(
                             "Found available KTX train, attempting reservation"
                         );
 
-                        let reserve_result = client
-                            .reserve(train, seat_pref, psg_count)
-                            .await;
+                        let reserve_result = client.reserve(train, seat_pref, psg_count).await;
 
                         match reserve_result {
                             Ok(reservation) => {
@@ -385,31 +504,37 @@ async fn run_ktx_task(
                                     pnr = %reservation.rsv_id,
                                     "KTX reservation confirmed!"
                                 );
+                                let snapshot = ReservationSnapshot {
+                                    dep_station: reservation.dep_name.clone(),
+                                    arr_station: reservation.arr_name.clone(),
+                                    dep_date: reservation.dep_date.clone(),
+                                    dep_time: reservation.dep_time.clone(),
+                                    train_number: reservation.train_no.clone(),
+                                    total_cost: reservation.price.clone(),
+                                    is_waiting: reservation.is_waiting,
+                                };
                                 bominal_db::task::mark_confirmed(
                                     db,
                                     task.id,
                                     &reservation.rsv_id,
-                                    &serde_json::json!({
-                                        "dep_station": reservation.dep_name,
-                                        "arr_station": reservation.arr_name,
-                                        "dep_date": reservation.dep_date,
-                                        "dep_time": reservation.dep_time,
-                                        "train_number": reservation.train_no,
-                                        "total_cost": reservation.price,
-                                        "is_waiting": reservation.is_waiting,
-                                    }),
+                                    &snapshot,
                                 )
                                 .await?;
-                                event_bus.publish(task.user_id, TaskEvent {
-                                    task_id: task.id,
-                                    status: "confirmed".to_string(),
-                                    message: format!(
-                                        "KTX reservation confirmed! Train {} — PNR {}",
-                                        reservation.train_no, reservation.rsv_id
-                                    ),
-                                    attempt_count: task.attempt_count,
-                                    reservation_number: Some(reservation.rsv_id.clone()),
-                                }).await;
+                                event_bus
+                                    .publish(
+                                        task.user_id,
+                                        TaskEvent {
+                                            task_id: task.id,
+                                            status: "confirmed".to_string(),
+                                            message: format!(
+                                                "KTX reservation confirmed! Train {} — PNR {}",
+                                                reservation.train_no, reservation.rsv_id
+                                            ),
+                                            attempt_count: task.attempt_count,
+                                            reservation_number: Some(reservation.rsv_id.clone()),
+                                        },
+                                    )
+                                    .await;
 
                                 // Send confirmation email
                                 if task.notify_enabled {
@@ -418,30 +543,52 @@ async fn run_ktx_task(
                                     } else {
                                         AlertKind::Confirmed
                                     };
-                                    send_alert_email(db, email, task, kind, Some(&reservation.rsv_id), app_base_url).await;
+                                    send_alert_email(
+                                        db,
+                                        email,
+                                        task,
+                                        kind,
+                                        Some(&reservation.rsv_id),
+                                        app_base_url,
+                                    )
+                                    .await;
                                 }
 
                                 // Auto-pay if configured (skip for standby/waiting reservations)
                                 if task.auto_pay && !reservation.is_waiting {
                                     let pnr = reservation.rsv_id.clone();
                                     try_auto_pay_ktx(
-                                        db, &client, task, &reservation, &pnr, event_bus, email,
-                                        encryption_key, app_base_url,
-                                    ).await;
+                                        db,
+                                        &client,
+                                        task,
+                                        &reservation,
+                                        &pnr,
+                                        event_bus,
+                                        email,
+                                        evervault,
+                                        app_base_url,
+                                    )
+                                    .await;
                                 }
 
                                 return Ok(());
                             }
                             Err(ProviderError::DuplicateReservation) => {
                                 warn!(task_id = %task.id, "Duplicate reservation");
-                                bominal_db::task::update_status(db, task.id, "failed").await?;
-                                event_bus.publish(task.user_id, TaskEvent {
-                                    task_id: task.id,
-                                    status: "failed".to_string(),
-                                    message: "Duplicate reservation detected".to_string(),
-                                    attempt_count: task.attempt_count,
-                                    reservation_number: None,
-                                }).await;
+                                bominal_db::task::update_status(db, task.id, TaskStatus::Failed)
+                                    .await?;
+                                event_bus
+                                    .publish(
+                                        task.user_id,
+                                        TaskEvent {
+                                            task_id: task.id,
+                                            status: "failed".to_string(),
+                                            message: "Duplicate reservation detected".to_string(),
+                                            attempt_count: task.attempt_count,
+                                            reservation_number: None,
+                                        },
+                                    )
+                                    .await;
                                 return Ok(());
                             }
                             Err(e) => {
@@ -460,15 +607,47 @@ async fn run_ktx_task(
                 warn!(task_id = %task.id, "Session expired, re-logging in");
                 if let Err(e) = client.login(&cred.login_id, &password).await {
                     error!(task_id = %task.id, error = %e, "Re-login failed");
-                    bominal_db::task::update_status(db, task.id, "failed").await?;
+                    bominal_db::task::update_status(db, task.id, TaskStatus::Failed).await?;
                     return Ok(());
                 }
             }
             Err(ProviderError::NetworkError(e)) => {
-                warn!(task_id = %task.id, error = %e, "Network error, retrying");
+                warn!(task_id = %task.id, error = %e, "Network error");
+                if !task.auto_retry {
+                    bominal_db::task::update_status(db, task.id, TaskStatus::Failed).await?;
+                    event_bus
+                        .publish(
+                            task.user_id,
+                            TaskEvent {
+                                task_id: task.id,
+                                status: "failed".to_string(),
+                                message: format!("Network error (auto-retry disabled): {e}"),
+                                attempt_count: task.attempt_count,
+                                reservation_number: None,
+                            },
+                        )
+                        .await;
+                    return Ok(());
+                }
             }
             Err(e) => {
-                warn!(task_id = %task.id, error = %e, "Search error, retrying");
+                warn!(task_id = %task.id, error = %e, "Search error");
+                if !task.auto_retry {
+                    bominal_db::task::update_status(db, task.id, TaskStatus::Failed).await?;
+                    event_bus
+                        .publish(
+                            task.user_id,
+                            TaskEvent {
+                                task_id: task.id,
+                                status: "failed".to_string(),
+                                message: format!("Search error (auto-retry disabled): {e}"),
+                                attempt_count: task.attempt_count,
+                                reservation_number: None,
+                            },
+                        )
+                        .await;
+                    return Ok(());
+                }
             }
         }
 
@@ -487,6 +666,7 @@ async fn run_ktx_task(
 ///
 /// Logs warnings on failure but never fails the task — the reservation
 /// is still valid even if payment doesn't go through.
+#[allow(clippy::too_many_arguments)]
 async fn try_auto_pay_srt(
     db: &DbPool,
     client: &SrtClient,
@@ -495,9 +675,10 @@ async fn try_auto_pay_srt(
     pnr: &str,
     event_bus: &EventBus,
     email: &EmailClient,
-    encryption_key: &EncryptionKey,
+    _evervault: &EvervaultConfig,
     app_base_url: &str,
 ) {
+    // Card fields are Evervault-encrypted; the Relay (configured on the client) decrypts in-flight.
     let card_id = match task.payment_card_id {
         Some(id) => id,
         None => {
@@ -510,13 +691,20 @@ async fn try_auto_pay_srt(
         Ok(Some(c)) => c,
         Ok(None) => {
             warn!(task_id = %task.id, card_id = %card_id, "Payment card not found for auto-pay");
-            event_bus.publish(task.user_id, TaskEvent {
-                task_id: task.id,
-                status: "pay_failed".to_string(),
-                message: "Auto-pay failed: payment card not found".to_string(),
-                attempt_count: task.attempt_count,
-                reservation_number: Some(pnr.to_string()),
-            }).await;
+            let _ = bominal_db::task::update_status(db, task.id, TaskStatus::AwaitingPayment).await;
+            event_bus
+                .publish(
+                    task.user_id,
+                    TaskEvent {
+                        task_id: task.id,
+                        status: "awaiting_payment".to_string(),
+                        message: "Auto-pay failed: payment card not found. Please pay manually."
+                            .to_string(),
+                        attempt_count: task.attempt_count,
+                        reservation_number: Some(pnr.to_string()),
+                    },
+                )
+                .await;
             return;
         }
         Err(e) => {
@@ -525,30 +713,21 @@ async fn try_auto_pay_srt(
         }
     };
 
-    // Decrypt card fields
-    let (card_number, card_password, birthday, expiry) =
-        match decrypt_card_fields(encryption_key, &card) {
-            Ok(fields) => fields,
-            Err(e) => {
-                error!(task_id = %task.id, error = %e, "Failed to decrypt card for auto-pay");
-                event_bus.publish(task.user_id, TaskEvent {
-                    task_id: task.id,
-                    status: "pay_failed".to_string(),
-                    message: "Auto-pay failed: could not decrypt card data".to_string(),
-                    attempt_count: task.attempt_count,
-                    reservation_number: Some(pnr.to_string()),
-                }).await;
-                return;
-            }
-        };
-
+    // Card fields are Evervault-encrypted (ev: prefix). The Evervault Outbound
+    // Relay decrypts them in-flight when the provider payment request passes
+    // through the relay proxy. We pass the encrypted values directly.
+    // SRT expects YYMM expiry format; fall back to MMYY if YYMM not stored.
+    let srt_expiry = card
+        .encrypted_expiry_yymm
+        .as_deref()
+        .unwrap_or(&card.encrypted_expiry);
     match client
         .pay_with_card(
             reservation,
-            &card_number,
-            &card_password,
-            &birthday,
-            &expiry,
+            &card.encrypted_number,
+            &card.encrypted_password,
+            &card.encrypted_birthday,
+            srt_expiry,
             0, // 일시불 (lump-sum)
             &card.card_type,
         )
@@ -556,34 +735,43 @@ async fn try_auto_pay_srt(
     {
         Ok(()) => {
             info!(task_id = %task.id, "SRT auto-pay successful");
-            event_bus.publish(task.user_id, TaskEvent {
-                task_id: task.id,
-                status: "paid".to_string(),
-                message: "Auto-pay completed successfully".to_string(),
-                attempt_count: task.attempt_count,
-                reservation_number: Some(pnr.to_string()),
-            }).await;
+            // Task stays 'confirmed' — payment succeeded.
             if task.notify_enabled {
                 send_alert_email(db, email, task, AlertKind::Paid, Some(pnr), app_base_url).await;
             }
         }
         Err(e) => {
             warn!(task_id = %task.id, error = %e, "SRT auto-pay failed");
-            event_bus.publish(task.user_id, TaskEvent {
-                task_id: task.id,
-                status: "pay_failed".to_string(),
-                message: format!("Auto-pay failed: {e}. Please pay manually."),
-                attempt_count: task.attempt_count,
-                reservation_number: Some(pnr.to_string()),
-            }).await;
+            let _ = bominal_db::task::update_status(db, task.id, TaskStatus::AwaitingPayment).await;
+            event_bus
+                .publish(
+                    task.user_id,
+                    TaskEvent {
+                        task_id: task.id,
+                        status: "awaiting_payment".to_string(),
+                        message: format!("Auto-pay failed: {e}. Please pay manually."),
+                        attempt_count: task.attempt_count,
+                        reservation_number: Some(pnr.to_string()),
+                    },
+                )
+                .await;
             if task.notify_enabled {
-                send_alert_email(db, email, task, AlertKind::PayFailed, Some(pnr), app_base_url).await;
+                send_alert_email(
+                    db,
+                    email,
+                    task,
+                    AlertKind::PayFailed,
+                    Some(pnr),
+                    app_base_url,
+                )
+                .await;
             }
         }
     }
 }
 
 /// Attempt automatic payment for a KTX reservation.
+#[allow(clippy::too_many_arguments)]
 async fn try_auto_pay_ktx(
     db: &DbPool,
     client: &KtxClient,
@@ -592,9 +780,10 @@ async fn try_auto_pay_ktx(
     pnr: &str,
     event_bus: &EventBus,
     email: &EmailClient,
-    encryption_key: &EncryptionKey,
+    _evervault: &EvervaultConfig,
     app_base_url: &str,
 ) {
+    // Card fields are Evervault-encrypted; the Relay (configured on the client) decrypts in-flight.
     let card_id = match task.payment_card_id {
         Some(id) => id,
         None => {
@@ -607,13 +796,20 @@ async fn try_auto_pay_ktx(
         Ok(Some(c)) => c,
         Ok(None) => {
             warn!(task_id = %task.id, card_id = %card_id, "Payment card not found for auto-pay");
-            event_bus.publish(task.user_id, TaskEvent {
-                task_id: task.id,
-                status: "pay_failed".to_string(),
-                message: "Auto-pay failed: payment card not found".to_string(),
-                attempt_count: task.attempt_count,
-                reservation_number: Some(pnr.to_string()),
-            }).await;
+            let _ = bominal_db::task::update_status(db, task.id, TaskStatus::AwaitingPayment).await;
+            event_bus
+                .publish(
+                    task.user_id,
+                    TaskEvent {
+                        task_id: task.id,
+                        status: "awaiting_payment".to_string(),
+                        message: "Auto-pay failed: payment card not found. Please pay manually."
+                            .to_string(),
+                        attempt_count: task.attempt_count,
+                        reservation_number: Some(pnr.to_string()),
+                    },
+                )
+                .await;
             return;
         }
         Err(e) => {
@@ -622,30 +818,14 @@ async fn try_auto_pay_ktx(
         }
     };
 
-    // Decrypt card fields
-    let (card_number, card_password, birthday, expiry) =
-        match decrypt_card_fields(encryption_key, &card) {
-            Ok(fields) => fields,
-            Err(e) => {
-                error!(task_id = %task.id, error = %e, "Failed to decrypt card for auto-pay");
-                event_bus.publish(task.user_id, TaskEvent {
-                    task_id: task.id,
-                    status: "pay_failed".to_string(),
-                    message: "Auto-pay failed: could not decrypt card data".to_string(),
-                    attempt_count: task.attempt_count,
-                    reservation_number: Some(pnr.to_string()),
-                }).await;
-                return;
-            }
-        };
-
+    // Card fields are Evervault-encrypted. Passed through Evervault Relay.
     match client
         .pay_with_card(
             reservation,
-            &card_number,
-            &card_password,
-            &birthday,
-            &expiry,
+            &card.encrypted_number,
+            &card.encrypted_password,
+            &card.encrypted_birthday,
+            &card.encrypted_expiry,
             "00", // 일시불 (lump-sum)
             &card.card_type,
         )
@@ -653,46 +833,39 @@ async fn try_auto_pay_ktx(
     {
         Ok(()) => {
             info!(task_id = %task.id, "KTX auto-pay successful");
-            event_bus.publish(task.user_id, TaskEvent {
-                task_id: task.id,
-                status: "paid".to_string(),
-                message: "Auto-pay completed successfully".to_string(),
-                attempt_count: task.attempt_count,
-                reservation_number: Some(pnr.to_string()),
-            }).await;
+            // Task stays 'confirmed' — payment succeeded.
             if task.notify_enabled {
                 send_alert_email(db, email, task, AlertKind::Paid, Some(pnr), app_base_url).await;
             }
         }
         Err(e) => {
             warn!(task_id = %task.id, error = %e, "KTX auto-pay failed");
-            event_bus.publish(task.user_id, TaskEvent {
-                task_id: task.id,
-                status: "pay_failed".to_string(),
-                message: format!("Auto-pay failed: {e}. Please pay manually."),
-                attempt_count: task.attempt_count,
-                reservation_number: Some(pnr.to_string()),
-            }).await;
+            let _ = bominal_db::task::update_status(db, task.id, TaskStatus::AwaitingPayment).await;
+            event_bus
+                .publish(
+                    task.user_id,
+                    TaskEvent {
+                        task_id: task.id,
+                        status: "awaiting_payment".to_string(),
+                        message: format!("Auto-pay failed: {e}. Please pay manually."),
+                        attempt_count: task.attempt_count,
+                        reservation_number: Some(pnr.to_string()),
+                    },
+                )
+                .await;
             if task.notify_enabled {
-                send_alert_email(db, email, task, AlertKind::PayFailed, Some(pnr), app_base_url).await;
+                send_alert_email(
+                    db,
+                    email,
+                    task,
+                    AlertKind::PayFailed,
+                    Some(pnr),
+                    app_base_url,
+                )
+                .await;
             }
         }
     }
-}
-
-// ── Card decryption ──────────────────────────────────────────────────
-
-/// Decrypt all four encrypted card fields for payment.
-fn decrypt_card_fields(
-    key: &EncryptionKey,
-    card: &bominal_db::card::PaymentCardRow,
-) -> Result<(String, String, String, String), encryption::EncryptionError> {
-    Ok((
-        encryption::decrypt(key, &card.encrypted_number)?,
-        encryption::decrypt(key, &card.encrypted_password)?,
-        encryption::decrypt(key, &card.encrypted_birthday)?,
-        encryption::decrypt(key, &card.encrypted_expiry)?,
-    ))
 }
 
 // ── Email alerts ─────────────────────────────────────────────────────
@@ -712,7 +885,7 @@ async fn send_alert_email(
     };
 
     let details = ReservationDetails {
-        provider: &task.provider,
+        provider: task.provider.as_str(),
         train_number: &extract_train_numbers(&task.target_trains)
             .first()
             .cloned()
@@ -726,70 +899,55 @@ async fn send_alert_email(
     };
 
     let app_url = app_base_url;
-    let (subject, html) = bominal_email::templates::reservation::render(
-        &user.display_name,
-        kind,
-        &details,
-        app_url,
-    );
+    let (subject, html) =
+        bominal_email::templates::reservation::render(&user.display_name, kind, &details, app_url);
 
     email.send_best_effort(&user.email, &subject, &html).await;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-fn parse_seat_preference(s: &str) -> SeatPreference {
-    match s {
-        "GeneralOnly" => SeatPreference::GeneralOnly,
-        "SpecialOnly" => SeatPreference::SpecialOnly,
-        "SpecialFirst" => SeatPreference::SpecialFirst,
-        _ => SeatPreference::GeneralFirst,
+fn parse_seat_preference(preference: DomainSeatPreference) -> ProviderSeatPreference {
+    match preference {
+        DomainSeatPreference::GeneralFirst => ProviderSeatPreference::GeneralFirst,
+        DomainSeatPreference::SpecialFirst => ProviderSeatPreference::SpecialFirst,
+        DomainSeatPreference::GeneralOnly => ProviderSeatPreference::GeneralOnly,
+        DomainSeatPreference::SpecialOnly => ProviderSeatPreference::SpecialOnly,
     }
 }
 
-fn extract_train_numbers(trains: &serde_json::Value) -> Vec<String> {
+fn extract_train_numbers(trains: &TargetTrainList) -> Vec<String> {
     trains
-        .as_array()
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|v| {
-                    v.get("train_number")
-                        .and_then(|n| n.as_str())
-                        .map(String::from)
-                })
-                .collect()
-        })
-        .unwrap_or_default()
+        .0
+        .iter()
+        .map(|train| train.train_number.clone())
+        .collect()
 }
 
-/// Parse the passengers JSON array into `PassengerGroup` list.
+/// Convert typed passengers into provider groups.
 ///
-/// Expected format: `[{"type": "adult", "count": 1}, {"type": "child", "count": 2}]`
-/// Falls back to 1 adult if parsing fails.
-fn parse_passengers(passengers: &serde_json::Value) -> Vec<PassengerGroup> {
+/// Unsupported types are currently filtered at this boundary until the provider
+/// layer grows explicit mappings for them.
+fn parse_passengers(passengers: &PassengerList) -> Vec<PassengerGroup> {
     let groups: Vec<PassengerGroup> = passengers
-        .as_array()
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|v| {
-                    let ptype = v.get("type").and_then(|t| t.as_str())?;
-                    let count = v.get("count").and_then(|c| c.as_u64())? as u8;
-                    if count == 0 {
-                        return None;
-                    }
-                    let passenger_type = match ptype {
-                        "adult" => PassengerType::Adult,
-                        "child" => PassengerType::Child,
-                        "senior" => PassengerType::Senior,
-                        "disability1to3" => PassengerType::Disability1To3,
-                        "disability4to6" => PassengerType::Disability4To6,
-                        _ => return None,
-                    };
-                    Some(PassengerGroup::new(passenger_type, count))
-                })
-                .collect()
+        .0
+        .iter()
+        .filter_map(|passenger| {
+            if passenger.count == 0 {
+                return None;
+            }
+
+            let passenger_type = match passenger.kind {
+                PassengerKind::Adult => PassengerType::Adult,
+                PassengerKind::Child => PassengerType::Child,
+                PassengerKind::Senior => PassengerType::Senior,
+                PassengerKind::Severe => PassengerType::SevereDisability,
+                PassengerKind::Mild => PassengerType::MildDisability,
+                PassengerKind::Infant | PassengerKind::Merit => return None,
+            };
+            Some(PassengerGroup::new(passenger_type, passenger.count))
         })
-        .unwrap_or_default();
+        .collect();
 
     if groups.is_empty() {
         vec![PassengerGroup::adults(1)]
@@ -804,16 +962,31 @@ mod tests {
 
     #[test]
     fn parse_seat_preferences() {
-        assert_eq!(parse_seat_preference("GeneralFirst"), SeatPreference::GeneralFirst);
-        assert_eq!(parse_seat_preference("SpecialOnly"), SeatPreference::SpecialOnly);
-        assert_eq!(parse_seat_preference("unknown"), SeatPreference::GeneralFirst);
+        assert_eq!(
+            parse_seat_preference(DomainSeatPreference::GeneralFirst),
+            ProviderSeatPreference::GeneralFirst
+        );
+        assert_eq!(
+            parse_seat_preference(DomainSeatPreference::SpecialOnly),
+            ProviderSeatPreference::SpecialOnly
+        );
+        assert_eq!(
+            parse_seat_preference(DomainSeatPreference::GeneralOnly),
+            ProviderSeatPreference::GeneralOnly
+        );
     }
 
     #[test]
     fn extract_trains() {
-        let trains = serde_json::json!([
-            {"train_number": "305", "dep_time": "090000"},
-            {"train_number": "307", "dep_time": "100000"},
+        let trains = TargetTrainList(vec![
+            bominal_domain::task::TargetTrain {
+                train_number: "305".to_string(),
+                dep_time: "090000".to_string(),
+            },
+            bominal_domain::task::TargetTrain {
+                train_number: "307".to_string(),
+                dep_time: "100000".to_string(),
+            },
         ]);
         let numbers = extract_train_numbers(&trains);
         assert_eq!(numbers, vec!["305", "307"]);
@@ -821,20 +994,17 @@ mod tests {
 
     #[test]
     fn extract_trains_empty() {
-        let trains = serde_json::json!([]);
-        assert!(extract_train_numbers(&trains).is_empty());
-    }
-
-    #[test]
-    fn extract_trains_null() {
-        let trains = serde_json::json!(null);
+        let trains = TargetTrainList(vec![]);
         assert!(extract_train_numbers(&trains).is_empty());
     }
 
     #[test]
     fn parse_passengers_single_adult() {
-        let json = serde_json::json!([{"type": "adult", "count": 1}]);
-        let groups = parse_passengers(&json);
+        let passengers = PassengerList(vec![bominal_domain::task::PassengerCount::new(
+            PassengerKind::Adult,
+            1,
+        )]);
+        let groups = parse_passengers(&passengers);
         assert_eq!(groups.len(), 1);
         assert_eq!(groups[0].passenger_type, PassengerType::Adult);
         assert_eq!(groups[0].count, 1);
@@ -842,12 +1012,12 @@ mod tests {
 
     #[test]
     fn parse_passengers_mixed() {
-        let json = serde_json::json!([
-            {"type": "adult", "count": 2},
-            {"type": "child", "count": 1},
-            {"type": "senior", "count": 1}
+        let passengers = PassengerList(vec![
+            bominal_domain::task::PassengerCount::new(PassengerKind::Adult, 2),
+            bominal_domain::task::PassengerCount::new(PassengerKind::Child, 1),
+            bominal_domain::task::PassengerCount::new(PassengerKind::Senior, 1),
         ]);
-        let groups = parse_passengers(&json);
+        let groups = parse_passengers(&passengers);
         assert_eq!(groups.len(), 3);
         assert_eq!(groups[0].count, 2);
         assert_eq!(groups[1].passenger_type, PassengerType::Child);
@@ -856,40 +1026,46 @@ mod tests {
 
     #[test]
     fn parse_passengers_fallback_on_empty() {
-        let json = serde_json::json!([]);
-        let groups = parse_passengers(&json);
+        let passengers = PassengerList(vec![]);
+        let groups = parse_passengers(&passengers);
         assert_eq!(groups.len(), 1);
         assert_eq!(groups[0].passenger_type, PassengerType::Adult);
         assert_eq!(groups[0].count, 1);
     }
 
     #[test]
-    fn parse_passengers_fallback_on_null() {
-        let json = serde_json::json!(null);
-        let groups = parse_passengers(&json);
-        assert_eq!(groups.len(), 1);
-        assert_eq!(groups[0].passenger_type, PassengerType::Adult);
-    }
-
-    #[test]
-    fn parse_passengers_skips_unknown_type() {
-        let json = serde_json::json!([
-            {"type": "vip", "count": 1},
-            {"type": "adult", "count": 1}
-        ]);
-        let groups = parse_passengers(&json);
-        assert_eq!(groups.len(), 1);
-        assert_eq!(groups[0].passenger_type, PassengerType::Adult);
-    }
-
-    #[test]
     fn parse_passengers_skips_zero_count() {
-        let json = serde_json::json!([
-            {"type": "adult", "count": 0},
-            {"type": "child", "count": 2}
+        let passengers = PassengerList(vec![
+            bominal_domain::task::PassengerCount::new(PassengerKind::Adult, 0),
+            bominal_domain::task::PassengerCount::new(PassengerKind::Child, 2),
         ]);
-        let groups = parse_passengers(&json);
+        let groups = parse_passengers(&passengers);
         assert_eq!(groups.len(), 1);
         assert_eq!(groups[0].passenger_type, PassengerType::Child);
+    }
+
+    #[test]
+    fn parse_passengers_disability_types() {
+        let passengers = PassengerList(vec![
+            bominal_domain::task::PassengerCount::new(PassengerKind::Adult, 1),
+            bominal_domain::task::PassengerCount::new(PassengerKind::Severe, 1),
+            bominal_domain::task::PassengerCount::new(PassengerKind::Mild, 1),
+        ]);
+        let groups = parse_passengers(&passengers);
+        assert_eq!(groups.len(), 3);
+        assert_eq!(groups[1].passenger_type, PassengerType::SevereDisability);
+        assert_eq!(groups[2].passenger_type, PassengerType::MildDisability);
+    }
+
+    #[test]
+    fn parse_passengers_skips_infant_and_merit() {
+        let passengers = PassengerList(vec![
+            bominal_domain::task::PassengerCount::new(PassengerKind::Adult, 1),
+            bominal_domain::task::PassengerCount::new(PassengerKind::Infant, 1),
+            bominal_domain::task::PassengerCount::new(PassengerKind::Merit, 1),
+        ]);
+        let groups = parse_passengers(&passengers);
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].passenger_type, PassengerType::Adult);
     }
 }

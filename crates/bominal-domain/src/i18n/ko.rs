@@ -9,6 +9,7 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     m.insert("nav.home", "홈");
     m.insert("nav.search", "검색");
     m.insert("nav.tasks", "예약");
+    m.insert("nav.reservations", "티켓");
     m.insert("nav.settings", "설정");
 
     // Auth
@@ -20,6 +21,71 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     m.insert("auth.logout", "로그아웃");
     m.insert("auth.login_subtitle", "기차표 예매를 시작하세요");
     m.insert("auth.email_exists", "이미 등록된 이메일입니다");
+    m.insert("auth.passkey_signin", "패스키로 로그인");
+    m.insert("auth.welcome_back", "다시 오신 것을 환영합니다");
+    m.insert(
+        "auth.passkey_subtitle",
+        "패스키 또는 비밀번호로 로그인하세요",
+    );
+    m.insert("auth.continue_email", "이메일로 계속");
+    m.insert("auth.use_passkey", "패스키로 로그인");
+    m.insert("auth.sign_in", "로그인");
+    m.insert("auth.create_account", "계정 만들기");
+    m.insert("auth.no_account", "계정이 없으신가요?");
+    m.insert("auth.signup_link", "회원가입");
+    m.insert("auth.has_account", "이미 계정이 있으신가요?");
+    m.insert("auth.signin_link", "로그인");
+    m.insert("auth.forgot_password", "비밀번호를 잊으셨나요?");
+    m.insert("auth.reset_password", "비밀번호 재설정");
+    m.insert("auth.reset_subtitle", "이메일로 재설정 링크를 보내드립니다");
+    m.insert("auth.send_reset_link", "재설정 링크 보내기");
+    m.insert("auth.back_to_signin", "로그인으로 돌아가기");
+    m.insert("auth.back_to_signup", "회원가입으로 돌아가기");
+    m.insert("auth.confirm_password", "비밀번호 확인");
+    m.insert("auth.passwords_match", "비밀번호가 일치합니다");
+    m.insert("auth.passwords_mismatch", "비밀번호가 일치하지 않습니다");
+    m.insert("auth.pw_weak", "약함");
+    m.insert("auth.pw_fair", "보통");
+    m.insert("auth.pw_good", "양호");
+    m.insert("auth.pw_strong", "강함");
+    m.insert("auth.check_email", "이메일을 확인하세요");
+    m.insert("auth.verify_sent_to", "인증 링크를 보냈습니다:");
+    m.insert(
+        "auth.verify_click_link",
+        "링크를 클릭하여 계정을 확인하세요.",
+    );
+    m.insert("auth.resend_prompt", "받지 못하셨나요? 스팸함을 확인하거나");
+    m.insert("auth.resend_link", "이메일 재전송");
+    m.insert("auth.verified_continue", "이메일을 인증했습니다");
+    m.insert("auth.add_passkey", "패스키를 추가하시겠습니까?");
+    m.insert("auth.passkey_benefit_1", "비밀번호 없이 즉시 로그인");
+    m.insert("auth.passkey_benefit_2", "기기 생체인증으로 보호");
+    m.insert("auth.passkey_benefit_3", "모든 기기에서 동기화");
+    m.insert("auth.add_passkey_now", "지금 패스키 추가");
+    m.insert("auth.skip_for_now", "나중에 하기");
+    m.insert("auth.get_started", "몇 초 만에 시작하세요");
+    m.insert(
+        "auth.enter_email_password",
+        "이메일과 비밀번호를 입력하세요",
+    );
+    m.insert(
+        "auth.reset_link_sent",
+        "재설정 링크를 보냈습니다! 이메일을 확인하세요.",
+    );
+    m.insert("auth.verifying", "인증 중...");
+    m.insert("auth.email_verified", "이메일 인증 완료");
+    m.insert(
+        "auth.email_verified_desc",
+        "이메일이 성공적으로 인증되었습니다.",
+    );
+    m.insert("auth.verify_failed", "인증 실패");
+    m.insert("auth.go_to_login", "로그인으로 돌아가기");
+    m.insert("auth.new_password", "새 비밀번호");
+    m.insert(
+        "auth.password_reset_success",
+        "비밀번호가 재설정되었습니다.",
+    );
+    m.insert("auth.missing_token", "유효하지 않은 링크입니다.");
 
     // Search
     m.insert("search.departure", "출발역");
@@ -33,6 +99,10 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     m.insert("search.edit", "수정");
     m.insert("search.no_results", "검색 결과가 없습니다");
     m.insert("search.auto_pay", "자동 결제");
+    m.insert(
+        "search.auto_pay_card_required",
+        "자동 결제 작업에는 결제 카드가 필요합니다",
+    );
     m.insert("search.notify", "알림");
     m.insert("search.auto_retry", "자동 재시도");
 
@@ -50,10 +120,16 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     m.insert("task.cancelling", "취소 중...");
     m.insert("task.resume", "재개");
     m.insert("task.pause", "일시정지");
+    m.insert("task.auto_retry", "자동 재시도");
     m.insert("task.created", "예약 작업이 생성되었습니다");
 
     // Settings
     m.insert("settings.title", "설정");
+    m.insert("settings.section_provider", "예매 서비스");
+    m.insert("settings.section_payment", "결제 수단");
+    m.insert("settings.section_appearance", "화면 설정");
+    m.insert("settings.section_security", "보안");
+    m.insert("settings.section_notifications", "알림");
     m.insert("settings.theme", "테마");
     m.insert("settings.dark_mode", "다크 모드");
     m.insert("settings.light_mode", "라이트 모드");
@@ -94,7 +170,10 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
 
     // Errors
     m.insert("error.network", "네트워크 오류가 발생했습니다");
-    m.insert("error.session_expired", "세션이 만료되었습니다. 다시 로그인해 주세요");
+    m.insert(
+        "error.session_expired",
+        "세션이 만료되었습니다. 다시 로그인해 주세요",
+    );
     m.insert("error.sold_out", "매진되었습니다");
     m.insert("error.unexpected", "예상치 못한 오류가 발생했습니다");
     m.insert("error.login_failed", "로그인에 실패했습니다");
@@ -172,10 +251,56 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     m.insert("task.no_completed", "완료된 작업이 없습니다");
     m.insert("task.create_new", "새 예약 만들기");
     m.insert("task.attempts", "시도 횟수");
+    m.insert("task.view_details", "상세 보기");
+    m.insert("task.hide_details", "상세 숨기기");
+    m.insert("task.notify", "알림");
+    m.insert("task.retry", "재시도");
+    m.insert("task.started_at", "시작 시간");
+    m.insert("task.last_attempt", "마지막 시도");
+    m.insert("task.not_started", "시작 전");
+    m.insert("task.no_attempt", "시도 없음");
+    m.insert("task.schedules_title", "예약 대상 열차");
+    m.insert("task.total", "합계");
+    m.insert("task.cancel_title", "작업 취소");
+    m.insert("task.cancel_description", "이 작업을 취소하시겠습니까?");
+    m.insert("task.cancel_confirm", "예, 취소");
+    m.insert("task.keep", "유지");
+    m.insert("task.pay_fare", "운임 결제");
+    m.insert("task.seat_class", "좌석 유형");
+    m.insert("task.passengers_label", "승객");
 
     // Seat labels
     m.insert("seat.general", "일반");
     m.insert("seat.special", "특실");
+
+    // Passenger types
+    m.insert("passenger.adult", "성인");
+    m.insert("passenger.adult_desc", "만 13세 이상");
+    m.insert("passenger.child", "어린이");
+    m.insert("passenger.child_desc", "만 6~12세");
+    m.insert("passenger.infant", "유아");
+    m.insert("passenger.infant_desc", "만 6세 미만");
+    m.insert("passenger.senior", "경로");
+    m.insert("passenger.senior_desc", "만 65세 이상");
+    m.insert("passenger.severe", "중증 장애");
+    m.insert("passenger.severe_desc", "중증 장애인");
+    m.insert("passenger.mild", "경증 장애");
+    m.insert("passenger.mild_desc", "경증 장애인");
+    m.insert("passenger.merit", "유공자");
+    m.insert("passenger.merit_desc", "국가 유공자");
+    m.insert("passenger.title", "승객 선택");
+    m.insert("passenger.total", "합계");
+
+    // Calendar/time modal
+    m.insert("calendar.title", "날짜 및 시간");
+    m.insert("calendar.apply", "적용");
+
+    // Search — station labels
+    m.insert("search.from", "출발");
+    m.insert("search.to", "도착");
+
+    // Review modal — extended
+    m.insert("review.reorder_hint", "위아래 버튼으로 순서 변경");
 
     // Provider — extended
     m.insert("provider.setup", "설정");

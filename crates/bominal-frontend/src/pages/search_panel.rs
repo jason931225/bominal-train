@@ -1,112 +1,266 @@
-//! Search panel — departure, arrival, date, passengers, search button, train
-//! selection, and task creation.
+//! Search panel — station selection, calendar/time modal, passenger modal,
+//! toggle chips, train results, selection prompt, and review modal.
 
+use std::str::FromStr;
+
+use chrono::NaiveDate;
 use leptos::prelude::*;
 
 use crate::api::cards::list_cards;
-use crate::api::search::{list_stations, search_trains, StationInfo, TrainInfo};
-use crate::api::tasks::create_task;
+use crate::api::search::{StationInfo, TrainInfo, list_stations, search_trains};
+use crate::api::tasks::{
+    CreateTaskInput, PassengerCount as TaskPassengerCount, PassengerKind, PassengerList, Provider,
+    SeatPreference, TargetTrain, TargetTrainList, create_task,
+};
+use crate::components::bottom_sheet::BottomSheet;
+use crate::components::date_picker::DatePicker;
 use crate::components::glass_panel::GlassPanel;
+use crate::components::passenger_selector::{PassengerCount, PassengerSelector};
+use crate::components::review_modal::ReviewModal;
+use crate::components::selection_prompt::SelectionPrompt;
+use crate::components::sortable_list::SortableItem;
 use crate::i18n::t;
+use crate::utils::{format_time, format_time_slot, slot_to_time_string};
 
-/// Train search form with station selection, date picker, passenger count,
-/// train selection, and task creation.
+// ── Types ────────────────────────────────────────────────────────────
+
+/// Minimal train info for tracking selection state.
+#[derive(Clone, Debug, PartialEq)]
+struct SelectedTrain {
+    train_number: String,
+    dep_time: String,
+}
+
+/// Build default passenger counts (7 types).
+/// `infant` and `merit` are greyed out — not yet supported end-to-end for KTX.
+fn default_passengers() -> Vec<PassengerCount> {
+    vec![
+        PassengerCount {
+            ptype: "adult".into(),
+            label: t("passenger.adult").into(),
+            description: t("passenger.adult_desc").into(),
+            count: 1,
+            min: 0,
+            max: 9,
+            disabled: false,
+        },
+        PassengerCount {
+            ptype: "child".into(),
+            label: t("passenger.child").into(),
+            description: t("passenger.child_desc").into(),
+            count: 0,
+            min: 0,
+            max: 9,
+            disabled: false,
+        },
+        PassengerCount {
+            ptype: "senior".into(),
+            label: t("passenger.senior").into(),
+            description: t("passenger.senior_desc").into(),
+            count: 0,
+            min: 0,
+            max: 9,
+            disabled: false,
+        },
+        PassengerCount {
+            ptype: "severe".into(),
+            label: t("passenger.severe").into(),
+            description: t("passenger.severe_desc").into(),
+            count: 0,
+            min: 0,
+            max: 9,
+            disabled: false,
+        },
+        PassengerCount {
+            ptype: "mild".into(),
+            label: t("passenger.mild").into(),
+            description: t("passenger.mild_desc").into(),
+            count: 0,
+            min: 0,
+            max: 9,
+            disabled: false,
+        },
+        // Not yet supported end-to-end for KTX — greyed out until runner parity is complete.
+        PassengerCount {
+            ptype: "infant".into(),
+            label: t("passenger.infant").into(),
+            description: t("passenger.infant_desc").into(),
+            count: 0,
+            min: 0,
+            max: 9,
+            disabled: true,
+        },
+    ]
+}
+
+fn total_passengers(passengers: &[PassengerCount]) -> u8 {
+    passengers.iter().map(|p| p.count).sum()
+}
+
+fn format_passenger_summary(passengers: &[PassengerCount]) -> String {
+    let active: Vec<_> = passengers.iter().filter(|p| p.count > 0).collect();
+    if active.is_empty() {
+        return "0".into();
+    }
+    let total: u8 = active.iter().map(|p| p.count).sum();
+    if active.len() == 1 {
+        format!("{} {}", active[0].count, active[0].label)
+    } else {
+        format!("{total} {}", t("search.passengers"))
+    }
+}
+
+fn parse_provider(value: &str) -> Provider {
+    Provider::from_str(value).unwrap_or(Provider::Srt)
+}
+
+fn parse_seat_preference(value: &str) -> SeatPreference {
+    SeatPreference::from_str(value).unwrap_or(SeatPreference::GeneralFirst)
+}
+
+fn parse_passenger_kind(value: &str) -> Option<PassengerKind> {
+    match value {
+        "adult" => Some(PassengerKind::Adult),
+        "child" => Some(PassengerKind::Child),
+        "senior" => Some(PassengerKind::Senior),
+        "severe" => Some(PassengerKind::Severe),
+        "mild" => Some(PassengerKind::Mild),
+        "infant" => Some(PassengerKind::Infant),
+        "merit" => Some(PassengerKind::Merit),
+        _ => None,
+    }
+}
+
+// ── Main component ───────────────────────────────────────────────────
+
+/// Train search form with station selection, calendar/time modal, passenger
+/// modal, toggle chips, train results, selection prompt, and review modal.
 #[component]
 pub fn SearchPanel() -> impl IntoView {
+    // ── Form state ─────────────────────────────────────────────────
     let (provider, set_provider) = signal("SRT".to_string());
     let (departure, set_departure) = signal(String::new());
     let (arrival, set_arrival) = signal(String::new());
-    let (date, set_date) = signal(String::new());
-    let (time, set_time) = signal(String::new());
-    let (adult_count, set_adult_count) = signal(1u8);
+    let (selected_date, set_selected_date) = signal::<Option<NaiveDate>>(None);
+    let (time_slot, set_time_slot) = signal(16u32); // default 08:00
+    let (passengers, set_passengers) = signal(default_passengers());
+    let (temp_passengers, set_temp_passengers) = signal(default_passengers());
 
-    // Selected train numbers for task creation
-    let (selected_trains, set_selected_trains) = signal(Vec::<SelectedTrain>::new());
-
-    // Task creation options
-    let (seat_preference, set_seat_preference) = signal("GeneralFirst".to_string());
+    // ── Toggle chips ───────────────────────────────────────────────
     let (auto_pay, set_auto_pay) = signal(false);
+    let (notify, set_notify) = signal(true);
+    let (auto_retry, set_auto_retry) = signal(false);
+
+    // ── Modal state ────────────────────────────────────────────────
+    let (expanded, set_expanded) = signal(true);
+    let (date_modal_open, set_date_modal_open) = signal(false);
+    let (passenger_modal_open, set_passenger_modal_open) = signal(false);
+    let (review_modal_open, set_review_modal_open) = signal(false);
+
+    // ── Task creation state ────────────────────────────────────────
+    let (selected_trains, set_selected_trains) = signal(Vec::<SelectedTrain>::new());
+    let (seat_preference, set_seat_preference) = signal("GeneralFirst".to_string());
     let (selected_card_id, set_selected_card_id) = signal(String::new());
+    let (review_items, set_review_items) = signal(Vec::<SortableItem>::new());
 
-    // Fetch stations for the selected provider
-    let stations = Resource::new(move || provider.get(), |prov| list_stations(prov));
-
-    // Fetch cards for auto-pay selection
+    // ── Resources ──────────────────────────────────────────────────
+    let stations = Resource::new(move || provider.get(), list_stations);
     let cards = Resource::new(|| (), |_| list_cards());
 
-    // Search action
+    // ── Search action ──────────────────────────────────────────────
     let search_action = Action::new(move |_: &()| {
         let prov = provider.get_untracked();
         let dep = departure.get_untracked();
         let arr = arrival.get_untracked();
-        let d = date.get_untracked();
-        let t = time.get_untracked();
-        async move {
-            search_trains(
-                prov,
-                dep,
-                arr,
-                if d.is_empty() { None } else { Some(d) },
-                if t.is_empty() { None } else { Some(t) },
-            )
-            .await
-        }
+        let d = selected_date
+            .get_untracked()
+            .map(|d| d.format("%Y%m%d").to_string());
+        let t = {
+            let slot = time_slot.get_untracked();
+            if selected_date.get_untracked().is_some() {
+                Some(slot_to_time_string(slot))
+            } else {
+                None
+            }
+        };
+        async move { search_trains(prov, dep, arr, d, t).await }
     });
 
     // Clear selection when new search results arrive
     Effect::new(move || {
         if search_action.value().get().is_some() {
             set_selected_trains.set(Vec::new());
+            set_expanded.set(false); // collapse form after search
         }
     });
 
-    // Task creation action
+    // ── Task creation action ───────────────────────────────────────
     let create_action = Action::new(move |_: &()| {
-        let prov = provider.get_untracked();
+        let prov = parse_provider(&provider.get_untracked());
         let dep = departure.get_untracked();
         let arr = arrival.get_untracked();
-        let d = date.get_untracked();
-        let adults = adult_count.get_untracked();
-        let trains = selected_trains.get_untracked();
-        let seat_pref = seat_preference.get_untracked();
+        let d = selected_date
+            .get_untracked()
+            .map(|d| d.format("%Y%m%d").to_string())
+            .unwrap_or_default();
+        let items = review_items.get_untracked();
+        let seat_pref = parse_seat_preference(&seat_preference.get_untracked());
         let pay = auto_pay.get_untracked();
         let card = selected_card_id.get_untracked();
+        let pax = passengers.get_untracked();
+        let notify_on = notify.get_untracked();
+        let auto_retry_val = auto_retry.get_untracked();
 
-        // Build target_trains JSON
-        let target_trains_json = serde_json::json!(
-            trains.iter().map(|t| {
-                serde_json::json!({
-                    "train_number": t.train_number,
-                    "dep_time": t.dep_time,
+        let target_trains = TargetTrainList(
+            items
+                .iter()
+                .map(|item| {
+                    let parts: Vec<&str> = item.id.splitn(2, ':').collect();
+                    TargetTrain {
+                        train_number: parts.first().unwrap_or(&"").to_string(),
+                        dep_time: parts.get(1).unwrap_or(&"").to_string(),
+                    }
                 })
-            }).collect::<Vec<_>>()
-        )
-        .to_string();
+                .collect(),
+        );
 
-        // Build passengers JSON
-        let passengers_json =
-            serde_json::json!([{"type": "adult", "count": adults}]).to_string();
+        let passengers = PassengerList(
+            pax.iter()
+                .filter(|p| p.count > 0)
+                .filter_map(|p| {
+                    parse_passenger_kind(&p.ptype)
+                        .map(|kind| TaskPassengerCount::new(kind, p.count))
+                })
+                .collect(),
+        );
 
-        // First selected train's dep_time as the task departure_time
-        let dep_time = trains
+        let dep_time = items
             .first()
-            .map(|t| t.dep_time.clone())
+            .map(|item| {
+                let parts: Vec<&str> = item.id.splitn(2, ':').collect();
+                parts.get(1).unwrap_or(&"").to_string()
+            })
             .unwrap_or_default();
 
         async move {
-            create_task(
-                prov,
-                dep,
-                arr,
-                d,
-                dep_time,
-                passengers_json,
-                seat_pref,
-                target_trains_json,
-                Some(pay),
-                if card.is_empty() { None } else { Some(card) },
-                Some(true),
-            )
+            create_task(CreateTaskInput {
+                provider: prov,
+                departure_station: dep,
+                arrival_station: arr,
+                travel_date: d,
+                departure_time: dep_time,
+                passengers,
+                seat_preference: seat_pref,
+                target_trains,
+                auto_pay: pay,
+                payment_card_id: if card.is_empty() {
+                    None
+                } else {
+                    uuid::Uuid::parse_str(&card).ok()
+                },
+                notify_enabled: notify_on,
+                auto_retry: auto_retry_val,
+            })
             .await
         }
     });
@@ -114,10 +268,44 @@ pub fn SearchPanel() -> impl IntoView {
     let results = search_action.value();
     let searching = search_action.pending();
     let creating = create_action.pending();
-    let create_result = create_action.value();
+
+    // ── Derived signals ────────────────────────────────────────────
+    let selection_count = Memo::new(move |_| selected_trains.get().len());
+
+    // Sync review items when opening review modal
+    let open_review = move || {
+        let trains = selected_trains.get();
+        set_review_items.set(
+            trains
+                .iter()
+                .map(|t| SortableItem {
+                    id: format!("{}:{}", t.train_number, t.dep_time),
+                    label: format!("{} ({})", t.train_number, format_time(&t.dep_time)),
+                })
+                .collect(),
+        );
+        set_review_modal_open.set(true);
+    };
+
+    // Open passenger modal with temp state sync
+    let open_passenger_modal = move || {
+        set_temp_passengers.set(passengers.get());
+        set_passenger_modal_open.set(true);
+    };
+
+    let confirm_passengers = move || {
+        set_passengers.set(temp_passengers.get());
+        set_passenger_modal_open.set(false);
+    };
+
+    let cancel_passengers = move || {
+        set_temp_passengers.set(passengers.get());
+        set_passenger_modal_open.set(false);
+    };
 
     view! {
-        <div class="px-4 pt-6 pb-4 space-y-4">
+        <div class="px-4 pt-6 pb-4 space-y-4 max-w-xl lg:max-w-2xl mx-auto page-enter">
+            // ── Header ─────────────────────────────────────────────
             <div class="flex items-center justify-between">
                 <h1 class="text-xl font-bold text-[var(--color-text-primary)]">{t("search.title")}</h1>
                 <a href="/settings" class="p-2 rounded-lg hover:bg-[var(--color-interactive-hover)] transition-colors">
@@ -128,118 +316,126 @@ pub fn SearchPanel() -> impl IntoView {
                 </a>
             </div>
 
-            <GlassPanel>
-                <div class="p-4 space-y-4">
-                    // Provider toggle
-                    <div class="flex bg-[var(--color-bg-sunken)] rounded-xl p-1">
-                        <button
-                            class=move || if provider.get() == "SRT" {
-                                "flex-1 py-2 text-sm font-medium rounded-lg bg-[var(--color-bg-elevated)] text-[var(--color-text-primary)] shadow-sm transition-all"
-                            } else {
-                                "flex-1 py-2 text-sm font-medium rounded-lg text-[var(--color-text-tertiary)] transition-all"
-                            }
-                            on:click=move |_| set_provider.set("SRT".to_string())
-                        >
-                            "SRT"
-                        </button>
-                        <button
-                            class=move || if provider.get() == "KTX" {
-                                "flex-1 py-2 text-sm font-medium rounded-lg bg-[var(--color-bg-elevated)] text-[var(--color-text-primary)] shadow-sm transition-all"
-                            } else {
-                                "flex-1 py-2 text-sm font-medium rounded-lg text-[var(--color-text-tertiary)] transition-all"
-                            }
-                            on:click=move |_| set_provider.set("KTX".to_string())
-                        >
-                            "KTX"
-                        </button>
-                    </div>
+            // ── Collapsed summary bar ──────────────────────────────
+            <Show when=move || !expanded.get()>
+                <CollapsedBar
+                    departure=departure
+                    arrival=arrival
+                    selected_date=selected_date
+                    time_slot=time_slot
+                    passengers=passengers
+                    on_edit=move || set_expanded.set(true)
+                />
+            </Show>
 
-                    // Station inputs
-                    <div class="space-y-3">
-                        <StationSelect
-                            label=t("search.departure")
-                            value=departure
-                            set_value=set_departure
-                            stations=stations
-                        />
+            // ── Expanded search form ───────────────────────────────
+            <Show when=move || expanded.get()>
+                <GlassPanel>
+                    <div class="p-4 space-y-4">
+                        // Provider toggle
+                        <ProviderToggle provider=provider set_provider=set_provider />
 
-                        // Swap button
-                        <div class="flex justify-center">
+                        // Station inputs
+                        <div class="space-y-3">
+                            <StationSelect
+                                label=t("search.from")
+                                value=departure
+                                set_value=set_departure
+                                stations=stations
+                            />
+                            <div class="flex justify-center">
+                                <button
+                                    class="p-2 rounded-full bg-[var(--color-bg-sunken)] hover:bg-[var(--color-interactive-hover)] transition-colors"
+                                    on:click=move |_| {
+                                        let d = departure.get_untracked();
+                                        let a = arrival.get_untracked();
+                                        set_departure.set(a);
+                                        set_arrival.set(d);
+                                    }
+                                >
+                                    <svg class="w-4 h-4 text-[var(--color-text-secondary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                                    </svg>
+                                </button>
+                            </div>
+                            <StationSelect
+                                label=t("search.to")
+                                value=arrival
+                                set_value=set_arrival
+                                stations=stations
+                            />
+                        </div>
+
+                        // Date & Passengers cards
+                        <div class="grid grid-cols-2 gap-3">
+                            // Date card — opens calendar modal
                             <button
-                                class="p-2 rounded-full bg-[var(--color-bg-sunken)] hover:bg-[var(--color-interactive-hover)] transition-colors"
-                                on:click=move |_| {
-                                    let d = departure.get_untracked();
-                                    let a = arrival.get_untracked();
-                                    set_departure.set(a);
-                                    set_arrival.set(d);
-                                }
+                                class="p-3 bg-[var(--color-bg-sunken)] border border-[var(--color-border-default)] rounded-xl text-left hover:border-[var(--color-border-focus)] transition-colors"
+                                on:click=move |_| set_date_modal_open.set(true)
                             >
-                                <svg class="w-4 h-4 text-[var(--color-text-secondary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-                                    <path stroke-linecap="round" stroke-linejoin="round" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
-                                </svg>
+                                <div class="text-xs font-medium text-[var(--color-text-secondary)] mb-1 flex items-center gap-1.5">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                    </svg>
+                                    {t("search.date")}
+                                </div>
+                                <div class="text-sm font-medium text-[var(--color-text-primary)]">
+                                    {move || match selected_date.get() {
+                                        Some(d) => format!("{} {}", d.format("%b %d"), format_time_slot(time_slot.get())),
+                                        None => t("search.date").to_string(),
+                                    }}
+                                </div>
+                            </button>
+
+                            // Passenger card — opens passenger modal
+                            <button
+                                class="p-3 bg-[var(--color-bg-sunken)] border border-[var(--color-border-default)] rounded-xl text-left hover:border-[var(--color-border-focus)] transition-colors"
+                                on:click=move |_| open_passenger_modal()
+                            >
+                                <div class="text-xs font-medium text-[var(--color-text-secondary)] mb-1 flex items-center gap-1.5">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                                    </svg>
+                                    {t("search.passengers")}
+                                </div>
+                                <div class="text-sm font-medium text-[var(--color-text-primary)]">
+                                    {move || format_passenger_summary(&passengers.get())}
+                                </div>
                             </button>
                         </div>
 
-                        <StationSelect
-                            label=t("search.arrival")
-                            value=arrival
-                            set_value=set_arrival
-                            stations=stations
-                        />
-                    </div>
-
-                    // Date & time
-                    <div class="grid grid-cols-2 gap-3">
-                        <div>
-                            <label class="block text-xs font-medium text-[var(--color-text-secondary)] mb-1.5">{t("search.date")}</label>
-                            <input
-                                type="date"
-                                class="w-full px-3 py-2.5 bg-[var(--color-bg-sunken)] border border-[var(--color-border-default)] rounded-xl text-sm text-[var(--color-text-primary)] focus:outline-none focus:border-[var(--color-border-focus)] transition-colors"
-                                prop:value=date
-                                on:input=move |ev| set_date.set(event_target_value(&ev))
+                        // Toggle chips
+                        <div class="flex gap-2">
+                            <ToggleChip
+                                label=t("search.auto_pay")
+                                active=auto_pay
+                                on_toggle=move || set_auto_pay.update(|v| *v = !*v)
+                            />
+                            <ToggleChip
+                                label=t("search.notify")
+                                active=notify
+                                on_toggle=move || set_notify.update(|v| *v = !*v)
+                            />
+                            <ToggleChip
+                                label=t("search.auto_retry")
+                                active=auto_retry
+                                on_toggle=move || set_auto_retry.update(|v| *v = !*v)
                             />
                         </div>
-                        <div>
-                            <label class="block text-xs font-medium text-[var(--color-text-secondary)] mb-1.5">{t("search.time")}</label>
-                            <input
-                                type="time"
-                                class="w-full px-3 py-2.5 bg-[var(--color-bg-sunken)] border border-[var(--color-border-default)] rounded-xl text-sm text-[var(--color-text-primary)] focus:outline-none focus:border-[var(--color-border-focus)] transition-colors"
-                                prop:value=time
-                                on:input=move |ev| set_time.set(event_target_value(&ev))
-                            />
-                        </div>
+
+                        // Search button
+                        <button
+                            class="w-full py-3 btn-glass font-medium rounded-xl text-sm disabled:opacity-50 transition-all"
+                            disabled=searching
+                            on:click=move |_| { search_action.dispatch(()); }
+                        >
+                            {move || if searching.get() { t("search.searching") } else { t("search.search_btn") }}
+                        </button>
                     </div>
+                </GlassPanel>
+            </Show>
 
-                    // Passenger count
-                    <div>
-                        <label class="block text-xs font-medium text-[var(--color-text-secondary)] mb-1.5">{t("search.adults")}</label>
-                        <div class="flex items-center gap-3">
-                            <button
-                                class="w-8 h-8 flex items-center justify-center rounded-lg bg-[var(--color-bg-sunken)] text-[var(--color-text-secondary)] hover:bg-[var(--color-interactive-hover)] disabled:opacity-40 transition-colors"
-                                disabled=move || adult_count.get() <= 1
-                                on:click=move |_| set_adult_count.update(|c| *c = c.saturating_sub(1).max(1))
-                            >"-"</button>
-                            <span class="text-sm font-medium text-[var(--color-text-primary)] w-8 text-center">{adult_count}</span>
-                            <button
-                                class="w-8 h-8 flex items-center justify-center rounded-lg bg-[var(--color-bg-sunken)] text-[var(--color-text-secondary)] hover:bg-[var(--color-interactive-hover)] disabled:opacity-40 transition-colors"
-                                disabled=move || adult_count.get() >= 9
-                                on:click=move |_| set_adult_count.update(|c| *c = (*c + 1).min(9))
-                            >"+"</button>
-                        </div>
-                    </div>
-
-                    // Search button
-                    <button
-                        class="w-full py-3 bg-[var(--color-brand-primary)] text-white font-medium rounded-xl text-sm hover:opacity-90 disabled:opacity-50 transition-all"
-                        disabled=searching
-                        on:click=move |_| { search_action.dispatch(()); }
-                    >
-                        {move || if searching.get() { t("search.searching") } else { t("search.search_btn") }}
-                    </button>
-                </div>
-            </GlassPanel>
-
-            // Search results (inline) with selectable trains
+            // ── Train results ──────────────────────────────────────
             {move || results.get().map(|result| match result {
                 Ok(trains) if trains.is_empty() => view! {
                     <GlassPanel>
@@ -265,45 +461,170 @@ pub fn SearchPanel() -> impl IntoView {
                 }.into_any(),
             })}
 
-            // Task creation panel (appears when trains are selected)
-            {move || {
-                let sel = selected_trains.get();
-                if sel.is_empty() {
-                    None
-                } else {
-                    Some(view! {
-                        <TaskCreationPanel
-                            selected_count=sel.len()
-                            seat_preference=seat_preference
-                            set_seat_preference=set_seat_preference
-                            auto_pay=auto_pay
-                            set_auto_pay=set_auto_pay
-                            selected_card_id=selected_card_id
-                            set_selected_card_id=set_selected_card_id
-                            cards=cards
-                            creating=Signal::from(creating)
-                            create_result=Signal::from(create_result)
-                            on_submit=move || { create_action.dispatch(()); }
-                        />
-                    })
-                }
-            }}
+            // ── Task creation success ──────────────────────────────
+            {move || create_action.value().get().and_then(|r| r.ok()).map(|_| view! {
+                <GlassPanel>
+                    <div class="p-4">
+                        <div class="px-3 py-2 bg-[var(--color-status-success)]/10 border border-[var(--color-status-success)]/30 rounded-xl">
+                            <p class="text-sm text-[var(--color-status-success)]">{t("task.created")}</p>
+                            <a href="/tasks" class="text-xs text-[var(--color-brand-text)] hover:underline mt-1 inline-block">
+                                {t("search.view_tasks")}
+                            </a>
+                        </div>
+                    </div>
+                </GlassPanel>
+            })}
+        </div>
+
+        // ── Floating selection prompt ──────────────────────────────
+        <SelectionPrompt
+            count=Signal::from(selection_count)
+            on_confirm=Callback::new(move |_| open_review())
+            on_clear=Callback::new(move |_| set_selected_trains.set(Vec::new()))
+        />
+
+        // ── Date & Time modal ──────────────────────────────────────
+        <DatePicker
+            open=date_modal_open
+            selected=selected_date.get_untracked().unwrap_or_else(|| {
+                let kst = chrono::Utc::now() + chrono::Duration::hours(9);
+                kst.date_naive()
+            })
+            selected_time_slot=time_slot.get_untracked()
+            on_select=Callback::new(move |(date, slot)| {
+                set_selected_date.set(Some(date));
+                set_time_slot.set(slot);
+                set_date_modal_open.set(false);
+            })
+            on_close=Callback::new(move |_| set_date_modal_open.set(false))
+        />
+
+        // ── Passenger modal ────────────────────────────────────────
+        <BottomSheet
+            open=passenger_modal_open
+            on_close=Callback::new(move |_| cancel_passengers())
+            title=t("passenger.title").to_string()
+        >
+            <div class="space-y-4">
+                // Total badge
+                <div class="flex justify-end">
+                    <span class="text-xs font-medium bg-[var(--color-brand-primary)]/20 text-[var(--color-brand-text)] px-2 py-1 rounded-full">
+                        {move || format!("{}: {} / 9", t("passenger.total"), total_passengers(&temp_passengers.get()))}
+                    </span>
+                </div>
+                <PassengerSelector
+                    passengers=temp_passengers
+                    on_change=Callback::new(move |v| set_temp_passengers.set(v))
+                />
+                // Footer buttons
+                <div class="flex gap-3 pt-2">
+                    <button
+                        class="flex-1 py-2.5 rounded-xl text-sm font-medium bg-[var(--color-bg-sunken)] text-[var(--color-text-tertiary)] hover:bg-[var(--color-interactive-hover)] transition-colors"
+                        on:click=move |_| cancel_passengers()
+                    >{t("common.cancel")}</button>
+                    <button
+                        class="flex-1 py-2.5 rounded-xl text-sm font-medium btn-glass transition-all"
+                        on:click=move |_| confirm_passengers()
+                    >{t("common.confirm")}</button>
+                </div>
+            </div>
+        </BottomSheet>
+
+        // ── Review modal ───────────────────────────────────────────
+        <ReviewModal
+            open=review_modal_open
+            items=review_items
+            on_items_change=Callback::new(move |v| set_review_items.set(v))
+            seat_preference=seat_preference
+            set_seat_preference=set_seat_preference
+            auto_pay=auto_pay
+            selected_card_id=selected_card_id
+            set_selected_card_id=set_selected_card_id
+            cards=cards
+            creating=Signal::from(creating)
+            on_confirm=Callback::new(move |_| { create_action.dispatch(()); })
+            on_cancel=Callback::new(move |_| set_review_modal_open.set(false))
+        />
+    }
+}
+
+// ── Sub-components ───────────────────────────────────────────────────
+
+/// Collapsed summary bar — click to expand.
+#[component]
+fn CollapsedBar(
+    departure: ReadSignal<String>,
+    arrival: ReadSignal<String>,
+    selected_date: ReadSignal<Option<NaiveDate>>,
+    time_slot: ReadSignal<u32>,
+    passengers: ReadSignal<Vec<PassengerCount>>,
+    on_edit: impl Fn() + Send + Sync + 'static,
+) -> impl IntoView {
+    view! {
+        <div class="cursor-pointer" on:click=move |_| on_edit()>
+            <GlassPanel>
+                <div class="p-3 flex items-center justify-between">
+                    <div class="flex items-center gap-2 overflow-hidden">
+                        <span class="font-semibold text-sm text-[var(--color-text-primary)] truncate">
+                            {move || {
+                                let d = departure.get();
+                                let a = arrival.get();
+                                if d.is_empty() && a.is_empty() {
+                                    t("search.title").to_string()
+                                } else {
+                                    format!("{d} \u{2192} {a}")
+                                }
+                            }}
+                        </span>
+                        <div class="h-4 w-px bg-[var(--color-border-default)] shrink-0"></div>
+                        <span class="text-sm text-[var(--color-text-tertiary)] shrink-0">
+                            {move || match selected_date.get() {
+                                Some(d) => format!("{} {}", d.format("%b %d"), format_time_slot(time_slot.get())),
+                                None => "\u{2014}".to_string(),
+                            }}
+                        </span>
+                        <div class="h-4 w-px bg-[var(--color-border-default)] shrink-0"></div>
+                        <span class="text-sm text-[var(--color-text-tertiary)] shrink-0">
+                            {move || format!("{} {}", total_passengers(&passengers.get()), t("search.passenger_count"))}
+                        </span>
+                    </div>
+                    <span class="text-[var(--color-brand-text)] text-sm font-semibold shrink-0 pl-2">
+                        {t("search.edit")}
+                    </span>
+                </div>
+            </GlassPanel>
         </div>
     }
 }
 
-// ── Internal types ──────────────────────────────────────────────────
-
-/// Minimal train info for tracking selection state.
-#[derive(Clone, Debug, PartialEq)]
-struct SelectedTrain {
-    train_number: String,
-    dep_time: String,
+/// Provider toggle (SRT / KTX).
+#[component]
+fn ProviderToggle(
+    provider: ReadSignal<String>,
+    set_provider: WriteSignal<String>,
+) -> impl IntoView {
+    let btn_class = |is_active: bool| {
+        if is_active {
+            "flex-1 py-2 text-sm font-medium rounded-lg bg-[var(--color-bg-elevated)] text-[var(--color-text-primary)] shadow-sm transition-all"
+        } else {
+            "flex-1 py-2 text-sm font-medium rounded-lg text-[var(--color-text-tertiary)] transition-all"
+        }
+    };
+    view! {
+        <div class="flex bg-[var(--color-bg-sunken)] rounded-xl p-1">
+            <button
+                class=move || btn_class(provider.get() == "SRT")
+                on:click=move |_| set_provider.set("SRT".to_string())
+            >"SRT"</button>
+            <button
+                class=move || btn_class(provider.get() == "KTX")
+                on:click=move |_| set_provider.set("KTX".to_string())
+            >"KTX"</button>
+        </div>
+    }
 }
 
-// ── Sub-components ──────────────────────────────────────────────────
-
-/// Station select dropdown.
+/// Station select dropdown with icon.
 #[component]
 fn StationSelect(
     label: &'static str,
@@ -313,27 +634,58 @@ fn StationSelect(
 ) -> impl IntoView {
     view! {
         <div>
-            <label class="block text-xs font-medium text-[var(--color-text-secondary)] mb-1.5">{label}</label>
-            <select
-                class="w-full px-3 py-2.5 bg-[var(--color-bg-sunken)] border border-[var(--color-border-default)] rounded-xl text-sm text-[var(--color-text-primary)] focus:outline-none focus:border-[var(--color-border-focus)] transition-colors"
-                on:change=move |ev| set_value.set(event_target_value(&ev))
-            >
-                <option value="" disabled selected=move || value.get().is_empty()>{t("search.select_station")}</option>
-                <Suspense>
-                    {move || stations.get().map(|result| match result {
-                        Ok(list) => list.into_iter().map(|s| {
-                            let ko = s.name_ko.clone();
-                            let selected = value.get() == ko;
-                            let ko_text = ko.clone();
-                            view! {
-                                <option value=ko selected=selected>{ko_text}</option>
-                            }
-                        }).collect::<Vec<_>>(),
-                        Err(_) => vec![],
-                    })}
-                </Suspense>
-            </select>
+            <label class="block text-xs font-semibold text-[var(--color-text-secondary)] uppercase tracking-wide mb-1.5">
+                {label}
+            </label>
+            <div class="flex items-center bg-[var(--color-bg-sunken)] border border-[var(--color-border-default)] rounded-xl focus-within:border-[var(--color-border-focus)] transition-colors">
+                <div class="pl-3">
+                    <svg class="w-4 h-4 text-[var(--color-text-tertiary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                </div>
+                <select
+                    class="w-full px-2 py-2.5 bg-transparent text-sm text-[var(--color-text-primary)] focus:outline-none"
+                    on:change=move |ev| set_value.set(event_target_value(&ev))
+                >
+                    <option value="" disabled selected=move || value.get().is_empty()>{t("search.select_station")}</option>
+                    <Suspense>
+                        {move || stations.get().map(|result| match result {
+                            Ok(list) => list.into_iter().map(|s| {
+                                let ko = s.name_ko.clone();
+                                let selected = value.get() == ko;
+                                let ko_text = ko.clone();
+                                view! {
+                                    <option value=ko selected=selected>{ko_text}</option>
+                                }
+                            }).collect::<Vec<_>>(),
+                            Err(_) => vec![],
+                        })}
+                    </Suspense>
+                </select>
+            </div>
         </div>
+    }
+}
+
+/// Toggle chip button.
+#[component]
+fn ToggleChip(
+    label: &'static str,
+    active: ReadSignal<bool>,
+    on_toggle: impl Fn() + Send + Sync + 'static,
+) -> impl IntoView {
+    view! {
+        <button
+            class=move || if active.get() {
+                "flex-1 py-2 px-3 text-xs font-semibold rounded-xl border transition-all flex justify-center items-center gap-1.5 bg-[var(--color-brand-primary)]/20 text-[var(--color-brand-text)] border-[var(--color-brand-primary)]/30 shadow-sm"
+            } else {
+                "flex-1 py-2 px-3 text-xs font-semibold rounded-xl border transition-all flex justify-center items-center gap-1.5 bg-[var(--color-bg-sunken)] text-[var(--color-text-tertiary)] border-[var(--color-border-default)]"
+            }
+            on:click=move |_| on_toggle()
+        >
+            {label}
+        </button>
     }
 }
 
@@ -349,7 +701,7 @@ fn TrainResults(
         <GlassPanel>
             <div class="p-4">
                 <div class="flex items-center justify-between mb-3">
-                    <h2 class="text-sm font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider">
+                    <h2 class="text-sm font-semibold text-[var(--color-text-secondary)] uppercase tracking-[0.18em]">
                         {format!("{} ({trains_len})", provider, trains_len = trains.len())}
                     </h2>
                     <p class="text-[10px] text-[var(--color-text-tertiary)]">{t("search.tap_to_select")}</p>
@@ -388,7 +740,6 @@ fn TrainResults(
                                 on:click=toggle
                             >
                                 <div class="flex items-center gap-3">
-                                    // Selection indicator
                                     <div class=move || if is_selected.get() {
                                         "w-5 h-5 rounded-full bg-[var(--color-brand-primary)] flex items-center justify-center shrink-0"
                                     } else {
@@ -400,7 +751,6 @@ fn TrainResults(
                                             </svg>
                                         })}
                                     </div>
-
                                     <div class="text-left">
                                         <div class="flex items-center gap-2">
                                             <span class="text-xs px-1.5 py-0.5 rounded bg-[var(--color-bg-sunken)] text-[var(--color-text-secondary)] font-mono">
@@ -412,14 +762,13 @@ fn TrainResults(
                                             <span class="text-sm font-medium text-[var(--color-text-primary)]">
                                                 {format_time(&train.dep_time)}
                                             </span>
-                                            <span class="text-xs text-[var(--color-text-tertiary)]">"→"</span>
+                                            <span class="text-xs text-[var(--color-text-tertiary)]">"\u{2192}"</span>
                                             <span class="text-sm font-medium text-[var(--color-text-primary)]">
                                                 {format_time(&train.arr_time)}
                                             </span>
                                         </div>
                                     </div>
                                 </div>
-
                                 <div class="flex gap-1.5">
                                     <SeatBadge label=t("seat.general") available=train.general_available />
                                     <SeatBadge label=t("seat.special") available=train.special_available />
@@ -433,135 +782,7 @@ fn TrainResults(
     }
 }
 
-/// Task creation review panel — shown when trains are selected.
-#[component]
-fn TaskCreationPanel(
-    selected_count: usize,
-    seat_preference: ReadSignal<String>,
-    set_seat_preference: WriteSignal<String>,
-    auto_pay: ReadSignal<bool>,
-    set_auto_pay: WriteSignal<bool>,
-    selected_card_id: ReadSignal<String>,
-    set_selected_card_id: WriteSignal<String>,
-    cards: Resource<Result<Vec<crate::api::cards::CardInfo>, ServerFnError>>,
-    creating: Signal<bool>,
-    create_result: Signal<Option<Result<crate::api::tasks::TaskInfo, ServerFnError>>>,
-    on_submit: impl Fn() + Send + Sync + 'static,
-) -> impl IntoView {
-    view! {
-        <GlassPanel>
-            <div class="p-4 space-y-4">
-                <div class="flex items-center justify-between">
-                    <h2 class="text-sm font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider">
-                        {t("search.create_task")}
-                    </h2>
-                    <span class="text-xs px-2 py-0.5 rounded-full bg-[var(--color-brand-primary)]/20 text-[var(--color-brand-primary)]">
-                        {format!("{selected_count} {}", t("selection.selected_count"))}
-                    </span>
-                </div>
-
-                // Seat preference
-                <div>
-                    <label class="block text-xs font-medium text-[var(--color-text-secondary)] mb-1.5">{t("search.seat_preference")}</label>
-                    <select
-                        class="w-full px-3 py-2.5 bg-[var(--color-bg-sunken)] border border-[var(--color-border-default)] rounded-xl text-sm text-[var(--color-text-primary)] focus:outline-none focus:border-[var(--color-border-focus)] transition-colors"
-                        on:change=move |ev| set_seat_preference.set(event_target_value(&ev))
-                    >
-                        <option value="GeneralFirst" selected=move || seat_preference.get() == "GeneralFirst">{t("search.seat_general_first")}</option>
-                        <option value="SpecialFirst" selected=move || seat_preference.get() == "SpecialFirst">{t("search.seat_special_first")}</option>
-                        <option value="GeneralOnly" selected=move || seat_preference.get() == "GeneralOnly">{t("search.seat_general_only")}</option>
-                        <option value="SpecialOnly" selected=move || seat_preference.get() == "SpecialOnly">{t("search.seat_special_only")}</option>
-                    </select>
-                </div>
-
-                // Auto-pay toggle
-                <div class="flex items-center justify-between">
-                    <span class="text-sm text-[var(--color-text-primary)]">{t("search.auto_pay")}</span>
-                    <button
-                        class=move || if auto_pay.get() {
-                            "w-10 h-6 bg-[var(--color-brand-primary)] rounded-full relative cursor-pointer transition-colors"
-                        } else {
-                            "w-10 h-6 bg-[var(--color-bg-sunken)] rounded-full relative cursor-pointer transition-colors"
-                        }
-                        on:click=move |_| set_auto_pay.update(|v| *v = !*v)
-                    >
-                        <div class=move || if auto_pay.get() {
-                            "absolute top-0.5 right-0.5 w-5 h-5 bg-white rounded-full shadow transition-all"
-                        } else {
-                            "absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-all"
-                        }></div>
-                    </button>
-                </div>
-
-                // Card selection (shown only when auto-pay is enabled)
-                {move || auto_pay.get().then(|| view! {
-                    <div>
-                        <label class="block text-xs font-medium text-[var(--color-text-secondary)] mb-1.5">{t("search.select_card")}</label>
-                        <Suspense fallback=move || view! {
-                            <p class="text-xs text-[var(--color-text-tertiary)]">{t("common.loading")}</p>
-                        }>
-                            {move || cards.get().map(|result| match result {
-                                Ok(card_list) if card_list.is_empty() => view! {
-                                    <p class="text-xs text-[var(--color-text-tertiary)]">
-                                        {t("search.no_cards")} " "
-                                        <a href="/settings" class="text-[var(--color-brand-primary)] hover:underline">{t("search.add_card")}</a>
-                                    </p>
-                                }.into_any(),
-                                Ok(card_list) => view! {
-                                    <select
-                                        class="w-full px-3 py-2.5 bg-[var(--color-bg-sunken)] border border-[var(--color-border-default)] rounded-xl text-sm text-[var(--color-text-primary)] focus:outline-none focus:border-[var(--color-border-focus)] transition-colors"
-                                        on:change=move |ev| set_selected_card_id.set(event_target_value(&ev))
-                                    >
-                                        <option value="" disabled selected=move || selected_card_id.get().is_empty()>{t("search.select_card")}</option>
-                                        {card_list.into_iter().map(|card| {
-                                            let id = card.id.to_string();
-                                            let label = format!("{} ····{}", card.card_type_name, card.last_four);
-                                            view! {
-                                                <option value=id>{label}</option>
-                                            }
-                                        }).collect::<Vec<_>>()}
-                                    </select>
-                                }.into_any(),
-                                Err(_) => view! {
-                                    <p class="text-xs text-[var(--color-status-error)]">{t("error.network")}</p>
-                                }.into_any(),
-                            })}
-                        </Suspense>
-                    </div>
-                })}
-
-                // Error display
-                {move || create_result.get().and_then(|r| r.err()).map(|e| view! {
-                    <div class="px-3 py-2 bg-[var(--color-status-error)]/10 border border-[var(--color-status-error)]/30 rounded-xl">
-                        <p class="text-sm text-[var(--color-status-error)]">{format!("{e}")}</p>
-                    </div>
-                })}
-
-                // Submit button
-                <button
-                    class="w-full py-3 bg-[var(--color-brand-primary)] text-white font-medium rounded-xl text-sm hover:opacity-90 disabled:opacity-50 transition-all"
-                    disabled=creating
-                    on:click=move |_| { on_submit(); }
-                >
-                    {move || if creating.get() { t("search.creating_task") } else { t("search.create_task") }}
-                </button>
-
-                // Success display
-                {move || create_result.get().and_then(|r| r.ok()).map(|_task| view! {
-                    <div class="px-3 py-2 bg-[var(--color-status-success)]/10 border border-[var(--color-status-success)]/30 rounded-xl">
-                        <p class="text-sm text-[var(--color-status-success)]">
-                            {t("task.created")}
-                        </p>
-                        <a href="/tasks" class="text-xs text-[var(--color-brand-primary)] hover:underline mt-1 inline-block">
-                            {t("search.view_tasks")}
-                        </a>
-                    </div>
-                })}
-            </div>
-        </GlassPanel>
-    }
-}
-
+/// Seat availability badge.
 #[component]
 fn SeatBadge(label: &'static str, available: bool) -> impl IntoView {
     let class = if available {
@@ -570,12 +791,4 @@ fn SeatBadge(label: &'static str, available: bool) -> impl IntoView {
         "text-[10px] px-1.5 py-0.5 rounded bg-[var(--color-bg-sunken)] text-[var(--color-text-disabled)]"
     };
     view! { <span class=class>{label}</span> }
-}
-
-fn format_time(raw: &str) -> String {
-    if raw.len() >= 4 {
-        format!("{}:{}", &raw[..2], &raw[2..4])
-    } else {
-        raw.to_string()
-    }
 }

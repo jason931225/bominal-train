@@ -53,12 +53,7 @@ impl EmailClient {
     }
 
     /// Send an email via Resend.
-    pub async fn send(
-        &self,
-        to: &str,
-        subject: &str,
-        html: &str,
-    ) -> Result<String, EmailError> {
+    pub async fn send(&self, to: &str, subject: &str, html: &str) -> Result<String, EmailError> {
         let body = SendRequest {
             from: &self.from_address,
             to: &[to],

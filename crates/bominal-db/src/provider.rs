@@ -85,20 +85,15 @@ pub async fn find_by_user_and_provider(
 }
 
 /// Update credential status.
-pub async fn update_status(
-    pool: &PgPool,
-    id: Uuid,
-    status: &str,
-) -> Result<(), sqlx::Error> {
+pub async fn update_status(pool: &PgPool, id: Uuid, status: &str) -> Result<(), sqlx::Error> {
     let verified_at_clause = if status == "valid" {
         ", last_verified_at = now()"
     } else {
         ""
     };
 
-    let query = format!(
-        "UPDATE provider_credentials SET status = $1{verified_at_clause} WHERE id = $2"
-    );
+    let query =
+        format!("UPDATE provider_credentials SET status = $1{verified_at_clause} WHERE id = $2");
 
     sqlx::query(&query)
         .bind(status)
@@ -114,12 +109,11 @@ pub async fn delete_credential(
     user_id: Uuid,
     provider: &str,
 ) -> Result<bool, sqlx::Error> {
-    let result = sqlx::query(
-        "DELETE FROM provider_credentials WHERE user_id = $1 AND provider = $2",
-    )
-    .bind(user_id)
-    .bind(provider)
-    .execute(pool)
-    .await?;
+    let result =
+        sqlx::query("DELETE FROM provider_credentials WHERE user_id = $1 AND provider = $2")
+            .bind(user_id)
+            .bind(provider)
+            .execute(pool)
+            .await?;
     Ok(result.rows_affected() > 0)
 }

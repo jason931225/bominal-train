@@ -5,35 +5,36 @@
 //! - PATCH  /api/cards/:id   — update card label
 //! - DELETE /api/cards/:id   — delete card
 
-use axum::extract::{Path, State};
 use axum::Json;
-use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
+use axum::extract::{Path, State};
+use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::error::AppError;
 use crate::extractors::AuthUser;
 use crate::state::SharedState;
 
-/// Card response (masked — never exposes raw encrypted fields).
-#[derive(Debug, Serialize)]
-pub struct CardResponse {
-    pub id: Uuid,
-    pub label: String,
-    pub last_four: String,
-    pub card_type: String,
-    pub card_type_name: String,
-    pub created_at: DateTime<Utc>,
-}
-
 /// Add card request.
+///
+/// All sensitive fields (`card_number`, `card_password`, `birthday`,
+/// `expire_date`) must be pre-encrypted by the Evervault JS SDK on the
+/// frontend. The server stores these `ev:`-prefixed strings directly
+/// and never sees plaintext card data.
 #[derive(Debug, Deserialize)]
 pub struct AddCardRequest {
     pub label: Option<String>,
+    /// Evervault-encrypted card number (ev:... format).
     pub card_number: String,
+    /// Evervault-encrypted card password (ev:... format).
     pub card_password: String,
+    /// Evervault-encrypted birthday (ev:... format).
     pub birthday: String,
+    /// Evervault-encrypted expiry date (ev:... format).
     pub expire_date: String,
+    /// Evervault-encrypted expiry date in YYMM format (ev:... format).
+    pub expire_date_yymm: Option<String>,
+    /// Last 4 digits of card (plaintext, for display).
+    pub last_four: String,
     pub card_type: Option<String>,
 }
 
@@ -47,12 +48,9 @@ pub struct UpdateCardRequest {
 pub async fn list_cards(
     user: AuthUser,
     State(state): State<SharedState>,
-) -> Result<Json<Vec<CardResponse>>, AppError> {
-    let rows = bominal_db::card::find_by_user(&state.db, user.user_id)
-        .await
-        .map_err(|e| AppError::Internal(e.into()))?;
-
-    Ok(Json(rows.iter().map(card_to_response).collect()))
+) -> Result<Json<Vec<bominal_service::cards::CardInfo>>, AppError> {
+    let result = bominal_service::cards::list(&state.db, user.user_id).await?;
+    Ok(Json(result))
 }
 
 /// POST /api/cards — add a payment card.
@@ -60,38 +58,25 @@ pub async fn add_card(
     user: AuthUser,
     State(state): State<SharedState>,
     Json(req): Json<AddCardRequest>,
-) -> Result<Json<CardResponse>, AppError> {
-    validate_card_request(&req)?;
-
-    let last_four = &req.card_number[req.card_number.len() - 4..];
-    let card_type = req.card_type.as_deref().unwrap_or("J");
+) -> Result<Json<bominal_service::cards::CardInfo>, AppError> {
     let label = req.label.as_deref().unwrap_or("My Card");
+    let card_type = req.card_type.as_deref().unwrap_or("J");
 
-    // Encrypt sensitive card fields with AES-256-GCM before storage
-    use bominal_domain::crypto::encryption::encrypt;
-    let key = &state.encryption_key;
-    let enc_number = encrypt(key, &req.card_number).map_err(|e| AppError::Internal(e.into()))?;
-    let enc_password =
-        encrypt(key, &req.card_password).map_err(|e| AppError::Internal(e.into()))?;
-    let enc_birthday = encrypt(key, &req.birthday).map_err(|e| AppError::Internal(e.into()))?;
-    let enc_expiry =
-        encrypt(key, &req.expire_date).map_err(|e| AppError::Internal(e.into()))?;
-
-    let row = bominal_db::card::create_card(
+    let result = bominal_service::cards::add(
         &state.db,
         user.user_id,
         label,
-        &enc_number,
-        &enc_password,
-        &enc_birthday,
-        &enc_expiry,
+        &req.card_number,
+        &req.card_password,
+        &req.birthday,
+        &req.expire_date,
+        req.expire_date_yymm.as_deref(),
         card_type,
-        last_four,
+        &req.last_four,
     )
-    .await
-    .map_err(|e| AppError::Internal(e.into()))?;
+    .await?;
 
-    Ok(Json(card_to_response(&row)))
+    Ok(Json(result))
 }
 
 /// PATCH /api/cards/:id — update card label.
@@ -100,17 +85,10 @@ pub async fn update_card(
     State(state): State<SharedState>,
     Path(card_id): Path<Uuid>,
     Json(req): Json<UpdateCardRequest>,
-) -> Result<Json<CardResponse>, AppError> {
-    if req.label.is_empty() {
-        return Err(AppError::BadRequest("Label cannot be empty".to_string()));
-    }
-
-    let row = bominal_db::card::update_label(&state.db, card_id, user.user_id, &req.label)
-        .await
-        .map_err(|e| AppError::Internal(e.into()))?
-        .ok_or_else(|| AppError::NotFound("Card not found".to_string()))?;
-
-    Ok(Json(card_to_response(&row)))
+) -> Result<Json<bominal_service::cards::CardInfo>, AppError> {
+    let result =
+        bominal_service::cards::update_label(&state.db, card_id, user.user_id, &req.label).await?;
+    Ok(Json(result))
 }
 
 /// DELETE /api/cards/:id — delete a card.
@@ -119,147 +97,35 @@ pub async fn delete_card(
     State(state): State<SharedState>,
     Path(card_id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let deleted = bominal_db::card::delete_card(&state.db, card_id, user.user_id)
-        .await
-        .map_err(|e| AppError::Internal(e.into()))?;
-
-    if !deleted {
-        return Err(AppError::NotFound("Card not found".to_string()));
-    }
-
+    bominal_service::cards::delete(&state.db, card_id, user.user_id).await?;
     Ok(Json(serde_json::json!({ "deleted": true })))
-}
-
-// ── Helpers ──────────────────────────────────────────────────────────
-
-fn card_to_response(row: &bominal_db::card::PaymentCardRow) -> CardResponse {
-    CardResponse {
-        id: row.id,
-        label: row.label.clone(),
-        last_four: row.last_four.clone(),
-        card_type: row.card_type.clone(),
-        card_type_name: card_type_name(&row.card_type).to_string(),
-        created_at: row.created_at,
-    }
-}
-
-fn card_type_name(code: &str) -> &str {
-    match code {
-        "J" => "신용카드",
-        "S" => "체크카드",
-        _ => "기타",
-    }
-}
-
-fn validate_card_request(req: &AddCardRequest) -> Result<(), AppError> {
-    if req.card_number.len() < 15 || req.card_number.len() > 16 {
-        return Err(AppError::BadRequest(
-            "Card number must be 15-16 digits".to_string(),
-        ));
-    }
-    if !req.card_number.chars().all(|c| c.is_ascii_digit()) {
-        return Err(AppError::BadRequest(
-            "Card number must contain only digits".to_string(),
-        ));
-    }
-    if req.card_password.len() != 2 || !req.card_password.chars().all(|c| c.is_ascii_digit()) {
-        return Err(AppError::BadRequest(
-            "Card password must be 2 digits".to_string(),
-        ));
-    }
-    if req.birthday.len() != 6 || !req.birthday.chars().all(|c| c.is_ascii_digit()) {
-        return Err(AppError::BadRequest(
-            "Birthday must be YYMMDD format (6 digits)".to_string(),
-        ));
-    }
-    if req.expire_date.len() != 4 || !req.expire_date.chars().all(|c| c.is_ascii_digit()) {
-        return Err(AppError::BadRequest(
-            "Expire date must be MMYY or YYMM format (4 digits)".to_string(),
-        ));
-    }
-    if let Some(ct) = &req.card_type {
-        if ct != "J" && ct != "S" {
-            return Err(AppError::BadRequest(
-                "Card type must be 'J' (credit) or 'S' (debit)".to_string(),
-            ));
-        }
-    }
-    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
-    #[test]
-    fn validate_valid_card() {
-        let req = AddCardRequest {
-            label: None,
-            card_number: "1234567890123456".to_string(),
-            card_password: "12".to_string(),
-            birthday: "900101".to_string(),
-            expire_date: "1228".to_string(),
-            card_type: Some("J".to_string()),
-        };
-        assert!(validate_card_request(&req).is_ok());
-    }
-
-    #[test]
-    fn validate_short_card_number() {
-        let req = AddCardRequest {
-            label: None,
-            card_number: "1234".to_string(),
-            card_password: "12".to_string(),
-            birthday: "900101".to_string(),
-            expire_date: "1228".to_string(),
-            card_type: None,
-        };
-        assert!(validate_card_request(&req).is_err());
-    }
-
-    #[test]
-    fn validate_bad_password() {
-        let req = AddCardRequest {
-            label: None,
-            card_number: "1234567890123456".to_string(),
-            card_password: "abc".to_string(),
-            birthday: "900101".to_string(),
-            expire_date: "1228".to_string(),
-            card_type: None,
-        };
-        assert!(validate_card_request(&req).is_err());
-    }
-
-    #[test]
-    fn validate_bad_birthday() {
-        let req = AddCardRequest {
-            label: None,
-            card_number: "1234567890123456".to_string(),
-            card_password: "12".to_string(),
-            birthday: "19900101".to_string(),
-            expire_date: "1228".to_string(),
-            card_type: None,
-        };
-        assert!(validate_card_request(&req).is_err());
-    }
-
-    #[test]
-    fn validate_bad_card_type() {
-        let req = AddCardRequest {
-            label: None,
-            card_number: "1234567890123456".to_string(),
-            card_password: "12".to_string(),
-            birthday: "900101".to_string(),
-            expire_date: "1228".to_string(),
-            card_type: Some("X".to_string()),
-        };
-        assert!(validate_card_request(&req).is_err());
+    fn ev_encrypted(val: &str) -> String {
+        format!("ev:abc123:{val}")
     }
 
     #[test]
     fn card_type_names() {
-        assert_eq!(card_type_name("J"), "신용카드");
-        assert_eq!(card_type_name("S"), "체크카드");
-        assert_eq!(card_type_name("X"), "기타");
+        assert_eq!(
+            bominal_service::cards::card_type_name("J"),
+            "\u{c2e0}\u{c6a9}\u{ce74}\u{b4dc}"
+        );
+        assert_eq!(
+            bominal_service::cards::card_type_name("S"),
+            "\u{ccb4}\u{d06c}\u{ce74}\u{b4dc}"
+        );
+        assert_eq!(
+            bominal_service::cards::card_type_name("X"),
+            "\u{ae30}\u{d0c0}"
+        );
+    }
+
+    #[test]
+    fn ev_encrypted_format() {
+        let val = ev_encrypted("card");
+        assert!(val.starts_with("ev:"));
     }
 }

@@ -34,12 +34,11 @@ impl SrtResponse {
     /// assert!(resp.is_success());
     /// ```
     pub fn parse(body: &str) -> Result<Self, ProviderError> {
-        let json: Value = serde_json::from_str(body).map_err(|_| {
-            ProviderError::UnexpectedResponse {
+        let json: Value =
+            serde_json::from_str(body).map_err(|_| ProviderError::UnexpectedResponse {
                 status: 200,
                 body: body.to_string(),
-            }
-        })?;
+            })?;
 
         if let Some(result_map) = json.get("resultMap").and_then(|v| v.get(0)) {
             return Ok(Self {
@@ -102,12 +101,11 @@ impl SrtResponse {
 /// Parse an SRT payment response.
 /// Payment uses a different JSON path: `outDataSets.dsOutput0[0].strResult`.
 pub fn parse_payment_response(body: &str) -> Result<(), ProviderError> {
-    let json: Value = serde_json::from_str(body).map_err(|_| {
-        ProviderError::UnexpectedResponse {
+    let json: Value =
+        serde_json::from_str(body).map_err(|_| ProviderError::UnexpectedResponse {
             status: 200,
             body: body.to_string(),
-        }
-    })?;
+        })?;
 
     let result = json
         .pointer("/outDataSets/dsOutput0/0/strResult")
@@ -147,7 +145,8 @@ mod tests {
 
     #[test]
     fn parse_fail_response() {
-        let body = r#"{"resultMap":[{"strResult":"FAIL","msgTxt":"잔여석없음","msgCd":"WRG000000"}]}"#;
+        let body =
+            r#"{"resultMap":[{"strResult":"FAIL","msgTxt":"잔여석없음","msgCd":"WRG000000"}]}"#;
         let resp = SrtResponse::parse(body).unwrap();
         assert!(!resp.is_success());
         assert_eq!(resp.message(), "잔여석없음");

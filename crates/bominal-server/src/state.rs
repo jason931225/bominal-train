@@ -1,11 +1,14 @@
 //! Shared application state passed to all handlers.
 
+use std::sync::Arc;
 use std::time::Instant;
 
 use bominal_db::DbPool;
 use bominal_domain::crypto::encryption::EncryptionKey;
 use bominal_email::EmailClient;
+use webauthn_rs::Webauthn;
 
+use crate::evervault::EvervaultConfig;
 use crate::sse::EventBus;
 
 /// Shared state available to all Axum handlers.
@@ -16,5 +19,8 @@ pub struct SharedState {
     pub event_bus: EventBus,
     pub email: EmailClient,
     pub encryption_key: EncryptionKey,
+    pub evervault: EvervaultConfig,
     pub app_base_url: String,
+    pub prometheus_handle: metrics_exporter_prometheus::PrometheusHandle,
+    pub webauthn: Arc<Webauthn>,
 }

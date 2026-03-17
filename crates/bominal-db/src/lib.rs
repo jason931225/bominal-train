@@ -1,6 +1,7 @@
 //! Database layer with Postgres and compile-time checked queries.
 
 pub mod card;
+pub mod passkey;
 pub mod provider;
 pub mod session;
 pub mod task;

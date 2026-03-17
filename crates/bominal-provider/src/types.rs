@@ -89,6 +89,7 @@ pub enum ProviderError {
 /// assert_eq!(classify_auth("user@example.com"), AuthType::Email);
 /// assert_eq!(classify_auth("010-1234-5678"), AuthType::Phone);
 /// assert_eq!(classify_auth("1234567890"), AuthType::Membership);
+/// assert_eq!(classify_auth("01012345678"), AuthType::Phone);
 /// ```
 pub fn classify_auth(login_id: &str) -> AuthType {
     if login_id.contains('@') {
@@ -99,6 +100,14 @@ pub fn classify_auth(login_id: &str) -> AuthType {
     let has_hyphens = login_id.contains('-');
 
     if has_hyphens && digits_only.len() >= 10 && digits_only.len() <= 11 {
+        return AuthType::Phone;
+    }
+
+    if digits_only.len() >= 10
+        && digits_only.len() <= 11
+        && login_id.starts_with('0')
+        && login_id.chars().all(|c| c.is_ascii_digit())
+    {
         return AuthType::Phone;
     }
 
@@ -125,6 +134,12 @@ mod tests {
     fn classify_membership() {
         assert_eq!(classify_auth("1234567890"), AuthType::Membership);
         assert_eq!(classify_auth("ABC123"), AuthType::Membership);
+    }
+
+    #[test]
+    fn classify_phone_without_hyphens() {
+        assert_eq!(classify_auth("01012345678"), AuthType::Phone);
+        assert_eq!(classify_auth("0101234567"), AuthType::Phone);
     }
 
     #[test]

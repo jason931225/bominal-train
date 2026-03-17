@@ -198,8 +198,8 @@ fn encode_normal_be(data_str: &str, table: &[char], i8: u64, i9: usize, i10: usi
             val = val * i8 + list_data[idx];
             idx += 1;
         }
-        for i in 0..=i10 {
-            i_arr[i] = (val % i9 as u64) as usize;
+        for item in i_arr.iter_mut().take(i10 + 1) {
+            *item = (val % i9 as u64) as usize;
             val /= i9 as u64;
         }
         for i in (0..=i10).rev() {
@@ -216,8 +216,8 @@ fn encode_normal_be(data_str: &str, table: &[char], i8: u64, i9: usize, i10: usi
             val = val * i8 + list_data[idx];
             idx += 1;
         }
-        for i in 0..=size_remainder {
-            i_arr[i] = (val % i9 as u64) as usize;
+        for item in i_arr.iter_mut().take(size_remainder + 1) {
+            *item = (val % i9 as u64) as usize;
             val /= i9 as u64;
         }
         let mut remaining = size_remainder as isize;
@@ -246,7 +246,9 @@ mod tests {
             "/classes/com.korail.mobile.seatMovie.ScheduleView"
         ));
         assert!(!requires_token("/classes/com.korail.mobile.common.code.do"));
-        assert!(!requires_token("/classes/com.korail.mobile.myTicket.MyTicketList"));
+        assert!(!requires_token(
+            "/classes/com.korail.mobile.myTicket.MyTicketList"
+        ));
     }
 
     #[test]
