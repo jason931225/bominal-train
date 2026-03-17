@@ -139,7 +139,7 @@ pub async fn find_by_user(pool: &PgPool, user_id: Uuid) -> Result<Vec<TaskRow>, 
     .fetch_all(pool)
     .await?;
     let mut conn = pool.acquire().await?;
-    hydrate_tasks(&mut *conn, cores).await
+    hydrate_tasks(&mut conn, cores).await
 }
 
 pub async fn find_by_id(
@@ -158,7 +158,7 @@ pub async fn find_by_id(
     match core {
         Some(row) => {
             let mut conn = pool.acquire().await?;
-            Ok(hydrate_tasks(&mut *conn, vec![row])
+            Ok(hydrate_tasks(&mut conn, vec![row])
                 .await?
                 .into_iter()
                 .next())
@@ -178,7 +178,7 @@ pub async fn find_by_status(
     .fetch_all(pool)
     .await?;
     let mut conn = pool.acquire().await?;
-    hydrate_tasks(&mut *conn, cores).await
+    hydrate_tasks(&mut conn, cores).await
 }
 
 pub async fn claim_queued_tasks(pool: &PgPool) -> Result<Vec<TaskRow>, sqlx::Error> {
@@ -198,7 +198,7 @@ pub async fn claim_queued_tasks(pool: &PgPool) -> Result<Vec<TaskRow>, sqlx::Err
     .fetch_all(pool)
     .await?;
     let mut conn = pool.acquire().await?;
-    hydrate_tasks(&mut *conn, cores).await
+    hydrate_tasks(&mut conn, cores).await
 }
 
 pub async fn update_status(
@@ -290,7 +290,6 @@ pub async fn update_task(
     }
     if auto_retry.is_some() {
         sets.push(format!("auto_retry = ${param_idx}"));
-        param_idx += 1;
     }
 
     let core = if sets.is_empty() {
@@ -337,7 +336,7 @@ pub async fn update_task(
         insert_targets(&mut tx, core.id, trains).await?;
     }
 
-    let tasks = hydrate_tasks(&mut *tx, vec![core]).await?;
+    let tasks = hydrate_tasks(&mut tx, vec![core]).await?;
     tx.commit().await?;
     Ok(tasks.into_iter().next())
 }
