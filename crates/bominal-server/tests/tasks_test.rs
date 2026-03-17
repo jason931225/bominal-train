@@ -96,7 +96,8 @@ async fn create_task_invalid_provider() {
     let req = app.authed_post("/api/tasks", &session, &body);
     let (status, _) = app.send(req).await;
 
-    assert_eq!(status, StatusCode::BAD_REQUEST);
+    // Axum returns 422 when serde deserialization fails (invalid provider variant)
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
 
     app.cleanup().await;
 }
