@@ -73,11 +73,7 @@ pub async fn add(
 }
 
 /// Delete provider credentials.
-pub async fn delete(
-    db: &DbPool,
-    user_id: Uuid,
-    provider: &str,
-) -> Result<(), ServiceError> {
+pub async fn delete(db: &DbPool, user_id: Uuid, provider: &str) -> Result<(), ServiceError> {
     crate::tasks::validate_provider(provider)?;
 
     let deleted = bominal_db::provider::delete_credential(db, user_id, provider).await?;
@@ -108,7 +104,11 @@ pub async fn verify_login(
             client.login(login_id, password).await?;
             let _ = client.logout().await;
         }
-        _ => return Err(ServiceError::validation(format!("Invalid provider: {provider}"))),
+        _ => {
+            return Err(ServiceError::validation(format!(
+                "Invalid provider: {provider}"
+            )));
+        }
     }
     Ok(())
 }

@@ -128,7 +128,8 @@ fn ModalBody(
             <SeatPreferenceSelect seat_preference set_seat_preference />
             <CardSelector auto_pay selected_card_id set_selected_card_id cards />
         </div>
-    }.into_any()
+    }
+    .into_any()
 }
 
 #[component]

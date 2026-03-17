@@ -60,8 +60,7 @@ pub async fn do_passkey_login() -> Result<(), wasm_bindgen::JsValue> {
     opts.headers(&headers);
     opts.credentials(web_sys::RequestCredentials::Include);
 
-    let request =
-        web_sys::Request::new_with_str_and_init("/api/auth/passkey/login/finish", &opts)?;
+    let request = web_sys::Request::new_with_str_and_init("/api/auth/passkey/login/finish", &opts)?;
 
     let finish_resp = JsFuture::from(window.fetch_with_request(&request)).await?;
     let finish_resp: web_sys::Response = finish_resp.dyn_into()?;
@@ -92,10 +91,8 @@ pub async fn do_passkey_register() -> Result<(), wasm_bindgen::JsValue> {
     start_opts.method("POST");
     start_opts.credentials(web_sys::RequestCredentials::Include);
 
-    let start_req = web_sys::Request::new_with_str_and_init(
-        "/api/auth/passkey/register/start",
-        &start_opts,
-    )?;
+    let start_req =
+        web_sys::Request::new_with_str_and_init("/api/auth/passkey/register/start", &start_opts)?;
 
     let resp = JsFuture::from(window.fetch_with_request(&start_req)).await?;
     let resp: web_sys::Response = resp.dyn_into()?;
@@ -114,8 +111,7 @@ pub async fn do_passkey_register() -> Result<(), wasm_bindgen::JsValue> {
         .as_string()
         .ok_or_else(|| JsValue::from_str("Failed to serialize options"))?;
 
-    let reg_fn =
-        js_sys::Reflect::get(&window, &JsValue::from_str("__startPasskeyRegistration"))?;
+    let reg_fn = js_sys::Reflect::get(&window, &JsValue::from_str("__startPasskeyRegistration"))?;
     let reg_fn: &js_sys::Function = reg_fn
         .dyn_ref()
         .ok_or_else(|| JsValue::from_str("__startPasskeyRegistration not found"))?;
@@ -145,10 +141,8 @@ pub async fn do_passkey_register() -> Result<(), wasm_bindgen::JsValue> {
     finish_opts.headers(&headers);
     finish_opts.credentials(web_sys::RequestCredentials::Include);
 
-    let finish_req = web_sys::Request::new_with_str_and_init(
-        "/api/auth/passkey/register/finish",
-        &finish_opts,
-    )?;
+    let finish_req =
+        web_sys::Request::new_with_str_and_init("/api/auth/passkey/register/finish", &finish_opts)?;
 
     let finish_resp = JsFuture::from(window.fetch_with_request(&finish_req)).await?;
     let finish_resp: web_sys::Response = finish_resp.dyn_into()?;

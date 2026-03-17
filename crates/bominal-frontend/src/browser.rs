@@ -3,11 +3,13 @@
 pub const DEFAULT_LOCALE: &str = "ko";
 
 pub fn current_theme() -> String {
-    current_root_attr("data-theme").unwrap_or_else(|| crate::theme::ThemeName::default().as_str().to_string())
+    current_root_attr("data-theme")
+        .unwrap_or_else(|| crate::theme::ThemeName::default().as_str().to_string())
 }
 
 pub fn current_mode() -> String {
-    current_root_attr("data-mode").unwrap_or_else(|| crate::theme::ThemeMode::default().as_str().to_string())
+    current_root_attr("data-mode")
+        .unwrap_or_else(|| crate::theme::ThemeMode::default().as_str().to_string())
 }
 
 pub fn current_locale() -> String {
@@ -119,8 +121,7 @@ pub async fn submit_card(
 }
 
 fn current_root_attr(name: &str) -> Option<String> {
-    root_attr(name)
-        .filter(|value| !value.trim().is_empty())
+    root_attr(name).filter(|value| !value.trim().is_empty())
 }
 
 #[cfg(target_arch = "wasm32")]

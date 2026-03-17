@@ -115,7 +115,11 @@ pub async fn pay_reservation(
     let relay_domain = match provider {
         "SRT" => &state.evervault.srt_relay_domain,
         "KTX" => &state.evervault.ktx_relay_domain,
-        _ => return Err(AppError::BadRequest(format!("Invalid provider: {provider}"))),
+        _ => {
+            return Err(AppError::BadRequest(format!(
+                "Invalid provider: {provider}"
+            )));
+        }
     };
 
     bominal_service::reservations::pay_with_raw_card(

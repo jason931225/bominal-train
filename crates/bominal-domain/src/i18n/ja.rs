@@ -23,7 +23,10 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     m.insert("auth.email_exists", "既に登録されたメールアドレスです");
     m.insert("auth.passkey_signin", "パスキーでサインイン");
     m.insert("auth.welcome_back", "おかえりなさい");
-    m.insert("auth.passkey_subtitle", "パスキーまたはパスワードでサインイン");
+    m.insert(
+        "auth.passkey_subtitle",
+        "パスキーまたはパスワードでサインイン",
+    );
     m.insert("auth.continue_email", "メールで続ける");
     m.insert("auth.use_passkey", "パスキーを使用");
     m.insert("auth.sign_in", "サインイン");
@@ -34,7 +37,10 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     m.insert("auth.signin_link", "サインイン");
     m.insert("auth.forgot_password", "パスワードをお忘れですか？");
     m.insert("auth.reset_password", "パスワードリセット");
-    m.insert("auth.reset_subtitle", "メールでリセットリンクをお送りします");
+    m.insert(
+        "auth.reset_subtitle",
+        "メールでリセットリンクをお送りします",
+    );
     m.insert("auth.send_reset_link", "リセットリンクを送信");
     m.insert("auth.back_to_signin", "サインインに戻る");
     m.insert("auth.back_to_signup", "新規登録に戻る");
@@ -47,7 +53,10 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     m.insert("auth.pw_strong", "強い");
     m.insert("auth.check_email", "メールを確認してください");
     m.insert("auth.verify_sent_to", "確認リンクを送信しました：");
-    m.insert("auth.verify_click_link", "リンクをクリックしてアカウントを確認してください。");
+    m.insert(
+        "auth.verify_click_link",
+        "リンクをクリックしてアカウントを確認してください。",
+    );
     m.insert("auth.resend_prompt", "届きませんか？迷惑メールを確認するか");
     m.insert("auth.resend_link", "メールを再送信");
     m.insert("auth.verified_continue", "メールを認証しました");
@@ -58,15 +67,24 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     m.insert("auth.add_passkey_now", "今すぐパスキーを追加");
     m.insert("auth.skip_for_now", "後で設定する");
     m.insert("auth.get_started", "数秒で始められます");
-    m.insert("auth.enter_email_password", "メールアドレスとパスワードを入力");
-    m.insert("auth.reset_link_sent", "リセットリンクを送信しました！メールを確認してください。");
+    m.insert(
+        "auth.enter_email_password",
+        "メールアドレスとパスワードを入力",
+    );
+    m.insert(
+        "auth.reset_link_sent",
+        "リセットリンクを送信しました！メールを確認してください。",
+    );
     m.insert("auth.verifying", "認証中...");
     m.insert("auth.email_verified", "メール認証完了");
     m.insert("auth.email_verified_desc", "メールが正常に認証されました。");
     m.insert("auth.verify_failed", "認証失敗");
     m.insert("auth.go_to_login", "ログインに戻る");
     m.insert("auth.new_password", "新しいパスワード");
-    m.insert("auth.password_reset_success", "パスワードが再設定されました。");
+    m.insert(
+        "auth.password_reset_success",
+        "パスワードが再設定されました。",
+    );
     m.insert("auth.missing_token", "無効なリンクです。");
 
     // Search
@@ -81,7 +99,10 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     m.insert("search.edit", "編集");
     m.insert("search.no_results", "検索結果がありません");
     m.insert("search.auto_pay", "自動決済");
-    m.insert("search.auto_pay_card_required", "自動決済タスクには支払いカードが必要です");
+    m.insert(
+        "search.auto_pay_card_required",
+        "自動決済タスクには支払いカードが必要です",
+    );
     m.insert("search.notify", "通知");
     m.insert("search.auto_retry", "自動リトライ");
 

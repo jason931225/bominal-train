@@ -147,23 +147,30 @@ pub async fn find_by_id(
     task_id: Uuid,
     user_id: Uuid,
 ) -> Result<Option<TaskRow>, sqlx::Error> {
-    let core =
-        sqlx::query_as::<_, TaskCoreRow>("SELECT * FROM reservation_tasks WHERE id = $1 AND user_id = $2")
-            .bind(task_id)
-            .bind(user_id)
-            .fetch_optional(pool)
-            .await?;
+    let core = sqlx::query_as::<_, TaskCoreRow>(
+        "SELECT * FROM reservation_tasks WHERE id = $1 AND user_id = $2",
+    )
+    .bind(task_id)
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await?;
 
     match core {
         Some(row) => {
             let mut conn = pool.acquire().await?;
-            Ok(hydrate_tasks(&mut *conn, vec![row]).await?.into_iter().next())
+            Ok(hydrate_tasks(&mut *conn, vec![row])
+                .await?
+                .into_iter()
+                .next())
         }
         None => Ok(None),
     }
 }
 
-pub async fn find_by_status(pool: &PgPool, status: TaskStatus) -> Result<Vec<TaskRow>, sqlx::Error> {
+pub async fn find_by_status(
+    pool: &PgPool,
+    status: TaskStatus,
+) -> Result<Vec<TaskRow>, sqlx::Error> {
     let cores = sqlx::query_as::<_, TaskCoreRow>(
         "SELECT * FROM reservation_tasks WHERE status = $1 ORDER BY created_at ASC",
     )
@@ -194,7 +201,11 @@ pub async fn claim_queued_tasks(pool: &PgPool) -> Result<Vec<TaskRow>, sqlx::Err
     hydrate_tasks(&mut *conn, cores).await
 }
 
-pub async fn update_status(pool: &PgPool, task_id: Uuid, status: TaskStatus) -> Result<(), sqlx::Error> {
+pub async fn update_status(
+    pool: &PgPool,
+    task_id: Uuid,
+    status: TaskStatus,
+) -> Result<(), sqlx::Error> {
     let started_clause = if status == TaskStatus::Running {
         ", started_at = COALESCE(started_at, now())"
     } else {
@@ -283,11 +294,13 @@ pub async fn update_task(
     }
 
     let core = if sets.is_empty() {
-        sqlx::query_as::<_, TaskCoreRow>("SELECT * FROM reservation_tasks WHERE id = $1 AND user_id = $2")
-            .bind(task_id)
-            .bind(user_id)
-            .fetch_optional(&mut *tx)
-            .await?
+        sqlx::query_as::<_, TaskCoreRow>(
+            "SELECT * FROM reservation_tasks WHERE id = $1 AND user_id = $2",
+        )
+        .bind(task_id)
+        .bind(user_id)
+        .fetch_optional(&mut *tx)
+        .await?
     } else {
         let query = format!(
             "UPDATE reservation_tasks SET {} WHERE id = $1 AND user_id = $2 RETURNING *",
@@ -441,7 +454,8 @@ async fn hydrate_tasks(
             });
     }
 
-    cores.into_iter()
+    cores
+        .into_iter()
         .map(|core| {
             let passengers = passengers_by_task.remove(&core.id).unwrap_or_default();
             let target_trains = targets_by_task.remove(&core.id).unwrap_or_default();

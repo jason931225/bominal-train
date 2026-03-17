@@ -43,7 +43,9 @@ pub fn LoginPage() -> impl IntoView {
                 match crate::api::passkey::do_passkey_login().await {
                     Ok(()) => {}
                     Err(e) => {
-                        let msg = e.as_string().unwrap_or_else(|| "Passkey login failed".into());
+                        let msg = e
+                            .as_string()
+                            .unwrap_or_else(|| "Passkey login failed".into());
                         error_msg.set(Some(msg));
                     }
                 }

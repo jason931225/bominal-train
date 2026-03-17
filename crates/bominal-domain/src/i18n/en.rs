@@ -23,7 +23,10 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     m.insert("auth.email_exists", "Email already registered");
     m.insert("auth.passkey_signin", "Sign in with Passkey");
     m.insert("auth.welcome_back", "Welcome back");
-    m.insert("auth.passkey_subtitle", "Sign in with your passkey or password");
+    m.insert(
+        "auth.passkey_subtitle",
+        "Sign in with your passkey or password",
+    );
     m.insert("auth.continue_email", "Continue with Email");
     m.insert("auth.use_passkey", "Use Passkey Instead");
     m.insert("auth.sign_in", "Sign In");
@@ -34,7 +37,10 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     m.insert("auth.signin_link", "Sign in");
     m.insert("auth.forgot_password", "Forgot password?");
     m.insert("auth.reset_password", "Reset password");
-    m.insert("auth.reset_subtitle", "We\u{2019}ll send a reset link to your email");
+    m.insert(
+        "auth.reset_subtitle",
+        "We\u{2019}ll send a reset link to your email",
+    );
     m.insert("auth.send_reset_link", "Send Reset Link");
     m.insert("auth.back_to_signin", "Back to Sign In");
     m.insert("auth.back_to_signup", "Back to sign up");
@@ -47,13 +53,22 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     m.insert("auth.pw_strong", "Strong");
     m.insert("auth.check_email", "Check your email");
     m.insert("auth.verify_sent_to", "We sent a verification link to");
-    m.insert("auth.verify_click_link", "Click the link to confirm your account.");
+    m.insert(
+        "auth.verify_click_link",
+        "Click the link to confirm your account.",
+    );
     m.insert("auth.resend_prompt", "Didn\u{2019}t get it? Check spam, or");
     m.insert("auth.resend_link", "resend the email");
     m.insert("auth.verified_continue", "I\u{2019}ve verified my email");
     m.insert("auth.add_passkey", "Add a Passkey?");
-    m.insert("auth.passkey_benefit_1", "Sign in instantly \u{2014} no passwords needed");
-    m.insert("auth.passkey_benefit_2", "Protected by your device biometrics");
+    m.insert(
+        "auth.passkey_benefit_1",
+        "Sign in instantly \u{2014} no passwords needed",
+    );
+    m.insert(
+        "auth.passkey_benefit_2",
+        "Protected by your device biometrics",
+    );
     m.insert("auth.passkey_benefit_3", "Synced across all your devices");
     m.insert("auth.add_passkey_now", "Add Passkey Now");
     m.insert("auth.skip_for_now", "Skip for now");
@@ -62,11 +77,17 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     m.insert("auth.reset_link_sent", "Reset link sent! Check your email.");
     m.insert("auth.verifying", "Verifying...");
     m.insert("auth.email_verified", "Email Verified");
-    m.insert("auth.email_verified_desc", "Your email has been verified successfully.");
+    m.insert(
+        "auth.email_verified_desc",
+        "Your email has been verified successfully.",
+    );
     m.insert("auth.verify_failed", "Verification Failed");
     m.insert("auth.go_to_login", "Go to Login");
     m.insert("auth.new_password", "New password");
-    m.insert("auth.password_reset_success", "Password has been reset successfully.");
+    m.insert(
+        "auth.password_reset_success",
+        "Password has been reset successfully.",
+    );
     m.insert("auth.missing_token", "Invalid or missing link.");
 
     // Search
@@ -81,7 +102,10 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     m.insert("search.edit", "Edit");
     m.insert("search.no_results", "No results found");
     m.insert("search.auto_pay", "Auto Pay");
-    m.insert("search.auto_pay_card_required", "A payment card is required for auto-pay tasks");
+    m.insert(
+        "search.auto_pay_card_required",
+        "A payment card is required for auto-pay tasks",
+    );
     m.insert("search.notify", "Notify");
     m.insert("search.auto_retry", "Auto Retry");
 
@@ -244,7 +268,10 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     m.insert("task.schedules_title", "Target Trains");
     m.insert("task.total", "total");
     m.insert("task.cancel_title", "Cancel Task?");
-    m.insert("task.cancel_description", "Are you sure you want to cancel this task?");
+    m.insert(
+        "task.cancel_description",
+        "Are you sure you want to cancel this task?",
+    );
     m.insert("task.cancel_confirm", "Yes, Cancel Task");
     m.insert("task.keep", "Keep Task");
     m.insert("task.pay_fare", "Pay Fare");

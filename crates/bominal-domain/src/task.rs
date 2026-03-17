@@ -331,10 +331,7 @@ mod tests {
     #[test]
     fn passenger_list_json_round_trip() {
         let value = PassengerList(vec![PassengerCount::new(PassengerKind::Adult, 1)]);
-        assert_eq!(
-            PassengerList::from_str(&value.to_string()).unwrap(),
-            value
-        );
+        assert_eq!(PassengerList::from_str(&value.to_string()).unwrap(), value);
     }
 
     #[test]

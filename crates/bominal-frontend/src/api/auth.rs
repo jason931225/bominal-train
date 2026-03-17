@@ -88,8 +88,7 @@ pub async fn resend_verification() -> Result<(), ServerFnError> {
     let pool = use_context::<bominal_service::DbPool>()
         .ok_or_else(|| ServerFnError::new("Server misconfigured"))?;
 
-    let session_id =
-        extract_session_id().ok_or_else(|| ServerFnError::new("Not authenticated"))?;
+    let session_id = extract_session_id().ok_or_else(|| ServerFnError::new("Not authenticated"))?;
 
     let user_info = bominal_service::auth::get_user_from_session(&pool, &session_id)
         .await

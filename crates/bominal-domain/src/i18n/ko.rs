@@ -23,7 +23,10 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     m.insert("auth.email_exists", "이미 등록된 이메일입니다");
     m.insert("auth.passkey_signin", "패스키로 로그인");
     m.insert("auth.welcome_back", "다시 오신 것을 환영합니다");
-    m.insert("auth.passkey_subtitle", "패스키 또는 비밀번호로 로그인하세요");
+    m.insert(
+        "auth.passkey_subtitle",
+        "패스키 또는 비밀번호로 로그인하세요",
+    );
     m.insert("auth.continue_email", "이메일로 계속");
     m.insert("auth.use_passkey", "패스키로 로그인");
     m.insert("auth.sign_in", "로그인");
@@ -47,7 +50,10 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     m.insert("auth.pw_strong", "강함");
     m.insert("auth.check_email", "이메일을 확인하세요");
     m.insert("auth.verify_sent_to", "인증 링크를 보냈습니다:");
-    m.insert("auth.verify_click_link", "링크를 클릭하여 계정을 확인하세요.");
+    m.insert(
+        "auth.verify_click_link",
+        "링크를 클릭하여 계정을 확인하세요.",
+    );
     m.insert("auth.resend_prompt", "받지 못하셨나요? 스팸함을 확인하거나");
     m.insert("auth.resend_link", "이메일 재전송");
     m.insert("auth.verified_continue", "이메일을 인증했습니다");
@@ -58,15 +64,27 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     m.insert("auth.add_passkey_now", "지금 패스키 추가");
     m.insert("auth.skip_for_now", "나중에 하기");
     m.insert("auth.get_started", "몇 초 만에 시작하세요");
-    m.insert("auth.enter_email_password", "이메일과 비밀번호를 입력하세요");
-    m.insert("auth.reset_link_sent", "재설정 링크를 보냈습니다! 이메일을 확인하세요.");
+    m.insert(
+        "auth.enter_email_password",
+        "이메일과 비밀번호를 입력하세요",
+    );
+    m.insert(
+        "auth.reset_link_sent",
+        "재설정 링크를 보냈습니다! 이메일을 확인하세요.",
+    );
     m.insert("auth.verifying", "인증 중...");
     m.insert("auth.email_verified", "이메일 인증 완료");
-    m.insert("auth.email_verified_desc", "이메일이 성공적으로 인증되었습니다.");
+    m.insert(
+        "auth.email_verified_desc",
+        "이메일이 성공적으로 인증되었습니다.",
+    );
     m.insert("auth.verify_failed", "인증 실패");
     m.insert("auth.go_to_login", "로그인으로 돌아가기");
     m.insert("auth.new_password", "새 비밀번호");
-    m.insert("auth.password_reset_success", "비밀번호가 재설정되었습니다.");
+    m.insert(
+        "auth.password_reset_success",
+        "비밀번호가 재설정되었습니다.",
+    );
     m.insert("auth.missing_token", "유효하지 않은 링크입니다.");
 
     // Search
@@ -81,7 +99,10 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     m.insert("search.edit", "수정");
     m.insert("search.no_results", "검색 결과가 없습니다");
     m.insert("search.auto_pay", "자동 결제");
-    m.insert("search.auto_pay_card_required", "자동 결제 작업에는 결제 카드가 필요합니다");
+    m.insert(
+        "search.auto_pay_card_required",
+        "자동 결제 작업에는 결제 카드가 필요합니다",
+    );
     m.insert("search.notify", "알림");
     m.insert("search.auto_retry", "자동 재시도");
 

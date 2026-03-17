@@ -54,7 +54,8 @@ pub async fn create(
     validate_create(input)?;
 
     let cred =
-        bominal_db::provider::find_by_user_and_provider(db, user_id, input.provider.as_str()).await?;
+        bominal_db::provider::find_by_user_and_provider(db, user_id, input.provider.as_str())
+            .await?;
 
     match cred {
         Some(c) if c.status == "valid" => {}
@@ -170,8 +171,7 @@ fn validate_create(input: &CreateTaskInput) -> Result<(), ServiceError> {
             "Travel date must be YYYYMMDD format",
         ));
     }
-    if input.departure_time.len() != 6
-        || !input.departure_time.chars().all(|c| c.is_ascii_digit())
+    if input.departure_time.len() != 6 || !input.departure_time.chars().all(|c| c.is_ascii_digit())
     {
         return Err(ServiceError::validation(
             "Departure time must be HHMMSS format",
@@ -198,9 +198,7 @@ fn validate_passengers(passengers: &PassengerList) -> Result<(), ServiceError> {
     }
 
     if passengers.total_count() > 9 {
-        return Err(ServiceError::validation(
-            "Passenger count cannot exceed 9",
-        ));
+        return Err(ServiceError::validation("Passenger count cannot exceed 9"));
     }
 
     for passenger in &passengers.0 {

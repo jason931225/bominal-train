@@ -216,7 +216,11 @@ fn AppearanceSection() -> impl IntoView {
         browser::set_theme(next);
     };
     let toggle_mode = move |_| {
-        let next = if mode.get() == "dark" { "light" } else { "dark" };
+        let next = if mode.get() == "dark" {
+            "light"
+        } else {
+            "dark"
+        };
         mode.set(next.to_string());
         browser::set_mode(next);
     };
@@ -361,10 +365,7 @@ fn LanguageSelector(
 // ── Stub sections ───────────────────────────────────────────────────
 
 #[component]
-fn StubSection(
-    icon_path: &'static str,
-    title_key: &'static str,
-) -> impl IntoView {
+fn StubSection(icon_path: &'static str, title_key: &'static str) -> impl IntoView {
     view! {
         <details
             class="rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] overflow-hidden"
@@ -634,7 +635,9 @@ fn CardAddForm(on_done: impl Fn() + Send + Sync + 'static) -> impl IntoView {
         {
             let _ = on_done;
             submit_pending.set(false);
-            error_msg.set(Some("Card submission is only available in the browser".to_string()));
+            error_msg.set(Some(
+                "Card submission is only available in the browser".to_string(),
+            ));
         }
     };
 

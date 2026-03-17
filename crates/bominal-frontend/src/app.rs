@@ -12,9 +12,7 @@ use leptos_router::{
 use crate::components::bottom_nav::BottomNav;
 use crate::i18n::t;
 use crate::pages::{
-    auth::{
-        AddPasskeyPage, AuthVerifyPage, ForgotPage, LoginPage, PasskeyPage, SignupPage,
-    },
+    auth::{AddPasskeyPage, AuthVerifyPage, ForgotPage, LoginPage, PasskeyPage, SignupPage},
     home_view::HomeView,
     reservations_view::ReservationsView,
     reset_password_page::ResetPasswordPage,

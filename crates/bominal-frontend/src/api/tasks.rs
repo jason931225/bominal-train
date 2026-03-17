@@ -34,8 +34,7 @@ pub async fn update_task(
     input: UpdateTaskInput,
 ) -> Result<TaskInfo, ServerFnError> {
     let (pool, user_id) = require_auth().await?;
-    let id = Uuid::parse_str(&task_id)
-        .map_err(|e| ServerFnError::new(format!("Bad ID: {e}")))?;
+    let id = Uuid::parse_str(&task_id).map_err(|e| ServerFnError::new(format!("Bad ID: {e}")))?;
 
     let result = bominal_service::tasks::update(&pool, id, user_id, &input)
         .await

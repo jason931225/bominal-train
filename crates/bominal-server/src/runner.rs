@@ -95,13 +95,19 @@ async fn poll_and_dispatch(
             .await;
 
             let result = match task.provider {
-                TaskProvider::Srt => run_srt_task(&db, &task, &bus, &email, &key, &ev, &base_url).await,
-                TaskProvider::Ktx => run_ktx_task(&db, &task, &bus, &email, &key, &ev, &base_url).await,
+                TaskProvider::Srt => {
+                    run_srt_task(&db, &task, &bus, &email, &key, &ev, &base_url).await
+                }
+                TaskProvider::Ktx => {
+                    run_ktx_task(&db, &task, &bus, &email, &key, &ev, &base_url).await
+                }
             };
 
             if let Err(e) = result {
                 error!(task_id = %task.id, error = %e, "Task failed");
-                if let Err(db_err) = bominal_db::task::update_status(&db, task.id, TaskStatus::Failed).await {
+                if let Err(db_err) =
+                    bominal_db::task::update_status(&db, task.id, TaskStatus::Failed).await
+                {
                     error!(task_id = %task.id, error = %db_err, "Failed to mark task as failed");
                 }
                 bus.publish(
@@ -312,7 +318,8 @@ async fn run_srt_task(
                             }
                             Err(ProviderError::DuplicateReservation) => {
                                 warn!(task_id = %task.id, "Duplicate reservation");
-                                bominal_db::task::update_status(db, task.id, TaskStatus::Failed).await?;
+                                bominal_db::task::update_status(db, task.id, TaskStatus::Failed)
+                                    .await?;
                                 event_bus
                                     .publish(
                                         task.user_id,
@@ -568,7 +575,8 @@ async fn run_ktx_task(
                             }
                             Err(ProviderError::DuplicateReservation) => {
                                 warn!(task_id = %task.id, "Duplicate reservation");
-                                bominal_db::task::update_status(db, task.id, TaskStatus::Failed).await?;
+                                bominal_db::task::update_status(db, task.id, TaskStatus::Failed)
+                                    .await?;
                                 event_bus
                                     .publish(
                                         task.user_id,

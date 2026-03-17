@@ -48,8 +48,8 @@ pub async fn register(
         return Err(ServiceError::validation("Email already registered"));
     }
 
-    let pw_hash =
-        bominal_domain::crypto::password::hash_password(password).map_err(ServiceError::internal)?;
+    let pw_hash = bominal_domain::crypto::password::hash_password(password)
+        .map_err(ServiceError::internal)?;
 
     let user = bominal_db::user::create_user(db, email, display_name, &pw_hash).await?;
 
@@ -57,10 +57,7 @@ pub async fn register(
 }
 
 /// Create a session and return the session ID.
-pub async fn create_session(
-    db: &DbPool,
-    user_id: Uuid,
-) -> Result<String, ServiceError> {
+pub async fn create_session(db: &DbPool, user_id: Uuid) -> Result<String, ServiceError> {
     let session_id = Uuid::new_v4().to_string();
     let expires_at = chrono::Utc::now() + chrono::Duration::hours(SESSION_TTL_HOURS);
 
@@ -113,8 +110,7 @@ pub async fn send_verification_email(
     }
 
     let verify_url = format!("{}/verify-email?token={}", ctx.app_base_url, token);
-    let (subject, html) =
-        bominal_email::templates::verify::render(display_name, &verify_url, 30);
+    let (subject, html) = bominal_email::templates::verify::render(display_name, &verify_url, 30);
 
     ctx.email.send_best_effort(email, &subject, &html).await;
 }
@@ -253,6 +249,9 @@ mod tests {
 
     #[test]
     fn extract_session_empty_value() {
-        assert_eq!(extract_session_id_from_cookie("bominal_session=; x=1"), None);
+        assert_eq!(
+            extract_session_id_from_cookie("bominal_session=; x=1"),
+            None
+        );
     }
 }

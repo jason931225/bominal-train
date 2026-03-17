@@ -62,10 +62,13 @@ impl ThemePrefs {
         let mut prefs = Self::default();
 
         if let Some(cookie_header) = cookie_header {
-            if let Some(theme) = cookie_value(cookie_header, THEME_COOKIE).and_then(ThemeName::parse) {
+            if let Some(theme) =
+                cookie_value(cookie_header, THEME_COOKIE).and_then(ThemeName::parse)
+            {
                 prefs.theme = theme;
             }
-            if let Some(mode) = cookie_value(cookie_header, MODE_COOKIE).and_then(ThemeMode::parse) {
+            if let Some(mode) = cookie_value(cookie_header, MODE_COOKIE).and_then(ThemeMode::parse)
+            {
                 prefs.mode = mode;
             }
         }
@@ -96,9 +99,8 @@ mod tests {
 
     #[test]
     fn falls_back_on_invalid_cookie_values() {
-        let prefs = ThemePrefs::from_cookie_header(Some(
-            "bominal-theme=invalid; bominal-mode=unknown",
-        ));
+        let prefs =
+            ThemePrefs::from_cookie_header(Some("bominal-theme=invalid; bominal-mode=unknown"));
         assert_eq!(prefs, ThemePrefs::default());
     }
 }

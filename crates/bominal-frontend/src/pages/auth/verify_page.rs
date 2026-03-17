@@ -5,7 +5,7 @@
 
 use leptos::prelude::*;
 
-use crate::api::auth::{get_current_user, ResendVerification};
+use crate::api::auth::{ResendVerification, get_current_user};
 use crate::i18n::t;
 
 use super::{auth_shell, icon_mail_large};

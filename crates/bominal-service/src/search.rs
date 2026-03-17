@@ -34,7 +34,11 @@ pub fn list_stations(provider: &str) -> Result<Vec<StationInfo>, ServiceError> {
     let stations = match provider {
         "SRT" => bominal_domain::i18n::stations::SRT_STATIONS,
         "KTX" => bominal_domain::i18n::stations::KTX_STATIONS,
-        _ => return Err(ServiceError::validation(format!("Invalid provider: {provider}"))),
+        _ => {
+            return Err(ServiceError::validation(format!(
+                "Invalid provider: {provider}"
+            )));
+        }
     };
 
     Ok(stations
@@ -59,7 +63,9 @@ pub async fn search_trains(
     match provider {
         "SRT" => search_srt(departure, arrival, date, time, available_only).await,
         "KTX" => search_ktx(departure, arrival, date, time, available_only).await,
-        _ => Err(ServiceError::validation(format!("Invalid provider: {provider}"))),
+        _ => Err(ServiceError::validation(format!(
+            "Invalid provider: {provider}"
+        ))),
     }
 }
 

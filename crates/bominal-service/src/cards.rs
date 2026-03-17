@@ -4,8 +4,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::error::ServiceError;
 use crate::DbPool;
+use crate::error::ServiceError;
 
 /// Card info (masked — never exposes raw encrypted fields).
 #[derive(Clone, Debug, Serialize, Deserialize)]

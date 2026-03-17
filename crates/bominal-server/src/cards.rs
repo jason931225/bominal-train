@@ -109,9 +109,18 @@ mod tests {
 
     #[test]
     fn card_type_names() {
-        assert_eq!(bominal_service::cards::card_type_name("J"), "\u{c2e0}\u{c6a9}\u{ce74}\u{b4dc}");
-        assert_eq!(bominal_service::cards::card_type_name("S"), "\u{ccb4}\u{d06c}\u{ce74}\u{b4dc}");
-        assert_eq!(bominal_service::cards::card_type_name("X"), "\u{ae30}\u{d0c0}");
+        assert_eq!(
+            bominal_service::cards::card_type_name("J"),
+            "\u{c2e0}\u{c6a9}\u{ce74}\u{b4dc}"
+        );
+        assert_eq!(
+            bominal_service::cards::card_type_name("S"),
+            "\u{ccb4}\u{d06c}\u{ce74}\u{b4dc}"
+        );
+        assert_eq!(
+            bominal_service::cards::card_type_name("X"),
+            "\u{ae30}\u{d0c0}"
+        );
     }
 
     #[test]

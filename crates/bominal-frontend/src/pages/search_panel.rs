@@ -172,7 +172,9 @@ pub fn SearchPanel() -> impl IntoView {
         let prov = provider.get_untracked();
         let dep = departure.get_untracked();
         let arr = arrival.get_untracked();
-        let d = selected_date.get_untracked().map(|d| d.format("%Y%m%d").to_string());
+        let d = selected_date
+            .get_untracked()
+            .map(|d| d.format("%Y%m%d").to_string());
         let t = {
             let slot = time_slot.get_untracked();
             if selected_date.get_untracked().is_some() {
@@ -210,7 +212,8 @@ pub fn SearchPanel() -> impl IntoView {
         let auto_retry_val = auto_retry.get_untracked();
 
         let target_trains = TargetTrainList(
-            items.iter()
+            items
+                .iter()
                 .map(|item| {
                     let parts: Vec<&str> = item.id.splitn(2, ':').collect();
                     TargetTrain {

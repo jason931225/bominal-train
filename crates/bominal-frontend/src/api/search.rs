@@ -7,8 +7,7 @@ pub use bominal_service::search::{StationInfo, TrainInfo};
 /// Get station list for a provider.
 #[server(prefix = "/sfn")]
 pub async fn list_stations(provider: String) -> Result<Vec<StationInfo>, ServerFnError> {
-    bominal_service::search::list_stations(&provider)
-        .map_err(|e| ServerFnError::new(e.to_string()))
+    bominal_service::search::list_stations(&provider).map_err(|e| ServerFnError::new(e.to_string()))
 }
 
 /// Search for trains.

@@ -52,7 +52,10 @@ pub fn TaskCard(task: TaskInfo, is_active: bool) -> impl IntoView {
     let train_count = trains.0.len();
     let pax = task.passengers.total_count();
     let status = task.status;
-    let is_actionable = matches!(status, TaskStatus::Queued | TaskStatus::Running | TaskStatus::Idle);
+    let is_actionable = matches!(
+        status,
+        TaskStatus::Queued | TaskStatus::Running | TaskStatus::Idle
+    );
     let is_awaiting_payment = status == TaskStatus::AwaitingPayment;
     let is_confirmed = status == TaskStatus::Confirmed;
     let show_actions = is_actionable || is_awaiting_payment;

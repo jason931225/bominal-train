@@ -16,23 +16,14 @@ pub async fn register(
     State(state): State<SharedState>,
     Json(req): Json<RegisterRequest>,
 ) -> Result<(HeaderMap, Json<AuthResponse>), AppError> {
-    let user = bominal_service::auth::register(
-        &state.db,
-        &req.email,
-        &req.password,
-        &req.display_name,
-    )
-    .await?;
+    let user =
+        bominal_service::auth::register(&state.db, &req.email, &req.password, &req.display_name)
+            .await?;
 
     // Send verification email (best-effort, don't block registration)
     let ctx = service_context(&state);
-    bominal_service::auth::send_verification_email(
-        &ctx,
-        user.id,
-        &user.email,
-        &user.display_name,
-    )
-    .await;
+    bominal_service::auth::send_verification_email(&ctx, user.id, &user.email, &user.display_name)
+        .await;
 
     // Create session
     let session_id = bominal_service::auth::create_session(&state.db, user.id).await?;
@@ -161,13 +152,8 @@ pub async fn resend_verification(
     }
 
     let ctx = service_context(&state);
-    bominal_service::auth::send_verification_email(
-        &ctx,
-        user.id,
-        &user.email,
-        &user.display_name,
-    )
-    .await;
+    bominal_service::auth::send_verification_email(&ctx, user.id, &user.email, &user.display_name)
+        .await;
 
     Ok(Json(serde_json::json!({ "sent": true })))
 }

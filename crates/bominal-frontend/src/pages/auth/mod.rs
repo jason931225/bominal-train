@@ -138,10 +138,18 @@ pub(super) fn auth_shell(content: AnyView) -> impl IntoView {
 
 pub(super) fn password_strength(pw: &str) -> usize {
     let mut score = 0;
-    if pw.len() >= 8 { score += 1; }
-    if pw.chars().any(|c| c.is_uppercase()) { score += 1; }
-    if pw.chars().any(|c| c.is_ascii_digit()) { score += 1; }
-    if pw.chars().any(|c| !c.is_alphanumeric()) { score += 1; }
+    if pw.len() >= 8 {
+        score += 1;
+    }
+    if pw.chars().any(|c| c.is_uppercase()) {
+        score += 1;
+    }
+    if pw.chars().any(|c| c.is_ascii_digit()) {
+        score += 1;
+    }
+    if pw.chars().any(|c| !c.is_alphanumeric()) {
+        score += 1;
+    }
     score
 }
 

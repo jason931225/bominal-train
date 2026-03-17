@@ -47,12 +47,15 @@ pub async fn list(
     provider: &str,
     encryption_key: &EncryptionKey,
 ) -> Result<Vec<ReservationInfo>, ServiceError> {
-    let (login_id, password) = require_decrypted_credentials(db, user_id, provider, encryption_key).await?;
+    let (login_id, password) =
+        require_decrypted_credentials(db, user_id, provider, encryption_key).await?;
 
     match provider {
         "SRT" => list_srt(&login_id, &password).await,
         "KTX" => list_ktx(&login_id, &password).await,
-        _ => Err(ServiceError::validation(format!("Invalid provider: {provider}"))),
+        _ => Err(ServiceError::validation(format!(
+            "Invalid provider: {provider}"
+        ))),
     }
 }
 
@@ -64,12 +67,15 @@ pub async fn ticket_detail(
     pnr: &str,
     encryption_key: &EncryptionKey,
 ) -> Result<Vec<TicketInfo>, ServiceError> {
-    let (login_id, password) = require_decrypted_credentials(db, user_id, provider, encryption_key).await?;
+    let (login_id, password) =
+        require_decrypted_credentials(db, user_id, provider, encryption_key).await?;
 
     match provider {
         "SRT" => srt_ticket_detail(&login_id, &password, pnr).await,
         "KTX" => ktx_ticket_detail(&login_id, &password, pnr).await,
-        _ => Err(ServiceError::validation(format!("Invalid provider: {provider}"))),
+        _ => Err(ServiceError::validation(format!(
+            "Invalid provider: {provider}"
+        ))),
     }
 }
 
@@ -81,12 +87,15 @@ pub async fn cancel(
     pnr: &str,
     encryption_key: &EncryptionKey,
 ) -> Result<(), ServiceError> {
-    let (login_id, password) = require_decrypted_credentials(db, user_id, provider, encryption_key).await?;
+    let (login_id, password) =
+        require_decrypted_credentials(db, user_id, provider, encryption_key).await?;
 
     match provider {
         "SRT" => cancel_srt(&login_id, &password, pnr).await,
         "KTX" => cancel_ktx(&login_id, &password, pnr).await,
-        _ => Err(ServiceError::validation(format!("Invalid provider: {provider}"))),
+        _ => Err(ServiceError::validation(format!(
+            "Invalid provider: {provider}"
+        ))),
     }
 }
 
@@ -101,7 +110,8 @@ pub async fn pay_with_stored_card(
     encryption_key: &EncryptionKey,
     relay_domain: &str,
 ) -> Result<(), ServiceError> {
-    let (login_id, password) = require_decrypted_credentials(db, user_id, provider, encryption_key).await?;
+    let (login_id, password) =
+        require_decrypted_credentials(db, user_id, provider, encryption_key).await?;
 
     let card = bominal_db::card::find_by_id(db, card_id, user_id)
         .await?
@@ -114,23 +124,35 @@ pub async fn pay_with_stored_card(
                 .as_deref()
                 .unwrap_or(&card.encrypted_expiry);
             pay_srt(
-                &login_id, &password, pnr,
-                &card.encrypted_number, &card.encrypted_password,
-                &card.encrypted_birthday, srt_expiry,
-                &card.card_type, relay_domain,
+                &login_id,
+                &password,
+                pnr,
+                &card.encrypted_number,
+                &card.encrypted_password,
+                &card.encrypted_birthday,
+                srt_expiry,
+                &card.card_type,
+                relay_domain,
             )
             .await
         }
         "KTX" => {
             pay_ktx(
-                &login_id, &password, pnr,
-                &card.encrypted_number, &card.encrypted_password,
-                &card.encrypted_birthday, &card.encrypted_expiry,
-                &card.card_type, relay_domain,
+                &login_id,
+                &password,
+                pnr,
+                &card.encrypted_number,
+                &card.encrypted_password,
+                &card.encrypted_birthday,
+                &card.encrypted_expiry,
+                &card.card_type,
+                relay_domain,
             )
             .await
         }
-        _ => Err(ServiceError::validation(format!("Invalid provider: {provider}"))),
+        _ => Err(ServiceError::validation(format!(
+            "Invalid provider: {provider}"
+        ))),
     }
 }
 
@@ -150,7 +172,8 @@ pub async fn pay_with_raw_card(
     encryption_key: &EncryptionKey,
     relay_domain: &str,
 ) -> Result<(), ServiceError> {
-    let (login_id, password) = require_decrypted_credentials(db, user_id, provider, encryption_key).await?;
+    let (login_id, password) =
+        require_decrypted_credentials(db, user_id, provider, encryption_key).await?;
 
     match provider {
         "SRT" => {
@@ -164,7 +187,15 @@ pub async fn pay_with_raw_card(
                 .ok_or_else(|| ServiceError::not_found(format!("Reservation {pnr} not found")))?;
 
             client
-                .pay_with_card(reservation, card_number, card_password, validation_number, expire_date, installment, card_type)
+                .pay_with_card(
+                    reservation,
+                    card_number,
+                    card_password,
+                    validation_number,
+                    expire_date,
+                    installment,
+                    card_type,
+                )
                 .await?;
         }
         "KTX" => {
@@ -178,10 +209,22 @@ pub async fn pay_with_raw_card(
                 .ok_or_else(|| ServiceError::not_found(format!("Reservation {pnr} not found")))?;
 
             client
-                .pay_with_card(reservation, card_number, card_password, validation_number, expire_date, &installment.to_string(), card_type)
+                .pay_with_card(
+                    reservation,
+                    card_number,
+                    card_password,
+                    validation_number,
+                    expire_date,
+                    &installment.to_string(),
+                    card_type,
+                )
                 .await?;
         }
-        _ => return Err(ServiceError::validation(format!("Invalid provider: {provider}"))),
+        _ => {
+            return Err(ServiceError::validation(format!(
+                "Invalid provider: {provider}"
+            )));
+        }
     }
 
     Ok(())
@@ -195,14 +238,17 @@ pub async fn refund(
     pnr: &str,
     encryption_key: &EncryptionKey,
 ) -> Result<(), ServiceError> {
-    let (login_id, password) = require_decrypted_credentials(db, user_id, provider, encryption_key).await?;
+    let (login_id, password) =
+        require_decrypted_credentials(db, user_id, provider, encryption_key).await?;
 
     match provider {
         "SRT" => Err(ServiceError::validation(
             "Refund is not yet supported for SRT reservations",
         )),
         "KTX" => refund_ktx(&login_id, &password, pnr).await,
-        _ => Err(ServiceError::validation(format!("Invalid provider: {provider}"))),
+        _ => Err(ServiceError::validation(format!(
+            "Invalid provider: {provider}"
+        ))),
     }
 }
 
@@ -216,7 +262,11 @@ async fn require_decrypted_credentials(
 ) -> Result<(String, String), ServiceError> {
     let cred = bominal_db::provider::find_by_user_and_provider(db, user_id, provider)
         .await?
-        .ok_or_else(|| ServiceError::validation(format!("{provider} credentials required. Please add in settings.")))?;
+        .ok_or_else(|| {
+            ServiceError::validation(format!(
+                "{provider} credentials required. Please add in settings."
+            ))
+        })?;
 
     if cred.status != "valid" {
         return Err(ServiceError::validation(format!(
@@ -224,8 +274,9 @@ async fn require_decrypted_credentials(
         )));
     }
 
-    let password = bominal_domain::crypto::encryption::decrypt(encryption_key, &cred.encrypted_password)
-        .map_err(|e| ServiceError::Crypto(e.to_string()))?;
+    let password =
+        bominal_domain::crypto::encryption::decrypt(encryption_key, &cred.encrypted_password)
+            .map_err(|e| ServiceError::Crypto(e.to_string()))?;
 
     Ok((cred.login_id, password))
 }
@@ -313,7 +364,15 @@ async fn pay_srt(
         .ok_or_else(|| ServiceError::not_found(format!("Reservation {pnr} not found")))?;
 
     client
-        .pay_with_card(reservation, card_number, card_password, birthday, expiry, 0, card_type)
+        .pay_with_card(
+            reservation,
+            card_number,
+            card_password,
+            birthday,
+            expiry,
+            0,
+            card_type,
+        )
         .await?;
 
     Ok(())
@@ -412,7 +471,15 @@ async fn pay_ktx(
         .ok_or_else(|| ServiceError::not_found(format!("Reservation {pnr} not found")))?;
 
     client
-        .pay_with_card(reservation, card_number, card_password, birthday, expiry, "0", card_type)
+        .pay_with_card(
+            reservation,
+            card_number,
+            card_password,
+            birthday,
+            expiry,
+            "0",
+            card_type,
+        )
         .await?;
 
     Ok(())

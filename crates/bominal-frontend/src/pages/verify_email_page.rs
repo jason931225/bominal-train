@@ -15,16 +15,13 @@ pub fn VerifyEmailPage() -> impl IntoView {
     let query = use_query_map();
     let token = move || query.get().get("token").unwrap_or_default().to_string();
 
-    let result = Resource::new(
-        token,
-        |tok| async move {
-            if tok.is_empty() {
-                Err("missing_token".to_string())
-            } else {
-                verify_email(tok).await.map_err(|e| e.to_string())
-            }
-        },
-    );
+    let result = Resource::new(token, |tok| async move {
+        if tok.is_empty() {
+            Err("missing_token".to_string())
+        } else {
+            verify_email(tok).await.map_err(|e| e.to_string())
+        }
+    });
 
     view! {
         <div class="flex items-center justify-center min-h-screen px-4">
