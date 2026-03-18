@@ -78,7 +78,7 @@ async fn search_srt(
     time: Option<&str>,
     available_only: bool,
 ) -> Result<Vec<TrainInfo>, ServiceError> {
-    let client = bominal_provider::srt::SrtClient::new();
+    let mut client = bominal_provider::srt::SrtClient::new();
 
     let trains = client
         .search_train(departure, arrival, date, time, available_only)

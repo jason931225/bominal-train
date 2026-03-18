@@ -131,17 +131,19 @@ pub fn passenger_form_fields(
             group.passenger_type.type_code().to_string(),
         ));
         fields.push((format!("psgInfoPerPrnb{i}"), group.count.to_string()));
-        fields.push((format!("locSeatAttCd{i}"), window_seat.code().to_string()));
-        fields.push((format!("rqSeatAttCd{i}"), "015".to_string()));
-        fields.push((format!("dirSeatAttCd{i}"), "009".to_string()));
-        fields.push((format!("smkSeatAttCd{i}"), "000".to_string()));
-        fields.push((format!("etcSeatAttCd{i}"), "000".to_string()));
         // seat type: "1" = 일반실, "2" = 특실
         fields.push((
             format!("psrmClCd{i}"),
             if special_seat { "2" } else { "1" }.to_string(),
         ));
     }
+
+    // Seat attributes are only set for group 1 (matching reference behavior)
+    fields.push(("locSeatAttCd1".to_string(), window_seat.code().to_string()));
+    fields.push(("rqSeatAttCd1".to_string(), "015".to_string()));
+    fields.push(("dirSeatAttCd1".to_string(), "009".to_string()));
+    fields.push(("smkSeatAttCd1".to_string(), "000".to_string()));
+    fields.push(("etcSeatAttCd1".to_string(), "000".to_string()));
 
     fields
 }
@@ -225,5 +227,31 @@ mod tests {
         assert_eq!(map.get("psgGridcnt").unwrap(), "2");
         assert_eq!(map.get("psgTpCd1").unwrap(), "1"); // adult
         assert_eq!(map.get("psgTpCd2").unwrap(), "4"); // senior
+    }
+
+    #[test]
+    fn seat_attrs_only_on_group_1() {
+        // Divergence #9 fix: seat attributes should only be set for group 1
+        let groups = vec![
+            PassengerGroup::adults(2),
+            PassengerGroup::new(PassengerType::Child, 1),
+        ];
+        let fields = passenger_form_fields(&groups, false, WindowSeat::Window);
+
+        let map: HashMap<String, String> = fields.into_iter().collect();
+
+        // Group 1 gets seat attributes
+        assert_eq!(map.get("locSeatAttCd1").unwrap(), "012"); // window
+        assert_eq!(map.get("rqSeatAttCd1").unwrap(), "015");
+        assert_eq!(map.get("dirSeatAttCd1").unwrap(), "009");
+        assert_eq!(map.get("smkSeatAttCd1").unwrap(), "000");
+        assert_eq!(map.get("etcSeatAttCd1").unwrap(), "000");
+
+        // Group 2 should NOT have seat attributes
+        assert!(!map.contains_key("locSeatAttCd2"));
+        assert!(!map.contains_key("rqSeatAttCd2"));
+        assert!(!map.contains_key("dirSeatAttCd2"));
+        assert!(!map.contains_key("smkSeatAttCd2"));
+        assert!(!map.contains_key("etcSeatAttCd2"));
     }
 }

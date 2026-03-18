@@ -5,9 +5,13 @@
 //! - Cancel, pay, refund are POST with form body
 //! - DynaPath token required for protected endpoints
 
+use rand::Rng;
 use tracing::{debug, instrument};
+use wreq_util::Emulation;
 
 use crate::types::{AuthType, ProviderError, SeatPreference, classify_auth};
+
+use crate::srt::passenger::{PassengerGroup, PassengerType, combine_passengers, total_count};
 
 use super::crypto::{encrypt_password, generate_sid};
 use super::dynapath::{DynaPathEngine, requires_token};
@@ -57,7 +61,7 @@ impl Endpoints {
 
 /// KTX/Korail provider client with persistent session.
 pub struct KtxClient {
-    client: reqwest::Client,
+    client: wreq::Client,
     dynapath: DynaPathEngine,
     user_info: Option<KtxUserInfo>,
     is_logged_in: bool,
@@ -77,19 +81,20 @@ pub struct KtxUserInfo {
 impl KtxClient {
     /// Create a new KTX client with fresh session.
     pub fn new() -> Self {
-        let client = reqwest::Client::builder()
+        let client = wreq::Client::builder()
+            .emulation(Emulation::Chrome136)
             .cookie_store(true)
             .user_agent(USER_AGENT)
             .default_headers({
-                let mut h = reqwest::header::HeaderMap::new();
+                let mut h = wreq::header::HeaderMap::new();
                 h.insert(
-                    reqwest::header::CONTENT_TYPE,
+                    wreq::header::CONTENT_TYPE,
                     "application/x-www-form-urlencoded; charset=UTF-8"
                         .parse()
                         .unwrap(),
                 );
                 h.insert(
-                    reqwest::header::HOST,
+                    wreq::header::HOST,
                     "smart.letskorail.com".parse().unwrap(),
                 );
                 h
@@ -118,22 +123,23 @@ impl KtxClient {
     /// preserved because the target URL stays `smart.letskorail.com`.
     pub fn with_relay(relay_domain: &str) -> Self {
         let proxy =
-            reqwest::Proxy::all(format!("https://{relay_domain}")).expect("Invalid relay domain");
+            wreq::Proxy::all(format!("https://{relay_domain}")).expect("Invalid relay domain");
 
-        let client = reqwest::Client::builder()
+        let client = wreq::Client::builder()
+            .emulation(Emulation::Chrome136)
             .cookie_store(true)
             .user_agent(USER_AGENT)
             .proxy(proxy)
             .default_headers({
-                let mut h = reqwest::header::HeaderMap::new();
+                let mut h = wreq::header::HeaderMap::new();
                 h.insert(
-                    reqwest::header::CONTENT_TYPE,
+                    wreq::header::CONTENT_TYPE,
                     "application/x-www-form-urlencoded; charset=UTF-8"
                         .parse()
                         .unwrap(),
                 );
                 h.insert(
-                    reqwest::header::HOST,
+                    wreq::header::HOST,
                     "smart.letskorail.com".parse().unwrap(),
                 );
                 h
@@ -193,13 +199,27 @@ impl KtxClient {
     }
 
     /// Build a request with optional DynaPath token header.
-    fn request_with_dynapath(&self, method: reqwest::Method, url: &str) -> reqwest::RequestBuilder {
+    /// Returns `(request_builder, sid)` — SID shares timestamp with token.
+    fn request_with_dynapath(
+        &self,
+        method: wreq::Method,
+        url: &str,
+    ) -> (wreq::RequestBuilder, String) {
         let mut builder = self.client.request(method, url);
         if requires_token(url) {
-            let token = self.dynapath.generate_token_auto(DEVICE_ID);
+            let ts = Self::now_ms();
+            let mut rng = rand::rng();
+            let chars: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+            let rand_str: String = (0..4)
+                .map(|_| chars[rng.random_range(0..chars.len())] as char)
+                .collect();
+            let token = self.dynapath.generate_token(DEVICE_ID, ts, &rand_str);
+            let sid = generate_sid(DEVICE, ts);
             builder = builder.header("x-dynapath-m-token", token);
+            (builder, sid)
+        } else {
+            (builder, String::new())
         }
-        builder
     }
 
     // ── Encryption Key ──────────────────────────────────────────────
@@ -265,11 +285,9 @@ impl KtxClient {
             ("Sid", &sid),
         ];
 
-        let resp = self
-            .request_with_dynapath(reqwest::Method::POST, &Endpoints::url(Endpoints::LOGIN))
-            .form(&form)
-            .send()
-            .await?;
+        let (builder, _) =
+            self.request_with_dynapath(wreq::Method::POST, &Endpoints::url(Endpoints::LOGIN));
+        let resp = builder.form(&form).send().await?;
 
         let body = resp.text().await?;
         debug!(body_len = body.len(), "KTX login response received");
@@ -324,7 +342,7 @@ impl KtxClient {
 
     // ── Search ───────────────────────────────────────────────────────
 
-    /// Search for KTX trains.
+    /// Search for KTX trains (1 adult default).
     ///
     /// - `dep`/`arr`: Korean station names (e.g., "서울", "부산")
     /// - `date`: YYYYMMDD format
@@ -337,6 +355,21 @@ impl KtxClient {
         arr: &str,
         date: Option<&str>,
         time: Option<&str>,
+        available_only: bool,
+    ) -> Result<Vec<KtxTrain>, ProviderError> {
+        self.search_train_with_passengers(dep, arr, date, time, &[], available_only)
+            .await
+    }
+
+    /// Search for KTX trains with explicit passenger groups.
+    #[instrument(skip(self, passengers))]
+    pub async fn search_train_with_passengers(
+        &self,
+        dep: &str,
+        arr: &str,
+        date: Option<&str>,
+        time: Option<&str>,
+        passengers: &[PassengerGroup],
         available_only: bool,
     ) -> Result<Vec<KtxTrain>, ProviderError> {
         let dep_code = station_code(dep).ok_or_else(|| ProviderError::UnexpectedResponse {
@@ -358,10 +391,16 @@ impl KtxClient {
             .map(|u| u.membership_number.as_str())
             .unwrap_or("");
 
+        // Tally passenger counts per type flag
+        let psg_counts = ktx_passenger_flag_counts(passengers);
+
+        let (builder, sid) =
+            self.request_with_dynapath(wreq::Method::POST, &Endpoints::url(Endpoints::SEARCH));
+
         let params: Vec<(&str, &str)> = vec![
             ("Device", DEVICE),
             ("Version", VERSION),
-            ("Sid", ""),
+            ("Sid", &sid),
             ("txtMenuId", "11"),
             ("radJobId", "1"),
             ("selGoTrain", "109"),
@@ -370,11 +409,11 @@ impl KtxClient {
             ("txtGoEnd", arr_code),
             ("txtGoAbrdDt", date),
             ("txtGoHour", time),
-            ("txtPsgFlg_1", "1"),
-            ("txtPsgFlg_2", "0"),
-            ("txtPsgFlg_3", "0"),
-            ("txtPsgFlg_4", "0"),
-            ("txtPsgFlg_5", "0"),
+            ("txtPsgFlg_1", &psg_counts.adults),
+            ("txtPsgFlg_2", &psg_counts.children),
+            ("txtPsgFlg_3", &psg_counts.seniors),
+            ("txtPsgFlg_4", &psg_counts.severe),
+            ("txtPsgFlg_5", &psg_counts.mild),
             ("txtSeatAttCd_2", "000"),
             ("txtSeatAttCd_3", "000"),
             ("txtSeatAttCd_4", "015"),
@@ -385,11 +424,7 @@ impl KtxClient {
             ("mbCrdNo", membership_number),
         ];
 
-        let resp = self
-            .request_with_dynapath(reqwest::Method::POST, &Endpoints::url(Endpoints::SEARCH))
-            .form(&params)
-            .send()
-            .await?;
+        let resp = builder.form(&params).send().await?;
 
         let body = resp.text().await?;
         let parsed = KtxResponse::parse(&body)?;
@@ -419,13 +454,26 @@ impl KtxClient {
 
     // ── Reserve ──────────────────────────────────────────────────────
 
-    /// Reserve a KTX train seat.
+    /// Reserve a KTX train seat (legacy: count-only, all adults).
     #[instrument(skip(self, train))]
     pub async fn reserve(
         &self,
         train: &KtxTrain,
         seat_pref: SeatPreference,
         passengers: u8,
+    ) -> Result<KtxReservation, ProviderError> {
+        let groups = vec![PassengerGroup::adults(passengers.max(1))];
+        self.reserve_with_passengers(train, &groups, seat_pref)
+            .await
+    }
+
+    /// Reserve a KTX train seat with explicit passenger groups.
+    #[instrument(skip(self, train, passengers))]
+    pub async fn reserve_with_passengers(
+        &self,
+        train: &KtxTrain,
+        passengers: &[PassengerGroup],
+        seat_pref: SeatPreference,
     ) -> Result<KtxReservation, ProviderError> {
         self.require_login()?;
 
@@ -436,50 +484,65 @@ impl KtxClient {
             SeatPreference::SpecialFirst => train.special_seat_available(),
         };
         let seat_class = if is_special { "2" } else { "1" };
-        let psg_count = passengers.max(1).to_string();
 
-        let params: Vec<(&str, &str)> = vec![
-            ("Device", DEVICE),
-            ("Version", VERSION),
-            ("Key", KEY),
-            ("txtMenuId", "11"),
-            ("txtJobId", "1101"),
-            ("txtGdNo", ""),
-            ("hidFreeFlg", "N"),
-            ("txtTotPsgCnt", &psg_count),
-            ("txtSeatAttCd1", "000"),
-            ("txtSeatAttCd2", "000"),
-            ("txtSeatAttCd3", "000"),
-            ("txtSeatAttCd4", "015"),
-            ("txtSeatAttCd5", "000"),
-            ("txtStndFlg", "N"),
-            ("txtSrcarCnt", "0"),
-            ("txtJrnyCnt", "1"),
-            ("txtJrnySqno1", "001"),
-            ("txtJrnyTpCd1", "11"),
-            ("txtDptDt1", &train.dep_date),
-            ("txtDptRsStnCd1", &train.dep_code),
-            ("txtDptTm1", &train.dep_time),
-            ("txtArvRsStnCd1", &train.arr_code),
-            ("txtTrnNo1", &train.train_no),
-            ("txtRunDt1", &train.run_date),
-            ("txtTrnClsfCd1", &train.train_type),
-            ("txtTrnGpCd1", &train.train_group),
-            ("txtPsrmClCd1", seat_class),
-            ("txtChgFlg1", ""),
-            ("txtPsgTpCd1", "1"),
-            ("txtDiscKndCd1", "000"),
-            ("txtCompaCnt1", &psg_count),
-            ("txtCardCode_1", ""),
-            ("txtCardNo_1", ""),
-            ("txtCardPw_1", ""),
+        let default_passengers = [PassengerGroup::adults(1)];
+        let passengers = if passengers.is_empty() {
+            &default_passengers
+        } else {
+            passengers
+        };
+        let combined = combine_passengers(passengers);
+        let total = total_count(&combined);
+        let total_str = total.to_string();
+
+        let mut params: Vec<(String, String)> = vec![
+            ("Device".into(), DEVICE.into()),
+            ("Version".into(), VERSION.into()),
+            ("Key".into(), KEY.into()),
+            ("txtMenuId".into(), "11".into()),
+            ("txtJobId".into(), "1101".into()),
+            ("txtGdNo".into(), String::new()),
+            ("hidFreeFlg".into(), "N".into()),
+            ("txtTotPsgCnt".into(), total_str),
+            ("txtSeatAttCd1".into(), "000".into()),
+            ("txtSeatAttCd2".into(), "000".into()),
+            ("txtSeatAttCd3".into(), "000".into()),
+            ("txtSeatAttCd4".into(), "015".into()),
+            ("txtSeatAttCd5".into(), "000".into()),
+            ("txtStndFlg".into(), "N".into()),
+            ("txtSrcarCnt".into(), "0".into()),
+            ("txtJrnyCnt".into(), "1".into()),
+            ("txtJrnySqno1".into(), "001".into()),
+            ("txtJrnyTpCd1".into(), "11".into()),
+            ("txtDptDt1".into(), train.dep_date.clone()),
+            ("txtDptRsStnCd1".into(), train.dep_code.clone()),
+            ("txtDptTm1".into(), train.dep_time.clone()),
+            ("txtArvRsStnCd1".into(), train.arr_code.clone()),
+            ("txtTrnNo1".into(), train.train_no.clone()),
+            ("txtRunDt1".into(), train.run_date.clone()),
+            ("txtTrnClsfCd1".into(), train.train_type.clone()),
+            ("txtTrnGpCd1".into(), train.train_group.clone()),
+            ("txtPsrmClCd1".into(), seat_class.into()),
+            ("txtChgFlg1".into(), String::new()),
         ];
 
-        let resp = self
-            .request_with_dynapath(reqwest::Method::POST, &Endpoints::url(Endpoints::RESERVE))
-            .form(&params)
-            .send()
-            .await?;
+        // Encode per-type passenger groups
+        for (idx, group) in combined.iter().enumerate() {
+            let i = idx + 1;
+            let (type_code, disc_code) = ktx_passenger_codes(group.passenger_type);
+            params.push((format!("txtPsgTpCd{i}"), type_code.into()));
+            params.push((format!("txtDiscKndCd{i}"), disc_code.into()));
+            params.push((format!("txtCompaCnt{i}"), group.count.to_string()));
+            params.push((format!("txtCardCode_{i}"), String::new()));
+            params.push((format!("txtCardNo_{i}"), String::new()));
+            params.push((format!("txtCardPw_{i}"), String::new()));
+        }
+
+        let params_ref: Vec<(&str, &str)> = params.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+
+        let (builder, _) =
+            self.request_with_dynapath(wreq::Method::POST, &Endpoints::url(Endpoints::RESERVE));
+        let resp = builder.form(&params_ref).send().await?;
 
         let body = resp.text().await?;
         let parsed = KtxResponse::parse(&body)?;
@@ -841,6 +904,54 @@ impl Default for KtxClient {
     }
 }
 
+// ── KTX passenger helpers ─────────────────────────────────────────────
+
+/// Per-flag passenger counts for KTX search form.
+struct KtxPassengerFlags {
+    adults: String,
+    children: String,
+    seniors: String,
+    severe: String,
+    mild: String,
+}
+
+/// Map passenger groups to KTX search flag counts (txtPsgFlg_1..5).
+/// Empty slice defaults to 1 adult.
+fn ktx_passenger_flag_counts(passengers: &[PassengerGroup]) -> KtxPassengerFlags {
+    let combined = combine_passengers(passengers);
+    let count_of = |pt: PassengerType| -> u8 {
+        combined
+            .iter()
+            .find(|g| g.passenger_type == pt)
+            .map(|g| g.count)
+            .unwrap_or(0)
+    };
+
+    let adults = count_of(PassengerType::Adult);
+    KtxPassengerFlags {
+        adults: if adults == 0 && combined.is_empty() {
+            "1".to_string()
+        } else {
+            adults.to_string()
+        },
+        children: count_of(PassengerType::Child).to_string(),
+        seniors: count_of(PassengerType::Senior).to_string(),
+        severe: count_of(PassengerType::SevereDisability).to_string(),
+        mild: count_of(PassengerType::MildDisability).to_string(),
+    }
+}
+
+/// Map a PassengerType to (KTX type code, discount kind code) for reserve form.
+fn ktx_passenger_codes(ptype: PassengerType) -> (&'static str, &'static str) {
+    match ptype {
+        PassengerType::Adult => ("1", "000"),
+        PassengerType::Child => ("3", "101"),
+        PassengerType::Senior => ("1", "105"),
+        PassengerType::SevereDisability => ("1", "106"),
+        PassengerType::MildDisability => ("1", "107"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -906,5 +1017,79 @@ mod tests {
         let sid = KtxClient::current_sid();
         assert!(sid.ends_with('\n'));
         assert!(!sid.is_empty());
+    }
+
+    // ── KTX passenger helper tests ──────────────────────────────────
+
+    #[test]
+    fn ktx_flag_counts_default_one_adult() {
+        let flags = ktx_passenger_flag_counts(&[]);
+        assert_eq!(flags.adults, "1");
+        assert_eq!(flags.children, "0");
+        assert_eq!(flags.seniors, "0");
+        assert_eq!(flags.severe, "0");
+        assert_eq!(flags.mild, "0");
+    }
+
+    #[test]
+    fn ktx_flag_counts_mixed_passengers() {
+        let groups = vec![
+            PassengerGroup::adults(2),
+            PassengerGroup::new(PassengerType::Child, 1),
+            PassengerGroup::new(PassengerType::Senior, 1),
+        ];
+        let flags = ktx_passenger_flag_counts(&groups);
+        assert_eq!(flags.adults, "2");
+        assert_eq!(flags.children, "1");
+        assert_eq!(flags.seniors, "1");
+        assert_eq!(flags.severe, "0");
+        assert_eq!(flags.mild, "0");
+    }
+
+    #[test]
+    fn ktx_flag_counts_disability() {
+        let groups = vec![
+            PassengerGroup::new(PassengerType::SevereDisability, 1),
+            PassengerGroup::new(PassengerType::MildDisability, 2),
+        ];
+        let flags = ktx_passenger_flag_counts(&groups);
+        assert_eq!(flags.adults, "0");
+        assert_eq!(flags.severe, "1");
+        assert_eq!(flags.mild, "2");
+    }
+
+    #[test]
+    fn ktx_passenger_codes_adult() {
+        let (tp, disc) = ktx_passenger_codes(PassengerType::Adult);
+        assert_eq!(tp, "1");
+        assert_eq!(disc, "000");
+    }
+
+    #[test]
+    fn ktx_passenger_codes_child() {
+        let (tp, disc) = ktx_passenger_codes(PassengerType::Child);
+        assert_eq!(tp, "3");
+        assert_eq!(disc, "101");
+    }
+
+    #[test]
+    fn ktx_passenger_codes_senior() {
+        let (tp, disc) = ktx_passenger_codes(PassengerType::Senior);
+        assert_eq!(tp, "1");
+        assert_eq!(disc, "105");
+    }
+
+    #[test]
+    fn ktx_passenger_codes_severe_disability() {
+        let (tp, disc) = ktx_passenger_codes(PassengerType::SevereDisability);
+        assert_eq!(tp, "1");
+        assert_eq!(disc, "106");
+    }
+
+    #[test]
+    fn ktx_passenger_codes_mild_disability() {
+        let (tp, disc) = ktx_passenger_codes(PassengerType::MildDisability);
+        assert_eq!(tp, "1");
+        assert_eq!(disc, "107");
     }
 }

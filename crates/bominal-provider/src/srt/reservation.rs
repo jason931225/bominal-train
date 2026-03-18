@@ -9,13 +9,24 @@ use super::stations::{station_name, train_name};
 /// Seat type classification.
 const SEAT_TYPE: &[(&str, &str)] = &[("1", "일반실"), ("2", "특실")];
 
-/// Passenger type classification.
+/// Passenger type classification (legacy, from endpoint 02017).
 const PASSENGER_TYPE: &[(&str, &str)] = &[
     ("1", "어른/청소년"),
     ("2", "장애 1~3급"),
     ("3", "장애 4~6급"),
     ("4", "경로"),
     ("5", "어린이"),
+];
+
+/// Discount type classification (endpoint 02019 uses `dcntKndCd` instead of `psgTpCd`).
+const DISCOUNT_TYPE: &[(&str, &str)] = &[
+    ("000", "어른/청소년(만13세이상)"),
+    ("101", "어린이(만4세~12세)"),
+    ("105", "경로(만65세이상)"),
+    ("106", "1~3급장애인"),
+    ("107", "4~6급장애인"),
+    ("108", "1~3급장애인 동반보호자"),
+    ("109", "4~6급장애인 동반보호자"),
 ];
 
 /// A single ticket within a reservation.
@@ -34,10 +45,15 @@ pub struct SrtTicket {
 
 impl SrtTicket {
     /// Parse a ticket from SRT ticket_info response JSON.
+    ///
+    /// Endpoint `02019` uses `dcntKndCd` (discount kind code) instead of `psgTpCd`.
+    /// Falls back to `psgTpCd` for backwards compatibility.
     pub fn from_json(data: &Value) -> Option<Self> {
         let s = |key: &str| data.get(key)?.as_str().map(String::from);
         let seat_type_code = s("psrmClCd")?;
-        let passenger_type_code = s("psgTpCd")?;
+
+        // Prefer dcntKndCd (endpoint 02019), fall back to psgTpCd (endpoint 02017)
+        let passenger_type_code = s("dcntKndCd").or_else(|| s("psgTpCd"))?;
 
         let seat_type = SEAT_TYPE
             .iter()
@@ -45,9 +61,15 @@ impl SrtTicket {
             .map(|(_, v)| v.to_string())
             .unwrap_or_else(|| seat_type_code.clone());
 
-        let passenger_type = PASSENGER_TYPE
+        // Try discount type table first, then legacy passenger type table
+        let passenger_type = DISCOUNT_TYPE
             .iter()
             .find(|(k, _)| *k == passenger_type_code)
+            .or_else(|| {
+                PASSENGER_TYPE
+                    .iter()
+                    .find(|(k, _)| *k == passenger_type_code)
+            })
             .map(|(_, v)| v.to_string())
             .unwrap_or_else(|| passenger_type_code.clone());
 
@@ -256,5 +278,90 @@ mod tests {
 
         let reservation = SrtReservation::from_json(&train, &pay, tickets).unwrap();
         assert!(reservation.is_waiting);
+    }
+
+    #[test]
+    fn parse_ticket_with_dcnt_knd_cd() {
+        // Endpoint 02019 uses dcntKndCd instead of psgTpCd
+        let data = json!({
+            "scarNo": "18",
+            "seatNo": "9C",
+            "psrmClCd": "1",
+            "dcntKndCd": "000",
+            "rcvdAmt": "52300",
+            "stdrPrc": "52900",
+            "dcntPrc": "600"
+        });
+        let ticket = SrtTicket::from_json(&data).unwrap();
+        assert_eq!(ticket.passenger_type_code, "000");
+        assert_eq!(ticket.passenger_type, "어른/청소년(만13세이상)");
+    }
+
+    #[test]
+    fn parse_ticket_dcnt_child() {
+        let data = json!({
+            "scarNo": "5",
+            "seatNo": "3A",
+            "psrmClCd": "1",
+            "dcntKndCd": "101",
+            "rcvdAmt": "26150",
+            "stdrPrc": "52900",
+            "dcntPrc": "26750"
+        });
+        let ticket = SrtTicket::from_json(&data).unwrap();
+        assert_eq!(ticket.passenger_type_code, "101");
+        assert_eq!(ticket.passenger_type, "어린이(만4세~12세)");
+    }
+
+    #[test]
+    fn parse_ticket_dcnt_senior() {
+        let data = json!({
+            "scarNo": "5",
+            "seatNo": "3B",
+            "psrmClCd": "2",
+            "dcntKndCd": "105",
+            "rcvdAmt": "36500",
+            "stdrPrc": "52900",
+            "dcntPrc": "16400"
+        });
+        let ticket = SrtTicket::from_json(&data).unwrap();
+        assert_eq!(ticket.passenger_type_code, "105");
+        assert_eq!(ticket.passenger_type, "경로(만65세이상)");
+        assert_eq!(ticket.seat_type, "특실");
+    }
+
+    #[test]
+    fn parse_ticket_fallback_to_psg_tp_cd() {
+        // When dcntKndCd is absent, fall back to psgTpCd (legacy endpoint 02017)
+        let data = json!({
+            "scarNo": "18",
+            "seatNo": "9C",
+            "psrmClCd": "1",
+            "psgTpCd": "4",
+            "rcvdAmt": "36500",
+            "stdrPrc": "52900",
+            "dcntPrc": "16400"
+        });
+        let ticket = SrtTicket::from_json(&data).unwrap();
+        assert_eq!(ticket.passenger_type_code, "4");
+        assert_eq!(ticket.passenger_type, "경로");
+    }
+
+    #[test]
+    fn parse_ticket_dcnt_prefers_over_psg() {
+        // When both fields exist, dcntKndCd takes precedence
+        let data = json!({
+            "scarNo": "18",
+            "seatNo": "9C",
+            "psrmClCd": "1",
+            "dcntKndCd": "107",
+            "psgTpCd": "3",
+            "rcvdAmt": "36500",
+            "stdrPrc": "52900",
+            "dcntPrc": "16400"
+        });
+        let ticket = SrtTicket::from_json(&data).unwrap();
+        assert_eq!(ticket.passenger_type_code, "107");
+        assert_eq!(ticket.passenger_type, "4~6급장애인");
     }
 }

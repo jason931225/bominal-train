@@ -4,7 +4,9 @@
 //! All requests are form-encoded POST. All responses are JSON.
 
 use tracing::{debug, instrument, warn};
+use wreq_util::Emulation;
 
+use crate::netfunnel::NetFunnelHelper;
 use crate::types::{AuthType, ProviderError, SeatPreference, classify_auth};
 
 use super::passenger::{PassengerGroup, WindowSeat, passenger_form_fields};
@@ -17,9 +19,9 @@ use super::train::SrtTrain;
 
 const BASE_URL: &str = "https://app.srail.or.kr:443";
 
-const USER_AGENT: &str = "Mozilla/5.0 (Linux; Android 14; SM-S928N Build/UP1A.231005.007; wv) \
-    AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/131.0.6778.200 \
-    Mobile Safari/537.36SRT-APP-Android V.2.0.6";
+const USER_AGENT: &str = "Mozilla/5.0 (Linux; Android 15; SM-S912N Build/UP1A.231005.007; wv) \
+    AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/136.0.7103.125 \
+    Mobile Safari/537.36SRT-APP-Android V.2.0.38";
 
 /// API endpoint paths (appended to BASE_URL).
 struct Endpoints;
@@ -31,8 +33,10 @@ impl Endpoints {
     const SEARCH: &str = "/ara/selectListAra10007_n.do";
     const RESERVE: &str = "/arc/selectListArc05013_n.do";
     const TICKETS: &str = "/atc/selectListAtc14016_n.do";
-    const TICKET_INFO: &str = "/ard/selectListArd02017_n.do";
+    const TICKET_INFO: &str = "/ard/selectListArd02019_n.do";
     const CANCEL: &str = "/ard/selectListArd02045_n.do";
+    const RESERVE_INFO: &str = "/atc/getListAtc14087.do";
+    const REFUND: &str = "/atc/selectListAtc02063_n.do";
     const STANDBY_OPTION: &str = "/ata/selectListAta01135_n.do";
     const PAYMENT: &str = "/ata/selectListAta09036_n.do";
 
@@ -54,8 +58,9 @@ const JOB_ID_STANDBY: &str = "1102";
 ///
 /// Two separate HTTP clients: one for the SRT API (with cookies), one for NetFunnel.
 pub struct SrtClient {
-    api_client: reqwest::Client,
-    netfunnel_client: reqwest::Client,
+    api_client: wreq::Client,
+    netfunnel_client: wreq::Client,
+    netfunnel: NetFunnelHelper,
     user_info: Option<SrtUserInfo>,
     is_logged_in: bool,
 }
@@ -71,18 +76,20 @@ pub struct SrtUserInfo {
 impl SrtClient {
     /// Create a new SRT client with fresh session.
     pub fn new() -> Self {
-        let api_client = reqwest::Client::builder()
+        let api_client = wreq::Client::builder()
+            .emulation(Emulation::Chrome136)
             .cookie_store(true)
             .user_agent(USER_AGENT)
             .default_headers({
-                let mut h = reqwest::header::HeaderMap::new();
-                h.insert(reqwest::header::ACCEPT, "application/json".parse().unwrap());
+                let mut h = wreq::header::HeaderMap::new();
+                h.insert(wreq::header::ACCEPT, "application/json".parse().unwrap());
                 h
             })
             .build()
             .expect("Failed to build SRT API client");
 
-        let netfunnel_client = reqwest::Client::builder()
+        let netfunnel_client = wreq::Client::builder()
+            .emulation(Emulation::Chrome136)
             .cookie_store(true)
             .build()
             .expect("Failed to build SRT NetFunnel client");
@@ -90,6 +97,7 @@ impl SrtClient {
         Self {
             api_client,
             netfunnel_client,
+            netfunnel: NetFunnelHelper::new(),
             user_info: None,
             is_logged_in: false,
         }
@@ -102,21 +110,23 @@ impl SrtClient {
     /// preserved because the target URL stays `app.srail.or.kr`.
     pub fn with_relay(relay_domain: &str) -> Self {
         let proxy =
-            reqwest::Proxy::all(format!("https://{relay_domain}")).expect("Invalid relay domain");
+            wreq::Proxy::all(format!("https://{relay_domain}")).expect("Invalid relay domain");
 
-        let api_client = reqwest::Client::builder()
+        let api_client = wreq::Client::builder()
+            .emulation(Emulation::Chrome136)
             .cookie_store(true)
             .user_agent(USER_AGENT)
             .proxy(proxy)
             .default_headers({
-                let mut h = reqwest::header::HeaderMap::new();
-                h.insert(reqwest::header::ACCEPT, "application/json".parse().unwrap());
+                let mut h = wreq::header::HeaderMap::new();
+                h.insert(wreq::header::ACCEPT, "application/json".parse().unwrap());
                 h
             })
             .build()
             .expect("Failed to build SRT API client with relay");
 
-        let netfunnel_client = reqwest::Client::builder()
+        let netfunnel_client = wreq::Client::builder()
+            .emulation(Emulation::Chrome136)
             .cookie_store(true)
             .build()
             .expect("Failed to build SRT NetFunnel client");
@@ -124,6 +134,7 @@ impl SrtClient {
         Self {
             api_client,
             netfunnel_client,
+            netfunnel: NetFunnelHelper::new(),
             user_info: None,
             is_logged_in: false,
         }
@@ -140,7 +151,7 @@ impl SrtClient {
     }
 
     /// Access the NetFunnel client for external use.
-    pub fn netfunnel_client(&self) -> &reqwest::Client {
+    pub fn netfunnel_client(&self) -> &wreq::Client {
         &self.netfunnel_client
     }
 
@@ -292,14 +303,30 @@ impl SrtClient {
     /// - `dep`/`arr`: Korean station names (e.g. "수서", "부산")
     /// - `date`: YYYYMMDD format (default: today)
     /// - `time`: HHMMSS format (default: "000000")
+    /// - `passenger_count`: total number of passengers (default: 1)
     /// - `available_only`: filter to trains with available seats
     #[instrument(skip(self))]
     pub async fn search_train(
-        &self,
+        &mut self,
         dep: &str,
         arr: &str,
         date: Option<&str>,
         time: Option<&str>,
+        available_only: bool,
+    ) -> Result<Vec<SrtTrain>, ProviderError> {
+        self.search_train_with_count(dep, arr, date, time, None, available_only)
+            .await
+    }
+
+    /// Search for SRT trains with explicit passenger count.
+    #[instrument(skip(self))]
+    pub async fn search_train_with_count(
+        &mut self,
+        dep: &str,
+        arr: &str,
+        date: Option<&str>,
+        time: Option<&str>,
+        passenger_count: Option<u8>,
         available_only: bool,
     ) -> Result<Vec<SrtTrain>, ProviderError> {
         let dep_code = station_code(dep).ok_or_else(|| ProviderError::UnexpectedResponse {
@@ -315,29 +342,50 @@ impl SrtClient {
         let date = date.unwrap_or(&today);
         let time = time.unwrap_or("000000");
 
-        self.search_train_internal(dep_code, arr_code, date, time, available_only)
+        self.search_train_internal(dep_code, arr_code, date, time, passenger_count, available_only)
             .await
     }
 
     async fn search_train_internal(
-        &self,
+        &mut self,
         dep_code: &str,
         arr_code: &str,
         date: &str,
         time: &str,
+        passenger_count: Option<u8>,
         available_only: bool,
     ) -> Result<Vec<SrtTrain>, ProviderError> {
+        // Acquire NetFunnel key before search
+        let nf_key = self
+            .netfunnel
+            .run(&self.netfunnel_client)
+            .await
+            .unwrap_or_default();
+
+        let psg_num = passenger_count.unwrap_or(1).max(1).to_string();
+
         let form: Vec<(&str, &str)> = vec![
             ("chtnDvCd", "1"),
             ("arriveTime", "N"),
             ("seatAttCd", "015"),
-            ("psgNum", "1"),
+            ("psgNum", &psg_num),
             ("trnGpCd", "109"),
             ("stlbTrnClsfCd", "05"), // search all train types
             ("dptDt", date),
             ("dptTm", time),
             ("arvRsStnCd", arr_code),
             ("dptRsStnCd", dep_code),
+            // Duplicate date/time fields required by reference protocol
+            ("dptDt1", date),
+            ("dptTm1", time),
+            // Empty fields required by reference protocol
+            ("trnNo", ""),
+            ("tkDptDt", ""),
+            ("tkDptTm", ""),
+            ("tkTrnNo", ""),
+            ("tkTripChgFlg", ""),
+            ("dlayTnumAplFlg", "Y"),
+            ("netfunnelKey", &nf_key),
         ];
 
         let resp = self
@@ -353,7 +401,8 @@ impl SrtClient {
         if !parsed.is_success() {
             let msg_code = parsed.message_code();
             if msg_code == INVALID_NETFUNNEL_KEY {
-                warn!("Invalid netfunnel key, should retry");
+                warn!("Invalid netfunnel key, clearing cache and retrying");
+                self.netfunnel.clear();
                 return Err(ProviderError::NetFunnelBlocked);
             }
             return Err(ProviderError::NoResults);
@@ -383,7 +432,7 @@ impl SrtClient {
     /// Reserve a train (personal reservation).
     #[instrument(skip(self, train, passengers))]
     pub async fn reserve(
-        &self,
+        &mut self,
         train: &SrtTrain,
         passengers: &[PassengerGroup],
         seat_pref: SeatPreference,
@@ -404,7 +453,7 @@ impl SrtClient {
     /// Reserve standby (waiting list).
     #[instrument(skip(self, train, passengers))]
     pub async fn reserve_standby(
-        &self,
+        &mut self,
         train: &SrtTrain,
         passengers: &[PassengerGroup],
         seat_pref: SeatPreference,
@@ -423,7 +472,7 @@ impl SrtClient {
     }
 
     async fn reserve_internal(
-        &self,
+        &mut self,
         job_id: &str,
         train: &SrtTrain,
         passengers: &[PassengerGroup],
@@ -437,6 +486,13 @@ impl SrtClient {
                 body: format!("Expected SRT train, got {}", train.display_name()),
             });
         }
+
+        // Acquire NetFunnel key before reserve
+        let nf_key = self
+            .netfunnel
+            .run(&self.netfunnel_client)
+            .await
+            .unwrap_or_default();
 
         let default_passengers = [PassengerGroup::adults(1)];
         let passengers = if passengers.is_empty() {
@@ -495,6 +551,7 @@ impl SrtClient {
             ("dptStnRunOrdr1".into(), train.dep_station_run_order.clone()),
             ("arvStnRunOrdr1".into(), train.arr_station_run_order.clone()),
             ("mblPhone".into(), phone_str.to_string()),
+            ("netfunnelKey".into(), nf_key),
         ];
 
         // Personal reservation gets reserveType
@@ -521,6 +578,12 @@ impl SrtClient {
 
         if !parsed.is_success() {
             let msg = parsed.message();
+            let msg_code = parsed.message_code();
+            if msg_code == INVALID_NETFUNNEL_KEY {
+                warn!("Invalid netfunnel key in reserve, clearing cache");
+                self.netfunnel.clear();
+                return Err(ProviderError::NetFunnelBlocked);
+            }
             if msg.contains("이미 예약") || msg.contains("중복") {
                 return Err(ProviderError::DuplicateReservation);
             }
@@ -683,6 +746,65 @@ impl SrtClient {
         let resp = self
             .api_client
             .post(Endpoints::url(Endpoints::CANCEL))
+            .form(&form)
+            .send()
+            .await?;
+
+        let body = resp.text().await?;
+        let parsed = SrtResponse::parse(&body)?;
+
+        if !parsed.is_success() {
+            return Err(ProviderError::UnexpectedResponse {
+                status: 200,
+                body: parsed.message().to_string(),
+            });
+        }
+
+        Ok(())
+    }
+
+    // ── Reserve Info ─────────────────────────────────────────────────
+
+    /// Get detailed reservation info (used before refund).
+    #[instrument(skip(self))]
+    pub async fn reserve_info(&self, pnr_no: &str) -> Result<serde_json::Value, ProviderError> {
+        self.require_login()?;
+
+        let form: Vec<(&str, &str)> = vec![("pnrNo", pnr_no), ("jrnySqno", "1")];
+
+        let resp = self
+            .api_client
+            .post(Endpoints::url(Endpoints::RESERVE_INFO))
+            .form(&form)
+            .send()
+            .await?;
+
+        let body = resp.text().await?;
+        let parsed = SrtResponse::parse(&body)?;
+
+        if !parsed.is_success() {
+            return Err(ProviderError::UnexpectedResponse {
+                status: 200,
+                body: parsed.message().to_string(),
+            });
+        }
+
+        Ok(parsed.json().clone())
+    }
+
+    // ── Refund ──────────────────────────────────────────────────────
+
+    /// Refund a paid reservation.
+    #[instrument(skip(self))]
+    pub async fn refund(&self, pnr_no: &str) -> Result<(), ProviderError> {
+        self.require_login()?;
+
+        let form: Vec<(&str, &str)> =
+            vec![("pnrNo", pnr_no), ("jrnyCnt", "1"), ("rsvChgTno", "0")];
+
+        let resp = self
+            .api_client
+            .post(Endpoints::url(Endpoints::REFUND))
             .form(&form)
             .send()
             .await?;

@@ -36,6 +36,11 @@ pub fn station_code(name: &str) -> Option<&'static str> {
         "남원" => Some("0049"),
         "공주" => Some("0514"),
         "강릉" => Some("0115"),
+        "구포" => Some("0021"),
+        "논산" => Some("0042"),
+        "청량리" => Some("0002"),
+        "행신" => Some("0390"),
+        "정동진" => Some("0116"),
         _ => None,
     }
 }
@@ -61,5 +66,14 @@ mod tests {
     fn srt_name_not_in_ktx() {
         assert_eq!(station_code("김천(구미)"), None); // SRT format
         assert_eq!(station_code("수서"), None); // SRT-only station
+    }
+
+    #[test]
+    fn newly_added_stations() {
+        assert_eq!(station_code("구포"), Some("0021"));
+        assert_eq!(station_code("논산"), Some("0042"));
+        assert_eq!(station_code("청량리"), Some("0002"));
+        assert_eq!(station_code("행신"), Some("0390"));
+        assert_eq!(station_code("정동진"), Some("0116"));
     }
 }
