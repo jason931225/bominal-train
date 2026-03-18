@@ -8,6 +8,9 @@ use bominal_domain::crypto::encryption::EncryptionKey;
 use bominal_email::EmailClient;
 use webauthn_rs::Webauthn;
 
+use axum::extract::FromRef;
+use leptos::prelude::LeptosOptions;
+
 use crate::evervault::EvervaultConfig;
 use crate::sse::EventBus;
 
@@ -23,4 +26,11 @@ pub struct SharedState {
     pub app_base_url: String,
     pub prometheus_handle: metrics_exporter_prometheus::PrometheusHandle,
     pub webauthn: Arc<Webauthn>,
+    pub leptos_options: LeptosOptions,
+}
+
+impl FromRef<SharedState> for LeptosOptions {
+    fn from_ref(state: &SharedState) -> Self {
+        state.leptos_options.clone()
+    }
 }

@@ -7,7 +7,6 @@
 
 use rand::Rng;
 use tracing::{debug, instrument};
-use wreq_util::Emulation;
 
 use crate::types::{AuthType, ProviderError, SeatPreference, classify_auth};
 
@@ -61,7 +60,7 @@ impl Endpoints {
 
 /// KTX/Korail provider client with persistent session.
 pub struct KtxClient {
-    client: wreq::Client,
+    client: reqwest::Client,
     dynapath: DynaPathEngine,
     user_info: Option<KtxUserInfo>,
     is_logged_in: bool,
@@ -81,20 +80,19 @@ pub struct KtxUserInfo {
 impl KtxClient {
     /// Create a new KTX client with fresh session.
     pub fn new() -> Self {
-        let client = wreq::Client::builder()
-            .emulation(Emulation::Chrome136)
+        let client = reqwest::Client::builder()
             .cookie_store(true)
             .user_agent(USER_AGENT)
             .default_headers({
-                let mut h = wreq::header::HeaderMap::new();
+                let mut h = reqwest::header::HeaderMap::new();
                 h.insert(
-                    wreq::header::CONTENT_TYPE,
+                    reqwest::header::CONTENT_TYPE,
                     "application/x-www-form-urlencoded; charset=UTF-8"
                         .parse()
                         .unwrap(),
                 );
                 h.insert(
-                    wreq::header::HOST,
+                    reqwest::header::HOST,
                     "smart.letskorail.com".parse().unwrap(),
                 );
                 h
@@ -123,23 +121,22 @@ impl KtxClient {
     /// preserved because the target URL stays `smart.letskorail.com`.
     pub fn with_relay(relay_domain: &str) -> Self {
         let proxy =
-            wreq::Proxy::all(format!("https://{relay_domain}")).expect("Invalid relay domain");
+            reqwest::Proxy::all(format!("https://{relay_domain}")).expect("Invalid relay domain");
 
-        let client = wreq::Client::builder()
-            .emulation(Emulation::Chrome136)
+        let client = reqwest::Client::builder()
             .cookie_store(true)
             .user_agent(USER_AGENT)
             .proxy(proxy)
             .default_headers({
-                let mut h = wreq::header::HeaderMap::new();
+                let mut h = reqwest::header::HeaderMap::new();
                 h.insert(
-                    wreq::header::CONTENT_TYPE,
+                    reqwest::header::CONTENT_TYPE,
                     "application/x-www-form-urlencoded; charset=UTF-8"
                         .parse()
                         .unwrap(),
                 );
                 h.insert(
-                    wreq::header::HOST,
+                    reqwest::header::HOST,
                     "smart.letskorail.com".parse().unwrap(),
                 );
                 h
@@ -202,9 +199,9 @@ impl KtxClient {
     /// Returns `(request_builder, sid)` — SID shares timestamp with token.
     fn request_with_dynapath(
         &self,
-        method: wreq::Method,
+        method: reqwest::Method,
         url: &str,
-    ) -> (wreq::RequestBuilder, String) {
+    ) -> (reqwest::RequestBuilder, String) {
         let mut builder = self.client.request(method, url);
         if requires_token(url) {
             let ts = Self::now_ms();
@@ -286,7 +283,7 @@ impl KtxClient {
         ];
 
         let (builder, _) =
-            self.request_with_dynapath(wreq::Method::POST, &Endpoints::url(Endpoints::LOGIN));
+            self.request_with_dynapath(reqwest::Method::POST, &Endpoints::url(Endpoints::LOGIN));
         let resp = builder.form(&form).send().await?;
 
         let body = resp.text().await?;
@@ -395,7 +392,7 @@ impl KtxClient {
         let psg_counts = ktx_passenger_flag_counts(passengers);
 
         let (builder, sid) =
-            self.request_with_dynapath(wreq::Method::POST, &Endpoints::url(Endpoints::SEARCH));
+            self.request_with_dynapath(reqwest::Method::POST, &Endpoints::url(Endpoints::SEARCH));
 
         let params: Vec<(&str, &str)> = vec![
             ("Device", DEVICE),
@@ -541,7 +538,7 @@ impl KtxClient {
         let params_ref: Vec<(&str, &str)> = params.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
 
         let (builder, _) =
-            self.request_with_dynapath(wreq::Method::POST, &Endpoints::url(Endpoints::RESERVE));
+            self.request_with_dynapath(reqwest::Method::POST, &Endpoints::url(Endpoints::RESERVE));
         let resp = builder.form(&params_ref).send().await?;
 
         let body = resp.text().await?;

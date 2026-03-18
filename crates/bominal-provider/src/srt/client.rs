@@ -4,7 +4,6 @@
 //! All requests are form-encoded POST. All responses are JSON.
 
 use tracing::{debug, instrument, warn};
-use wreq_util::Emulation;
 
 use crate::netfunnel::NetFunnelHelper;
 use crate::types::{AuthType, ProviderError, SeatPreference, classify_auth};
@@ -58,8 +57,8 @@ const JOB_ID_STANDBY: &str = "1102";
 ///
 /// Two separate HTTP clients: one for the SRT API (with cookies), one for NetFunnel.
 pub struct SrtClient {
-    api_client: wreq::Client,
-    netfunnel_client: wreq::Client,
+    api_client: reqwest::Client,
+    netfunnel_client: reqwest::Client,
     netfunnel: NetFunnelHelper,
     user_info: Option<SrtUserInfo>,
     is_logged_in: bool,
@@ -76,20 +75,18 @@ pub struct SrtUserInfo {
 impl SrtClient {
     /// Create a new SRT client with fresh session.
     pub fn new() -> Self {
-        let api_client = wreq::Client::builder()
-            .emulation(Emulation::Chrome136)
+        let api_client = reqwest::Client::builder()
             .cookie_store(true)
             .user_agent(USER_AGENT)
             .default_headers({
-                let mut h = wreq::header::HeaderMap::new();
-                h.insert(wreq::header::ACCEPT, "application/json".parse().unwrap());
+                let mut h = reqwest::header::HeaderMap::new();
+                h.insert(reqwest::header::ACCEPT, "application/json".parse().unwrap());
                 h
             })
             .build()
             .expect("Failed to build SRT API client");
 
-        let netfunnel_client = wreq::Client::builder()
-            .emulation(Emulation::Chrome136)
+        let netfunnel_client = reqwest::Client::builder()
             .cookie_store(true)
             .build()
             .expect("Failed to build SRT NetFunnel client");
@@ -110,23 +107,21 @@ impl SrtClient {
     /// preserved because the target URL stays `app.srail.or.kr`.
     pub fn with_relay(relay_domain: &str) -> Self {
         let proxy =
-            wreq::Proxy::all(format!("https://{relay_domain}")).expect("Invalid relay domain");
+            reqwest::Proxy::all(format!("https://{relay_domain}")).expect("Invalid relay domain");
 
-        let api_client = wreq::Client::builder()
-            .emulation(Emulation::Chrome136)
+        let api_client = reqwest::Client::builder()
             .cookie_store(true)
             .user_agent(USER_AGENT)
             .proxy(proxy)
             .default_headers({
-                let mut h = wreq::header::HeaderMap::new();
-                h.insert(wreq::header::ACCEPT, "application/json".parse().unwrap());
+                let mut h = reqwest::header::HeaderMap::new();
+                h.insert(reqwest::header::ACCEPT, "application/json".parse().unwrap());
                 h
             })
             .build()
             .expect("Failed to build SRT API client with relay");
 
-        let netfunnel_client = wreq::Client::builder()
-            .emulation(Emulation::Chrome136)
+        let netfunnel_client = reqwest::Client::builder()
             .cookie_store(true)
             .build()
             .expect("Failed to build SRT NetFunnel client");
@@ -151,7 +146,7 @@ impl SrtClient {
     }
 
     /// Access the NetFunnel client for external use.
-    pub fn netfunnel_client(&self) -> &wreq::Client {
+    pub fn netfunnel_client(&self) -> &reqwest::Client {
         &self.netfunnel_client
     }
 

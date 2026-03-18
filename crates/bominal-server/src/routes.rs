@@ -9,6 +9,8 @@ use axum::http::{HeaderValue, Method, Request};
 use axum::response::IntoResponse;
 use axum::routing::{delete, get, patch, post};
 use leptos::prelude::{provide_context, use_context};
+// Note: leptos_axum::LeptosRoutes not used — we use render_app_to_stream_with_context
+// as a GET-only fallback to avoid generate_route_list hanging at startup.
 use tower_http::compression::CompressionLayer;
 use tower_http::cors::CorsLayer;
 use tower_http::limit::RequestBodyLimitLayer;
@@ -151,6 +153,12 @@ pub async fn create_router(
         config.app_base_url.clone(),
     );
 
+    // Minimal LeptosOptions for SSR route generation (no cargo-leptos)
+    let leptos_options = leptos::prelude::LeptosOptions::builder()
+        .output_name("bominal-app")
+        .site_addr(std::net::SocketAddr::from(([0, 0, 0, 0], config.port)))
+        .build();
+
     let state = SharedState {
         db,
         start_time,
@@ -161,6 +169,7 @@ pub async fn create_router(
         app_base_url: config.app_base_url.clone(),
         prometheus_handle,
         webauthn: Arc::new(webauthn),
+        leptos_options,
     };
 
     // Spawn session cleanup background job
@@ -213,7 +222,7 @@ pub async fn create_router(
         }
     };
 
-    // Leptos SSR page renderer (fallback for all non-API routes)
+    // Leptos SSR page renderer — renders the SPA shell for GET requests
     let page_renderer =
         leptos_axum::render_app_to_stream_with_context(context_fn, bominal_frontend::app::shell);
 
@@ -230,7 +239,7 @@ pub async fn create_router(
         )
         .route("/health", get(health_check))
         .route("/metrics", get(metrics_endpoint))
-        .fallback(page_renderer)
+        .fallback(get(page_renderer))
         .layer(CompressionLayer::new().gzip(true).br(true))
         .layer(RequestBodyLimitLayer::new(1_048_576)) // 1 MB
         .layer(SetResponseHeaderLayer::if_not_present(

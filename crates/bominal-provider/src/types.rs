@@ -68,7 +68,7 @@ pub enum ProviderError {
     SoldOut,
 
     #[error("Network error: {0}")]
-    NetworkError(#[from] wreq::Error),
+    NetworkError(#[from] reqwest::Error),
 
     #[error("NetFunnel blocked")]
     NetFunnelBlocked,

@@ -160,7 +160,7 @@ impl NetFunnelHelper {
     }
 
     /// Acquire a NetFunnel key (returns cached key if still valid).
-    pub async fn run(&mut self, client: &wreq::Client) -> Result<String, ProviderError> {
+    pub async fn run(&mut self, client: &reqwest::Client) -> Result<String, ProviderError> {
         // Return cached key if valid
         if let Some(ref cached) = self.cached
             && cached.is_valid()
@@ -184,7 +184,7 @@ impl NetFunnelHelper {
     }
 
     /// Acquire a fresh key via the 3-step NetFunnel protocol.
-    async fn acquire_key(&self, client: &wreq::Client) -> Result<String, ProviderError> {
+    async fn acquire_key(&self, client: &reqwest::Client) -> Result<String, ProviderError> {
         // Step 1: getTidchkEnter (start)
         let start_result = self.make_request(client, OP_GET_TID_CHK_ENTER, NF_HOST, None).await?;
         let mut current_key = start_result.params.get("key").cloned();
@@ -241,14 +241,14 @@ impl NetFunnelHelper {
     /// Returns the parsed result.
     async fn make_request(
         &self,
-        client: &wreq::Client,
+        client: &reqwest::Client,
         opcode: &str,
         host: &str,
         key: Option<&str>,
     ) -> Result<NetFunnelResult, ProviderError> {
         let url = build_nf_url(host, opcode, key);
 
-        let resp: wreq::Response = client
+        let resp: reqwest::Response = client
             .get(&url)
             .header("Referer", "https://app.srail.or.kr/")
             .header("X-Requested-With", "kr.co.srail.newapp")

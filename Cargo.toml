@@ -38,10 +38,8 @@ sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio",
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
-# HTTP client — reqwest for general use, wreq (reqwest fork) for providers (TLS fingerprint emulation)
+# HTTP client
 reqwest = { version = "0.13", features = ["cookies", "json", "rustls", "webpki-roots", "form"], default-features = false }
-wreq = { version = "6.0.0-rc", features = ["cookies", "json", "form", "webpki-roots"], default-features = false }
-wreq-util = { version = "3.0.0-rc", features = ["emulation"] }
 
 # Crypto
 argon2 = { version = "0.5", features = ["std"] }
