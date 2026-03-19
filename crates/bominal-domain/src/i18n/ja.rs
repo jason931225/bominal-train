@@ -184,6 +184,10 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     m.insert("error.standby_closed", "キャンセル待ち受付は終了しました");
     m.insert("error.ip_blocked", "IPがブロックされています");
     m.insert("error.passkey_failed", "パスキーログインに失敗しました");
+    m.insert(
+        "error.passkey_register_failed",
+        "パスキー登録に失敗しました",
+    );
 
     // Common
     m.insert("common.confirm", "確認");
@@ -244,11 +248,16 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
 
     // Home
     m.insert("home.welcome", "ようこそ");
+    m.insert("home.description", "列車の予約をお手伝いします");
     m.insert("home.quick_search", "クイック検索");
     m.insert("home.active_tasks", "進行中の予約");
     m.insert("home.no_active_tasks", "進行中の予約はありません");
     m.insert("home.quick_actions", "クイック操作");
     m.insert("home.tickets", "乗車券");
+    m.insert("home.start_search", "列車検索");
+    m.insert("home.start_search_desc", "SRT・KTX空席検索");
+    m.insert("home.open_tasks", "予約状況");
+    m.insert("home.open_tasks_desc", "進行中の予約を確認");
 
     // Task — extended
     m.insert("task.no_active", "進行中のタスクはありません");
@@ -298,6 +307,18 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     // Calendar/time modal
     m.insert("calendar.title", "日時選択");
     m.insert("calendar.apply", "適用");
+    m.insert("calendar.month_1", "1月");
+    m.insert("calendar.month_2", "2月");
+    m.insert("calendar.month_3", "3月");
+    m.insert("calendar.month_4", "4月");
+    m.insert("calendar.month_5", "5月");
+    m.insert("calendar.month_6", "6月");
+    m.insert("calendar.month_7", "7月");
+    m.insert("calendar.month_8", "8月");
+    m.insert("calendar.month_9", "9月");
+    m.insert("calendar.month_10", "10月");
+    m.insert("calendar.month_11", "11月");
+    m.insert("calendar.month_12", "12月");
 
     // Search — station labels
     m.insert("search.from", "出発");

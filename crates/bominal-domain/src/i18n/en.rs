@@ -190,6 +190,7 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     m.insert("error.standby_closed", "Standby registration is closed");
     m.insert("error.ip_blocked", "Your IP has been blocked");
     m.insert("error.passkey_failed", "Passkey login failed");
+    m.insert("error.passkey_register_failed", "Passkey registration failed");
 
     // Common
     m.insert("common.confirm", "Confirm");
@@ -250,11 +251,16 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
 
     // Home
     m.insert("home.welcome", "Welcome");
+    m.insert("home.description", "Your train ticket reservation assistant");
     m.insert("home.quick_search", "Quick Search");
     m.insert("home.active_tasks", "Active Tasks");
     m.insert("home.no_active_tasks", "No active tasks");
     m.insert("home.quick_actions", "Quick Actions");
     m.insert("home.tickets", "Tickets");
+    m.insert("home.start_search", "Search Trains");
+    m.insert("home.start_search_desc", "Find SRT & KTX seats");
+    m.insert("home.open_tasks", "My Tasks");
+    m.insert("home.open_tasks_desc", "View active reservations");
 
     // Task — extended
     m.insert("task.no_active", "No active tasks");
@@ -307,6 +313,18 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     // Calendar/time modal
     m.insert("calendar.title", "Date & Time");
     m.insert("calendar.apply", "Apply");
+    m.insert("calendar.month_1", "January");
+    m.insert("calendar.month_2", "February");
+    m.insert("calendar.month_3", "March");
+    m.insert("calendar.month_4", "April");
+    m.insert("calendar.month_5", "May");
+    m.insert("calendar.month_6", "June");
+    m.insert("calendar.month_7", "July");
+    m.insert("calendar.month_8", "August");
+    m.insert("calendar.month_9", "September");
+    m.insert("calendar.month_10", "October");
+    m.insert("calendar.month_11", "November");
+    m.insert("calendar.month_12", "December");
 
     // Search — station labels
     m.insert("search.from", "From");

@@ -129,6 +129,10 @@ impl TestApp {
                         .handle()
                 }),
             webauthn: Arc::new(webauthn),
+            leptos_options: leptos::prelude::LeptosOptions::builder()
+                .output_name("bominal-app")
+                .site_addr(std::net::SocketAddr::from(([127, 0, 0, 1], 3000)))
+                .build(),
         };
 
         let router = Router::new().nest("/api", api_routes()).with_state(state);

@@ -261,7 +261,7 @@ pub async fn login_finish(
             domain_attr
         )
         .parse()
-        .unwrap(),
+        .map_err(|_| AppError::Internal(anyhow::anyhow!("invalid cookie value")))?,
     );
 
     Ok((

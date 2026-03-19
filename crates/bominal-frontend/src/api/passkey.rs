@@ -52,7 +52,8 @@ pub async fn do_passkey_login() -> Result<(), wasm_bindgen::JsValue> {
     let mut opts = web_sys::RequestInit::new();
     opts.method("POST");
     opts.body(Some(&JsValue::from_str(
-        &serde_json::to_string(&body).unwrap(),
+        &serde_json::to_string(&body)
+            .map_err(|e| JsValue::from_str(&format!("JSON error: {e}")))?,
     )));
 
     let headers = web_sys::Headers::new()?;
@@ -133,7 +134,8 @@ pub async fn do_passkey_register() -> Result<(), wasm_bindgen::JsValue> {
     let mut finish_opts = web_sys::RequestInit::new();
     finish_opts.method("POST");
     finish_opts.body(Some(&JsValue::from_str(
-        &serde_json::to_string(&body).unwrap(),
+        &serde_json::to_string(&body)
+            .map_err(|e| JsValue::from_str(&format!("JSON error: {e}")))?,
     )));
 
     let headers = web_sys::Headers::new()?;

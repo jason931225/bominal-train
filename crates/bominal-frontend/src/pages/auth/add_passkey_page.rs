@@ -8,35 +8,6 @@ use super::{auth_shell, icon_fingerprint, icon_key};
 
 #[component]
 pub fn AddPasskeyPage() -> impl IntoView {
-    let error_msg = RwSignal::new(Option::<String>::None);
-
-    let on_passkey_register = move |_| {
-        error_msg.set(None);
-        #[cfg(target_arch = "wasm32")]
-        {
-            wasm_bindgen_futures::spawn_local(async move {
-                match crate::api::passkey::do_passkey_register().await {
-                    Ok(()) => {}
-                    Err(e) => {
-                        let msg = e
-                            .as_string()
-                            .unwrap_or_else(|| "Passkey registration failed".into());
-                        error_msg.set(Some(msg));
-                    }
-                }
-            });
-        }
-    };
-
-    let on_skip = move |_| {
-        #[cfg(target_arch = "wasm32")]
-        {
-            if let Some(w) = web_sys::window() {
-                let _ = w.location().set_href("/home");
-            }
-        }
-    };
-
     auth_shell(view! {
         <div class="glass-panel p-8 rounded-3xl flex flex-col gap-6">
             <div class="text-center">
@@ -50,12 +21,10 @@ pub fn AddPasskeyPage() -> impl IntoView {
                 </p>
             </div>
 
-            {move || error_msg.get().map(|msg| view! {
-                <div class="px-3 py-2 rounded-xl"
-                     style="background: var(--color-status-error-bg); border: 1px solid var(--color-status-error-bg)">
-                    <p class="text-sm text-[var(--color-status-error)]">{msg}</p>
-                </div>
-            })}
+            <div id="passkey-error-box" style="display:none"
+                 class="px-3 py-2 rounded-xl bg-red-50 border border-red-200">
+                <p id="passkey-error" class="text-sm text-[var(--color-status-error)]"></p>
+            </div>
 
             <div class="bg-[var(--color-bg-sunken)] rounded-2xl p-4 flex flex-col gap-2.5">
                 <div class="flex items-center gap-3 text-sm text-[var(--color-text-secondary)]">
@@ -73,19 +42,19 @@ pub fn AddPasskeyPage() -> impl IntoView {
             </div>
 
             <button
-                on:click=on_passkey_register
+                id="btn-passkey-register"
                 class="w-full py-3.5 btn-glass font-semibold rounded-xl flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-all"
             >
                 {icon_key()}
                 {t("auth.add_passkey_now")}
             </button>
 
-            <button
-                on:click=on_skip
-                class="w-full py-3 text-sm text-[var(--color-text-disabled)] font-medium hover:text-[var(--color-text-secondary)] transition-colors"
+            <a
+                href="/home"
+                class="w-full py-3 text-sm text-[var(--color-text-disabled)] font-medium hover:text-[var(--color-text-secondary)] transition-colors text-center block"
             >
                 {t("auth.skip_for_now")}
-            </button>
+            </a>
         </div>
     }.into_any())
 }

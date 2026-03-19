@@ -26,6 +26,7 @@ use crate::config::AppConfig;
 use crate::middleware;
 use crate::passkey;
 use crate::providers;
+use crate::rate_limit::RateLimiter;
 use crate::reservations;
 use crate::runner;
 use crate::search;
@@ -36,17 +37,28 @@ use crate::tasks;
 /// Build the API route tree. Separated from `create_router` so integration
 /// tests can mount it directly without Leptos SSR or the background runner.
 pub fn api_routes() -> Router<SharedState> {
-    Router::new()
-        // Auth
+    // Rate-limited auth routes (20 req/min per IP)
+    let auth_limiter = RateLimiter::new(20);
+    auth_limiter.clone().spawn_cleanup();
+
+    let rate_limited_auth = Router::new()
         .route("/auth/register", post(auth::register))
         .route("/auth/login", post(auth::login))
+        .route("/auth/forgot-password", post(auth::forgot_password))
+        .route("/auth/reset-password", post(auth::reset_password))
+        .route("/auth/passkey/login/start", post(passkey::login_start))
+        .route("/auth/passkey/login/finish", post(passkey::login_finish))
+        .layer(axum::middleware::from_fn(move |req, next| {
+            let limiter = auth_limiter.clone();
+            crate::rate_limit::rate_limit_middleware(limiter, req, next)
+        }));
+
+    // Auth routes that don't need rate limiting (already require session)
+    let auth_no_limit = Router::new()
         .route("/auth/logout", post(auth::logout))
         .route("/auth/me", get(auth::me))
         .route("/auth/verify-email", post(auth::verify_email))
         .route("/auth/resend-verification", post(auth::resend_verification))
-        .route("/auth/forgot-password", post(auth::forgot_password))
-        .route("/auth/reset-password", post(auth::reset_password))
-        // Passkey / WebAuthn
         .route(
             "/auth/passkey/register/start",
             post(passkey::register_start),
@@ -54,9 +66,11 @@ pub fn api_routes() -> Router<SharedState> {
         .route(
             "/auth/passkey/register/finish",
             post(passkey::register_finish),
-        )
-        .route("/auth/passkey/login/start", post(passkey::login_start))
-        .route("/auth/passkey/login/finish", post(passkey::login_finish))
+        );
+
+    Router::new()
+        .merge(rate_limited_auth)
+        .merge(auth_no_limit)
         // Provider credentials
         .route(
             "/providers",
@@ -254,6 +268,12 @@ pub async fn create_router(
             axum::http::header::REFERRER_POLICY,
             HeaderValue::from_static("strict-origin-when-cross-origin"),
         ))
+        .layer(SetResponseHeaderLayer::if_not_present(
+            axum::http::header::CONTENT_SECURITY_POLICY,
+            HeaderValue::from_static(
+                "default-src 'self'; script-src 'self' 'unsafe-inline' https://js.evervault.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://*.evervault.com",
+            ),
+        ))
         .layer(
             CorsLayer::new()
                 .allow_origin(
@@ -300,6 +320,16 @@ pub async fn create_router(
             middleware::RequestIdGenerator,
         ))
         .with_state(state);
+
+    // Add HSTS header only when running over HTTPS (production)
+    let app = if config.app_base_url.starts_with("https://") {
+        app.layer(SetResponseHeaderLayer::if_not_present(
+            axum::http::header::STRICT_TRANSPORT_SECURITY,
+            HeaderValue::from_static("max-age=63072000; includeSubDomains; preload"),
+        ))
+    } else {
+        app
+    };
 
     Ok(app)
 }

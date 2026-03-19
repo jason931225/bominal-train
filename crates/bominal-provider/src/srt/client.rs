@@ -351,11 +351,13 @@ impl SrtClient {
         available_only: bool,
     ) -> Result<Vec<SrtTrain>, ProviderError> {
         // Acquire NetFunnel key before search
-        let nf_key = self
-            .netfunnel
-            .run(&self.netfunnel_client)
-            .await
-            .unwrap_or_default();
+        let nf_key = match self.netfunnel.run(&self.netfunnel_client).await {
+            Ok(key) => key,
+            Err(e) => {
+                warn!(error = %e, "NetFunnel acquisition failed, proceeding without key");
+                String::new()
+            }
+        };
 
         let psg_num = passenger_count.unwrap_or(1).max(1).to_string();
 
@@ -411,7 +413,14 @@ impl SrtClient {
 
         let mut trains: Vec<SrtTrain> = trains_json
             .iter()
-            .filter_map(SrtTrain::from_json)
+            .enumerate()
+            .filter_map(|(i, t)| match SrtTrain::from_json(t) {
+                Some(train) => Some(train),
+                None => {
+                    warn!(index = i, "Failed to parse SRT train from response — skipping");
+                    None
+                }
+            })
             .filter(|t| t.is_srt()) // filter SRT only, drop KTX/ITX
             .collect();
 
@@ -483,11 +492,13 @@ impl SrtClient {
         }
 
         // Acquire NetFunnel key before reserve
-        let nf_key = self
-            .netfunnel
-            .run(&self.netfunnel_client)
-            .await
-            .unwrap_or_default();
+        let nf_key = match self.netfunnel.run(&self.netfunnel_client).await {
+            Ok(key) => key,
+            Err(e) => {
+                warn!(error = %e, "NetFunnel acquisition failed for reserve, proceeding without key");
+                String::new()
+            }
+        };
 
         let default_passengers = [PassengerGroup::adults(1)];
         let passengers = if passengers.is_empty() {
@@ -680,6 +691,14 @@ impl SrtClient {
             .unwrap_or_default();
 
         let mut reservations = Vec::new();
+
+        if train_data.len() != pay_data.len() {
+            warn!(
+                trains = train_data.len(),
+                payments = pay_data.len(),
+                "SRT reservation data length mismatch — some reservations may be missing"
+            );
+        }
 
         for (train, pay) in train_data.iter().zip(pay_data.iter()) {
             let pnr_no = train.get("pnrNo").and_then(|v| v.as_str()).unwrap_or("");

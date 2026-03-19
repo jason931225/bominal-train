@@ -691,7 +691,9 @@ async fn try_auto_pay_srt(
         Ok(Some(c)) => c,
         Ok(None) => {
             warn!(task_id = %task.id, card_id = %card_id, "Payment card not found for auto-pay");
-            let _ = bominal_db::task::update_status(db, task.id, TaskStatus::AwaitingPayment).await;
+            if let Err(e) = bominal_db::task::update_status(db, task.id, TaskStatus::AwaitingPayment).await {
+                error!(task_id = %task.id, error = %e, "Failed to update task status to AwaitingPayment");
+            }
             event_bus
                 .publish(
                     task.user_id,
@@ -742,7 +744,9 @@ async fn try_auto_pay_srt(
         }
         Err(e) => {
             warn!(task_id = %task.id, error = %e, "SRT auto-pay failed");
-            let _ = bominal_db::task::update_status(db, task.id, TaskStatus::AwaitingPayment).await;
+            if let Err(e) = bominal_db::task::update_status(db, task.id, TaskStatus::AwaitingPayment).await {
+                error!(task_id = %task.id, error = %e, "Failed to update task status to AwaitingPayment");
+            }
             event_bus
                 .publish(
                     task.user_id,
@@ -796,7 +800,9 @@ async fn try_auto_pay_ktx(
         Ok(Some(c)) => c,
         Ok(None) => {
             warn!(task_id = %task.id, card_id = %card_id, "Payment card not found for auto-pay");
-            let _ = bominal_db::task::update_status(db, task.id, TaskStatus::AwaitingPayment).await;
+            if let Err(e) = bominal_db::task::update_status(db, task.id, TaskStatus::AwaitingPayment).await {
+                error!(task_id = %task.id, error = %e, "Failed to update task status to AwaitingPayment");
+            }
             event_bus
                 .publish(
                     task.user_id,
@@ -840,7 +846,9 @@ async fn try_auto_pay_ktx(
         }
         Err(e) => {
             warn!(task_id = %task.id, error = %e, "KTX auto-pay failed");
-            let _ = bominal_db::task::update_status(db, task.id, TaskStatus::AwaitingPayment).await;
+            if let Err(e) = bominal_db::task::update_status(db, task.id, TaskStatus::AwaitingPayment).await {
+                error!(task_id = %task.id, error = %e, "Failed to update task status to AwaitingPayment");
+            }
             event_bus
                 .publish(
                     task.user_id,

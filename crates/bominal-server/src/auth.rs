@@ -30,7 +30,12 @@ pub async fn register(
     let cookie = bominal_service::auth::session_cookie_value(&session_id, &state.app_base_url);
 
     let mut headers = HeaderMap::new();
-    headers.insert(SET_COOKIE, cookie.parse().unwrap());
+    headers.insert(
+        SET_COOKIE,
+        cookie
+            .parse()
+            .map_err(|_| AppError::Internal(anyhow::anyhow!("invalid cookie value")))?,
+    );
 
     let response = AuthResponse {
         user_id: user.id,
@@ -53,7 +58,12 @@ pub async fn login(
     let cookie = bominal_service::auth::session_cookie_value(&session_id, &state.app_base_url);
 
     let mut headers = HeaderMap::new();
-    headers.insert(SET_COOKIE, cookie.parse().unwrap());
+    headers.insert(
+        SET_COOKIE,
+        cookie
+            .parse()
+            .map_err(|_| AppError::Internal(anyhow::anyhow!("invalid cookie value")))?,
+    );
 
     let response = AuthResponse {
         user_id: user.id,
@@ -79,7 +89,12 @@ pub async fn logout(
 
     let cookie = bominal_service::auth::clear_session_cookie_value(&state.app_base_url);
     let mut resp_headers = HeaderMap::new();
-    resp_headers.insert(SET_COOKIE, cookie.parse().unwrap());
+    resp_headers.insert(
+        SET_COOKIE,
+        cookie
+            .parse()
+            .map_err(|_| AppError::Internal(anyhow::anyhow!("invalid cookie value")))?,
+    );
     Ok(resp_headers)
 }
 

@@ -438,7 +438,14 @@ impl KtxClient {
 
         let mut trains: Vec<KtxTrain> = trains_json
             .iter()
-            .filter_map(KtxTrain::from_json)
+            .enumerate()
+            .filter_map(|(i, t)| match KtxTrain::from_json(t) {
+                Some(train) => Some(train),
+                None => {
+                    tracing::warn!(index = i, "Failed to parse KTX train from response — skipping");
+                    None
+                }
+            })
             .filter(|t| t.is_ktx())
             .collect();
 

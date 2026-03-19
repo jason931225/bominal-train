@@ -184,6 +184,10 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     m.insert("error.standby_closed", "예약대기 접수가 마감되었습니다");
     m.insert("error.ip_blocked", "IP가 차단되었습니다");
     m.insert("error.passkey_failed", "패스키 로그인에 실패했습니다");
+    m.insert(
+        "error.passkey_register_failed",
+        "패스키 등록에 실패했습니다",
+    );
 
     // Common
     m.insert("common.confirm", "확인");
@@ -244,11 +248,16 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
 
     // Home
     m.insert("home.welcome", "환영합니다");
+    m.insert("home.description", "기차표 예매를 도와드립니다");
     m.insert("home.quick_search", "빠른 검색");
     m.insert("home.active_tasks", "진행 중인 예약");
     m.insert("home.no_active_tasks", "진행 중인 예약이 없습니다");
     m.insert("home.quick_actions", "빠른 실행");
     m.insert("home.tickets", "승차권");
+    m.insert("home.start_search", "열차 검색");
+    m.insert("home.start_search_desc", "SRT · KTX 빈자리 찾기");
+    m.insert("home.open_tasks", "예약 현황");
+    m.insert("home.open_tasks_desc", "진행 중인 예약 확인");
 
     // Task — extended
     m.insert("task.no_active", "진행 중인 작업이 없습니다");
@@ -298,6 +307,18 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     // Calendar/time modal
     m.insert("calendar.title", "날짜 및 시간");
     m.insert("calendar.apply", "적용");
+    m.insert("calendar.month_1", "1월");
+    m.insert("calendar.month_2", "2월");
+    m.insert("calendar.month_3", "3월");
+    m.insert("calendar.month_4", "4월");
+    m.insert("calendar.month_5", "5월");
+    m.insert("calendar.month_6", "6월");
+    m.insert("calendar.month_7", "7월");
+    m.insert("calendar.month_8", "8월");
+    m.insert("calendar.month_9", "9월");
+    m.insert("calendar.month_10", "10월");
+    m.insert("calendar.month_11", "11월");
+    m.insert("calendar.month_12", "12월");
 
     // Search — station labels
     m.insert("search.from", "출발");

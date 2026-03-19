@@ -37,8 +37,8 @@ pub async fn register(
     // Send verification email (best-effort)
     if let Some(email_client) = use_context::<bominal_service::EmailClient>()
         && let Some(base_url) = use_context::<AppBaseUrl>()
+        && let Some(key) = use_context::<bominal_service::EncryptionKey>()
     {
-        let key = use_context::<bominal_service::EncryptionKey>().unwrap();
         let ctx = bominal_service::ServiceContext {
             db: pool.clone(),
             encryption_key: key,
@@ -69,8 +69,8 @@ pub async fn forgot_password(email: String) -> Result<(), ServerFnError> {
 
     if let Some(email_client) = use_context::<bominal_service::EmailClient>()
         && let Some(base_url) = use_context::<AppBaseUrl>()
+        && let Some(key) = use_context::<bominal_service::EncryptionKey>()
     {
-        let key = use_context::<bominal_service::EncryptionKey>().unwrap();
         let ctx = bominal_service::ServiceContext {
             db: pool,
             encryption_key: key,
@@ -97,8 +97,8 @@ pub async fn resend_verification() -> Result<(), ServerFnError> {
 
     if let Some(email_client) = use_context::<bominal_service::EmailClient>()
         && let Some(base_url) = use_context::<AppBaseUrl>()
+        && let Some(key) = use_context::<bominal_service::EncryptionKey>()
     {
-        let key = use_context::<bominal_service::EncryptionKey>().unwrap();
         let ctx = bominal_service::ServiceContext {
             db: pool,
             encryption_key: key,

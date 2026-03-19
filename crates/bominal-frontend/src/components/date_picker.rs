@@ -32,15 +32,14 @@ fn max_selectable_date() -> NaiveDate {
 }
 
 fn days_in_month(year: i32, month: u32) -> u32 {
-    if month == 12 {
+    let next = if month == 12 {
         NaiveDate::from_ymd_opt(year + 1, 1, 1)
     } else {
         NaiveDate::from_ymd_opt(year, month + 1, 1)
-    }
-    .unwrap()
-    .pred_opt()
-    .unwrap()
-    .day()
+    };
+    next.and_then(|d| d.pred_opt())
+        .map(|d| d.day())
+        .unwrap_or(28)
 }
 
 /// Check if a date is selectable (not past, not beyond 1 month, 7AM KST rule).
@@ -147,22 +146,6 @@ pub fn DatePicker(
         cells
     };
 
-    let month_names = [
-        "",
-        "January",
-        "February",
-        "March",
-        "April",
-        "May",
-        "June",
-        "July",
-        "August",
-        "September",
-        "October",
-        "November",
-        "December",
-    ];
-
     let on_apply = move |_| {
         on_select.run((temp_date.get(), temp_time.get()));
     };
@@ -205,7 +188,10 @@ pub fn DatePicker(
                                 </svg>
                             </button>
                             <span class="font-bold text-[var(--color-text-primary)]">
-                                {move || format!("{} {}", month_names[cal_month.get() as usize], cal_year.get())}
+                                {move || {
+                                    let key = format!("calendar.month_{}", cal_month.get());
+                                    format!("{} {}", t(&key), cal_year.get())
+                                }}
                             </span>
                             <button
                                 class="p-2 rounded-lg hover:bg-[var(--color-interactive-hover)] text-[var(--color-text-tertiary)] disabled:opacity-30 transition-colors"

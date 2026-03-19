@@ -35,23 +35,7 @@ pub fn LoginPage() -> impl IntoView {
         }
     });
 
-    let on_passkey_login = move |_| {
-        error_msg.set(None);
-        #[cfg(target_arch = "wasm32")]
-        {
-            wasm_bindgen_futures::spawn_local(async move {
-                match crate::api::passkey::do_passkey_login().await {
-                    Ok(()) => {}
-                    Err(e) => {
-                        let msg = e
-                            .as_string()
-                            .unwrap_or_else(|| crate::i18n::t("error.passkey_failed").into());
-                        error_msg.set(Some(msg));
-                    }
-                }
-            });
-        }
-    };
+    // Passkey login is handled via __doPasskeyLogin() in interop.js (SSR-compatible)
 
     auth_shell(view! {
         <div class="glass-panel p-8 rounded-3xl flex flex-col gap-5">
@@ -132,7 +116,7 @@ pub fn LoginPage() -> impl IntoView {
             </div>
 
             <button
-                on:click=on_passkey_login
+                id="btn-passkey-login"
                 class="w-full py-3 bg-[var(--color-bg-elevated)] border border-[var(--color-border-default)] text-[var(--color-text-primary)] font-semibold rounded-xl flex items-center justify-center gap-2 shadow-sm hover:bg-[var(--color-interactive-hover)] active:scale-95 transition-all"
             >
                 {icon_key()}
