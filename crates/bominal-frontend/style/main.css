@@ -42,9 +42,9 @@
     --color-status-warning: #ff9500;
     --color-status-warning-bg: rgba(255,149,0,0.10);
 
-    --color-mesh-1: rgba(0,122,255,0.06);
-    --color-mesh-2: rgba(88,86,214,0.04);
-    --color-mesh-3: rgba(90,200,250,0.04);
+    --color-mesh-1: rgba(0,122,255,0.10);
+    --color-mesh-2: rgba(88,86,214,0.08);
+    --color-mesh-3: rgba(90,200,250,0.07);
 
     --range-track: rgba(0,122,255,0.12);
     --range-fill: var(--color-brand-text);
@@ -129,7 +129,7 @@
       radial-gradient(ellipse at 15% 50%, var(--color-mesh-1) 0%, transparent 60%),
       radial-gradient(ellipse at 85% 30%, var(--color-mesh-2) 0%, transparent 60%),
       radial-gradient(ellipse at 50% 80%, var(--color-mesh-3) 0%, transparent 60%);
-    opacity: 0.5;
+    opacity: 0.8;
     pointer-events: none;
     transition: background 0.25s ease;
   }
@@ -166,7 +166,7 @@
     background: var(--color-interactive-hover);
   }
 
-  /* Tinted glass button — primary action style */
+  /* Tinted glass button — secondary action style */
   .btn-glass {
     background: var(--color-brand-primary);
     color: var(--color-brand-text);
@@ -180,6 +180,23 @@
   }
 
   .btn-glass:active {
+    transform: scale(0.97);
+  }
+
+  /* Solid primary button — high-contrast CTA */
+  .btn-primary {
+    background: linear-gradient(180deg, #3b9eff 0%, #007AFF 100%);
+    color: #fff;
+    border: none;
+    box-shadow: 0 4px 14px rgba(0,122,255,0.35), 0 1px 3px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.20);
+    transition: opacity 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
+  }
+
+  .btn-primary:hover {
+    box-shadow: 0 6px 20px rgba(0,122,255,0.45), 0 1px 3px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.20);
+  }
+
+  .btn-primary:active {
     transform: scale(0.97);
   }
 

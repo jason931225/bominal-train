@@ -6,21 +6,21 @@ pub const MODE_COOKIE: &str = "bominal-mode";
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ThemeName {
     #[default]
-    Rosewood,
+    Glass,
     ClearSky,
 }
 
 impl ThemeName {
     pub const fn as_str(self) -> &'static str {
         match self {
-            ThemeName::Rosewood => "rosewood",
+            ThemeName::Glass => "glass",
             ThemeName::ClearSky => "clear-sky",
         }
     }
 
     pub fn parse(value: &str) -> Option<Self> {
         match value {
-            "rosewood" => Some(Self::Rosewood),
+            "glass" => Some(Self::Glass),
             "clear-sky" => Some(Self::ClearSky),
             _ => None,
         }
@@ -101,6 +101,7 @@ mod tests {
     fn falls_back_on_invalid_cookie_values() {
         let prefs =
             ThemePrefs::from_cookie_header(Some("bominal-theme=invalid; bominal-mode=unknown"));
-        assert_eq!(prefs, ThemePrefs::default());
+        assert_eq!(prefs.theme, ThemeName::Glass);
+        assert_eq!(prefs.mode, ThemeMode::Light);
     }
 }

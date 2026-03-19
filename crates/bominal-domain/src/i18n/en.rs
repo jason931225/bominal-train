@@ -89,6 +89,7 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
         "Password has been reset successfully.",
     );
     m.insert("auth.missing_token", "Invalid or missing link.");
+    m.insert("auth.email_placeholder", "Email address");
 
     // Search
     m.insert("search.departure", "Departure");
@@ -188,6 +189,7 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     m.insert("error.no_remaining_seats", "No remaining seats");
     m.insert("error.standby_closed", "Standby registration is closed");
     m.insert("error.ip_blocked", "Your IP has been blocked");
+    m.insert("error.passkey_failed", "Passkey login failed");
 
     // Common
     m.insert("common.confirm", "Confirm");
@@ -199,6 +201,8 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     m.insert("common.back", "Back");
     m.insert("common.next", "Next");
     m.insert("common.close", "Close");
+    m.insert("common.or", "or");
+    m.insert("common.coming_soon", "Coming soon");
 
     // Search — extended
     m.insert("search.title", "Search Trains");

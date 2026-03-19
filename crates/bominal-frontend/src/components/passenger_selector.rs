@@ -68,7 +68,7 @@ pub fn PassengerSelector(
                         </div>
                         <div class="flex items-center gap-3">
                             <button
-                                class="w-8 h-8 rounded-full flex items-center justify-center border border-[var(--color-border-default)] text-[var(--color-text-tertiary)] hover:border-[var(--color-border-focus)] disabled:opacity-30 transition-colors bg-[var(--color-bg-elevated)] shadow-sm"
+                                class="w-11 h-11 rounded-full flex items-center justify-center border border-[var(--color-border-default)] text-[var(--color-text-tertiary)] hover:border-[var(--color-border-focus)] disabled:opacity-30 transition-colors bg-[var(--color-bg-elevated)] shadow-sm"
                                 on:click=decrement
                                 disabled=move || {
                                     let current = passengers.get();
@@ -80,7 +80,7 @@ pub fn PassengerSelector(
                                 {move || passengers.get()[idx].count}
                             </span>
                             <button
-                                class="w-8 h-8 rounded-full flex items-center justify-center border border-[var(--color-border-default)] text-[var(--color-text-tertiary)] hover:border-[var(--color-border-focus)] disabled:opacity-30 transition-colors bg-[var(--color-bg-elevated)] shadow-sm"
+                                class="w-11 h-11 rounded-full flex items-center justify-center border border-[var(--color-border-default)] text-[var(--color-text-tertiary)] hover:border-[var(--color-border-focus)] disabled:opacity-30 transition-colors bg-[var(--color-bg-elevated)] shadow-sm"
                                 on:click=increment
                                 disabled=move || {
                                     let current = passengers.get();

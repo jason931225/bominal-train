@@ -22,11 +22,11 @@ pub fn SelectionPrompt(
                 </span>
                 <div class="flex gap-2">
                     <button
-                        class="px-4 py-1.5 rounded-xl text-xs font-medium bg-[var(--color-bg-sunken)] text-[var(--color-text-tertiary)] hover:bg-[var(--color-interactive-hover)] transition-colors"
+                        class="px-4 py-2.5 min-h-11 rounded-xl text-xs font-medium bg-[var(--color-bg-sunken)] text-[var(--color-text-tertiary)] hover:bg-[var(--color-interactive-hover)] transition-colors"
                         on:click=move |_| on_clear.run(())
                     >{t("selection.clear")}</button>
                     <button
-                        class="px-4 py-1.5 rounded-xl text-xs font-medium btn-glass transition-all"
+                        class="px-4 py-2.5 min-h-11 rounded-xl text-xs font-medium btn-glass transition-all"
                         on:click=move |_| on_confirm.run(())
                     >{t("selection.review")}</button>
                 </div>

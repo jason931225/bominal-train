@@ -99,9 +99,9 @@ pub fn ResetPasswordPage() -> impl IntoView {
                                             class=move || {
                                                 let base = "w-full px-4 py-3 bg-[var(--color-bg-sunken)] border rounded-xl text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] focus:outline-none transition-colors";
                                                 if passwords_mismatch() {
-                                                    format!("{base} border-red-300 focus:border-red-400")
+                                                    format!("{base} border-[var(--color-status-error)] focus:border-[var(--color-status-error)]")
                                                 } else if passwords_match() {
-                                                    format!("{base} border-emerald-300 focus:border-emerald-400")
+                                                    format!("{base} border-[var(--color-status-success)] focus:border-[var(--color-status-success)]")
                                                 } else {
                                                     format!("{base} border-[var(--color-border-default)] focus:border-[var(--color-border-focus)]")
                                                 }
@@ -109,13 +109,13 @@ pub fn ResetPasswordPage() -> impl IntoView {
                                         />
                                         {move || if passwords_mismatch() {
                                             Some(view! {
-                                                <p class="text-xs text-red-500 font-medium pl-1">
+                                                <p class="text-xs text-[var(--color-status-error)] font-medium pl-1">
                                                     {t("auth.passwords_mismatch")}
                                                 </p>
                                             })
                                         } else if passwords_match() {
                                             Some(view! {
-                                                <p class="text-xs text-emerald-600 font-medium pl-1">
+                                                <p class="text-xs text-[var(--color-status-success)] font-medium pl-1">
                                                     {t("auth.passwords_match")}
                                                 </p>
                                             })

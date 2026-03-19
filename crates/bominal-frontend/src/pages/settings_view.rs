@@ -267,32 +267,25 @@ fn ThemePicker(
                 <button
                     class=move || {
                         let base = "p-3 rounded-xl border transition-colors text-left";
-                        if theme.get() == "rosewood" {
+                        if theme.get() == "glass" {
                             format!("{base} glass-active border-[var(--color-brand-border)]")
                         } else {
                             format!("{base} border-[var(--color-border-default)] hover:border-[var(--color-brand-border)]")
                         }
                     }
-                    on:click=move |_| set_theme_choice("rosewood")
+                    on:click=move |_| set_theme_choice("glass")
                 >
                     <div class="flex gap-1.5 mb-2">
-                        <span class="w-3 h-3 rounded-full" style="background:#8a6050"></span>
-                        <span class="w-3 h-3 rounded-full" style="background:#5a7a62"></span>
-                        <span class="w-3 h-3 rounded-full" style="background:#9a7a3a"></span>
+                        <span class="w-3 h-3 rounded-full" style="background:#007AFF"></span>
+                        <span class="w-3 h-3 rounded-full" style="background:#5856D6"></span>
+                        <span class="w-3 h-3 rounded-full" style="background:#5AC8FA"></span>
                     </div>
-                    <p class="text-xs font-medium text-[var(--color-text-primary)]">"Rosewood Dusk"</p>
-                    <p class="text-[10px] text-[var(--color-text-tertiary)]">"Warm & nostalgic"</p>
+                    <p class="text-xs font-medium text-[var(--color-text-primary)]">"Apple Glass"</p>
+                    <p class="text-[10px] text-[var(--color-text-tertiary)]">"Cool & modern"</p>
                 </button>
                 <button
-                    class=move || {
-                        let base = "p-3 rounded-xl border transition-colors text-left";
-                        if theme.get() == "clear-sky" {
-                            format!("{base} glass-active border-[var(--color-brand-border)]")
-                        } else {
-                            format!("{base} border-[var(--color-border-default)] hover:border-[var(--color-brand-border)]")
-                        }
-                    }
-                    on:click=move |_| set_theme_choice("clear-sky")
+                    class="p-3 rounded-xl border border-[var(--color-border-default)] opacity-40 cursor-not-allowed text-left"
+                    disabled=true
                 >
                     <div class="flex gap-1.5 mb-2">
                         <span class="w-3 h-3 rounded-full" style="background:#4a6eaa"></span>
@@ -300,7 +293,7 @@ fn ThemePicker(
                         <span class="w-3 h-3 rounded-full" style="background:#9a7a30"></span>
                     </div>
                     <p class="text-xs font-medium text-[var(--color-text-primary)]">"Clear Sky"</p>
-                    <p class="text-[10px] text-[var(--color-text-tertiary)]">"Soft & airy"</p>
+                    <p class="text-[10px] text-[var(--color-text-tertiary)]">{t("common.coming_soon")}</p>
                 </button>
             </div>
         </div>

@@ -86,6 +86,7 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
         "비밀번호가 재설정되었습니다.",
     );
     m.insert("auth.missing_token", "유효하지 않은 링크입니다.");
+    m.insert("auth.email_placeholder", "이메일 주소");
 
     // Search
     m.insert("search.departure", "출발역");
@@ -182,6 +183,7 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     m.insert("error.no_remaining_seats", "잔여석이 없습니다");
     m.insert("error.standby_closed", "예약대기 접수가 마감되었습니다");
     m.insert("error.ip_blocked", "IP가 차단되었습니다");
+    m.insert("error.passkey_failed", "패스키 로그인에 실패했습니다");
 
     // Common
     m.insert("common.confirm", "확인");
@@ -193,6 +195,8 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     m.insert("common.back", "뒤로");
     m.insert("common.next", "다음");
     m.insert("common.close", "닫기");
+    m.insert("common.or", "또는");
+    m.insert("common.coming_soon", "준비 중");
 
     // Search — extended
     m.insert("search.title", "열차 검색");

@@ -3,6 +3,9 @@
 !.env.example
 # Generated Tailwind CSS output (built from main.css)
 crates/bominal-frontend/style/output.css
+node_modules/
+package.json
+package-lock.json
 *.swp
 *.swo
 *~

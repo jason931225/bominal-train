@@ -148,11 +148,11 @@ fn ModalFooter(
             })}
             <div class="flex gap-3">
                 <button
-                    class="flex-1 py-2.5 rounded-xl text-sm font-medium bg-[var(--color-bg-sunken)] text-[var(--color-text-tertiary)] hover:bg-[var(--color-interactive-hover)] transition-colors"
+                    class="flex-1 py-3 min-h-11 rounded-xl text-sm font-medium bg-[var(--color-bg-sunken)] text-[var(--color-text-tertiary)] hover:bg-[var(--color-interactive-hover)] transition-colors"
                     on:click=move |_| on_cancel.run(())
                 >{t("common.cancel")}</button>
                 <button
-                    class="flex-1 py-2.5 rounded-xl text-sm font-medium btn-glass disabled:opacity-50 transition-all"
+                    class="flex-1 py-3 min-h-11 rounded-xl text-sm font-medium btn-glass disabled:opacity-50 transition-all"
                     disabled=move || creating.get() || auto_pay_blocked.get()
                     on:click=move |_| on_confirm.run(())
                 >

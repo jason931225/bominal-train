@@ -86,6 +86,7 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
         "パスワードが再設定されました。",
     );
     m.insert("auth.missing_token", "無効なリンクです。");
+    m.insert("auth.email_placeholder", "メールアドレス");
 
     // Search
     m.insert("search.departure", "出発駅");
@@ -182,6 +183,7 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     m.insert("error.no_remaining_seats", "残席がありません");
     m.insert("error.standby_closed", "キャンセル待ち受付は終了しました");
     m.insert("error.ip_blocked", "IPがブロックされています");
+    m.insert("error.passkey_failed", "パスキーログインに失敗しました");
 
     // Common
     m.insert("common.confirm", "確認");
@@ -193,6 +195,8 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     m.insert("common.back", "戻る");
     m.insert("common.next", "次へ");
     m.insert("common.close", "閉じる");
+    m.insert("common.or", "または");
+    m.insert("common.coming_soon", "準備中");
 
     // Search — extended
     m.insert("search.title", "列車検索");

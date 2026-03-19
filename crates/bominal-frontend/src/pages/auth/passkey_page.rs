@@ -21,7 +21,7 @@ pub fn PasskeyPage() -> impl IntoView {
                     Err(e) => {
                         let msg = e
                             .as_string()
-                            .unwrap_or_else(|| "Passkey login failed".into());
+                            .unwrap_or_else(|| crate::i18n::t("error.passkey_failed").into());
                         error_msg.set(Some(msg));
                     }
                 }
@@ -49,7 +49,7 @@ pub fn PasskeyPage() -> impl IntoView {
 
             <button
                 on:click=on_passkey_login
-                class="w-full py-3.5 btn-glass font-semibold rounded-xl flex items-center justify-center gap-2.5 shadow-lg active:scale-95 transition-all"
+                class="w-full py-3.5 btn-primary font-semibold rounded-xl flex items-center justify-center gap-2.5 active:scale-95 transition-all"
             >
                 {icon_key()}
                 {t("auth.passkey_signin")}
@@ -57,7 +57,7 @@ pub fn PasskeyPage() -> impl IntoView {
 
             <div class="flex items-center gap-2">
                 <div class="flex-1 h-px bg-[var(--color-border-subtle)]"></div>
-                <span class="text-xs text-[var(--color-text-disabled)] font-medium">"or"</span>
+                <span class="text-xs text-[var(--color-text-disabled)] font-medium">{t("common.or")}</span>
                 <div class="flex-1 h-px bg-[var(--color-border-subtle)]"></div>
             </div>
 

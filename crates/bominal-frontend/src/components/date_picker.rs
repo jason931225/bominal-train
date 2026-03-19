@@ -229,20 +229,20 @@ pub fn DatePicker(
                         <div class="grid grid-cols-7 gap-1 mb-4">
                             {move || calendar_days().into_iter().map(|cell| {
                                 match cell {
-                                    None => view! { <div class="h-9"></div> }.into_any(),
+                                    None => view! { <div class="h-11"></div> }.into_any(),
                                     Some(date) => {
                                         let selectable = is_selectable(date);
                                         let cls = move || {
                                             let sel = temp_date.get() == date;
                                             let is_today = date == today_kst();
                                             if sel {
-                                                "h-9 w-full rounded-full flex items-center justify-center text-sm font-medium bg-[var(--color-brand-primary)] text-white shadow-md cursor-pointer"
+                                                "h-11 w-full rounded-full flex items-center justify-center text-sm font-medium bg-[var(--color-brand-primary)] text-white shadow-md cursor-pointer"
                                             } else if is_today && selectable {
-                                                "h-9 w-full rounded-full flex items-center justify-center text-sm font-medium ring-1 ring-[var(--color-brand-primary)] text-[var(--color-brand-text)] cursor-pointer hover:bg-[var(--color-interactive-hover)]"
+                                                "h-11 w-full rounded-full flex items-center justify-center text-sm font-medium ring-1 ring-[var(--color-brand-primary)] text-[var(--color-brand-text)] cursor-pointer hover:bg-[var(--color-interactive-hover)]"
                                             } else if !selectable {
-                                                "h-9 w-full rounded-full flex items-center justify-center text-sm text-[var(--color-text-disabled)] cursor-not-allowed"
+                                                "h-11 w-full rounded-full flex items-center justify-center text-sm text-[var(--color-text-disabled)] cursor-not-allowed"
                                             } else {
-                                                "h-9 w-full rounded-full flex items-center justify-center text-sm text-[var(--color-text-primary)] cursor-pointer hover:bg-[var(--color-interactive-hover)]"
+                                                "h-11 w-full rounded-full flex items-center justify-center text-sm text-[var(--color-text-primary)] cursor-pointer hover:bg-[var(--color-interactive-hover)]"
                                             }
                                         };
                                         view! {
@@ -277,13 +277,13 @@ pub fn DatePicker(
                     // Footer — Cancel / Apply
                     <div class="p-4 border-t border-[var(--color-border-default)] grid grid-cols-2 gap-3">
                         <button
-                            class="py-2.5 rounded-xl text-sm font-medium bg-[var(--color-bg-sunken)] text-[var(--color-text-tertiary)] hover:bg-[var(--color-interactive-hover)] transition-colors"
+                            class="py-3 min-h-11 rounded-xl text-sm font-medium bg-[var(--color-bg-sunken)] text-[var(--color-text-tertiary)] hover:bg-[var(--color-interactive-hover)] transition-colors"
                             on:click=on_cancel
                         >
                             {t("common.cancel")}
                         </button>
                         <button
-                            class="py-2.5 rounded-xl text-sm font-medium btn-glass transition-all"
+                            class="py-3 min-h-11 rounded-xl text-sm font-medium btn-glass transition-all"
                             on:click=on_apply
                         >
                             {t("calendar.apply")}

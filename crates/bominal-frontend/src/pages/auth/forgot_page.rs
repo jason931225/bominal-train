@@ -37,8 +37,9 @@ pub fn ForgotPage() -> impl IntoView {
             </div>
 
             {move || forgot_sent.get().then(|| view! {
-                <div class="px-3 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
-                    <p class="text-sm text-emerald-600 font-medium">{t("auth.reset_link_sent")}</p>
+                <div class="px-3 py-2 rounded-xl border border-[var(--color-status-success)]"
+                     style="background: var(--color-status-success-bg)">
+                    <p class="text-sm text-[var(--color-status-success)] font-medium">{t("auth.reset_link_sent")}</p>
                 </div>
             })}
 
@@ -51,14 +52,14 @@ pub fn ForgotPage() -> impl IntoView {
                         required
                         prop:value=move || forgot_email.get()
                         on:input=move |ev| forgot_email.set(event_target_value(&ev))
-                        placeholder="Email address"
+                        placeholder=t("auth.email_placeholder")
                         class="w-full pl-10 pr-4 py-3 bg-[var(--color-bg-sunken)] border border-[var(--color-border-default)] rounded-xl text-sm font-medium text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-primary)]/50 focus:border-[var(--color-border-focus)] transition-all"
                     />
                 </div>
 
                 <button
                     type="submit"
-                    class="w-full mt-4 py-3.5 btn-glass font-semibold rounded-xl shadow-lg active:scale-95 transition-all disabled:opacity-50"
+                    class="w-full mt-4 py-3.5 btn-primary font-semibold rounded-xl shadow-lg active:scale-95 transition-all disabled:opacity-50"
                     disabled=forgot_pending
                 >
                     {move || if forgot_pending.get() { t("common.loading") } else { t("auth.send_reset_link") }}

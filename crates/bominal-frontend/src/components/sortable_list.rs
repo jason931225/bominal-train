@@ -57,17 +57,17 @@ pub fn SortableList(
                             </div>
                             <div class="flex items-center gap-1">
                                 <button
-                                    class="p-1.5 rounded-lg hover:bg-[var(--color-interactive-hover)] text-[var(--color-text-tertiary)] disabled:opacity-30"
+                                    class="min-h-11 min-w-11 flex items-center justify-center rounded-lg hover:bg-[var(--color-interactive-hover)] text-[var(--color-text-tertiary)] disabled:opacity-30"
                                     on:click=move |_| move_up(idx)
                                     disabled=move || idx == 0
                                 >"\u{2191}"</button>
                                 <button
-                                    class="p-1.5 rounded-lg hover:bg-[var(--color-interactive-hover)] text-[var(--color-text-tertiary)] disabled:opacity-30"
+                                    class="min-h-11 min-w-11 flex items-center justify-center rounded-lg hover:bg-[var(--color-interactive-hover)] text-[var(--color-text-tertiary)] disabled:opacity-30"
                                     on:click=move |_| move_down(idx)
                                     disabled=move || { idx >= len - 1 }
                                 >"\u{2193}"</button>
                                 <button
-                                    class="p-1.5 rounded-lg hover:bg-[var(--color-status-error)]/20 text-[var(--color-status-error)]"
+                                    class="min-h-11 min-w-11 flex items-center justify-center rounded-lg hover:bg-[var(--color-status-error)]/20 text-[var(--color-status-error)]"
                                     on:click=move |_| remove(idx)
                                 >"\u{00D7}"</button>
                             </div>

@@ -55,7 +55,7 @@ pub async fn register(
     }
 
     create_session_and_set_cookie(&pool, user.id).await?;
-    // No redirect — frontend handles view transition to VerifyEmail → AddPasskey → /home
+    leptos_axum::redirect("/auth/verify");
     Ok(())
 }
 

@@ -45,7 +45,7 @@ pub fn LoginPage() -> impl IntoView {
                     Err(e) => {
                         let msg = e
                             .as_string()
-                            .unwrap_or_else(|| "Passkey login failed".into());
+                            .unwrap_or_else(|| crate::i18n::t("error.passkey_failed").into());
                         error_msg.set(Some(msg));
                     }
                 }
@@ -84,7 +84,7 @@ pub fn LoginPage() -> impl IntoView {
                             required
                             prop:value=move || email.get()
                             on:input=move |ev| email.set(event_target_value(&ev))
-                            placeholder="Email address"
+                            placeholder=t("auth.email_placeholder")
                             class="w-full pl-10 pr-4 py-3 bg-[var(--color-bg-sunken)] border border-[var(--color-border-default)] rounded-xl text-sm font-medium text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-primary)]/50 focus:border-[var(--color-border-focus)] transition-all"
                         />
                     </div>
@@ -97,7 +97,7 @@ pub fn LoginPage() -> impl IntoView {
                             required
                             prop:value=move || password.get()
                             on:input=move |ev| password.set(event_target_value(&ev))
-                            placeholder="Password"
+                            placeholder=t("auth.password")
                             class="w-full pl-10 pr-10 py-3 bg-[var(--color-bg-sunken)] border border-[var(--color-border-default)] rounded-xl text-sm font-medium text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-primary)]/50 focus:border-[var(--color-border-focus)] transition-all"
                         />
                         <button
@@ -118,7 +118,7 @@ pub fn LoginPage() -> impl IntoView {
 
                 <button
                     type="submit"
-                    class="w-full mt-4 py-3.5 btn-glass font-semibold rounded-xl shadow-lg active:scale-95 transition-all disabled:opacity-50"
+                    class="w-full mt-4 py-3.5 btn-primary font-semibold rounded-xl active:scale-95 transition-all disabled:opacity-50"
                     disabled=login_pending
                 >
                     {move || if login_pending.get() { t("common.loading") } else { t("auth.sign_in") }}
@@ -127,7 +127,7 @@ pub fn LoginPage() -> impl IntoView {
 
             <div class="flex items-center gap-2">
                 <div class="flex-1 h-px bg-[var(--color-border-subtle)]"></div>
-                <span class="text-xs text-[var(--color-text-disabled)] font-medium">"or"</span>
+                <span class="text-xs text-[var(--color-text-disabled)] font-medium">{t("common.or")}</span>
                 <div class="flex-1 h-px bg-[var(--color-border-subtle)]"></div>
             </div>
 

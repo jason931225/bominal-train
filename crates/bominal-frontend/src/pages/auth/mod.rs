@@ -28,9 +28,19 @@ use leptos::prelude::*;
 
 pub(super) fn icon_fingerprint() -> impl IntoView {
     view! {
-        <svg class="w-14 h-14 text-[var(--color-brand-text)]" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
-            <path stroke-linecap="round" stroke-linejoin="round"
-                d="M7.864 4.243A7.5 7.5 0 0119.5 10.5c0 2.92-.556 5.709-1.568 8.268M5.742 6.364A7.465 7.465 0 004.5 10.5a48.667 48.667 0 00-1.214 8.036M12.5 3a7.5 7.5 0 016.396 3.568M12 10.5a2 2 0 10-4 0 2 2 0 004 0zm0 0v3.5" />
+        <svg class="w-14 h-14" viewBox="0 0 48 48" fill="none">
+            <path d="M24 4C13 4 4 13 4 24s9 20 20 20 20-9 20-20S35 4 24 4z" fill="url(#fp-grad)" fill-opacity="0.12"/>
+            <path d="M24 12a8 8 0 00-8 8c0 5 1 10 3 14" stroke="var(--color-brand-text)" stroke-width="2" stroke-linecap="round" fill="none" opacity="0.35"/>
+            <path d="M29 12.7A8 8 0 0132 20c0 4-.7 8-2 11.5" stroke="var(--color-brand-text)" stroke-width="2" stroke-linecap="round" fill="none" opacity="0.5"/>
+            <path d="M24 16a4 4 0 00-4 4c0 4 .5 8 1.5 11.5" stroke="var(--color-brand-text)" stroke-width="2.5" stroke-linecap="round" fill="none" opacity="0.7"/>
+            <path d="M27.5 16.5A4 4 0 0128 20c0 3.5-.5 7-1.5 10" stroke="var(--color-brand-text)" stroke-width="2.5" stroke-linecap="round" fill="none" opacity="0.85"/>
+            <path d="M24 20c0 3 .2 6.5 1 10" stroke="var(--color-brand-text)" stroke-width="3" stroke-linecap="round" fill="none"/>
+            <defs>
+                <linearGradient id="fp-grad" x1="4" y1="4" x2="44" y2="44">
+                    <stop stop-color="#007AFF"/>
+                    <stop offset="1" stop-color="#5AC8FA"/>
+                </linearGradient>
+            </defs>
         </svg>
     }
 }
@@ -72,7 +82,7 @@ pub(super) fn icon_arrow_left() -> impl IntoView {
 
 pub(super) fn icon_mail_large() -> impl IntoView {
     view! {
-        <svg class="w-7 h-7 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
+        <svg class="w-7 h-7 text-[var(--color-brand-text)]" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
             <path stroke-linecap="round" stroke-linejoin="round"
                 d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
         </svg>
@@ -100,7 +110,7 @@ pub(super) fn icon_eye_off() -> impl IntoView {
 
 pub(super) fn icon_user_plus() -> impl IntoView {
     view! {
-        <svg class="w-6 h-6 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+        <svg class="w-6 h-6 text-[var(--color-status-success)]" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round"
                 d="M19 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zM4 19.235v-.11a6.375 6.375 0 0112.75 0v.109A12.318 12.318 0 0110.374 21c-2.331 0-4.512-.645-6.374-1.766z" />
         </svg>
@@ -113,10 +123,10 @@ pub(super) fn icon_user_plus() -> impl IntoView {
 pub(super) fn auth_shell(content: AnyView) -> impl IntoView {
     view! {
         <div class="min-h-screen w-full flex items-center justify-center px-4 relative overflow-hidden page-enter">
-            <div class="absolute top-1/4 -left-32 w-96 h-96 rounded-full blur-[120px] pointer-events-none opacity-20"
-                 style="background: var(--color-brand-primary)"></div>
-            <div class="absolute bottom-1/4 -right-32 w-96 h-96 rounded-full blur-[120px] pointer-events-none opacity-20"
-                 style="background: var(--color-mesh-2)"></div>
+            <div class="absolute top-1/4 -left-32 w-96 h-96 rounded-full blur-[120px] pointer-events-none opacity-60"
+                 style="background: rgba(0,122,255,0.25)"></div>
+            <div class="absolute bottom-1/4 -right-32 w-96 h-96 rounded-full blur-[120px] pointer-events-none opacity-50"
+                 style="background: rgba(88,86,214,0.20)"></div>
 
             <div class="w-full max-w-sm relative z-10">
                 <div class="flex justify-center mb-8">
@@ -155,20 +165,20 @@ pub(super) fn password_strength(pw: &str) -> usize {
 
 pub(super) fn strength_color(score: usize) -> &'static str {
     match score {
-        1 => "bg-red-400",
-        2 => "bg-orange-400",
-        3 => "bg-yellow-400",
-        4 => "bg-emerald-500",
-        _ => "bg-slate-200",
+        1 => "bg-[var(--color-status-error)]",
+        2 => "bg-[var(--color-status-warning)]",
+        3 => "bg-[var(--color-status-warning)]",
+        4 => "bg-[var(--color-status-success)]",
+        _ => "bg-[var(--color-border-subtle)]",
     }
 }
 
 pub(super) fn strength_text_color(score: usize) -> &'static str {
     match score {
-        1 => "text-red-500",
-        2 => "text-orange-500",
-        3 => "text-yellow-600",
-        4 => "text-emerald-600",
+        1 => "text-[var(--color-status-error)]",
+        2 => "text-[var(--color-status-warning)]",
+        3 => "text-[var(--color-status-warning)]",
+        4 => "text-[var(--color-status-success)]",
         _ => "",
     }
 }

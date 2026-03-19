@@ -29,7 +29,7 @@ pub fn AuthVerifyPage() -> impl IntoView {
     auth_shell(view! {
         <div class="glass-panel p-8 rounded-3xl flex flex-col gap-6">
             <div class="text-center">
-                <div class="w-16 h-16 mx-auto mb-4 rounded-2xl flex items-center justify-center ring-1 ring-amber-200/50"
+                <div class="w-16 h-16 mx-auto mb-4 rounded-2xl flex items-center justify-center ring-1 ring-[var(--color-border-default)]"
                      style="background: linear-gradient(135deg, var(--color-bg-elevated), var(--color-bg-sunken))">
                     {icon_mail_large()}
                 </div>
@@ -43,12 +43,13 @@ pub fn AuthVerifyPage() -> impl IntoView {
                 </p>
             </div>
 
-            <div class="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-4 text-sm text-amber-600 font-medium text-center">
+            <div class="border border-[var(--color-status-warning)]/20 rounded-2xl p-4 text-sm text-[var(--color-status-warning)] font-medium text-center"
+                 style="background: var(--color-status-warning-bg)">
                 {t("auth.resend_prompt")} " "
                 <ActionForm action=resend_action attr:class="inline">
                     <button
                         type="submit"
-                        class="underline font-semibold hover:text-amber-700"
+                        class="underline font-semibold hover:text-[var(--color-status-warning)]"
                         disabled=resend_pending
                     >
                         {move || if resend_pending.get() { t("common.loading") } else { t("auth.resend_link") }}
