@@ -1,33 +1,8 @@
 //! Search service — search trains, list stations.
 
-use serde::{Deserialize, Serialize};
-
 use crate::error::ServiceError;
 
-/// Unified train search result.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct TrainInfo {
-    pub provider: String,
-    pub train_type: String,
-    pub train_type_name: String,
-    pub train_number: String,
-    pub dep_station: String,
-    pub dep_date: String,
-    pub dep_time: String,
-    pub arr_station: String,
-    pub arr_time: String,
-    pub general_available: bool,
-    pub special_available: bool,
-    pub standby_available: bool,
-}
-
-/// Station display entry.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct StationInfo {
-    pub name_ko: String,
-    pub name_en: String,
-    pub name_ja: String,
-}
+pub use bominal_domain::dto::{StationInfo, TrainInfo};
 
 /// Get station list for a provider.
 pub fn list_stations(provider: &str) -> Result<Vec<StationInfo>, ServiceError> {

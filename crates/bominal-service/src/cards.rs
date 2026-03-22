@@ -1,22 +1,11 @@
 //! Card service — list, add, update, delete payment cards.
 
-use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::DbPool;
 use crate::error::ServiceError;
 
-/// Card info (masked — never exposes raw encrypted fields).
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct CardInfo {
-    pub id: Uuid,
-    pub label: String,
-    pub last_four: String,
-    pub card_type: String,
-    pub card_type_name: String,
-    pub created_at: DateTime<Utc>,
-}
+pub use bominal_domain::dto::CardInfo;
 
 /// List all payment cards for a user (masked).
 pub async fn list(db: &DbPool, user_id: Uuid) -> Result<Vec<CardInfo>, ServiceError> {

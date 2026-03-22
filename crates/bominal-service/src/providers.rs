@@ -1,19 +1,11 @@
 //! Provider service — manage SRT/KTX credentials (add, list, delete, verify).
 
-use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::error::ServiceError;
 use crate::{DbPool, EncryptionKey};
 
-/// Provider credential info (password masked).
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ProviderInfo {
-    pub provider: String,
-    pub login_id: String,
-    pub status: String,
-    pub last_verified_at: Option<String>,
-}
+pub use bominal_domain::dto::ProviderInfo;
 
 /// List all provider credentials for a user.
 pub async fn list(db: &DbPool, user_id: Uuid) -> Result<Vec<ProviderInfo>, ServiceError> {

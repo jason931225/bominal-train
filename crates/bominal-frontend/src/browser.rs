@@ -160,16 +160,18 @@ fn set_root_attr(_name: &str, _value: &str) {
 fn cookie_value(_name: &str) -> Option<String> {
     #[cfg(target_arch = "wasm32")]
     {
+        use wasm_bindgen::JsCast;
         let window = web_sys::window()?;
         let document = window.document()?;
-        let cookies = document.cookie().ok()?;
+        let html_doc: &web_sys::HtmlDocument = document.dyn_ref()?;
+        let cookies = html_doc.cookie().ok()?;
         return cookies
             .split(';')
-            .filter_map(|entry| {
+            .filter_map(|entry: &str| {
                 let mut parts = entry.trim().splitn(2, '=');
                 Some((parts.next()?, parts.next()?))
             })
-            .find_map(|(key, value)| (key == _name).then(|| value.to_string()));
+            .find_map(|(key, value): (&str, &str)| (key == _name).then(|| value.to_string()));
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -180,9 +182,13 @@ fn cookie_value(_name: &str) -> Option<String> {
 
 fn set_cookie(_cookie: &str) {
     #[cfg(target_arch = "wasm32")]
-    if let Some(window) = web_sys::window()
-        && let Some(document) = window.document()
     {
-        let _ = document.set_cookie(_cookie);
+        use wasm_bindgen::JsCast;
+        if let Some(window) = web_sys::window()
+            && let Some(document) = window.document()
+            && let Some(html_doc) = document.dyn_ref::<web_sys::HtmlDocument>()
+        {
+            let _ = html_doc.set_cookie(_cookie);
+        }
     }
 }

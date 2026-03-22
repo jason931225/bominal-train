@@ -3,9 +3,10 @@
 use leptos::prelude::*;
 use uuid::Uuid;
 
-pub use bominal_service::tasks::{
-    CreateTaskInput, PassengerCount, PassengerKind, PassengerList, Provider, SeatPreference,
-    TargetTrain, TargetTrainList, TaskInfo, TaskStatus, UpdateTaskInput,
+pub use bominal_domain::dto::{CreateTaskInput, UpdateTaskInput};
+pub use bominal_domain::task::{
+    PassengerCount, PassengerKind, PassengerList, Provider, ReservationTask as TaskInfo,
+    SeatPreference, TargetTrain, TargetTrainList, TaskStatus,
 };
 
 #[server(prefix = "/sfn")]
@@ -57,6 +58,7 @@ pub async fn cancel_task(task_id: String) -> Result<(), ServerFnError> {
     Ok(())
 }
 
+#[cfg(feature = "ssr")]
 pub(crate) async fn require_auth() -> Result<(bominal_service::DbPool, Uuid), ServerFnError> {
     let pool = use_context::<bominal_service::DbPool>()
         .ok_or_else(|| ServerFnError::new("Server misconfigured"))?;

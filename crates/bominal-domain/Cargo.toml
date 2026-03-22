@@ -3,13 +3,17 @@ name = "bominal-domain"
 version.workspace = true
 edition.workspace = true
 
+[features]
+default = ["crypto"]
+crypto = ["dep:argon2", "dep:aes-gcm", "dep:base64", "dep:rand"]
+
 [dependencies]
 serde.workspace = true
 serde_json.workspace = true
 chrono.workspace = true
 uuid.workspace = true
 thiserror.workspace = true
-argon2.workspace = true
-aes-gcm.workspace = true
-base64.workspace = true
-rand.workspace = true
+argon2 = { workspace = true, optional = true }
+aes-gcm = { workspace = true, optional = true }
+base64 = { workspace = true, optional = true }
+rand = { workspace = true, optional = true }

@@ -16,13 +16,13 @@ bominal-domain = { path = "../bominal-domain" }
 bominal-db = { path = "../bominal-db" }
 bominal-email = { path = "../bominal-email" }
 bominal-provider = { path = "../bominal-provider" }
-bominal-frontend = { path = "../bominal-frontend" }
+bominal-frontend = { path = "../bominal-frontend", features = ["ssr"] }
 bominal-service = { path = "../bominal-service" }
 tokio.workspace = true
 axum.workspace = true
 tower.workspace = true
 tower-http.workspace = true
-leptos.workspace = true
+leptos = { workspace = true, features = ["ssr"] }
 leptos_axum.workspace = true
 serde.workspace = true
 serde_json.workspace = true

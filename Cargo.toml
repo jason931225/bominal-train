@@ -26,10 +26,10 @@ tower = { version = "0.5", features = ["util"] }
 tower-http = { version = "0.6", features = ["trace", "request-id", "fs", "cors", "compression-gzip", "compression-br", "limit", "set-header"] }
 
 # Leptos
-leptos = { version = "0.8", features = ["ssr"] }
+leptos = { version = "0.8" }
 leptos_axum = "0.8"
 leptos_meta = "0.8"
-leptos_router = { version = "0.8", features = ["ssr"] }
+leptos_router = { version = "0.8" }
 
 # Database
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "derive", "uuid", "chrono", "json"] }

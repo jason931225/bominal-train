@@ -7,6 +7,8 @@ pub mod api;
 pub mod app;
 pub mod browser;
 pub mod components;
+#[cfg(target_arch = "wasm32")]
+mod hydrate;
 pub mod i18n;
 pub mod pages;
 pub mod theme;

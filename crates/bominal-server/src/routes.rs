@@ -15,7 +15,7 @@ use tower_http::compression::CompressionLayer;
 use tower_http::cors::CorsLayer;
 use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::request_id::{PropagateRequestIdLayer, SetRequestIdLayer};
-use tower_http::services::ServeFile;
+use tower_http::services::{ServeDir, ServeFile};
 use tower_http::set_header::SetResponseHeaderLayer;
 use tower_http::trace::TraceLayer;
 use webauthn_rs::WebauthnBuilder;
@@ -251,6 +251,7 @@ pub async fn create_router(
             "/interop.js",
             ServeFile::new("crates/bominal-frontend/ts/interop.js"),
         )
+        .nest_service("/pkg", ServeDir::new("pkg"))
         .route("/health", get(health_check))
         .route("/metrics", get(metrics_endpoint))
         .fallback(get(page_renderer))
@@ -271,7 +272,7 @@ pub async fn create_router(
         .layer(SetResponseHeaderLayer::if_not_present(
             axum::http::header::CONTENT_SECURITY_POLICY,
             HeaderValue::from_static(
-                "default-src 'self'; script-src 'self' 'unsafe-inline' https://js.evervault.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://*.evervault.com",
+                "default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://js.evervault.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://*.evervault.com",
             ),
         ))
         .layer(

@@ -4,7 +4,7 @@
 
 use leptos::prelude::*;
 
-pub use bominal_service::reservations::ReservationInfo;
+pub use bominal_domain::dto::ReservationInfo;
 
 /// List active reservations from the provider.
 #[server(prefix = "/sfn")]

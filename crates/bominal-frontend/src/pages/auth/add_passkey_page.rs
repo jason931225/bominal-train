@@ -8,6 +8,23 @@ use super::{auth_shell, icon_fingerprint, icon_key};
 
 #[component]
 pub fn AddPasskeyPage() -> impl IntoView {
+    let (error, set_error) = signal(Option::<String>::None);
+
+    let on_register = move |_| {
+        set_error.set(None);
+        #[cfg(target_arch = "wasm32")]
+        {
+            wasm_bindgen_futures::spawn_local(async move {
+                if let Err(e) = crate::api::passkey::do_passkey_register().await {
+                    let msg = e
+                        .as_string()
+                        .unwrap_or_else(|| "Passkey registration failed".to_string());
+                    set_error.set(Some(msg));
+                }
+            });
+        }
+    };
+
     auth_shell(view! {
         <div class="glass-panel p-8 rounded-3xl flex flex-col gap-6">
             <div class="text-center">
@@ -21,10 +38,11 @@ pub fn AddPasskeyPage() -> impl IntoView {
                 </p>
             </div>
 
-            <div id="passkey-error-box" style="display:none"
-                 class="px-3 py-2 rounded-xl bg-red-50 border border-red-200">
-                <p id="passkey-error" class="text-sm text-[var(--color-status-error)]"></p>
-            </div>
+            {move || error.get().map(|msg| view! {
+                <div class="px-3 py-2 rounded-xl bg-red-50 border border-red-200">
+                    <p class="text-sm text-[var(--color-status-error)]">{msg}</p>
+                </div>
+            })}
 
             <div class="bg-[var(--color-bg-sunken)] rounded-2xl p-4 flex flex-col gap-2.5">
                 <div class="flex items-center gap-3 text-sm text-[var(--color-text-secondary)]">
@@ -42,7 +60,7 @@ pub fn AddPasskeyPage() -> impl IntoView {
             </div>
 
             <button
-                id="btn-passkey-register"
+                on:click=on_register
                 class="w-full py-3.5 btn-glass font-semibold rounded-xl flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-all"
             >
                 {icon_key()}

@@ -8,25 +8,7 @@ use uuid::Uuid;
 use crate::error::ServiceError;
 use crate::{DbPool, EncryptionKey};
 
-/// Reservation summary.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ReservationInfo {
-    pub provider: String,
-    pub reservation_number: String,
-    pub train_number: String,
-    pub train_name: String,
-    pub dep_station: String,
-    pub arr_station: String,
-    pub dep_date: String,
-    pub dep_time: String,
-    pub arr_time: String,
-    pub total_cost: String,
-    pub seat_count: String,
-    pub paid: bool,
-    pub is_waiting: bool,
-    pub payment_deadline_date: String,
-    pub payment_deadline_time: String,
-}
+pub use bominal_domain::dto::ReservationInfo;
 
 /// Ticket detail within a reservation.
 #[derive(Clone, Debug, Serialize, Deserialize)]

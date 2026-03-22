@@ -46,6 +46,10 @@ pub fn shell() -> impl IntoView {
                 // Evervault JS SDK + interop
                 <script src="https://js.evervault.com/v2"></script>
                 <script src="/interop.js" defer></script>
+                // WASM hydration bundle
+                <script type="module">
+                    "import init from '/pkg/bominal_frontend.js'; init();"
+                </script>
             </head>
             <body class="min-h-screen bg-[var(--color-bg-primary)] text-[var(--color-text-primary)] font-[var(--font-sans)] antialiased">
                 <App />

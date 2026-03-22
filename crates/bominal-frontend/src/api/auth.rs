@@ -3,7 +3,7 @@
 use leptos::prelude::*;
 use uuid::Uuid;
 
-pub use bominal_service::auth::UserInfo;
+pub use bominal_domain::auth::AuthResponse as UserInfo;
 
 /// Login with email and password.
 #[server(prefix = "/sfn")]
@@ -185,14 +185,16 @@ pub async fn get_current_user() -> Result<Option<UserInfo>, ServerFnError> {
 #[derive(Clone, Debug)]
 pub struct AppBaseUrl(pub String);
 
-// ── Helpers ────────────────────────────────────────────────────────
+// ── Helpers (server-only) ─────────────────────────────────────────
 
+#[cfg(feature = "ssr")]
 pub(crate) fn extract_session_id() -> Option<String> {
     let parts = use_context::<axum::http::request::Parts>()?;
     let cookie_header = parts.headers.get("cookie")?.to_str().ok()?;
     bominal_service::auth::extract_session_id_from_cookie(cookie_header)
 }
 
+#[cfg(feature = "ssr")]
 async fn create_session_and_set_cookie(
     pool: &bominal_service::DbPool,
     user_id: Uuid,

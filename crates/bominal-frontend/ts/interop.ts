@@ -90,83 +90,8 @@ function toBase64url(buffer: ArrayBuffer): string {
   }
 };
 
-// ── Full Passkey Ceremonies (SSR-compatible, no WASM needed) ─────
-
-(window as any).__doPasskeyRegister = async function(): Promise<void> {
-  try {
-    const startResp = await fetch('/api/auth/passkey/register/start', {
-      method: 'POST',
-      credentials: 'include',
-    });
-    if (!startResp.ok) throw new Error('Failed to start passkey registration');
-
-    const { challenge_id, options } = await startResp.json();
-    const optionsJson = JSON.stringify(options);
-    const credentialJson = await (window as any).__startPasskeyRegistration(optionsJson);
-    const credential = JSON.parse(credentialJson);
-
-    const finishResp = await fetch('/api/auth/passkey/register/finish', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ challenge_id, credential }),
-    });
-
-    if (!finishResp.ok) throw new Error(`Registration failed (HTTP ${finishResp.status})`);
-    window.location.href = '/home';
-  } catch (e: any) {
-    const errorBox = document.getElementById('passkey-error-box');
-    const errorEl = document.getElementById('passkey-error');
-    if (errorBox && errorEl) {
-      errorEl.textContent = e.message || 'Passkey registration failed';
-      errorBox.style.display = '';
-    }
-  }
-};
-
-(window as any).__doPasskeyLogin = async function(): Promise<void> {
-  try {
-    const startResp = await fetch('/api/auth/passkey/login/start', {
-      method: 'POST',
-      credentials: 'include',
-    });
-    if (!startResp.ok) throw new Error('Failed to start passkey login');
-
-    const { challenge_id, options } = await startResp.json();
-    const optionsJson = JSON.stringify(options);
-    const assertionJson = await (window as any).__startPasskeyLogin(optionsJson);
-    const credential = JSON.parse(assertionJson);
-
-    const finishResp = await fetch('/api/auth/passkey/login/finish', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ challenge_id, credential }),
-    });
-
-    if (!finishResp.ok) throw new Error(`Login failed (HTTP ${finishResp.status})`);
-    window.location.href = '/home';
-  } catch (e: any) {
-    const errorEl = document.getElementById('passkey-error');
-    if (errorEl) {
-      errorEl.textContent = e.message || 'Passkey login failed';
-      errorEl.parentElement!.style.display = '';
-    }
-  }
-};
-
-// ── Auto-wire passkey buttons (SSR-compatible) ──────────────────
-
-document.addEventListener('DOMContentLoaded', () => {
-  document.getElementById('btn-passkey-register')?.addEventListener('click', () => {
-    (window as any).__doPasskeyRegister();
-  });
-  document.getElementById('btn-passkey-login')?.addEventListener('click', () => {
-    (window as any).__doPasskeyLogin();
-  });
-});
-
 // ── WebAuthn — Passkey Registration ──────────────────────────────
+// These browser API wrappers are called by WASM (api/passkey.rs) via wasm-bindgen.
 
 (window as any).__startPasskeyRegistration = async function(optionsJson: string): Promise<string> {
   const options = JSON.parse(optionsJson);

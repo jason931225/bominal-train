@@ -67,6 +67,24 @@ RUN esbuild crates/bominal-frontend/ts/interop.ts \
 RUN tailwindcss -i crates/bominal-frontend/style/main.css \
     -o crates/bominal-frontend/style/output.css --minify
 
+# Build WASM hydration bundle
+RUN cargo build --profile wasm-release --target wasm32-unknown-unknown \
+    -p bominal-frontend --lib --features hydrate --no-default-features
+
+# Install wasm-bindgen-cli (version must match wasm-bindgen crate exactly)
+RUN cargo install wasm-bindgen-cli --version $(grep -A1 'name = "wasm-bindgen"' Cargo.lock | grep version | head -1 | cut -d'"' -f2)
+
+# Generate JS/WASM bindings
+RUN wasm-bindgen \
+    target/wasm32-unknown-unknown/wasm-release/bominal_frontend.wasm \
+    --out-dir /app/pkg \
+    --target web \
+    --no-typescript
+
+# Optimize WASM bundle size
+RUN apt-get update && apt-get install -y --no-install-recommends binaryen && rm -rf /var/lib/apt/lists/*
+RUN wasm-opt -Os /app/pkg/bominal_frontend_bg.wasm -o /app/pkg/bominal_frontend_bg.wasm
+
 # Build the server binary
 RUN cargo build --release
 
@@ -85,6 +103,7 @@ COPY --from=builder /app/target/release/bominal-server /app/bominal-server
 # Copy static assets the server serves
 COPY --from=builder /app/crates/bominal-frontend/style/output.css /app/crates/bominal-frontend/style/output.css
 COPY --from=builder /app/crates/bominal-frontend/ts/interop.js /app/crates/bominal-frontend/ts/interop.js
+COPY --from=builder /app/pkg /app/pkg
 
 EXPOSE 3000
 

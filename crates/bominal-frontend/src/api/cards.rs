@@ -3,7 +3,7 @@
 use leptos::prelude::*;
 use uuid::Uuid;
 
-pub use bominal_service::cards::CardInfo;
+pub use bominal_domain::dto::CardInfo;
 
 /// List all payment cards for the current user (masked).
 #[server(prefix = "/sfn")]

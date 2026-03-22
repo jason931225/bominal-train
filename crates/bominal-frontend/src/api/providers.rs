@@ -2,7 +2,7 @@
 
 use leptos::prelude::*;
 
-pub use bominal_service::providers::ProviderInfo;
+pub use bominal_domain::dto::ProviderInfo;
 
 /// List all provider credentials for the current user.
 #[server(prefix = "/sfn")]

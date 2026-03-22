@@ -2,7 +2,7 @@
 
 use leptos::prelude::*;
 
-pub use bominal_service::search::{StationInfo, TrainInfo};
+pub use bominal_domain::dto::{StationInfo, TrainInfo};
 
 /// Get station list for a provider.
 #[server(prefix = "/sfn")]

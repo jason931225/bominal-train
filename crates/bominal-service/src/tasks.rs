@@ -5,34 +5,11 @@ use uuid::Uuid;
 use crate::DbPool;
 use crate::error::ServiceError;
 
+pub use bominal_domain::dto::{CreateTaskInput, UpdateTaskInput};
 pub use bominal_domain::task::{
     PassengerCount, PassengerKind, PassengerList, Provider, ReservationTask as TaskInfo,
     SeatPreference, TargetTrain, TargetTrainList, TaskStatus,
 };
-
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-pub struct CreateTaskInput {
-    pub provider: Provider,
-    pub departure_station: String,
-    pub arrival_station: String,
-    pub travel_date: String,
-    pub departure_time: String,
-    pub passengers: PassengerList,
-    pub seat_preference: SeatPreference,
-    pub target_trains: TargetTrainList,
-    pub auto_pay: bool,
-    pub payment_card_id: Option<Uuid>,
-    pub notify_enabled: bool,
-    pub auto_retry: bool,
-}
-
-#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
-pub struct UpdateTaskInput {
-    pub status: Option<TaskStatus>,
-    pub notify_enabled: Option<bool>,
-    pub auto_retry: Option<bool>,
-    pub target_trains: Option<TargetTrainList>,
-}
 
 pub async fn list(db: &DbPool, user_id: Uuid) -> Result<Vec<TaskInfo>, ServiceError> {
     let rows = bominal_db::task::find_by_user(db, user_id).await?;
