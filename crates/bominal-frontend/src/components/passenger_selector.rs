@@ -2,6 +2,8 @@
 
 use leptos::prelude::*;
 
+use crate::i18n::t;
+
 /// A single passenger type with count.
 #[derive(Debug, Clone)]
 pub struct PassengerCount {
@@ -68,6 +70,7 @@ pub fn PassengerSelector(
                         </div>
                         <div class="flex items-center gap-3">
                             <button
+                                aria-label=move || format!("{} {}", t("passenger.decrease"), passengers.get()[idx].label)
                                 class="w-11 h-11 rounded-full flex items-center justify-center border border-[var(--color-border-default)] text-[var(--color-text-tertiary)] hover:border-[var(--color-border-focus)] disabled:opacity-30 transition-colors bg-[var(--color-bg-elevated)] shadow-sm"
                                 on:click=decrement
                                 disabled=move || {
@@ -76,10 +79,11 @@ pub fn PassengerSelector(
                                     is_disabled() || current[idx].count <= current[idx].min || total <= 1
                                 }
                             >"-"</button>
-                            <span class="w-4 text-center text-sm font-semibold text-[var(--color-text-primary)]">
+                            <span aria-live="polite" class="w-4 text-center text-sm font-semibold text-[var(--color-text-primary)]">
                                 {move || passengers.get()[idx].count}
                             </span>
                             <button
+                                aria-label=move || format!("{} {}", t("passenger.increase"), passengers.get()[idx].label)
                                 class="w-11 h-11 rounded-full flex items-center justify-center border border-[var(--color-border-default)] text-[var(--color-text-tertiary)] hover:border-[var(--color-border-focus)] disabled:opacity-30 transition-colors bg-[var(--color-bg-elevated)] shadow-sm"
                                 on:click=increment
                                 disabled=move || {

@@ -17,6 +17,8 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     m.insert("auth.register", "회원가입");
     m.insert("auth.email", "이메일");
     m.insert("auth.password", "비밀번호");
+    m.insert("auth.show_password", "비밀번호 표시");
+    m.insert("auth.hide_password", "비밀번호 숨기기");
     m.insert("auth.display_name", "이름");
     m.insert("auth.logout", "로그아웃");
     m.insert("auth.login_subtitle", "기차표 예매를 시작하세요");
@@ -325,6 +327,12 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     // Search — station labels
     m.insert("search.from", "출발");
     m.insert("search.to", "도착");
+    m.insert("search.swap_stations", "역 바꾸기");
+    m.insert("search.provider", "열차 제공업체");
+
+    // Passenger counter
+    m.insert("passenger.decrease", "감소");
+    m.insert("passenger.increase", "증가");
 
     // Review modal — extended
     m.insert("review.reorder_hint", "위아래 버튼으로 순서 변경");

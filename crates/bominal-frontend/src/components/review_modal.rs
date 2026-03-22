@@ -47,10 +47,11 @@ fn SeatPreferenceSelect(
 ) -> impl IntoView {
     view! {
         <div>
-            <label class="block text-xs font-medium text-[var(--color-text-secondary)] mb-1.5">
+            <label for="seat-preference" class="block text-xs font-medium text-[var(--color-text-secondary)] mb-1.5">
                 {t("search.seat_preference")}
             </label>
             <select
+                id="seat-preference"
                 class="w-full px-3 py-2.5 bg-[var(--color-bg-sunken)] border border-[var(--color-border-default)] rounded-xl text-sm text-[var(--color-text-primary)] focus:outline-none focus:border-[var(--color-border-focus)] transition-colors"
                 on:change=move |ev| set_seat_preference.set(event_target_value(&ev))
             >
@@ -74,7 +75,7 @@ fn CardSelector(
         auto_pay.get().then(|| {
             view! {
                 <div>
-                    <label class="block text-xs font-medium text-[var(--color-text-secondary)] mb-1.5">{t("search.select_card")}</label>
+                    <label for="card-select" class="block text-xs font-medium text-[var(--color-text-secondary)] mb-1.5">{t("search.select_card")}</label>
                     <Suspense fallback=move || view! {
                         <p class="text-xs text-[var(--color-text-tertiary)]">{t("common.loading")}</p>
                     }>
@@ -87,6 +88,7 @@ fn CardSelector(
                             }.into_any(),
                             Ok(card_list) => view! {
                                 <select
+                                    id="card-select"
                                     class="w-full px-3 py-2.5 bg-[var(--color-bg-sunken)] border border-[var(--color-border-default)] rounded-xl text-sm text-[var(--color-text-primary)] focus:outline-none focus:border-[var(--color-border-focus)] transition-colors"
                                     on:change=move |ev| set_selected_card_id.set(event_target_value(&ev))
                                 >

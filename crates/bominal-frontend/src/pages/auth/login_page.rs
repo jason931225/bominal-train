@@ -65,7 +65,7 @@ pub fn LoginPage() -> impl IntoView {
             </div>
 
             {move || error_msg.get().map(|msg| view! {
-                <div class="px-3 py-2 rounded-xl"
+                <div role="alert" class="px-3 py-2 rounded-xl"
                      style="background: var(--color-status-error-bg); border: 1px solid var(--color-status-error-bg)">
                     <p class="text-sm text-[var(--color-status-error)]">{msg}</p>
                 </div>
@@ -79,6 +79,7 @@ pub fn LoginPage() -> impl IntoView {
                             type="email"
                             name="email"
                             required
+                            aria-label=t("auth.email_placeholder")
                             prop:value=move || email.get()
                             on:input=move |ev| email.set(event_target_value(&ev))
                             placeholder=t("auth.email_placeholder")
@@ -92,6 +93,7 @@ pub fn LoginPage() -> impl IntoView {
                             type=move || if show_password.get() { "text" } else { "password" }
                             name="password"
                             required
+                            aria-label=t("auth.password")
                             prop:value=move || password.get()
                             on:input=move |ev| password.set(event_target_value(&ev))
                             placeholder=t("auth.password")
@@ -99,6 +101,7 @@ pub fn LoginPage() -> impl IntoView {
                         />
                         <button
                             type="button"
+                            aria-label=move || if show_password.get() { t("auth.hide_password") } else { t("auth.show_password") }
                             on:click=move |_| show_password.update(|v| *v = !*v)
                             class="absolute right-3.5 top-1/2 -translate-y-1/2 text-[var(--color-text-disabled)] hover:text-[var(--color-text-secondary)] transition-colors"
                         >

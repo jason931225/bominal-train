@@ -83,6 +83,7 @@ pub fn ResetPasswordPage() -> impl IntoView {
                                             name="new_password"
                                             required
                                             minlength="8"
+                                            aria-label=t("auth.new_password")
                                             placeholder=t("auth.new_password")
                                             prop:value=move || new_password.get()
                                             on:input=move |ev| new_password.set(event_target_value(&ev))
@@ -93,6 +94,7 @@ pub fn ResetPasswordPage() -> impl IntoView {
                                             name="confirm_password"
                                             required
                                             minlength="8"
+                                            aria-label=t("auth.confirm_password")
                                             placeholder=t("auth.confirm_password")
                                             prop:value=move || confirm_password.get()
                                             on:input=move |ev| confirm_password.set(event_target_value(&ev))

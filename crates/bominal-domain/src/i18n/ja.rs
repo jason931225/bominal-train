@@ -17,6 +17,8 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     m.insert("auth.register", "新規登録");
     m.insert("auth.email", "メールアドレス");
     m.insert("auth.password", "パスワード");
+    m.insert("auth.show_password", "パスワードを表示");
+    m.insert("auth.hide_password", "パスワードを隠す");
     m.insert("auth.display_name", "名前");
     m.insert("auth.logout", "ログアウト");
     m.insert("auth.login_subtitle", "列車チケットの予約を始めましょう");
@@ -325,6 +327,12 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     // Search — station labels
     m.insert("search.from", "出発");
     m.insert("search.to", "到着");
+    m.insert("search.swap_stations", "駅を入れ替え");
+    m.insert("search.provider", "鉄道会社");
+
+    // Passenger counter
+    m.insert("passenger.decrease", "減らす");
+    m.insert("passenger.increase", "増やす");
 
     // Review modal — extended
     m.insert("review.reorder_hint", "矢印で順序変更");

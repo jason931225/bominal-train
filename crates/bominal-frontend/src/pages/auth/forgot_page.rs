@@ -50,6 +50,7 @@ pub fn ForgotPage() -> impl IntoView {
                         type="email"
                         name="email"
                         required
+                        aria-label=t("auth.email_placeholder")
                         prop:value=move || forgot_email.get()
                         on:input=move |ev| forgot_email.set(event_target_value(&ev))
                         placeholder=t("auth.email_placeholder")

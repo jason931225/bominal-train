@@ -20,6 +20,7 @@ pub fn TimeSlider(
     #[prop(into, default = "Time".to_string())]
     label: String,
 ) -> impl IntoView {
+    let aria_label = label.clone();
     view! {
         <div class="space-y-2">
             <div class="flex items-center justify-between">
@@ -33,6 +34,8 @@ pub fn TimeSlider(
                 min="0"
                 max="47"
                 step="1"
+                aria-label=aria_label
+                aria-valuetext=move || format_time_slot(value.get())
                 class="w-full h-2 rounded-full appearance-none cursor-pointer theme-range"
                 prop:value=move || value.get().to_string()
                 on:input=move |ev| {

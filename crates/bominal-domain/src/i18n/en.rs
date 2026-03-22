@@ -17,6 +17,8 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     m.insert("auth.register", "Sign Up");
     m.insert("auth.email", "Email");
     m.insert("auth.password", "Password");
+    m.insert("auth.show_password", "Show password");
+    m.insert("auth.hide_password", "Hide password");
     m.insert("auth.display_name", "Name");
     m.insert("auth.logout", "Log Out");
     m.insert("auth.login_subtitle", "Start booking train tickets");
@@ -331,6 +333,12 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     // Search — station labels
     m.insert("search.from", "From");
     m.insert("search.to", "To");
+    m.insert("search.swap_stations", "Swap stations");
+    m.insert("search.provider", "Train provider");
+
+    // Passenger counter
+    m.insert("passenger.decrease", "Decrease");
+    m.insert("passenger.increase", "Increase");
 
     // Review modal — extended
     m.insert("review.reorder_hint", "Reorder with arrows");

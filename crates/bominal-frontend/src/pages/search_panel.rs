@@ -339,12 +339,14 @@ pub fn SearchPanel() -> impl IntoView {
                         <div class="space-y-3">
                             <StationSelect
                                 label=t("search.from")
+                                id="station-from"
                                 value=departure
                                 set_value=set_departure
                                 stations=stations
                             />
                             <div class="flex justify-center">
                                 <button
+                                    aria-label=t("search.swap_stations")
                                     class="p-2 rounded-full bg-[var(--color-bg-sunken)] hover:bg-[var(--color-interactive-hover)] transition-colors"
                                     on:click=move |_| {
                                         let d = departure.get_untracked();
@@ -353,13 +355,14 @@ pub fn SearchPanel() -> impl IntoView {
                                         set_arrival.set(d);
                                     }
                                 >
-                                    <svg class="w-4 h-4 text-[var(--color-text-secondary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                                    <svg aria-hidden="true" class="w-4 h-4 text-[var(--color-text-secondary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
                                         <path stroke-linecap="round" stroke-linejoin="round" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
                                     </svg>
                                 </button>
                             </div>
                             <StationSelect
                                 label=t("search.to")
+                                id="station-to"
                                 value=arrival
                                 set_value=set_arrival
                                 stations=stations
@@ -611,12 +614,16 @@ fn ProviderToggle(
         }
     };
     view! {
-        <div class="flex bg-[var(--color-bg-sunken)] rounded-xl p-1">
+        <div role="radiogroup" aria-label=t("search.provider") class="flex bg-[var(--color-bg-sunken)] rounded-xl p-1">
             <button
+                role="radio"
+                aria-checked=move || if provider.get() == "SRT" { "true" } else { "false" }
                 class=move || btn_class(provider.get() == "SRT")
                 on:click=move |_| set_provider.set("SRT".to_string())
             >"SRT"</button>
             <button
+                role="radio"
+                aria-checked=move || if provider.get() == "KTX" { "true" } else { "false" }
                 class=move || btn_class(provider.get() == "KTX")
                 on:click=move |_| set_provider.set("KTX".to_string())
             >"KTX"</button>
@@ -628,13 +635,14 @@ fn ProviderToggle(
 #[component]
 fn StationSelect(
     label: &'static str,
+    id: &'static str,
     value: ReadSignal<String>,
     set_value: WriteSignal<String>,
     stations: Resource<Result<Vec<StationInfo>, ServerFnError>>,
 ) -> impl IntoView {
     view! {
         <div>
-            <label class="block text-xs font-semibold text-[var(--color-text-secondary)] uppercase tracking-wide mb-1.5">
+            <label for=id class="block text-xs font-semibold text-[var(--color-text-secondary)] uppercase tracking-wide mb-1.5">
                 {label}
             </label>
             <div class="flex items-center bg-[var(--color-bg-sunken)] border border-[var(--color-border-default)] rounded-xl focus-within:border-[var(--color-border-focus)] transition-colors">
@@ -645,6 +653,7 @@ fn StationSelect(
                     </svg>
                 </div>
                 <select
+                    id=id
                     class="w-full px-2 py-2.5 bg-transparent text-sm text-[var(--color-text-primary)] focus:outline-none"
                     on:change=move |ev| set_value.set(event_target_value(&ev))
                 >
@@ -677,6 +686,7 @@ fn ToggleChip(
 ) -> impl IntoView {
     view! {
         <button
+            aria-pressed=move || if active.get() { "true" } else { "false" }
             class=move || if active.get() {
                 "flex-1 py-2 px-3 text-xs font-semibold rounded-xl border transition-all flex justify-center items-center gap-1.5 bg-[var(--color-brand-primary)]/20 text-[var(--color-brand-text)] border-[var(--color-brand-primary)]/30 shadow-sm"
             } else {

@@ -69,7 +69,7 @@ pub fn SignupPage() -> impl IntoView {
             </div>
 
             {move || error_msg.get().map(|msg| view! {
-                <div class="px-3 py-2 rounded-xl"
+                <div role="alert" class="px-3 py-2 rounded-xl"
                      style="background: var(--color-status-error-bg); border: 1px solid var(--color-status-error-bg)">
                     <p class="text-sm text-[var(--color-status-error)]">{msg}</p>
                 </div>
@@ -81,6 +81,7 @@ pub fn SignupPage() -> impl IntoView {
                         type="text"
                         name="display_name"
                         required
+                        aria-label=t("auth.display_name")
                         placeholder=t("auth.display_name")
                         class="w-full px-4 py-3 bg-[var(--color-bg-sunken)] border border-[var(--color-border-default)] rounded-xl text-sm font-medium text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-primary)]/50 focus:border-[var(--color-border-focus)] transition-all"
                     />
@@ -88,6 +89,7 @@ pub fn SignupPage() -> impl IntoView {
                         type="email"
                         name="email"
                         required
+                        aria-label=t("auth.email_placeholder")
                         placeholder=t("auth.email_placeholder")
                         class="w-full px-4 py-3 bg-[var(--color-bg-sunken)] border border-[var(--color-border-default)] rounded-xl text-sm font-medium text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-primary)]/50 focus:border-[var(--color-border-focus)] transition-all"
                     />
@@ -98,6 +100,7 @@ pub fn SignupPage() -> impl IntoView {
                                 type=move || if show_password.get() { "text" } else { "password" }
                                 name="password"
                                 required
+                                aria-label=t("auth.password")
                                 prop:value=move || signup_password.get()
                                 on:input=move |ev| signup_password.set(event_target_value(&ev))
                                 placeholder=t("auth.password")
@@ -105,6 +108,7 @@ pub fn SignupPage() -> impl IntoView {
                             />
                             <button
                                 type="button"
+                                aria-label=move || if show_password.get() { t("auth.hide_password") } else { t("auth.show_password") }
                                 on:click=move |_| show_password.update(|v| *v = !*v)
                                 class="absolute right-3.5 top-1/2 -translate-y-1/2 text-[var(--color-text-disabled)] hover:text-[var(--color-text-secondary)]"
                             >
@@ -143,6 +147,7 @@ pub fn SignupPage() -> impl IntoView {
                         <div class="relative">
                             <input
                                 type=move || if show_password2.get() { "text" } else { "password" }
+                                aria-label=t("auth.confirm_password")
                                 prop:value=move || signup_password_confirm.get()
                                 on:input=move |ev| signup_password_confirm.set(event_target_value(&ev))
                                 placeholder=t("auth.confirm_password")
@@ -159,6 +164,7 @@ pub fn SignupPage() -> impl IntoView {
                             />
                             <button
                                 type="button"
+                                aria-label=move || if show_password2.get() { t("auth.hide_password") } else { t("auth.show_password") }
                                 on:click=move |_| show_password2.update(|v| *v = !*v)
                                 class="absolute right-3.5 top-1/2 -translate-y-1/2 text-[var(--color-text-disabled)] hover:text-[var(--color-text-secondary)]"
                             >
