@@ -313,6 +313,8 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     // Calendar/time modal
     m.insert("calendar.title", "Date & Time");
     m.insert("calendar.apply", "Apply");
+    m.insert("calendar.prev_month", "Previous month");
+    m.insert("calendar.next_month", "Next month");
     m.insert("calendar.month_1", "January");
     m.insert("calendar.month_2", "February");
     m.insert("calendar.month_3", "March");

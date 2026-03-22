@@ -14,10 +14,11 @@ pub fn BottomSheet(
     title: Option<String>,
     children: Children,
 ) -> impl IntoView {
+    let has_title = title.is_some();
     let title_view = title.map(|t| {
         view! {
             <div class="px-6 pb-3">
-                <h3 class="text-lg font-semibold text-[var(--color-text-primary)]">{t}</h3>
+                <h3 id="sheet-title" class="text-lg font-semibold text-[var(--color-text-primary)]">{t}</h3>
             </div>
         }
     });
@@ -31,7 +32,8 @@ pub fn BottomSheet(
             <div class="absolute inset-0 bg-black/40 backdrop-blur-sm fade-in"
                  on:click=move |_| on_close.run(())></div>
             // Sheet
-            <div class="absolute bottom-0 left-0 right-0 glass-panel rounded-t-3xl sheet-enter safe-area-pb">
+            <div role="dialog" aria-modal="true" aria-labelledby=if has_title { Some("sheet-title") } else { None }
+                 class="absolute bottom-0 left-0 right-0 glass-panel rounded-t-3xl sheet-enter safe-area-pb">
                 // Drag handle
                 <div class="flex justify-center pt-3 pb-2">
                     <div class="w-10 h-1 rounded-full bg-[var(--color-text-disabled)] opacity-40"></div>

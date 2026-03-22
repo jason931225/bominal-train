@@ -24,14 +24,15 @@ pub struct TrainSummary {
 fn ModalHeader(on_close: Callback<()>) -> impl IntoView {
     view! {
         <div class="p-4 border-b border-[var(--color-border-default)] flex items-center justify-between shrink-0">
-            <h3 class="text-lg font-semibold text-[var(--color-text-primary)]">
+            <h3 id="review-modal-title" class="text-lg font-semibold text-[var(--color-text-primary)]">
                 {t("review.title")}
             </h3>
             <button
+                aria-label=t("common.close")
                 class="p-1.5 rounded-lg hover:bg-[var(--color-interactive-hover)] text-[var(--color-text-tertiary)]"
                 on:click=move |_| on_close.run(())
             >
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                <svg aria-hidden="true" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
                 </svg>
             </button>
@@ -209,7 +210,8 @@ pub fn ReviewModal(
             <div class="fixed inset-0 z-[160] flex items-center justify-center p-4"
                  on:click=move |_| on_cancel.run(())>
                 <div class="absolute inset-0 bg-black/40 backdrop-blur-sm fade-in"></div>
-                <div class="glass-panel rounded-3xl w-full max-w-md relative z-10 modal-enter flex flex-col max-h-[80vh] overflow-hidden"
+                <div role="dialog" aria-modal="true" aria-labelledby="review-modal-title"
+                     class="glass-panel rounded-3xl w-full max-w-md relative z-10 modal-enter flex flex-col max-h-[80vh] overflow-hidden"
                      on:click=move |e| e.stop_propagation()>
                     <ModalHeader on_close=on_cancel />
                     <ModalBody items on_items_change seat_preference set_seat_preference auto_pay selected_card_id set_selected_card_id cards />

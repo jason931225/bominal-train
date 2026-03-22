@@ -307,6 +307,8 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     // Calendar/time modal
     m.insert("calendar.title", "日時選択");
     m.insert("calendar.apply", "適用");
+    m.insert("calendar.prev_month", "前月");
+    m.insert("calendar.next_month", "翌月");
     m.insert("calendar.month_1", "1月");
     m.insert("calendar.month_2", "2月");
     m.insert("calendar.month_3", "3月");

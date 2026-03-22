@@ -159,16 +159,18 @@ pub fn DatePicker(
             <div class="fixed inset-0 z-[160] flex items-center justify-center p-4 page-enter"
                  on:click=on_cancel>
                 <div class="absolute inset-0 bg-black/40 backdrop-blur-sm"></div>
-                <div class="glass-panel rounded-3xl w-full max-w-sm relative z-10 modal-enter flex flex-col overflow-hidden"
+                <div role="dialog" aria-modal="true" aria-labelledby="datepicker-title"
+                     class="glass-panel rounded-3xl w-full max-w-sm relative z-10 modal-enter flex flex-col overflow-hidden"
                      on:click=move |e| e.stop_propagation()>
                     // Header
                     <div class="p-4 border-b border-[var(--color-border-default)] flex items-center justify-between">
-                        <h3 class="font-semibold text-[var(--color-text-primary)]">{t("calendar.title")}</h3>
+                        <h3 id="datepicker-title" class="font-semibold text-[var(--color-text-primary)]">{t("calendar.title")}</h3>
                         <button
+                            aria-label=t("common.close")
                             class="p-1.5 rounded-lg hover:bg-[var(--color-interactive-hover)] text-[var(--color-text-tertiary)]"
                             on:click=on_cancel
                         >
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                            <svg aria-hidden="true" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
                             </svg>
                         </button>
@@ -179,11 +181,12 @@ pub fn DatePicker(
                         // Month navigator
                         <div class="flex items-center justify-between mb-4">
                             <button
+                                aria-label=t("calendar.prev_month")
                                 class="p-2 rounded-lg hover:bg-[var(--color-interactive-hover)] text-[var(--color-text-tertiary)] disabled:opacity-30 transition-colors"
                                 on:click=prev_month
                                 disabled=prev_month_disabled
                             >
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                                <svg aria-hidden="true" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
                                     <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
                                 </svg>
                             </button>
@@ -194,11 +197,12 @@ pub fn DatePicker(
                                 }}
                             </span>
                             <button
+                                aria-label=t("calendar.next_month")
                                 class="p-2 rounded-lg hover:bg-[var(--color-interactive-hover)] text-[var(--color-text-tertiary)] disabled:opacity-30 transition-colors"
                                 on:click=next_month
                                 disabled=next_month_disabled
                             >
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                                <svg aria-hidden="true" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
                                     <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
                                 </svg>
                             </button>
