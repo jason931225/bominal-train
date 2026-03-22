@@ -7,7 +7,7 @@ use chrono::NaiveDate;
 use leptos::prelude::*;
 
 use crate::api::cards::list_cards;
-use crate::api::search::{StationInfo, TrainInfo, list_stations, search_trains};
+use crate::api::search::{TrainInfo, list_stations, search_trains};
 use crate::api::tasks::{
     CreateTaskInput, PassengerCount as TaskPassengerCount, PassengerKind, PassengerList, Provider,
     SeatPreference, TargetTrain, TargetTrainList, create_task,
@@ -18,6 +18,7 @@ use crate::components::glass_panel::GlassPanel;
 use crate::components::passenger_selector::{PassengerCount, PassengerSelector};
 use crate::components::review_modal::ReviewModal;
 use crate::components::selection_prompt::SelectionPrompt;
+use crate::components::station_input::StationInput;
 use crate::components::sortable_list::SortableItem;
 use crate::i18n::t;
 use crate::utils::{format_time, format_time_slot, slot_to_time_string};
@@ -337,7 +338,7 @@ pub fn SearchPanel() -> impl IntoView {
 
                         // Station inputs
                         <div class="space-y-3">
-                            <StationSelect
+                            <StationInput
                                 label=t("search.from")
                                 id="station-from"
                                 value=departure
@@ -360,7 +361,7 @@ pub fn SearchPanel() -> impl IntoView {
                                     </svg>
                                 </button>
                             </div>
-                            <StationSelect
+                            <StationInput
                                 label=t("search.to")
                                 id="station-to"
                                 value=arrival
@@ -627,52 +628,6 @@ fn ProviderToggle(
                 class=move || btn_class(provider.get() == "KTX")
                 on:click=move |_| set_provider.set("KTX".to_string())
             >"KTX"</button>
-        </div>
-    }
-}
-
-/// Station select dropdown with icon.
-#[component]
-fn StationSelect(
-    label: &'static str,
-    id: &'static str,
-    value: ReadSignal<String>,
-    set_value: WriteSignal<String>,
-    stations: Resource<Result<Vec<StationInfo>, ServerFnError>>,
-) -> impl IntoView {
-    view! {
-        <div>
-            <label for=id class="block text-xs font-semibold text-[var(--color-text-secondary)] uppercase tracking-wide mb-1.5">
-                {label}
-            </label>
-            <div class="flex items-center bg-[var(--color-bg-sunken)] border border-[var(--color-border-default)] rounded-xl focus-within:border-[var(--color-border-focus)] transition-colors">
-                <div class="pl-3">
-                    <svg class="w-4 h-4 text-[var(--color-text-tertiary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                    </svg>
-                </div>
-                <select
-                    id=id
-                    class="w-full px-2 py-2.5 bg-transparent text-sm text-[var(--color-text-primary)] focus:outline-none"
-                    on:change=move |ev| set_value.set(event_target_value(&ev))
-                >
-                    <option value="" disabled selected=move || value.get().is_empty()>{t("search.select_station")}</option>
-                    <Suspense>
-                        {move || stations.get().map(|result| match result {
-                            Ok(list) => list.into_iter().map(|s| {
-                                let ko = s.name_ko.clone();
-                                let selected = value.get() == ko;
-                                let ko_text = ko.clone();
-                                view! {
-                                    <option value=ko selected=selected>{ko_text}</option>
-                                }
-                            }).collect::<Vec<_>>(),
-                            Err(_) => vec![],
-                        })}
-                    </Suspense>
-                </select>
-            </div>
         </div>
     }
 }

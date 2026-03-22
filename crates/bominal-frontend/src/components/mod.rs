@@ -11,6 +11,7 @@ pub mod selection_prompt;
 pub mod skeleton;
 pub mod sortable_list;
 pub mod sse_reload;
+pub mod station_input;
 pub mod status_chip;
 pub mod task_card;
 pub mod ticket_card;
