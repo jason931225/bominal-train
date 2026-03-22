@@ -167,7 +167,7 @@ pub fn DatePicker(
                         <h3 id="datepicker-title" class="font-semibold text-[var(--color-text-primary)]">{t("calendar.title")}</h3>
                         <button
                             aria-label=t("common.close")
-                            class="p-1.5 rounded-lg hover:bg-[var(--color-interactive-hover)] text-[var(--color-text-tertiary)]"
+                            class="p-2 min-h-11 min-w-11 flex items-center justify-center rounded-lg hover:bg-[var(--color-interactive-hover)] text-[var(--color-text-tertiary)]"
                             on:click=on_cancel
                         >
                             <svg aria-hidden="true" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
@@ -182,7 +182,7 @@ pub fn DatePicker(
                         <div class="flex items-center justify-between mb-4">
                             <button
                                 aria-label=t("calendar.prev_month")
-                                class="p-2 rounded-lg hover:bg-[var(--color-interactive-hover)] text-[var(--color-text-tertiary)] disabled:opacity-30 transition-colors"
+                                class="p-2 min-h-11 min-w-11 flex items-center justify-center rounded-lg hover:bg-[var(--color-interactive-hover)] text-[var(--color-text-tertiary)] disabled:opacity-30 transition-colors"
                                 on:click=prev_month
                                 disabled=prev_month_disabled
                             >
@@ -198,7 +198,7 @@ pub fn DatePicker(
                             </span>
                             <button
                                 aria-label=t("calendar.next_month")
-                                class="p-2 rounded-lg hover:bg-[var(--color-interactive-hover)] text-[var(--color-text-tertiary)] disabled:opacity-30 transition-colors"
+                                class="p-2 min-h-11 min-w-11 flex items-center justify-center rounded-lg hover:bg-[var(--color-interactive-hover)] text-[var(--color-text-tertiary)] disabled:opacity-30 transition-colors"
                                 on:click=next_month
                                 disabled=next_month_disabled
                             >

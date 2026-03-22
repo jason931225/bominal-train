@@ -347,7 +347,7 @@ pub fn SearchPanel() -> impl IntoView {
                             <div class="flex justify-center">
                                 <button
                                     aria-label=t("search.swap_stations")
-                                    class="p-2 rounded-full bg-[var(--color-bg-sunken)] hover:bg-[var(--color-interactive-hover)] transition-colors"
+                                    class="p-2 min-h-11 min-w-11 flex items-center justify-center rounded-full bg-[var(--color-bg-sunken)] hover:bg-[var(--color-interactive-hover)] transition-colors"
                                     on:click=move |_| {
                                         let d = departure.get_untracked();
                                         let a = arrival.get_untracked();

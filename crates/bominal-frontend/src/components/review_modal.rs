@@ -29,7 +29,7 @@ fn ModalHeader(on_close: Callback<()>) -> impl IntoView {
             </h3>
             <button
                 aria-label=t("common.close")
-                class="p-1.5 rounded-lg hover:bg-[var(--color-interactive-hover)] text-[var(--color-text-tertiary)]"
+                class="p-2 min-h-11 min-w-11 flex items-center justify-center rounded-lg hover:bg-[var(--color-interactive-hover)] text-[var(--color-text-tertiary)]"
                 on:click=move |_| on_close.run(())
             >
                 <svg aria-hidden="true" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
