@@ -20,8 +20,10 @@ pub fn TasksView() -> impl IntoView {
             <h1 class="text-xl font-bold text-[var(--color-text-primary)]">{t("nav.tasks")}</h1>
 
             // Tab toggle
-            <div class="flex bg-[var(--color-bg-sunken)] rounded-xl p-1">
+            <div role="tablist" class="flex bg-[var(--color-bg-sunken)] rounded-xl p-1">
                 <button
+                    role="tab"
+                    aria-selected=move || if active_tab.get() { "true" } else { "false" }
                     class=move || if active_tab.get() {
                         "flex-1 py-2 text-sm font-medium rounded-lg bg-[var(--color-bg-elevated)] text-[var(--color-text-primary)] shadow-sm transition-all"
                     } else {
@@ -32,6 +34,8 @@ pub fn TasksView() -> impl IntoView {
                     {t("task.active")}
                 </button>
                 <button
+                    role="tab"
+                    aria-selected=move || if !active_tab.get() { "true" } else { "false" }
                     class=move || if !active_tab.get() {
                         "flex-1 py-2 text-sm font-medium rounded-lg bg-[var(--color-bg-elevated)] text-[var(--color-text-primary)] shadow-sm transition-all"
                     } else {
@@ -83,7 +87,7 @@ pub fn TasksView() -> impl IntoView {
                             }.into_any()
                         } else {
                             view! {
-                                <div class="space-y-3">
+                                <div aria-live="polite" class="space-y-3">
                                     {display_tasks.into_iter().map(|task| {
                                         let is_active = matches!(
                                             task.status,

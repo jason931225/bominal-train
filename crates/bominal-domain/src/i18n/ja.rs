@@ -280,6 +280,9 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     m.insert("task.cancel_description", "このタスクを取り消しますか？");
     m.insert("task.cancel_confirm", "はい、取消");
     m.insert("task.keep", "維持");
+    m.insert("task.move_up", "上に移動");
+    m.insert("task.move_down", "下に移動");
+    m.insert("task.remove_train", "列車を削除");
     m.insert("task.pay_fare", "運賃支払");
     m.insert("task.seat_class", "座席クラス");
     m.insert("task.passengers_label", "乗客");

@@ -168,6 +168,7 @@ pub fn TaskCard(task: TaskInfo, is_active: bool) -> impl IntoView {
                                                     <div class="flex items-center gap-0.5">
                                                         <button
                                                             type="button"
+                                                            aria-label=t("task.move_up")
                                                             class="p-1 rounded hover:bg-[var(--color-interactive-hover)] text-[var(--color-text-tertiary)] text-xs"
                                                             disabled=idx == 0
                                                             on:click=move |_| {
@@ -184,6 +185,7 @@ pub fn TaskCard(task: TaskInfo, is_active: bool) -> impl IntoView {
                                                         </button>
                                                         <button
                                                             type="button"
+                                                            aria-label=t("task.move_down")
                                                             class="p-1 rounded hover:bg-[var(--color-interactive-hover)] text-[var(--color-text-tertiary)] text-xs"
                                                             disabled=idx + 1 >= train_count
                                                             on:click=move |_| {
@@ -200,6 +202,7 @@ pub fn TaskCard(task: TaskInfo, is_active: bool) -> impl IntoView {
                                                         </button>
                                                         <button
                                                             type="button"
+                                                            aria-label=t("task.remove_train")
                                                             class="p-1 rounded hover:bg-[var(--color-status-error)]/20 text-[var(--color-status-error)] text-xs"
                                                             disabled=train_count <= 1
                                                             on:click=move |_| {

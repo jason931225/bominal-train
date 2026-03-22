@@ -286,6 +286,9 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     );
     m.insert("task.cancel_confirm", "Yes, Cancel Task");
     m.insert("task.keep", "Keep Task");
+    m.insert("task.move_up", "Move up");
+    m.insert("task.move_down", "Move down");
+    m.insert("task.remove_train", "Remove train");
     m.insert("task.pay_fare", "Pay Fare");
     m.insert("task.seat_class", "Seat Class");
     m.insert("task.passengers_label", "Passengers");

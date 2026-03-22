@@ -27,6 +27,6 @@ pub fn StatusChip(
     );
 
     view! {
-        <span class=class>{label}</span>
+        <span role="status" class=class>{label}</span>
     }
 }

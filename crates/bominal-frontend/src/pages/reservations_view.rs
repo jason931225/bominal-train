@@ -49,8 +49,10 @@ pub fn ReservationsView() -> impl IntoView {
             <h1 class="text-xl font-bold text-[var(--color-text-primary)]">{t("reservation.title")}</h1>
 
             // Provider toggle
-            <div class="flex bg-[var(--color-bg-sunken)] rounded-xl p-1">
+            <div role="radiogroup" aria-label=t("search.provider") class="flex bg-[var(--color-bg-sunken)] rounded-xl p-1">
                 <button
+                    role="radio"
+                    aria-checked=move || if provider.get() == "SRT" { "true" } else { "false" }
                     class=move || if provider.get() == "SRT" {
                         "flex-1 py-2 text-sm font-medium rounded-lg bg-[var(--color-bg-elevated)] text-[var(--color-text-primary)] shadow-sm transition-all"
                     } else {
@@ -61,6 +63,8 @@ pub fn ReservationsView() -> impl IntoView {
                     "SRT"
                 </button>
                 <button
+                    role="radio"
+                    aria-checked=move || if provider.get() == "KTX" { "true" } else { "false" }
                     class=move || if provider.get() == "KTX" {
                         "flex-1 py-2 text-sm font-medium rounded-lg bg-[var(--color-bg-elevated)] text-[var(--color-text-primary)] shadow-sm transition-all"
                     } else {
@@ -75,12 +79,12 @@ pub fn ReservationsView() -> impl IntoView {
             // Cancel result feedback
             {move || cancel_action.value().get().map(|result| match result {
                 Ok(()) => view! {
-                    <div class="px-3 py-2 bg-[var(--color-status-success)]/10 border border-[var(--color-status-success)]/30 rounded-xl">
+                    <div role="alert" class="px-3 py-2 bg-[var(--color-status-success)]/10 border border-[var(--color-status-success)]/30 rounded-xl">
                         <p class="text-sm text-[var(--color-status-success)]">{t("reservation.cancelled")}</p>
                     </div>
                 }.into_any(),
                 Err(e) => view! {
-                    <div class="px-3 py-2 bg-[var(--color-status-error)]/10 border border-[var(--color-status-error)]/30 rounded-xl">
+                    <div role="alert" class="px-3 py-2 bg-[var(--color-status-error)]/10 border border-[var(--color-status-error)]/30 rounded-xl">
                         <p class="text-sm text-[var(--color-status-error)]">{format!("{e}")}</p>
                     </div>
                 }.into_any(),
@@ -89,12 +93,12 @@ pub fn ReservationsView() -> impl IntoView {
             // Pay result feedback
             {move || pay_action.value().get().map(|result| match result {
                 Ok(()) => view! {
-                    <div class="px-3 py-2 bg-[var(--color-status-success)]/10 border border-[var(--color-status-success)]/30 rounded-xl">
+                    <div role="alert" class="px-3 py-2 bg-[var(--color-status-success)]/10 border border-[var(--color-status-success)]/30 rounded-xl">
                         <p class="text-sm text-[var(--color-status-success)]">{t("reservation.payment_success")}</p>
                     </div>
                 }.into_any(),
                 Err(e) => view! {
-                    <div class="px-3 py-2 bg-[var(--color-status-error)]/10 border border-[var(--color-status-error)]/30 rounded-xl">
+                    <div role="alert" class="px-3 py-2 bg-[var(--color-status-error)]/10 border border-[var(--color-status-error)]/30 rounded-xl">
                         <p class="text-sm text-[var(--color-status-error)]">{format!("{e}")}</p>
                     </div>
                 }.into_any(),
