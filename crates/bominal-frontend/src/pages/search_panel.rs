@@ -370,7 +370,7 @@ pub fn SearchPanel() -> impl IntoView {
                         </div>
 
                         // Date & Passengers cards
-                        <div class="grid grid-cols-2 gap-3">
+                        <div class="grid grid-cols-1 min-[360px]:grid-cols-2 gap-3">
                             // Date card — opens calendar modal
                             <button
                                 class="p-3 bg-[var(--color-bg-sunken)] border border-[var(--color-border-default)] rounded-xl text-left hover:border-[var(--color-border-focus)] transition-colors"
