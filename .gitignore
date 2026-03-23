@@ -10,3 +10,5 @@ package-lock.json
 *.swo
 *~
 .DS_Store
+.playwright-mcp/
+agentic-workflow-optimization-report.js
