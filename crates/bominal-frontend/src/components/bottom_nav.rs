@@ -35,9 +35,9 @@ pub fn BottomNav() -> impl IntoView {
 
     let tab_class = move |path: &'static str| {
         if is_active(path) {
-            "flex flex-col items-center gap-0.5 min-h-11 min-w-11 py-1.5 px-3 rounded-xl bg-[var(--color-brand-primary)] text-[var(--color-brand-text)] transition-colors"
+            "flex flex-col items-center justify-center gap-1 h-12 w-12 rounded-2xl bg-[var(--color-brand-primary)] text-[var(--color-brand-text)] transition-all squish"
         } else {
-            "flex flex-col items-center gap-0.5 min-h-11 min-w-11 py-1.5 px-3 rounded-xl text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)] transition-colors"
+            "flex flex-col items-center justify-center gap-1 h-12 w-12 rounded-2xl text-[var(--color-text-tertiary)] hover:bg-[var(--color-interactive-hover)] hover:text-[var(--color-text-secondary)] transition-all squish"
         }
     };
 
@@ -47,8 +47,8 @@ pub fn BottomNav() -> impl IntoView {
 
     view! {
         <Show when=is_visible>
-            <nav aria-label="Main navigation" class="fixed bottom-0 left-0 right-0 z-50 glass-panel border-t border-[var(--color-border-subtle)]">
-                <div class="flex items-center justify-around max-w-lg mx-auto px-4 safe-area-pb">
+            <nav aria-label="Main navigation" class="fixed bottom-4 left-4 right-4 md:hidden z-50 glass-card rounded-3xl pb-safe">
+                <div class="flex items-center justify-around w-full h-16 px-2">
                     <a href="/home" class=move || tab_class("/home") aria-current=move || aria_current("/home")>
                         <svg aria-hidden="true" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />

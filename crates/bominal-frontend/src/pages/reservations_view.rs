@@ -49,14 +49,14 @@ pub fn ReservationsView() -> impl IntoView {
             <h1 class="text-xl font-bold text-[var(--color-text-primary)]">{t("reservation.title")}</h1>
 
             // Provider toggle
-            <div role="radiogroup" aria-label=t("search.provider") class="flex bg-[var(--color-bg-sunken)] rounded-xl p-1">
+            <div role="radiogroup" aria-label=t("search.provider") class="flex bg-[var(--color-bg-sunken)] rounded-2xl p-1">
                 <button
                     role="radio"
                     aria-checked=move || if provider.get() == "SRT" { "true" } else { "false" }
                     class=move || if provider.get() == "SRT" {
-                        "flex-1 py-2 text-sm font-medium rounded-lg bg-[var(--color-bg-elevated)] text-[var(--color-text-primary)] shadow-sm transition-all"
+                        "flex-1 py-2 text-sm font-semibold rounded-xl bg-[var(--color-bg-elevated)] text-[var(--color-text-primary)] shadow-sm transition-all squish"
                     } else {
-                        "flex-1 py-2 text-sm font-medium rounded-lg text-[var(--color-text-tertiary)] transition-all"
+                        "flex-1 py-2 text-sm font-medium rounded-xl text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition-all squish"
                     }
                     on:click=move |_| set_provider.set("SRT".to_string())
                 >
@@ -66,9 +66,9 @@ pub fn ReservationsView() -> impl IntoView {
                     role="radio"
                     aria-checked=move || if provider.get() == "KTX" { "true" } else { "false" }
                     class=move || if provider.get() == "KTX" {
-                        "flex-1 py-2 text-sm font-medium rounded-lg bg-[var(--color-bg-elevated)] text-[var(--color-text-primary)] shadow-sm transition-all"
+                        "flex-1 py-2 text-sm font-semibold rounded-xl bg-[var(--color-bg-elevated)] text-[var(--color-text-primary)] shadow-sm transition-all squish"
                     } else {
-                        "flex-1 py-2 text-sm font-medium rounded-lg text-[var(--color-text-tertiary)] transition-all"
+                        "flex-1 py-2 text-sm font-medium rounded-xl text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition-all squish"
                     }
                     on:click=move |_| set_provider.set("KTX".to_string())
                 >
@@ -285,7 +285,7 @@ fn ReservationCard(
                                         }).collect::<Vec<_>>()}
                                     </select>
                                     <button
-                                        class="px-4 py-2 text-xs font-medium rounded-lg bg-[var(--color-brand-primary)] text-white hover:opacity-90 active:scale-95 transition-all"
+                                        class="px-4 py-2 text-xs font-medium rounded-lg bg-[var(--color-brand-primary)] text-[var(--color-brand-text)] hover:opacity-90 squish shadow-sm"
                                         on:click=move |_| {
                                             on_pay(selected_card.get());
                                         }
@@ -297,7 +297,7 @@ fn ReservationCard(
                         })}
                         // Cancel button
                         <button
-                            class="w-full py-2 text-xs font-medium rounded-lg text-[var(--color-status-error)] border border-[var(--color-status-error)]/30 hover:bg-[var(--color-status-error)]/10 active:scale-95 transition-all"
+                            class="w-full py-2.5 text-xs font-medium rounded-xl text-[var(--color-status-error)] bg-[var(--color-status-error)]/10 hover:bg-[var(--color-status-error)]/20 squish"
                             on:click=move |_| { on_cancel(); }
                         >
                             {t("reservation.cancel")}

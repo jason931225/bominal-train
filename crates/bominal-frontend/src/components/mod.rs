@@ -8,6 +8,7 @@ pub mod glass_panel;
 pub mod passenger_selector;
 pub mod review_modal;
 pub mod selection_prompt;
+pub mod sidebar;
 pub mod skeleton;
 pub mod sortable_list;
 pub mod sse_reload;

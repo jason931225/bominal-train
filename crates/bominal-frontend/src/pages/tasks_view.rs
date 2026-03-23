@@ -20,14 +20,14 @@ pub fn TasksView() -> impl IntoView {
             <h1 class="text-xl font-bold text-[var(--color-text-primary)]">{t("nav.tasks")}</h1>
 
             // Tab toggle
-            <div role="tablist" class="flex bg-[var(--color-bg-sunken)] rounded-xl p-1">
+            <div role="tablist" class="flex bg-[var(--color-bg-sunken)] rounded-2xl p-1 mb-2">
                 <button
                     role="tab"
                     aria-selected=move || if active_tab.get() { "true" } else { "false" }
                     class=move || if active_tab.get() {
-                        "flex-1 py-2 text-sm font-medium rounded-lg bg-[var(--color-bg-elevated)] text-[var(--color-text-primary)] shadow-sm transition-all"
+                        "flex-1 py-2 text-sm font-semibold rounded-xl bg-[var(--color-bg-elevated)] text-[var(--color-text-primary)] shadow-sm transition-all squish"
                     } else {
-                        "flex-1 py-2 text-sm font-medium rounded-lg text-[var(--color-text-tertiary)] transition-all"
+                        "flex-1 py-2 text-sm font-medium rounded-xl text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition-all squish"
                     }
                     on:click=move |_| set_active_tab.set(true)
                 >
@@ -37,9 +37,9 @@ pub fn TasksView() -> impl IntoView {
                     role="tab"
                     aria-selected=move || if !active_tab.get() { "true" } else { "false" }
                     class=move || if !active_tab.get() {
-                        "flex-1 py-2 text-sm font-medium rounded-lg bg-[var(--color-bg-elevated)] text-[var(--color-text-primary)] shadow-sm transition-all"
+                        "flex-1 py-2 text-sm font-semibold rounded-xl bg-[var(--color-bg-elevated)] text-[var(--color-text-primary)] shadow-sm transition-all squish"
                     } else {
-                        "flex-1 py-2 text-sm font-medium rounded-lg text-[var(--color-text-tertiary)] transition-all"
+                        "flex-1 py-2 text-sm font-medium rounded-xl text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition-all squish"
                     }
                     on:click=move |_| set_active_tab.set(false)
                 >

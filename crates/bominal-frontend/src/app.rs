@@ -10,6 +10,7 @@ use leptos_router::{
 };
 
 use crate::components::bottom_nav::BottomNav;
+use crate::components::sidebar::Sidebar;
 use crate::i18n::t;
 use crate::pages::{
     auth::{AddPasskeyPage, AuthVerifyPage, ForgotPage, LoginPage, PasskeyPage, SignupPage},
@@ -76,35 +77,42 @@ pub fn App() -> impl IntoView {
         })}
 
         <Router>
-            <div class="relative min-h-screen pb-16">
-                <main>
-                    <Routes fallback=|| view! {
-                        <div class="flex items-center justify-center min-h-screen">
-                            <p class="text-[var(--color-text-secondary)]">{t("error.not_found")}</p>
-                        </div>
-                    }>
-                        // Root and auth entry point both serve PasskeyPage
-                        <Route path=path!("/") view=PasskeyPage />
-                        <Route path=path!("/auth") view=PasskeyPage />
-                        <Route path=path!("/auth/login") view=LoginPage />
-                        <Route path=path!("/auth/signup") view=SignupPage />
-                        <Route path=path!("/auth/forgot") view=ForgotPage />
-                        <Route path=path!("/forgot-password") view=ForgotPage />
-                        <Route path=path!("/auth/verify") view=AuthVerifyPage />
-                        <Route path=path!("/auth/add-passkey") view=AddPasskeyPage />
-                        // Authenticated app routes
-                        <Route path=path!("/home") view=HomeView />
-                        <Route path=path!("/search") view=SearchPanel />
-                        <Route path=path!("/search/results") view=ScheduleResults />
-                        <Route path=path!("/tasks") view=TasksView />
-                        <Route path=path!("/reservations") view=ReservationsView />
-                        <Route path=path!("/settings") view=SettingsView />
-                        // Email link landing pages
-                        <Route path=path!("/verify-email") view=VerifyEmailPage />
-                        <Route path=path!("/reset-password") view=ResetPasswordPage />
-                    </Routes>
-                </main>
-                <BottomNav />
+            <div class="flex h-screen overflow-hidden bg-[var(--color-bg-primary)]">
+                // Sidebar visible on desktop
+                <Sidebar />
+                
+                // Main content area
+                <div class="flex-1 relative overflow-y-auto no-scrollbar pb-24 md:pb-0">
+                    <main class="min-h-full">
+                        <Routes fallback=|| view! {
+                            <div class="flex items-center justify-center min-h-screen">
+                                <p class="text-[var(--color-text-secondary)]">{t("error.not_found")}</p>
+                            </div>
+                        }>
+                            // Root and auth entry point both serve PasskeyPage
+                            <Route path=path!("/") view=PasskeyPage />
+                            <Route path=path!("/auth") view=PasskeyPage />
+                            <Route path=path!("/auth/login") view=LoginPage />
+                            <Route path=path!("/auth/signup") view=SignupPage />
+                            <Route path=path!("/auth/forgot") view=ForgotPage />
+                            <Route path=path!("/forgot-password") view=ForgotPage />
+                            <Route path=path!("/auth/verify") view=AuthVerifyPage />
+                            <Route path=path!("/auth/add-passkey") view=AddPasskeyPage />
+                            // Authenticated app routes
+                            <Route path=path!("/home") view=HomeView />
+                            <Route path=path!("/search") view=SearchPanel />
+                            <Route path=path!("/search/results") view=ScheduleResults />
+                            <Route path=path!("/tasks") view=TasksView />
+                            <Route path=path!("/reservations") view=ReservationsView />
+                            <Route path=path!("/settings") view=SettingsView />
+                            // Email link landing pages
+                            <Route path=path!("/verify-email") view=VerifyEmailPage />
+                            <Route path=path!("/reset-password") view=ResetPasswordPage />
+                        </Routes>
+                    </main>
+                    // Floating Mobile Bottom Nav
+                    <BottomNav />
+                </div>
             </div>
         </Router>
     }

@@ -266,11 +266,11 @@ fn ThemePicker(
             <div class="grid grid-cols-2 gap-3">
                 <button
                     class=move || {
-                        let base = "p-3 rounded-xl border transition-colors text-left";
+                        let base = "p-3 rounded-xl border transition-all text-left squish";
                         if theme.get() == "glass" {
-                            format!("{base} glass-active border-[var(--color-brand-border)]")
+                            format!("{base} glass-active border-[var(--color-brand-border)] shadow-sm")
                         } else {
-                            format!("{base} border-[var(--color-border-default)] hover:border-[var(--color-brand-border)]")
+                            format!("{base} bg-[var(--color-bg-sunken)] border-[var(--color-border-default)] hover:border-[var(--color-brand-border)]")
                         }
                     }
                     on:click=move |_| set_theme_choice("glass")
@@ -538,7 +538,7 @@ fn ProviderSetupRow(
                         </div>
                         <button
                             type="submit"
-                            class="w-full mt-3 py-2 btn-glass font-medium rounded-xl text-sm disabled:opacity-50 transition-all"
+                            class="w-full mt-3 py-2 btn-primary rounded-xl disabled:opacity-50 squish"
                         >
                             {t("provider.verify_save")}
                         </button>
@@ -643,7 +643,7 @@ fn CardAddForm(on_done: impl Fn() + Send + Sync + 'static) -> impl IntoView {
                 <CardFormFields label card_number_raw card_password birthday expire_date card_type formatted_display brand />
                 <button
                     type="submit"
-                    class="w-full mt-3 py-2 btn-glass font-medium rounded-xl text-sm disabled:opacity-50 transition-all"
+                    class="w-full mt-3 py-2 btn-primary rounded-xl disabled:opacity-50 squish"
                     disabled=move || submit_pending.get() || !form_valid()
                 >
                     {move || if submit_pending.get() {

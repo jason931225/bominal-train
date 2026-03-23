@@ -299,7 +299,7 @@ pub fn TaskCard(task: TaskInfo, is_active: bool) -> impl IntoView {
                             </button>
                             <button
                                 type="button"
-                                class="w-full min-h-[2.5rem] px-2 rounded-xl font-medium text-xs border border-[var(--color-status-error)]/30 bg-[var(--color-status-error)]/10 text-[var(--color-status-error)] hover:bg-[var(--color-status-error)]/20 transition-colors"
+                                class="w-full min-h-[2.5rem] px-2 rounded-xl font-medium text-xs btn-glass-danger"
                                 on:click=move |_| set_confirm_cancel_open.set(true)
                             >
                                 {t("task.cancel")}
@@ -383,8 +383,8 @@ fn TimingStat(label: String, value: String) -> impl IntoView {
 
 fn toggle_button_class(active: bool) -> &'static str {
     if active {
-        "w-full min-h-[2.5rem] px-2 rounded-xl font-medium text-xs border bg-[var(--color-brand-primary)]/20 border-[var(--color-brand-text)]/30 text-[var(--color-brand-text)]"
+        "w-full min-h-[2.5rem] px-2 rounded-xl font-medium text-xs border bg-[var(--color-brand-primary)]/20 border-[var(--color-brand-text)]/30 text-[var(--color-brand-text)] transition-transform squish"
     } else {
-        "w-full min-h-[2.5rem] px-2 rounded-xl font-medium text-xs border bg-[var(--color-bg-elevated)] border-[var(--color-border-default)] text-[var(--color-text-tertiary)] hover:bg-[var(--color-interactive-hover)]"
+        "w-full min-h-[2.5rem] px-2 rounded-xl font-medium text-xs border bg-[var(--color-bg-elevated)] border-[var(--color-border-default)] text-[var(--color-text-secondary)] hover:bg-[var(--color-interactive-hover)] transition-all squish"
     }
 }

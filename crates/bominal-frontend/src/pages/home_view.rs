@@ -16,43 +16,46 @@ pub fn HomeView() -> impl IntoView {
 
     view! {
         <SseReload />
-        <div class="px-4 pt-6 pb-4 space-y-5 max-w-xl lg:max-w-2xl mx-auto page-enter">
+        <div class="px-4 pt-6 pb-4 space-y-6 max-w-xl lg:max-w-2xl mx-auto page-enter">
             // Wordmark header
-            <div class="flex items-center gap-3">
-                <span class="app-brand-wordmark text-2xl font-bold bg-clip-text text-transparent tracking-tight">"Bominal"</span>
+            <div class="flex items-center gap-3 px-1">
+                <span class="app-brand-wordmark text-3xl font-bold bg-clip-text text-transparent tracking-tight">"Bominal"</span>
             </div>
 
             // Hero glass panel
             <GlassPanel>
-                <div class="p-5">
+                <div class="p-6">
                     <h1 class="text-2xl font-bold tracking-tight text-[var(--color-text-primary)]">{t("home.welcome")}</h1>
-                    <p class="mt-2 text-sm text-[var(--color-text-tertiary)] leading-relaxed max-w-md">
+                    <p class="mt-2 text-sm text-[var(--color-text-secondary)] leading-relaxed max-w-md">
                         {t("home.description")}
                     </p>
 
                     // 2-column action cards
-                    <div class="mt-5 grid grid-cols-2 gap-3">
+                    <div class="mt-6 grid grid-cols-2 gap-4">
                         <a href="/search"
-                            class="flex flex-col items-start justify-between min-h-[7rem] rounded-2xl border border-[var(--color-brand-border)] bg-[var(--color-brand-primary)] px-4 py-3.5 text-left hover:opacity-80 transition-opacity"
+                            class="group relative flex flex-col items-start justify-between min-h-[8rem] rounded-2xl p-4 text-left overflow-hidden transition-all squish shadow-sm hover:shadow-md"
                         >
-                            <svg class="w-5 h-5 text-[var(--color-brand-text)]" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                            <div class="absolute inset-0 bg-gradient-to-br from-[#FF2A54] to-[#FF5E3A] opacity-90 group-hover:opacity-100 transition-opacity"></div>
+                            <svg class="w-6 h-6 text-white relative z-10" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                             </svg>
-                            <div>
-                                <div class="text-sm font-semibold text-[var(--color-text-primary)]">{t("home.start_search")}</div>
-                                <div class="mt-0.5 text-xs text-[var(--color-text-tertiary)]">{t("home.start_search_desc")}</div>
+                            <div class="relative z-10 mt-auto pt-4">
+                                <div class="text-sm font-semibold text-white tracking-tight">{t("home.start_search")}</div>
+                                <div class="mt-0.5 text-xs text-white/80 font-medium">{t("home.start_search_desc")}</div>
                             </div>
                         </a>
 
                         <a href="/tasks"
-                            class="flex flex-col items-start justify-between min-h-[7rem] rounded-2xl border border-[var(--color-border-default)] bg-[var(--color-bg-elevated)] px-4 py-3.5 text-left hover:bg-[var(--color-interactive-hover)] transition-colors"
+                            class="flex flex-col items-start justify-between min-h-[8rem] glass-card glass-card-hover p-4 text-left"
                         >
-                            <svg class="w-5 h-5 text-[var(--color-text-tertiary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-                            </svg>
-                            <div>
+                            <div class="w-8 h-8 rounded-full bg-[var(--color-brand-primary)] flex items-center justify-center shrink-0">
+                                <svg class="w-4 h-4 text-[var(--color-brand-text)]" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                                </svg>
+                            </div>
+                            <div class="mt-auto pt-4">
                                 <div class="text-sm font-semibold text-[var(--color-text-primary)]">{t("home.open_tasks")}</div>
-                                <div class="mt-0.5 text-xs text-[var(--color-text-tertiary)]">{t("home.open_tasks_desc")}</div>
+                                <div class="mt-0.5 text-xs text-[var(--color-text-secondary)] font-medium">{t("home.open_tasks_desc")}</div>
                             </div>
                         </a>
                     </div>
@@ -86,19 +89,22 @@ pub fn HomeView() -> impl IntoView {
                                     }.into_any()
                                 } else {
                                     view! {
-                                        <div class="space-y-3">
-                                            {active.into_iter().map(|task| view! {
-                                                <div class="flex items-center justify-between py-2 border-b border-[var(--color-border-subtle)] last:border-0">
-                                                    <div>
-                                                        <p class="text-sm font-medium text-[var(--color-text-primary)]">
-                                                            {format!("{} → {}", task.departure_station, task.arrival_station)}
-                                                        </p>
-                                                        <p class="text-xs text-[var(--color-text-tertiary)]">
-                                                            {format!("{} {} · {}", task.provider, task.travel_date, task.departure_time)}
-                                                        </p>
+                                        <div class="space-y-3 mt-1">
+                                            {active.into_iter().enumerate().map(|(i, task)| {
+                                                let delay = format!("stagger-{}", i + 1);
+                                                view! {
+                                                    <div class=format!("flex items-center justify-between p-3 rounded-xl border border-[var(--color-border-subtle)] hover:bg-[var(--color-interactive-hover)] transition-all squish {delay}")>
+                                                        <div>
+                                                            <p class="text-sm font-semibold tracking-tight text-[var(--color-text-primary)]">
+                                                                {format!("{} → {}", task.departure_station, task.arrival_station)}
+                                                            </p>
+                                                            <p class="text-xs text-[var(--color-text-secondary)] mt-0.5">
+                                                                {format!("{} {} · {}", task.provider, task.travel_date, task.departure_time)}
+                                                            </p>
+                                                        </div>
+                                                        <StatusChip label=t(task.status.i18n_key()) variant=status_variant(task.status) />
                                                     </div>
-                                                    <StatusChip label=t(task.status.i18n_key()) variant=status_variant(task.status) />
-                                                </div>
+                                                }
                                             }).collect::<Vec<_>>()}
                                         </div>
                                     }.into_any()

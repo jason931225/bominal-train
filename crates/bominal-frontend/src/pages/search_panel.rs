@@ -374,7 +374,7 @@ pub fn SearchPanel() -> impl IntoView {
                         <div class="grid grid-cols-1 min-[360px]:grid-cols-2 gap-3">
                             // Date card — opens calendar modal
                             <button
-                                class="p-3 bg-[var(--color-bg-sunken)] border border-[var(--color-border-default)] rounded-xl text-left hover:border-[var(--color-border-focus)] transition-colors"
+                                class="p-3.5 glass-card glass-card-hover text-left"
                                 on:click=move |_| set_date_modal_open.set(true)
                             >
                                 <div class="text-xs font-medium text-[var(--color-text-secondary)] mb-1 flex items-center gap-1.5">
@@ -393,7 +393,7 @@ pub fn SearchPanel() -> impl IntoView {
 
                             // Passenger card — opens passenger modal
                             <button
-                                class="p-3 bg-[var(--color-bg-sunken)] border border-[var(--color-border-default)] rounded-xl text-left hover:border-[var(--color-border-focus)] transition-colors"
+                                class="p-3.5 glass-card glass-card-hover text-left"
                                 on:click=move |_| open_passenger_modal()
                             >
                                 <div class="text-xs font-medium text-[var(--color-text-secondary)] mb-1 flex items-center gap-1.5">
@@ -429,7 +429,7 @@ pub fn SearchPanel() -> impl IntoView {
 
                         // Search button
                         <button
-                            class="w-full py-3 btn-glass font-medium rounded-xl text-sm disabled:opacity-50 transition-all"
+                            class="w-full py-3.5 btn-primary rounded-2xl disabled:opacity-50 mt-2"
                             disabled=searching
                             on:click=move |_| { search_action.dispatch(()); }
                         >
@@ -609,13 +609,13 @@ fn ProviderToggle(
 ) -> impl IntoView {
     let btn_class = |is_active: bool| {
         if is_active {
-            "flex-1 py-2 text-sm font-medium rounded-lg bg-[var(--color-bg-elevated)] text-[var(--color-text-primary)] shadow-sm transition-all"
+            "flex-1 py-2 text-sm font-semibold rounded-xl bg-[var(--color-bg-elevated)] text-[var(--color-text-primary)] shadow-sm transition-all squish"
         } else {
-            "flex-1 py-2 text-sm font-medium rounded-lg text-[var(--color-text-tertiary)] transition-all"
+            "flex-1 py-2 text-sm font-medium rounded-xl text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition-all squish"
         }
     };
     view! {
-        <div role="radiogroup" aria-label=t("search.provider") class="flex bg-[var(--color-bg-sunken)] rounded-xl p-1">
+        <div role="radiogroup" aria-label=t("search.provider") class="flex bg-[var(--color-bg-sunken)] rounded-2xl p-1">
             <button
                 role="radio"
                 aria-checked=move || if provider.get() == "SRT" { "true" } else { "false" }
@@ -643,9 +643,9 @@ fn ToggleChip(
         <button
             aria-pressed=move || if active.get() { "true" } else { "false" }
             class=move || if active.get() {
-                "flex-1 py-2 px-3 text-xs font-semibold rounded-xl border transition-all flex justify-center items-center gap-1.5 bg-[var(--color-brand-primary)]/20 text-[var(--color-brand-text)] border-[var(--color-brand-primary)]/30 shadow-sm"
+                "flex-1 py-2.5 px-3 text-xs font-semibold rounded-2xl transition-all flex justify-center items-center gap-1.5 btn-glass"
             } else {
-                "flex-1 py-2 px-3 text-xs font-semibold rounded-xl border transition-all flex justify-center items-center gap-1.5 bg-[var(--color-bg-sunken)] text-[var(--color-text-tertiary)] border-[var(--color-border-default)]"
+                "flex-1 py-2.5 px-3 text-xs font-semibold rounded-2xl transition-all flex justify-center items-center gap-1.5 bg-[var(--color-bg-sunken)] text-[var(--color-text-secondary)] hover:bg-[var(--color-interactive-hover)] squish"
             }
             on:click=move |_| on_toggle()
         >
@@ -698,9 +698,9 @@ fn TrainResults(
                         view! {
                             <button
                                 class=move || if is_selected.get() {
-                                    "w-full flex items-center justify-between py-3 px-3 rounded-xl bg-[var(--color-brand-primary)]/10 border border-[var(--color-brand-primary)]/30 transition-all"
+                                    "w-full flex items-center justify-between py-3.5 px-4 rounded-2xl glass-active transition-all squish shadow-sm"
                                 } else {
-                                    "w-full flex items-center justify-between py-3 px-3 rounded-xl border border-transparent hover:bg-[var(--color-interactive-hover)] transition-all"
+                                    "w-full flex items-center justify-between py-3.5 px-4 rounded-2xl border border-transparent hover:bg-[var(--color-interactive-hover)] transition-all squish"
                                 }
                                 on:click=toggle
                             >
