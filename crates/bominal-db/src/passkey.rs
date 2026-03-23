@@ -147,6 +147,21 @@ pub async fn find_credentials_by_user(
     .await
 }
 
+/// Update the serialized passkey blob after a successful authentication
+/// (bumps the internal counter to detect cloned authenticators).
+pub async fn update_credential_key(
+    pool: &PgPool,
+    credential_id: &str,
+    public_key: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query("UPDATE passkey_credentials SET public_key = $1 WHERE credential_id = $2")
+        .bind(public_key)
+        .bind(credential_id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
 pub async fn delete_credential(
     pool: &PgPool,
     credential_id: Uuid,

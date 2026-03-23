@@ -220,19 +220,34 @@ pub async fn login_finish(
         return Err(AppError::Unauthorized);
     }
 
-    let passkeys: Vec<Passkey> = cred_rows
+    let mut passkeys: Vec<Passkey> = cred_rows
         .iter()
         .filter_map(|r| serde_json::from_str(&r.public_key).ok())
         .collect();
 
-    // Build DiscoverableKey list for verification
-    let creds: Vec<DiscoverableKey> = passkeys.into_iter().map(DiscoverableKey::from).collect();
+    // Build DiscoverableKey list for verification (clone — we need passkeys for counter update)
+    let creds: Vec<DiscoverableKey> = passkeys.iter().cloned().map(DiscoverableKey::from).collect();
 
     // Verify the assertion signature
-    let _auth_result = state
+    let auth_result = state
         .webauthn
         .finish_discoverable_authentication(&req.credential, auth_state, &creds)
         .map_err(|e| AppError::BadRequest(format!("Authentication verification failed: {e}")))?;
+
+    // Update the credential counter to detect cloned authenticators
+    let auth_cred_id = auth_result.cred_id();
+    if let Some(pk) = passkeys.iter_mut().find(|p| p.cred_id() == auth_cred_id) {
+        pk.update_credential(&auth_result);
+        if let Ok(updated_json) = serde_json::to_string(pk)
+            && let Ok(cred_id_value) = serde_json::to_value(pk.cred_id())
+            && let Some(cred_id_str) = cred_id_value.as_str()
+        {
+            let _ = bominal_db::passkey::update_credential_key(
+                &state.db, cred_id_str, &updated_json,
+            )
+            .await;
+        }
+    }
 
     // Resolve the user
     let user = bominal_db::user::find_by_id(&state.db, user_id)
