@@ -5,7 +5,7 @@ use leptos::prelude::*;
 
 use crate::i18n::t;
 
-use super::{auth_shell, icon_fingerprint, icon_key, icon_mail};
+use super::{auth_shell, icon_hero_key, icon_key, icon_mail};
 
 #[component]
 pub fn PasskeyPage() -> impl IntoView {
@@ -34,7 +34,7 @@ pub fn PasskeyPage() -> impl IntoView {
             <div class="text-center mb-2">
                 <div class="w-20 h-20 mx-auto mb-4 rounded-2xl flex items-center justify-center ring-1 ring-[var(--color-brand-border)]"
                      style="background: linear-gradient(135deg, var(--color-bg-elevated), var(--color-bg-sunken))">
-                    {icon_fingerprint()}
+                    {icon_hero_key()}
                 </div>
                 <h1 class="text-2xl font-bold text-[var(--color-text-primary)] tracking-tight">{t("auth.welcome_back")}</h1>
                 <p class="text-sm text-[var(--color-text-tertiary)] mt-1.5">{t("auth.passkey_subtitle")}</p>

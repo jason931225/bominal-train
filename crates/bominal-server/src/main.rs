@@ -11,6 +11,7 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("Starting Bominal server");
 
     let config = config::AppConfig::from_env()?;
+    config.validate()?;
     let addr = SocketAddr::from(([0, 0, 0, 0], config.port));
 
     let app = routes::create_router(&config, prometheus_handle).await?;

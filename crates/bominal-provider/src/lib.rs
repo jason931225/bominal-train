@@ -5,6 +5,7 @@
 
 pub mod ktx;
 pub mod netfunnel;
+pub mod retry;
 pub mod srt;
 pub mod types;
 

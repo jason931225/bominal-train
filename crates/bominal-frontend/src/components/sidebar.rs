@@ -40,7 +40,7 @@ pub fn Sidebar() -> impl IntoView {
 
     view! {
         <Show when=is_visible>
-            <aside class="hidden md:flex flex-col w-64 h-[100dvh] shrink-0 border-r border-[var(--color-border-subtle)] glass-panel rounded-none">
+            <aside class="hidden md:flex flex-col w-64 h-[100dvh] shrink-0 border-r border-[var(--color-border-subtle)] glass-panel rounded-none shadow-xl">
                 <div class="px-6 pt-10 pb-6">
                     <span class="app-brand-wordmark text-3xl font-bold bg-clip-text text-transparent tracking-tight">"Bominal"</span>
                 </div>

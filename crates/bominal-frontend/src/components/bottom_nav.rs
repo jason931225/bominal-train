@@ -47,7 +47,7 @@ pub fn BottomNav() -> impl IntoView {
 
     view! {
         <Show when=is_visible>
-            <nav aria-label="Main navigation" class="fixed bottom-4 left-4 right-4 md:hidden z-50 glass-card rounded-3xl pb-safe">
+            <nav aria-label="Main navigation" class="fixed bottom-4 left-4 right-4 md:hidden z-50 glass-card rounded-3xl safe-area-pb">
                 <div class="flex items-center justify-around w-full h-16 px-2">
                     <a href="/home" class=move || tab_class("/home") aria-current=move || aria_current("/home")>
                         <svg aria-hidden="true" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">

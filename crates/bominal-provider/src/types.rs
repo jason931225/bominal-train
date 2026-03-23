@@ -80,6 +80,17 @@ pub enum ProviderError {
     UnexpectedResponse { status: u16, body: String },
 }
 
+impl ProviderError {
+    /// Whether this error is transient and worth retrying.
+    pub fn is_retryable(&self) -> bool {
+        match self {
+            Self::NetworkError(_) | Self::NetFunnelBlocked => true,
+            Self::UnexpectedResponse { status, .. } => *status >= 500,
+            _ => false,
+        }
+    }
+}
+
 /// Classify a login ID into the appropriate auth type.
 ///
 /// # Examples
@@ -140,6 +151,51 @@ mod tests {
     fn classify_phone_without_hyphens() {
         assert_eq!(classify_auth("01012345678"), AuthType::Phone);
         assert_eq!(classify_auth("0101234567"), AuthType::Phone);
+    }
+
+    #[test]
+    fn retryable_network_error() {
+        // NetworkError and NetFunnelBlocked are retryable
+        assert!(ProviderError::NetFunnelBlocked.is_retryable());
+    }
+
+    #[test]
+    fn retryable_server_error() {
+        assert!(
+            ProviderError::UnexpectedResponse {
+                status: 500,
+                body: "".to_string()
+            }
+            .is_retryable()
+        );
+        assert!(
+            ProviderError::UnexpectedResponse {
+                status: 503,
+                body: "".to_string()
+            }
+            .is_retryable()
+        );
+    }
+
+    #[test]
+    fn not_retryable_client_errors() {
+        assert!(!ProviderError::SoldOut.is_retryable());
+        assert!(!ProviderError::NoResults.is_retryable());
+        assert!(!ProviderError::SessionExpired.is_retryable());
+        assert!(!ProviderError::DuplicateReservation.is_retryable());
+        assert!(
+            !ProviderError::UnexpectedResponse {
+                status: 400,
+                body: "".to_string()
+            }
+            .is_retryable()
+        );
+        assert!(
+            !ProviderError::LoginFailed {
+                message: "".to_string()
+            }
+            .is_retryable()
+        );
     }
 
     #[test]

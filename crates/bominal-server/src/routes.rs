@@ -68,17 +68,47 @@ pub fn api_routes() -> Router<SharedState> {
             post(passkey::register_finish),
         );
 
+    // Search endpoints (30 req/min per IP — triggers external provider calls)
+    let search_limiter = RateLimiter::new(30);
+    search_limiter.clone().spawn_cleanup();
+
+    let rate_limited_search = Router::new()
+        .route("/search", post(search::search_trains))
+        .layer(axum::middleware::from_fn(move |req, next| {
+            let limiter = search_limiter.clone();
+            crate::rate_limit::rate_limit_middleware(limiter, req, next)
+        }));
+
+    // Payment endpoints (10 req/min per IP)
+    let payment_limiter = RateLimiter::new(10);
+    payment_limiter.clone().spawn_cleanup();
+
+    let rate_limited_payments = Router::new()
+        .route(
+            "/reservations/{pnr}/pay",
+            post(reservations::pay_reservation),
+        )
+        .route(
+            "/reservations/{pnr}/refund",
+            post(reservations::refund_reservation),
+        )
+        .layer(axum::middleware::from_fn(move |req, next| {
+            let limiter = payment_limiter.clone();
+            crate::rate_limit::rate_limit_middleware(limiter, req, next)
+        }));
+
     Router::new()
         .merge(rate_limited_auth)
         .merge(auth_no_limit)
+        .merge(rate_limited_search)
+        .merge(rate_limited_payments)
         // Provider credentials
         .route(
             "/providers",
             get(providers::list_providers).post(providers::add_provider),
         )
         .route("/providers/{provider}", delete(providers::delete_provider))
-        // Search & station suggest
-        .route("/search", post(search::search_trains))
+        // Station suggest
         .route("/stations/{provider}", get(search::list_stations))
         .route(
             "/stations/{provider}/suggest",
@@ -94,7 +124,7 @@ pub fn api_routes() -> Router<SharedState> {
         )
         // SSE — real-time task updates
         .route("/tasks/events", get(sse::task_events))
-        // Reservations
+        // Reservations (read-only + cancel)
         .route("/reservations", get(reservations::list_reservations))
         .route(
             "/reservations/{pnr}/tickets",
@@ -103,14 +133,6 @@ pub fn api_routes() -> Router<SharedState> {
         .route(
             "/reservations/{pnr}/cancel",
             post(reservations::cancel_reservation),
-        )
-        .route(
-            "/reservations/{pnr}/pay",
-            post(reservations::pay_reservation),
-        )
-        .route(
-            "/reservations/{pnr}/refund",
-            post(reservations::refund_reservation),
         )
         // Payment cards
         .route("/cards", get(cards::list_cards).post(cards::add_card))

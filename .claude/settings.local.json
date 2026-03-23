@@ -25,7 +25,19 @@
       "Bash(gh api:*)",
       "Bash(gh pr:*)",
       "Bash(gh run:*)",
-      "Bash(gh issue:*)"
+      "Bash(gh issue:*)",
+      "Bash(git fetch:*)",
+      "Bash(head -3 __NEW_LINE_fcb40dda12d921de__ echo \"\" echo \"codex/async-provider-transport \\(HEAD: ccf3c5ab\\):\" git log --oneline main)",
+      "Bash(head -3 __NEW_LINE_fcb40dda12d921de__ echo \"\" echo \"feat/frontend-rewrite-evervault-passkeys \\(HEAD: ca5dcbe8\\):\" git log --oneline main)",
+      "Bash(head -3 __NEW_LINE_fcb40dda12d921de__ echo \"\" echo \"pr-11-provider-jobs-split-r1 \\(HEAD: 1df5cd3f\\):\" git log --oneline main)",
+      "Read(//Users/jasonlee/projects/bominal/**)",
+      "Bash(do if:*)",
+      "Bash(then echo:*)",
+      "Bash(grep -r \"webauthn\\\\|passkey\" crates/bominal-server/src/*.rs)",
+      "Bash(grep:*)",
+      "Bash(git ls-tree:*)",
+      "Bash(git worktree:*)",
+      "Bash(git push:*)"
     ]
   }
 }

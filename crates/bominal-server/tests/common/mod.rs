@@ -96,6 +96,13 @@ impl TestApp {
         .await
         .expect("failed to run passkey challenge state migration");
 
+        sqlx::raw_sql(include_str!(
+            "../../../bominal-db/migrations/20260322000001_add_challenge_created_at_index.sql"
+        ))
+        .execute(&pool)
+        .await
+        .expect("failed to run challenge index migration");
+
         let encryption_key = EncryptionKey::from_hex(TEST_ENCRYPTION_KEY).unwrap();
 
         let rp_origin = url::Url::parse("http://localhost:3000").unwrap();

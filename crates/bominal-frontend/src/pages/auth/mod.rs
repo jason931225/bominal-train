@@ -26,17 +26,12 @@ pub use verify_page::AuthVerifyPage;
 
 use leptos::prelude::*;
 
-pub(super) fn icon_fingerprint() -> impl IntoView {
+pub(super) fn icon_hero_key() -> impl IntoView {
     view! {
-        <svg class="w-14 h-14" viewBox="0 0 48 48" fill="none">
-            <path d="M24 4C13 4 4 13 4 24s9 20 20 20 20-9 20-20S35 4 24 4z" fill="url(#fp-grad)" fill-opacity="0.12"/>
-            <path d="M24 12a8 8 0 00-8 8c0 5 1 10 3 14" stroke="var(--color-brand-text)" stroke-width="2" stroke-linecap="round" fill="none" opacity="0.35"/>
-            <path d="M29 12.7A8 8 0 0132 20c0 4-.7 8-2 11.5" stroke="var(--color-brand-text)" stroke-width="2" stroke-linecap="round" fill="none" opacity="0.5"/>
-            <path d="M24 16a4 4 0 00-4 4c0 4 .5 8 1.5 11.5" stroke="var(--color-brand-text)" stroke-width="2.5" stroke-linecap="round" fill="none" opacity="0.7"/>
-            <path d="M27.5 16.5A4 4 0 0128 20c0 3.5-.5 7-1.5 10" stroke="var(--color-brand-text)" stroke-width="2.5" stroke-linecap="round" fill="none" opacity="0.85"/>
-            <path d="M24 20c0 3 .2 6.5 1 10" stroke="var(--color-brand-text)" stroke-width="3" stroke-linecap="round" fill="none"/>
+        <svg class="w-14 h-14 text-[var(--color-brand-text)]" fill="none" stroke="url(#key-grad)" viewBox="0 0 24 24" stroke-width="1.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z" />
             <defs>
-                <linearGradient id="fp-grad" x1="4" y1="4" x2="44" y2="44">
+                <linearGradient id="key-grad" x1="2" y1="2" x2="22" y2="22">
                     <stop stop-color="#007AFF"/>
                     <stop offset="1" stop-color="#5AC8FA"/>
                 </linearGradient>
@@ -66,8 +61,7 @@ pub(super) fn icon_lock() -> impl IntoView {
 pub(super) fn icon_key() -> impl IntoView {
     view! {
         <svg class="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
-            <path stroke-linecap="round" stroke-linejoin="round"
-                d="M7.864 4.243A7.5 7.5 0 0119.5 10.5c0 2.92-.556 5.709-1.568 8.268M5.742 6.364A7.465 7.465 0 004.5 10.5a48.667 48.667 0 00-1.37 10.047m10.862-8.859a3 3 0 00-5.984.634 48.945 48.945 0 01-1.152 8.636m9.6-10.858A7.48 7.48 0 0112 10.5a48.62 48.62 0 01-1.32 10.867m6.318-9.118a7.502 7.502 0 01-10.975 6.63" />
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z" />
         </svg>
     }
 }
