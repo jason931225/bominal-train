@@ -121,7 +121,7 @@ pub fn LoginPage() -> impl IntoView {
                             type="button"
                             aria-label=move || if show_password.get() { t("auth.hide_password") } else { t("auth.show_password") }
                             on:click=move |_| show_password.update(|v| *v = !*v)
-                            class="absolute right-1 top-1/2 -translate-y-1/2 min-h-11 min-w-11 flex items-center justify-center text-[var(--color-text-disabled)] hover:text-[var(--color-text-secondary)] transition-colors"
+                            class="absolute right-0 top-1/2 -translate-y-1/2 min-h-11 min-w-11 flex items-center justify-center text-[var(--color-text-disabled)] hover:text-[var(--color-text-secondary)] transition-colors"
                         >
                             {move || if show_password.get() { icon_eye_off().into_any() } else { icon_eye().into_any() }}
                         </button>

@@ -110,7 +110,7 @@ pub fn SignupPage() -> impl IntoView {
                                 type="button"
                                 aria-label=move || if show_password.get() { t("auth.hide_password") } else { t("auth.show_password") }
                                 on:click=move |_| show_password.update(|v| *v = !*v)
-                                class="absolute right-1 top-1/2 -translate-y-1/2 min-h-11 min-w-11 flex items-center justify-center text-[var(--color-text-disabled)] hover:text-[var(--color-text-secondary)]"
+                                class="absolute right-0 top-1/2 -translate-y-1/2 min-h-11 min-w-11 flex items-center justify-center text-[var(--color-text-disabled)] hover:text-[var(--color-text-secondary)]"
                             >
                                 {move || if show_password.get() { icon_eye_off().into_any() } else { icon_eye().into_any() }}
                             </button>
@@ -166,7 +166,7 @@ pub fn SignupPage() -> impl IntoView {
                                 type="button"
                                 aria-label=move || if show_password2.get() { t("auth.hide_password") } else { t("auth.show_password") }
                                 on:click=move |_| show_password2.update(|v| *v = !*v)
-                                class="absolute right-1 top-1/2 -translate-y-1/2 min-h-11 min-w-11 flex items-center justify-center text-[var(--color-text-disabled)] hover:text-[var(--color-text-secondary)]"
+                                class="absolute right-0 top-1/2 -translate-y-1/2 min-h-11 min-w-11 flex items-center justify-center text-[var(--color-text-disabled)] hover:text-[var(--color-text-secondary)]"
                             >
                                 {move || if show_password2.get() { icon_eye_off().into_any() } else { icon_eye().into_any() }}
                             </button>
