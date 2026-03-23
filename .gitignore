@@ -10,5 +10,7 @@ package-lock.json
 *.swo
 *~
 .DS_Store
+# Generated WASM bundle (built by dev-build.sh / Dockerfile)
+pkg/
 .playwright-mcp/
 agentic-workflow-optimization-report.js

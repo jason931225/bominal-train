@@ -344,6 +344,7 @@ pub fn SearchPanel() -> impl IntoView {
                                 value=departure
                                 set_value=set_departure
                                 stations=stations
+                                provider=provider
                             />
                             <div class="flex justify-center">
                                 <button
@@ -367,6 +368,7 @@ pub fn SearchPanel() -> impl IntoView {
                                 value=arrival
                                 set_value=set_arrival
                                 stations=stations
+                                provider=provider
                             />
                         </div>
 
