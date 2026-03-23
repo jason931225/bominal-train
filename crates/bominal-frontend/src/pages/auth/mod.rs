@@ -65,9 +65,9 @@ pub(super) fn icon_lock() -> impl IntoView {
 
 pub(super) fn icon_key() -> impl IntoView {
     view! {
-        <svg class="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+        <svg class="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
             <path stroke-linecap="round" stroke-linejoin="round"
-                d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                d="M7.864 4.243A7.5 7.5 0 0119.5 10.5c0 2.92-.556 5.709-1.568 8.268M5.742 6.364A7.465 7.465 0 004.5 10.5a48.667 48.667 0 00-1.37 10.047m10.862-8.859a3 3 0 00-5.984.634 48.945 48.945 0 01-1.152 8.636m9.6-10.858A7.48 7.48 0 0112 10.5a48.62 48.62 0 01-1.32 10.867m6.318-9.118a7.502 7.502 0 01-10.975 6.63" />
         </svg>
     }
 }
