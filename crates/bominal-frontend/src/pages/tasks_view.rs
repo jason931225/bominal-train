@@ -15,7 +15,7 @@ pub fn TasksView() -> impl IntoView {
     let tasks = Resource::new(|| (), |_| list_tasks());
 
     view! {
-        <SseReload />
+        <SseReload on_event=Callback::new(move |_| { tasks.refetch(); }) />
         <div class="px-4 pt-6 pb-4 space-y-4 max-w-xl lg:max-w-2xl mx-auto page-enter">
             <h1 class="text-xl font-bold text-[var(--color-text-primary)]">{t("nav.tasks")}</h1>
 

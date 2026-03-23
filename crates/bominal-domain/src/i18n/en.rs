@@ -192,7 +192,10 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     m.insert("error.standby_closed", "Standby registration is closed");
     m.insert("error.ip_blocked", "Your IP has been blocked");
     m.insert("error.passkey_failed", "Passkey login failed");
-    m.insert("error.passkey_register_failed", "Passkey registration failed");
+    m.insert(
+        "error.passkey_register_failed",
+        "Passkey registration failed",
+    );
 
     // Common
     m.insert("common.confirm", "Confirm");
@@ -233,6 +236,10 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     m.insert("reservation.cancelled", "Reservation cancelled");
     m.insert("reservation.payment_success", "Payment successful");
     m.insert("reservation.no_active", "No active reservations");
+    m.insert("reservation.view_tickets", "Seat Details");
+    m.insert("reservation.hide_tickets", "Hide");
+    m.insert("reservation.refund", "Refund");
+    m.insert("reservation.refunded", "Refund processed");
 
     // Train types
     m.insert("train.ktx", "KTX");
@@ -253,7 +260,10 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
 
     // Home
     m.insert("home.welcome", "Welcome");
-    m.insert("home.description", "Your train ticket reservation assistant");
+    m.insert(
+        "home.description",
+        "Your train ticket reservation assistant",
+    );
     m.insert("home.quick_search", "Quick Search");
     m.insert("home.active_tasks", "Active Tasks");
     m.insert("home.no_active_tasks", "No active tasks");

@@ -40,11 +40,11 @@ pub fn Sidebar() -> impl IntoView {
 
     view! {
         <Show when=is_visible>
-            <aside class="hidden md:flex flex-col w-64 h-[100dvh] shrink-0 border-r border-[var(--color-border-subtle)] glass-panel rounded-none shadow-xl">
+            <aside class="hidden md:flex flex-col w-64 h-[calc(100vh-2rem)] my-4 ml-4 shrink-0 border border-[var(--color-border-subtle)] glass-panel rounded-3xl shadow-2xl relative z-10 transition-transform">
                 <div class="px-6 pt-10 pb-6">
                     <span class="app-brand-wordmark text-3xl font-bold bg-clip-text text-transparent tracking-tight">"Bominal"</span>
                 </div>
-                
+
                 <nav class="flex-1 px-4 space-y-2">
                     <a href="/home" class=move || item_class("/home")>
                         <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">

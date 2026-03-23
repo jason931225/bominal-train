@@ -4,7 +4,7 @@
 
 use leptos::prelude::*;
 
-pub use bominal_domain::dto::ReservationInfo;
+pub use bominal_domain::dto::{ReservationInfo, TicketInfo};
 
 /// List active reservations from the provider.
 #[server(prefix = "/sfn")]
@@ -31,6 +31,44 @@ pub async fn cancel_reservation(
         .ok_or_else(|| ServerFnError::new("Server misconfigured"))?;
 
     bominal_service::reservations::cancel(&pool, user_id, &provider, &reservation_number, &key)
+        .await
+        .map_err(|e| ServerFnError::new(e.to_string()))
+}
+
+/// Get ticket details for a reservation.
+#[server(prefix = "/sfn")]
+pub async fn ticket_detail(
+    provider: String,
+    reservation_number: String,
+) -> Result<Vec<TicketInfo>, ServerFnError> {
+    let (pool, user_id) = super::tasks::require_auth().await?;
+
+    let key = use_context::<bominal_service::EncryptionKey>()
+        .ok_or_else(|| ServerFnError::new("Server misconfigured"))?;
+
+    bominal_service::reservations::ticket_detail(
+        &pool,
+        user_id,
+        &provider,
+        &reservation_number,
+        &key,
+    )
+    .await
+    .map_err(|e| ServerFnError::new(e.to_string()))
+}
+
+/// Refund a paid reservation.
+#[server(prefix = "/sfn")]
+pub async fn refund_reservation(
+    provider: String,
+    reservation_number: String,
+) -> Result<(), ServerFnError> {
+    let (pool, user_id) = super::tasks::require_auth().await?;
+
+    let key = use_context::<bominal_service::EncryptionKey>()
+        .ok_or_else(|| ServerFnError::new("Server misconfigured"))?;
+
+    bominal_service::reservations::refund(&pool, user_id, &provider, &reservation_number, &key)
         .await
         .map_err(|e| ServerFnError::new(e.to_string()))
 }

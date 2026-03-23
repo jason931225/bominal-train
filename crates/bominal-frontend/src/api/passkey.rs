@@ -126,7 +126,9 @@ pub async fn do_conditional_passkey_login() -> Result<(), wasm_bindgen::JsValue>
     let resp: web_sys::Response = resp.dyn_into()?;
 
     if !resp.ok() {
-        return Err(JsValue::from_str("Failed to start conditional passkey login"));
+        return Err(JsValue::from_str(
+            "Failed to start conditional passkey login",
+        ));
     }
 
     let json = JsFuture::from(resp.json()?).await?;
@@ -139,8 +141,10 @@ pub async fn do_conditional_passkey_login() -> Result<(), wasm_bindgen::JsValue>
         .as_string()
         .ok_or_else(|| JsValue::from_str("Failed to serialize options"))?;
 
-    let start_fn =
-        js_sys::Reflect::get(&window, &JsValue::from_str("__startConditionalPasskeyLogin"))?;
+    let start_fn = js_sys::Reflect::get(
+        &window,
+        &JsValue::from_str("__startConditionalPasskeyLogin"),
+    )?;
     let start_fn: &js_sys::Function = start_fn
         .dyn_ref()
         .ok_or_else(|| JsValue::from_str("__startConditionalPasskeyLogin not found"))?;

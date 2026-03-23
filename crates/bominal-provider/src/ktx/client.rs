@@ -442,7 +442,10 @@ impl KtxClient {
             .filter_map(|(i, t)| match KtxTrain::from_json(t) {
                 Some(train) => Some(train),
                 None => {
-                    tracing::warn!(index = i, "Failed to parse KTX train from response — skipping");
+                    tracing::warn!(
+                        index = i,
+                        "Failed to parse KTX train from response — skipping"
+                    );
                     None
                 }
             })
@@ -542,7 +545,10 @@ impl KtxClient {
             params.push((format!("txtCardPw_{i}"), String::new()));
         }
 
-        let params_ref: Vec<(&str, &str)> = params.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+        let params_ref: Vec<(&str, &str)> = params
+            .iter()
+            .map(|(k, v)| (k.as_str(), v.as_str()))
+            .collect();
 
         let (builder, _) =
             self.request_with_dynapath(reqwest::Method::POST, &Endpoints::url(Endpoints::RESERVE));

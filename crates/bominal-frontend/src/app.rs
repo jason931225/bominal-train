@@ -17,7 +17,6 @@ use crate::pages::{
     home_view::HomeView,
     reservations_view::ReservationsView,
     reset_password_page::ResetPasswordPage,
-    schedule_results::ScheduleResults,
     search_panel::SearchPanel,
     settings_view::SettingsView,
     tasks_view::TasksView,
@@ -80,9 +79,9 @@ pub fn App() -> impl IntoView {
             <div class="flex h-screen overflow-hidden bg-[var(--color-bg-primary)]">
                 // Sidebar visible on desktop
                 <Sidebar />
-                
+
                 // Main content area
-                <div class="flex-1 relative overflow-y-auto no-scrollbar pb-24 md:pb-0">
+                <div class="flex-1 relative overflow-y-auto no-scrollbar pb-24 md:py-4 md:pr-4">
                     <main class="min-h-full">
                         <Routes fallback=|| view! {
                             <div class="flex items-center justify-center min-h-screen">
@@ -101,7 +100,7 @@ pub fn App() -> impl IntoView {
                             // Authenticated app routes
                             <Route path=path!("/home") view=HomeView />
                             <Route path=path!("/search") view=SearchPanel />
-                            <Route path=path!("/search/results") view=ScheduleResults />
+                            <Route path=path!("/search/results") view=SearchResultsRedirect />
                             <Route path=path!("/tasks") view=TasksView />
                             <Route path=path!("/reservations") view=ReservationsView />
                             <Route path=path!("/settings") view=SettingsView />
@@ -116,4 +115,14 @@ pub fn App() -> impl IntoView {
             </div>
         </Router>
     }
+}
+
+/// Redirect /search/results to /search.
+#[component]
+fn SearchResultsRedirect() -> impl IntoView {
+    #[cfg(feature = "ssr")]
+    leptos_axum::redirect("/search");
+
+    #[cfg(not(feature = "ssr"))]
+    crate::browser::redirect_to("/search");
 }

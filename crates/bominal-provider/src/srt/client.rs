@@ -337,8 +337,15 @@ impl SrtClient {
         let date = date.unwrap_or(&today);
         let time = time.unwrap_or("000000");
 
-        self.search_train_internal(dep_code, arr_code, date, time, passenger_count, available_only)
-            .await
+        self.search_train_internal(
+            dep_code,
+            arr_code,
+            date,
+            time,
+            passenger_count,
+            available_only,
+        )
+        .await
     }
 
     async fn search_train_internal(
@@ -417,7 +424,10 @@ impl SrtClient {
             .filter_map(|(i, t)| match SrtTrain::from_json(t) {
                 Some(train) => Some(train),
                 None => {
-                    warn!(index = i, "Failed to parse SRT train from response — skipping");
+                    warn!(
+                        index = i,
+                        "Failed to parse SRT train from response — skipping"
+                    );
                     None
                 }
             })
@@ -813,8 +823,7 @@ impl SrtClient {
     pub async fn refund(&self, pnr_no: &str) -> Result<(), ProviderError> {
         self.require_login()?;
 
-        let form: Vec<(&str, &str)> =
-            vec![("pnrNo", pnr_no), ("jrnyCnt", "1"), ("rsvChgTno", "0")];
+        let form: Vec<(&str, &str)> = vec![("pnrNo", pnr_no), ("jrnyCnt", "1"), ("rsvChgTno", "0")];
 
         let resp = self
             .api_client

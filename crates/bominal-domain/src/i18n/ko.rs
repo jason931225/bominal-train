@@ -230,6 +230,10 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     m.insert("reservation.cancelled", "예약이 취소되었습니다");
     m.insert("reservation.payment_success", "결제가 완료되었습니다");
     m.insert("reservation.no_active", "예약 내역이 없습니다");
+    m.insert("reservation.view_tickets", "좌석 상세");
+    m.insert("reservation.hide_tickets", "접기");
+    m.insert("reservation.refund", "환불");
+    m.insert("reservation.refunded", "환불 처리되었습니다");
 
     // Train types
     m.insert("train.ktx", "KTX");

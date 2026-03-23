@@ -7,9 +7,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::task::{
-    PassengerList, Provider, SeatPreference, TargetTrainList, TaskStatus,
-};
+use crate::task::{PassengerList, Provider, SeatPreference, TargetTrainList, TaskStatus};
 
 /// Card info (masked — never exposes raw encrypted fields).
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -74,6 +72,18 @@ pub struct ReservationInfo {
     pub is_waiting: bool,
     pub payment_deadline_date: String,
     pub payment_deadline_time: String,
+}
+
+/// Ticket detail within a reservation.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct TicketInfo {
+    pub car: String,
+    pub seat: String,
+    pub seat_type: String,
+    pub passenger_type: String,
+    pub price: i64,
+    pub original_price: i64,
+    pub discount: i64,
 }
 
 /// Input for creating a new reservation task.

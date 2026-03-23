@@ -15,7 +15,7 @@ pub fn HomeView() -> impl IntoView {
     let tasks = Resource::new(|| (), |_| list_tasks());
 
     view! {
-        <SseReload />
+        <SseReload on_event=Callback::new(move |_| { tasks.refetch(); }) />
         <div class="px-4 pt-6 pb-4 space-y-6 max-w-xl lg:max-w-2xl mx-auto page-enter">
             // Wordmark header
             <div class="flex items-center gap-3 px-1">
@@ -25,18 +25,21 @@ pub fn HomeView() -> impl IntoView {
             // Hero glass panel
             <GlassPanel>
                 <div class="p-6">
-                    <h1 class="text-2xl font-bold tracking-tight text-[var(--color-text-primary)]">{t("home.welcome")}</h1>
-                    <p class="mt-2 text-sm text-[var(--color-text-secondary)] leading-relaxed max-w-md">
+                    <h1 class="text-3xl font-extrabold tracking-tight text-[var(--color-text-primary)] flex items-center gap-3">
+                        {t("home.welcome")}
+                        <span class="inline-block animate-bounce origin-bottom hover:scale-125 hover:rotate-6 transition-all cursor-default">"👋"</span>
+                    </h1>
+                    <p class="mt-2 text-base text-[var(--color-text-secondary)] font-medium leading-relaxed max-w-md">
                         {t("home.description")}
                     </p>
 
                     // 2-column action cards
                     <div class="mt-6 grid grid-cols-2 gap-4">
                         <a href="/search"
-                            class="group relative flex flex-col items-start justify-between min-h-[8rem] rounded-2xl p-4 text-left overflow-hidden transition-all squish shadow-sm hover:shadow-md"
+                            class="group relative flex flex-col items-start justify-between min-h-[8rem] rounded-3xl p-5 text-left overflow-hidden transition-all duration-300 squish shadow-lg hover:shadow-xl hover:-rotate-2 hover:scale-[1.03]"
                         >
                             <div class="absolute inset-0 bg-gradient-to-br from-[#FF2A54] to-[#FF5E3A] opacity-90 group-hover:opacity-100 transition-opacity"></div>
-                            <svg class="w-6 h-6 text-white relative z-10" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                            <svg class="w-8 h-8 text-white relative z-10 drop-shadow-sm group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                             </svg>
                             <div class="relative z-10 mt-auto pt-4">
@@ -46,10 +49,10 @@ pub fn HomeView() -> impl IntoView {
                         </a>
 
                         <a href="/tasks"
-                            class="flex flex-col items-start justify-between min-h-[8rem] glass-card glass-card-hover p-4 text-left"
+                            class="group flex flex-col items-start justify-between min-h-[8rem] glass-card glass-card-hover p-5 text-left rounded-3xl transition-all duration-300 hover:rotate-1 hover:scale-[1.03]"
                         >
-                            <div class="w-8 h-8 rounded-full bg-[var(--color-brand-primary)] flex items-center justify-center shrink-0">
-                                <svg class="w-4 h-4 text-[var(--color-brand-text)]" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                            <div class="w-10 h-10 rounded-2xl bg-[var(--color-brand-primary)] flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
+                                <svg class="w-5 h-5 text-[var(--color-brand-text)]" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
                                     <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
                                 </svg>
                             </div>

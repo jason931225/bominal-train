@@ -85,8 +85,8 @@ mod tests {
         AppConfig {
             port: 3000,
             database_url: "postgres://localhost/test".to_string(),
-            encryption_key:
-                "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_string(),
+            encryption_key: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+                .to_string(),
             environment: Environment::Development,
             resend_api_key: "re_test".to_string(),
             email_from: "test@test.com".to_string(),
@@ -117,8 +117,8 @@ mod tests {
     #[test]
     fn validate_non_hex_encryption_key() {
         let config = AppConfig {
-            encryption_key:
-                "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz".to_string(),
+            encryption_key: "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+                .to_string(),
             ..make_test_config()
         };
         let err = config.validate().unwrap_err();

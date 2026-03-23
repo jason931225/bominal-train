@@ -1,4 +1,4 @@
-//! Browser-side SSE bridge that reloads task pages on task updates.
+//! Browser-side SSE bridge that triggers reactive updates on task events.
 
 use leptos::prelude::*;
 
@@ -15,11 +15,17 @@ use web_sys::{Event, EventSource};
 thread_local! {
     static TASK_EVENT_SOURCE: RefCell<Option<EventSource>> = const { RefCell::new(None) };
     static TASK_EVENT_HANDLER: RefCell<Option<Closure<dyn FnMut(Event)>>> = const { RefCell::new(None) };
-    static TASK_ERROR_HANDLER: RefCell<Option<Closure<dyn FnMut(Event)>>> = const { RefCell::new(None) };
+    static SSE_CALLBACK: RefCell<Option<Callback<()>>> = const { RefCell::new(None) };
 }
 
 #[cfg(target_arch = "wasm32")]
-fn init_task_events() {
+fn init_task_events(on_event: Callback<()>) {
+    // Store the current callback (swapped when a different page mounts)
+    SSE_CALLBACK.with(|cb| {
+        *cb.borrow_mut() = Some(on_event);
+    });
+
+    // Create EventSource only once — reused across pages
     TASK_EVENT_SOURCE.with(|source_cell| {
         if source_cell.borrow().is_some() {
             return;
@@ -30,14 +36,9 @@ fn init_task_events() {
         };
 
         let on_task_update = Closure::<dyn FnMut(Event)>::wrap(Box::new(move |_| {
-            crate::browser::reload_page();
-        }));
-        let on_error = Closure::<dyn FnMut(Event)>::wrap(Box::new(move |_| {
-            TASK_EVENT_SOURCE.with(|source_cell| {
-                if let Some(src) = source_cell.borrow().as_ref() {
-                    if src.ready_state() == 2 {
-                        crate::browser::reload_page();
-                    }
+            SSE_CALLBACK.with(|cb| {
+                if let Some(callback) = cb.borrow().as_ref() {
+                    callback.run(());
                 }
             });
         }));
@@ -46,27 +47,24 @@ fn init_task_events() {
             "task_update",
             on_task_update.as_ref().unchecked_ref(),
         );
-        let _ = source.add_event_listener_with_callback("error", on_error.as_ref().unchecked_ref());
 
         TASK_EVENT_HANDLER.with(|handler| {
             *handler.borrow_mut() = Some(on_task_update);
-        });
-        TASK_ERROR_HANDLER.with(|handler| {
-            *handler.borrow_mut() = Some(on_error);
         });
         *source_cell.borrow_mut() = Some(source);
     });
 }
 
-/// Keeps an SSE connection alive while task-heavy pages are open.
+/// Keeps an SSE connection alive and invokes a callback on task updates.
 #[component]
-pub fn SseReload() -> impl IntoView {
+pub fn SseReload(on_event: Callback<()>) -> impl IntoView {
     #[cfg(target_arch = "wasm32")]
-    {
-        Effect::new(|_| {
-            init_task_events();
-        });
-    }
+    Effect::new(move |_| {
+        init_task_events(on_event.clone());
+    });
+
+    #[cfg(not(target_arch = "wasm32"))]
+    let _ = on_event;
 
     view! { <></> }
 }

@@ -18,8 +18,8 @@ use crate::components::glass_panel::GlassPanel;
 use crate::components::passenger_selector::{PassengerCount, PassengerSelector};
 use crate::components::review_modal::ReviewModal;
 use crate::components::selection_prompt::SelectionPrompt;
-use crate::components::station_input::StationInput;
 use crate::components::sortable_list::SortableItem;
+use crate::components::station_input::StationInput;
 use crate::i18n::t;
 use crate::utils::{format_time, format_time_slot, slot_to_time_string};
 
@@ -305,7 +305,7 @@ pub fn SearchPanel() -> impl IntoView {
     };
 
     view! {
-        <div class="px-4 pt-6 pb-4 space-y-4 max-w-xl lg:max-w-2xl mx-auto page-enter">
+        <div class="px-4 pt-6 pb-4 space-y-6 max-w-xl lg:max-w-2xl mx-auto page-enter">
             // ── Header ─────────────────────────────────────────────
             <div class="flex items-center justify-between">
                 <h1 class="text-xl font-bold text-[var(--color-text-primary)]">{t("search.title")}</h1>
@@ -374,7 +374,7 @@ pub fn SearchPanel() -> impl IntoView {
                         <div class="grid grid-cols-1 min-[360px]:grid-cols-2 gap-3">
                             // Date card — opens calendar modal
                             <button
-                                class="p-3.5 glass-card glass-card-hover text-left"
+                                class="p-4 glass-card glass-card-hover text-left transition-all duration-300 hover:rotate-1 hover:scale-[1.02] shadow-sm hover:shadow-md"
                                 on:click=move |_| set_date_modal_open.set(true)
                             >
                                 <div class="text-xs font-medium text-[var(--color-text-secondary)] mb-1 flex items-center gap-1.5">
@@ -393,7 +393,7 @@ pub fn SearchPanel() -> impl IntoView {
 
                             // Passenger card — opens passenger modal
                             <button
-                                class="p-3.5 glass-card glass-card-hover text-left"
+                                class="p-4 glass-card glass-card-hover text-left transition-all duration-300 hover:-rotate-1 hover:scale-[1.02] shadow-sm hover:shadow-md"
                                 on:click=move |_| open_passenger_modal()
                             >
                                 <div class="text-xs font-medium text-[var(--color-text-secondary)] mb-1 flex items-center gap-1.5">
@@ -565,7 +565,7 @@ fn CollapsedBar(
     on_edit: impl Fn() + Send + Sync + 'static,
 ) -> impl IntoView {
     view! {
-        <div class="cursor-pointer" on:click=move |_| on_edit()>
+        <div class="cursor-pointer transition-all duration-300 hover:scale-[1.01] hover:shadow-md rounded-2xl" on:click=move |_| on_edit()>
             <GlassPanel>
                 <div class="p-3 flex items-center justify-between">
                     <div class="flex items-center gap-2 overflow-hidden">

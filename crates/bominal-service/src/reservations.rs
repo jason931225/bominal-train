@@ -2,25 +2,12 @@
 //!
 //! Reservations are fetched live from the provider (not stored in DB).
 
-use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::error::ServiceError;
 use crate::{DbPool, EncryptionKey};
 
-pub use bominal_domain::dto::ReservationInfo;
-
-/// Ticket detail within a reservation.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct TicketInfo {
-    pub car: String,
-    pub seat: String,
-    pub seat_type: String,
-    pub passenger_type: String,
-    pub price: i64,
-    pub original_price: i64,
-    pub discount: i64,
-}
+pub use bominal_domain::dto::{ReservationInfo, TicketInfo};
 
 /// List active reservations for a user from the provider.
 pub async fn list(

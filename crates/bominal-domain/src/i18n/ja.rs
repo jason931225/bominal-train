@@ -230,6 +230,10 @@ pub fn messages() -> HashMap<&'static str, &'static str> {
     m.insert("reservation.cancelled", "予約がキャンセルされました");
     m.insert("reservation.payment_success", "決済が完了しました");
     m.insert("reservation.no_active", "予約がありません");
+    m.insert("reservation.view_tickets", "座席詳細");
+    m.insert("reservation.hide_tickets", "閉じる");
+    m.insert("reservation.refund", "払い戻し");
+    m.insert("reservation.refunded", "払い戻しが処理されました");
 
     // Train types
     m.insert("train.ktx", "KTX");

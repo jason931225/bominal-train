@@ -41,9 +41,9 @@
     --glass-card-shadow: 0 4px 16px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
 
     /* Fun Mesh gradient blobs */
-    --color-mesh-1: rgba(255, 42, 85, 0.08); /* Pink/Red */
-    --color-mesh-2: rgba(0, 122, 255, 0.06); /* Blue */
-    --color-mesh-3: rgba(52, 199, 89, 0.05); /* Green */
+    --color-mesh-1: rgba(255, 42, 85, 0.15); /* Pink/Red */
+    --color-mesh-2: rgba(0, 122, 255, 0.12); /* Blue */
+    --color-mesh-3: rgba(52, 199, 89, 0.10); /* Green */
 
     --color-status-success: #34C759;
     --color-status-success-bg: rgba(52, 199, 89, 0.12);
@@ -96,9 +96,9 @@
     --glass-card-shadow: 0 4px 16px rgba(0, 0, 0, 0.40), 0 1px 2px rgba(0, 0, 0, 0.25);
 
     /* Dark mode deep mesmerizing mesh */
-    --color-mesh-1: rgba(10, 132, 255, 0.08);
-    --color-mesh-2: rgba(94, 92, 230, 0.06);
-    --color-mesh-3: rgba(255, 55, 95, 0.04);
+    --color-mesh-1: rgba(10, 132, 255, 0.18);
+    --color-mesh-2: rgba(94, 92, 230, 0.15);
+    --color-mesh-3: rgba(255, 55, 95, 0.12);
     
     --color-status-success: #30D158;
     --color-status-success-bg: rgba(48, 209, 88, 0.15);
@@ -197,7 +197,7 @@
     border: 1px solid var(--color-brand-border);
     backdrop-filter: blur(12px);
     transition: opacity 0.2s ease, transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1), background-color 0.2s ease;
-    @apply squish tracking-tight;
+    @apply active:scale-[0.96] tracking-tight;
   }
 
   .btn-glass:hover {
@@ -211,7 +211,7 @@
     border: none;
     box-shadow: 0 4px 14px rgba(255, 42, 85, 0.35), 0 1px 3px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.25);
     transition: opacity 0.2s ease, transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease;
-    @apply squish font-semibold tracking-tight;
+    @apply active:scale-[0.96] font-semibold tracking-tight;
   }
 
   .btn-primary:hover {
@@ -226,7 +226,7 @@
     border: 1px solid rgba(255,59,48,0.15);
     backdrop-filter: blur(12px);
     transition: opacity 0.2s ease, transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
-    @apply squish;
+    @apply active:scale-[0.96];
   }
 
   .btn-glass-danger:hover {
@@ -287,8 +287,13 @@
 
   /* Main content container */
   .page-container {
-    @apply px-4 pt-6 pb-28 mx-auto w-full md:pb-8 flex-1 overflow-y-auto no-scrollbar;
+    @apply px-4 pt-6 pb-28 mx-auto w-full md:pb-8 flex-1 overflow-y-auto;
+    -ms-overflow-style: none;
+    scrollbar-width: none;
     max-width: 48rem;
+  }
+  .page-container::-webkit-scrollbar {
+    display: none;
   }
 
   /* iOS safe area bottom padding */

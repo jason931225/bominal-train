@@ -226,7 +226,11 @@ pub async fn login_finish(
         .collect();
 
     // Build DiscoverableKey list for verification (clone — we need passkeys for counter update)
-    let creds: Vec<DiscoverableKey> = passkeys.iter().cloned().map(DiscoverableKey::from).collect();
+    let creds: Vec<DiscoverableKey> = passkeys
+        .iter()
+        .cloned()
+        .map(DiscoverableKey::from)
+        .collect();
 
     // Verify the assertion signature
     let auth_result = state
@@ -242,10 +246,9 @@ pub async fn login_finish(
             && let Ok(cred_id_value) = serde_json::to_value(pk.cred_id())
             && let Some(cred_id_str) = cred_id_value.as_str()
         {
-            let _ = bominal_db::passkey::update_credential_key(
-                &state.db, cred_id_str, &updated_json,
-            )
-            .await;
+            let _ =
+                bominal_db::passkey::update_credential_key(&state.db, cred_id_str, &updated_json)
+                    .await;
         }
     }
 

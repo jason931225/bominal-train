@@ -201,14 +201,17 @@ async fn run_srt_task(
         bominal_db::task::record_attempt(db, task.id).await?;
 
         // Search for trains (with retry for transient errors)
-        let search_result = bominal_provider::retry_with_backoff!(3,
-            client.search_train(
-                &task.departure_station,
-                &task.arrival_station,
-                Some(&task.travel_date),
-                Some(&task.departure_time),
-                false,
-            ).await
+        let search_result = bominal_provider::retry_with_backoff!(
+            3,
+            client
+                .search_train(
+                    &task.departure_station,
+                    &task.arrival_station,
+                    Some(&task.travel_date),
+                    Some(&task.departure_time),
+                    false,
+                )
+                .await
         );
 
         match search_result {
@@ -228,13 +231,15 @@ async fn run_srt_task(
                         );
 
                         let reserve_result = if train.seat_available() {
-                            bominal_provider::retry_with_backoff!(3,
+                            bominal_provider::retry_with_backoff!(
+                                3,
                                 client
                                     .reserve(train, &passengers, seat_pref, WindowSeat::None)
                                     .await
                             )
                         } else {
-                            bominal_provider::retry_with_backoff!(3,
+                            bominal_provider::retry_with_backoff!(
+                                3,
                                 client
                                     .reserve_standby(train, &passengers, seat_pref, None)
                                     .await
@@ -475,14 +480,17 @@ async fn run_ktx_task(
 
         bominal_db::task::record_attempt(db, task.id).await?;
 
-        let search_result = bominal_provider::retry_with_backoff!(3,
-            client.search_train(
-                &task.departure_station,
-                &task.arrival_station,
-                Some(&task.travel_date),
-                Some(&task.departure_time),
-                false,
-            ).await
+        let search_result = bominal_provider::retry_with_backoff!(
+            3,
+            client
+                .search_train(
+                    &task.departure_station,
+                    &task.arrival_station,
+                    Some(&task.travel_date),
+                    Some(&task.departure_time),
+                    false,
+                )
+                .await
         );
 
         match search_result {
@@ -499,10 +507,10 @@ async fn run_ktx_task(
                             "Found available KTX train, attempting reservation"
                         );
 
-                        let reserve_result =
-                            bominal_provider::retry_with_backoff!(3,
-                                client.reserve(train, seat_pref, psg_count).await
-                            );
+                        let reserve_result = bominal_provider::retry_with_backoff!(
+                            3,
+                            client.reserve(train, seat_pref, psg_count).await
+                        );
 
                         match reserve_result {
                             Ok(reservation) => {
@@ -698,7 +706,9 @@ async fn try_auto_pay_srt(
         Ok(Some(c)) => c,
         Ok(None) => {
             warn!(task_id = %task.id, card_id = %card_id, "Payment card not found for auto-pay");
-            if let Err(e) = bominal_db::task::update_status(db, task.id, TaskStatus::AwaitingPayment).await {
+            if let Err(e) =
+                bominal_db::task::update_status(db, task.id, TaskStatus::AwaitingPayment).await
+            {
                 error!(task_id = %task.id, error = %e, "Failed to update task status to AwaitingPayment");
             }
             event_bus
@@ -751,7 +761,9 @@ async fn try_auto_pay_srt(
         }
         Err(e) => {
             warn!(task_id = %task.id, error = %e, "SRT auto-pay failed");
-            if let Err(e) = bominal_db::task::update_status(db, task.id, TaskStatus::AwaitingPayment).await {
+            if let Err(e) =
+                bominal_db::task::update_status(db, task.id, TaskStatus::AwaitingPayment).await
+            {
                 error!(task_id = %task.id, error = %e, "Failed to update task status to AwaitingPayment");
             }
             event_bus
@@ -807,7 +819,9 @@ async fn try_auto_pay_ktx(
         Ok(Some(c)) => c,
         Ok(None) => {
             warn!(task_id = %task.id, card_id = %card_id, "Payment card not found for auto-pay");
-            if let Err(e) = bominal_db::task::update_status(db, task.id, TaskStatus::AwaitingPayment).await {
+            if let Err(e) =
+                bominal_db::task::update_status(db, task.id, TaskStatus::AwaitingPayment).await
+            {
                 error!(task_id = %task.id, error = %e, "Failed to update task status to AwaitingPayment");
             }
             event_bus
@@ -853,7 +867,9 @@ async fn try_auto_pay_ktx(
         }
         Err(e) => {
             warn!(task_id = %task.id, error = %e, "KTX auto-pay failed");
-            if let Err(e) = bominal_db::task::update_status(db, task.id, TaskStatus::AwaitingPayment).await {
+            if let Err(e) =
+                bominal_db::task::update_status(db, task.id, TaskStatus::AwaitingPayment).await
+            {
                 error!(task_id = %task.id, error = %e, "Failed to update task status to AwaitingPayment");
             }
             event_bus

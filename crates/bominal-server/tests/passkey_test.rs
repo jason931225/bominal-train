@@ -17,7 +17,10 @@ async fn login_start_returns_challenge() {
 
     let (status, json) = app.send(req).await;
     assert_eq!(status, StatusCode::OK);
-    assert!(json["challenge_id"].is_string(), "should contain challenge_id");
+    assert!(
+        json["challenge_id"].is_string(),
+        "should contain challenge_id"
+    );
     assert!(json["options"].is_object(), "should contain options");
 
     app.cleanup().await;

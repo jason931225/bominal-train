@@ -186,7 +186,9 @@ impl NetFunnelHelper {
     /// Acquire a fresh key via the 3-step NetFunnel protocol.
     async fn acquire_key(&self, client: &reqwest::Client) -> Result<String, ProviderError> {
         // Step 1: getTidchkEnter (start)
-        let start_result = self.make_request(client, OP_GET_TID_CHK_ENTER, NF_HOST, None).await?;
+        let start_result = self
+            .make_request(client, OP_GET_TID_CHK_ENTER, NF_HOST, None)
+            .await?;
         let mut current_key = start_result.params.get("key").cloned();
         let host = start_result
             .params

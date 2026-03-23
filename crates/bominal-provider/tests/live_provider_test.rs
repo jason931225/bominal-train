@@ -46,7 +46,10 @@ async fn srt_search_train_live() {
                 );
             }
             assert!(!trains.is_empty(), "Expected at least one SRT train");
-            assert!(trains.iter().all(|t| t.is_srt()), "All trains should be SRT");
+            assert!(
+                trains.iter().all(|t| t.is_srt()),
+                "All trains should be SRT"
+            );
         }
         Err(e) => {
             // NetFunnelBlocked or NoResults are acceptable for live test
@@ -66,7 +69,14 @@ async fn srt_search_with_passenger_count() {
 
     // Search with 3 passengers
     let result = client
-        .search_train_with_count("수서", "동대구", Some(&tomorrow), Some("080000"), Some(3), false)
+        .search_train_with_count(
+            "수서",
+            "동대구",
+            Some(&tomorrow),
+            Some("080000"),
+            Some(3),
+            false,
+        )
         .await;
 
     match result {

@@ -4,9 +4,11 @@ use leptos::prelude::*;
 
 use crate::api::cards::{CardInfo, list_cards};
 use crate::api::reservations::{
-    ReservationInfo, cancel_reservation, list_reservations, pay_reservation,
+    ReservationInfo, TicketInfo, cancel_reservation, list_reservations, pay_reservation,
+    refund_reservation, ticket_detail,
 };
 use crate::components::glass_panel::GlassPanel;
+use crate::components::sse_reload::SseReload;
 use crate::i18n::t;
 use crate::utils::{format_cost, format_date, format_time};
 
@@ -30,6 +32,11 @@ pub fn ReservationsView() -> impl IntoView {
         async move { pay_reservation(prov, pnr, card_id).await }
     });
 
+    let refund_action = Action::new(|input: &(String, String)| {
+        let (prov, pnr) = input.clone();
+        async move { refund_reservation(prov, pnr).await }
+    });
+
     // Refetch after cancellation
     Effect::new(move || {
         if let Some(Ok(())) = cancel_action.value().get() {
@@ -44,7 +51,15 @@ pub fn ReservationsView() -> impl IntoView {
         }
     });
 
+    // Refetch after refund
+    Effect::new(move || {
+        if let Some(Ok(())) = refund_action.value().get() {
+            reservations.refetch();
+        }
+    });
+
     view! {
+        <SseReload on_event=Callback::new(move |_| { reservations.refetch(); }) />
         <div class="px-4 pt-6 pb-4 space-y-4 max-w-xl lg:max-w-2xl mx-auto page-enter">
             <h1 class="text-xl font-bold text-[var(--color-text-primary)]">{t("reservation.title")}</h1>
 
@@ -104,6 +119,20 @@ pub fn ReservationsView() -> impl IntoView {
                 }.into_any(),
             })}
 
+            // Refund result feedback
+            {move || refund_action.value().get().map(|result| match result {
+                Ok(()) => view! {
+                    <div role="alert" class="px-3 py-2 bg-[var(--color-status-success)]/10 border border-[var(--color-status-success)]/30 rounded-xl">
+                        <p class="text-sm text-[var(--color-status-success)]">{t("reservation.refunded")}</p>
+                    </div>
+                }.into_any(),
+                Err(e) => view! {
+                    <div role="alert" class="px-3 py-2 bg-[var(--color-status-error)]/10 border border-[var(--color-status-error)]/30 rounded-xl">
+                        <p class="text-sm text-[var(--color-status-error)]">{format!("{e}")}</p>
+                    </div>
+                }.into_any(),
+            })}
+
             // Reservation list
             <Suspense fallback=move || view! {
                 <GlassPanel>
@@ -134,6 +163,8 @@ pub fn ReservationsView() -> impl IntoView {
                                     let pnr = rsv.reservation_number.clone();
                                     let pay_prov = rsv.provider.clone();
                                     let pay_pnr = rsv.reservation_number.clone();
+                                    let refund_prov = rsv.provider.clone();
+                                    let refund_pnr = rsv.reservation_number.clone();
                                     let cards_for_card = card_list.clone();
                                     view! {
                                         <ReservationCard
@@ -144,6 +175,9 @@ pub fn ReservationsView() -> impl IntoView {
                                             }
                                             on_pay=move |card_id: String| {
                                                 pay_action.dispatch((pay_prov.clone(), pay_pnr.clone(), card_id));
+                                            }
+                                            on_refund=move || {
+                                                refund_action.dispatch((refund_prov.clone(), refund_pnr.clone()));
                                             }
                                         />
                                     }
@@ -171,6 +205,7 @@ fn ReservationCard(
     cards: Vec<CardInfo>,
     on_cancel: impl Fn() + Send + Sync + 'static,
     on_pay: impl Fn(String) + Send + Sync + 'static,
+    on_refund: impl Fn() + Send + Sync + 'static,
 ) -> impl IntoView {
     let status_label = if rsv.paid {
         t("reservation.paid")
@@ -200,10 +235,30 @@ fn ReservationCard(
 
     let show_cancel = !rsv.paid;
     let show_pay = !rsv.paid && !rsv.is_waiting && !cards.is_empty();
+    let show_refund = rsv.paid;
 
     // Selected card for payment
     let default_card_id = cards.first().map(|c| c.id.to_string()).unwrap_or_default();
     let (selected_card, set_selected_card) = signal(default_card_id);
+
+    // Expandable ticket details
+    let (expanded, set_expanded) = signal(false);
+    let detail_prov = rsv.provider.clone();
+    let detail_pnr = rsv.reservation_number.clone();
+    let tickets = Resource::new(
+        move || expanded.get(),
+        move |is_expanded: bool| {
+            let p = detail_prov.clone();
+            let n = detail_pnr.clone();
+            async move {
+                if is_expanded {
+                    ticket_detail(p, n).await
+                } else {
+                    Ok(Vec::new())
+                }
+            }
+        },
+    );
 
     view! {
         <GlassPanel variant=crate::components::glass_panel::GlassPanelVariant::Card hover=true>
@@ -257,9 +312,53 @@ fn ReservationCard(
                     </span>
                 </div>
 
+                // Ticket details (expandable)
+                <div class="mt-2">
+                    <button
+                        class="text-xs text-[var(--color-brand-text)] font-medium"
+                        on:click=move |_| set_expanded.update(|v| *v = !*v)
+                    >
+                        {move || if expanded.get() { t("reservation.hide_tickets") } else { t("reservation.view_tickets") }}
+                    </button>
+                    <Show when=move || expanded.get()>
+                        <Suspense fallback=move || view! {
+                            <p class="text-xs text-[var(--color-text-tertiary)] mt-1">{t("common.loading")}</p>
+                        }>
+                            {move || {
+                                let result = tickets.get()?;
+                                match result {
+                                    Ok(list) if !list.is_empty() => Some(view! {
+                                        <div class="mt-1 space-y-1">
+                                            {list.into_iter().map(|ticket| view! {
+                                                <TicketRow ticket=ticket />
+                                            }).collect::<Vec<_>>()}
+                                        </div>
+                                    }.into_any()),
+                                    Err(e) => Some(view! {
+                                        <p class="text-xs text-[var(--color-status-error)] mt-1">{format!("{e}")}</p>
+                                    }.into_any()),
+                                    _ => None,
+                                }
+                            }}
+                        </Suspense>
+                    </Show>
+                </div>
+
                 // Payment deadline
                 {(!deadline_text.is_empty()).then(|| view! {
                     <p class="text-xs text-[var(--color-status-warning)] mt-2">{deadline_text.clone()}</p>
+                })}
+
+                // Refund (paid reservations)
+                {show_refund.then(|| view! {
+                    <div class="mt-3 pt-3 border-t border-[var(--color-border-subtle)]">
+                        <button
+                            class="w-full py-2.5 text-xs font-medium rounded-xl text-[var(--color-status-warning)] bg-[var(--color-status-warning)]/10 hover:bg-[var(--color-status-warning)]/20 squish"
+                            on:click=move |_| { on_refund(); }
+                        >
+                            {t("reservation.refund")}
+                        </button>
+                    </div>
                 })}
 
                 // Actions
@@ -306,5 +405,30 @@ fn ReservationCard(
                 })}
             </div>
         </GlassPanel>
+    }
+}
+
+/// Single ticket row showing car, seat, type, and price.
+#[component]
+fn TicketRow(ticket: TicketInfo) -> impl IntoView {
+    view! {
+        <div class="flex items-center justify-between text-xs px-2 py-1.5 bg-[var(--color-bg-sunken)] rounded-lg">
+            <div class="flex items-center gap-2">
+                <span class="text-[var(--color-text-secondary)] font-mono">
+                    {format!("{}호차 {}", ticket.car, ticket.seat)}
+                </span>
+                <span class="text-[var(--color-text-tertiary)]">{ticket.seat_type.clone()}</span>
+            </div>
+            <div class="flex items-center gap-2">
+                {(ticket.discount > 0).then(|| view! {
+                    <span class="line-through text-[var(--color-text-tertiary)]">
+                        {format!("₩{}", format_cost(&ticket.original_price.to_string()))}
+                    </span>
+                })}
+                <span class="font-medium text-[var(--color-text-primary)]">
+                    {format!("₩{}", format_cost(&ticket.price.to_string()))}
+                </span>
+            </div>
+        </div>
     }
 }
