@@ -35,6 +35,23 @@ pub fn LoginPage() -> impl IntoView {
         }
     });
 
+    // Start conditional passkey login on mount (autofill integration).
+    // If the user picks a passkey from the browser autofill dropdown, the
+    // ceremony completes and redirects. Otherwise it stays pending harmlessly.
+    Effect::new(move |_| {
+        #[cfg(target_arch = "wasm32")]
+        {
+            wasm_bindgen_futures::spawn_local(async move {
+                if let Err(e) = crate::api::passkey::do_conditional_passkey_login().await {
+                    leptos::logging::log!(
+                        "Conditional passkey login: {}",
+                        e.as_string().unwrap_or_default()
+                    );
+                }
+            });
+        }
+    });
+
     let on_passkey_login = move |_| {
         error_msg.set(None);
         #[cfg(target_arch = "wasm32")]
@@ -79,6 +96,7 @@ pub fn LoginPage() -> impl IntoView {
                             type="email"
                             name="email"
                             required
+                            autocomplete="username webauthn"
                             aria-label=t("auth.email_placeholder")
                             prop:value=move || email.get()
                             on:input=move |ev| email.set(event_target_value(&ev))

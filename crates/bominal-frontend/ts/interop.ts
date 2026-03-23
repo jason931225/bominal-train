@@ -160,3 +160,41 @@ function toBase64url(buffer: ArrayBuffer): string {
     },
   });
 };
+
+// ── WebAuthn — Conditional Passkey Login (autofill) ─────────────
+// Blocks until the user picks a passkey from the browser autofill dropdown.
+
+(window as any).__startConditionalPasskeyLogin = async function(optionsJson: string): Promise<string> {
+  const options = JSON.parse(optionsJson);
+  options.challenge = Uint8Array.from(
+    atob(options.challenge.replace(/-/g, '+').replace(/_/g, '/')),
+    c => c.charCodeAt(0),
+  );
+  if (options.allowCredentials) {
+    options.allowCredentials = options.allowCredentials.map((c: any) => ({
+      ...c,
+      id: Uint8Array.from(
+        atob(c.id.replace(/-/g, '+').replace(/_/g, '/')),
+        ch => ch.charCodeAt(0),
+      ),
+    }));
+  }
+  const assertion = await navigator.credentials.get({
+    publicKey: options,
+    mediation: "conditional",
+  } as any) as PublicKeyCredential;
+  const response = assertion.response as AuthenticatorAssertionResponse;
+  return JSON.stringify({
+    id: assertion.id,
+    rawId: toBase64url(assertion.rawId),
+    type: assertion.type,
+    response: {
+      authenticatorData: toBase64url(response.authenticatorData),
+      clientDataJSON: toBase64url(response.clientDataJSON),
+      signature: toBase64url(response.signature),
+      userHandle: response.userHandle
+        ? toBase64url(response.userHandle)
+        : null,
+    },
+  });
+};
