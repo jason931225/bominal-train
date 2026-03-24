@@ -83,36 +83,36 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SRCH-01 | Pending | Pending |
-| SRCH-02 | Pending | Pending |
-| SRCH-03 | Pending | Pending |
-| SRCH-04 | Pending | Pending |
-| SRCH-05 | Pending | Pending |
-| SRCH-06 | Pending | Pending |
-| SRCH-07 | Pending | Pending |
-| PROV-01 | Pending | Pending |
-| PROV-02 | Pending | Pending |
-| PROV-03 | Pending | Pending |
-| PROV-04 | Pending | Pending |
-| PROV-05 | Pending | Pending |
-| TASK-01 | Pending | Pending |
-| TASK-02 | Pending | Pending |
-| TASK-03 | Pending | Pending |
-| TASK-04 | Pending | Pending |
-| PAY-01 | Pending | Pending |
-| PAY-02 | Pending | Pending |
-| PAY-03 | Pending | Pending |
-| PAY-04 | Pending | Pending |
-| PAY-05 | Pending | Pending |
-| SETT-01 | Pending | Pending |
-| SETT-02 | Pending | Pending |
-| SETT-03 | Pending | Pending |
+| SRCH-01 | Phase 2 | Pending |
+| SRCH-02 | Phase 2 | Pending |
+| SRCH-03 | Phase 2 | Pending |
+| SRCH-04 | Phase 3 | Pending |
+| SRCH-05 | Phase 3 | Pending |
+| SRCH-06 | Phase 1 | Pending |
+| SRCH-07 | Phase 1 | Pending |
+| PROV-01 | Phase 5 | Pending |
+| PROV-02 | Phase 5 | Pending |
+| PROV-03 | Phase 4 | Pending |
+| PROV-04 | Phase 5 | Pending |
+| PROV-05 | Phase 5 | Pending |
+| TASK-01 | Phase 6 | Pending |
+| TASK-02 | Phase 6 | Pending |
+| TASK-03 | Phase 6 | Pending |
+| TASK-04 | Phase 6 | Pending |
+| PAY-01 | Phase 7 | Pending |
+| PAY-02 | Phase 7 | Pending |
+| PAY-03 | Phase 7 | Pending |
+| PAY-04 | Phase 7 | Pending |
+| PAY-05 | Phase 7 | Pending |
+| SETT-01 | Phase 4 | Pending |
+| SETT-02 | Phase 8 | Pending |
+| SETT-03 | Phase 4 | Pending |
 
 **Coverage:**
 - v1 requirements: 24 total
-- Mapped to phases: 0
-- Unmapped: 24
+- Mapped to phases: 24
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-24*
-*Last updated: 2026-03-24 after initial definition*
+*Last updated: 2026-03-24 after roadmap creation*
