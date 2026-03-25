@@ -42,7 +42,10 @@ Plans:
   1. Typing a partial station name shows a dropdown of matching stations after a short debounce
   2. Typing Korean characters with IME composition (e.g., typing "se" to form a Hangul syllable) does not trigger premature API calls or clear input
   3. User can navigate the dropdown with arrow keys, select with Enter, and dismiss with Escape
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 02-01-PLAN.md -- Create StationInput.svelte component with tests (Vitest setup, TDD, IME + ARIA + debounce)
+- [ ] 02-02-PLAN.md -- Integrate StationInput into search page, add i18n keys, visual verification
 **UI hint**: yes
 
 ### Phase 3: Date & Time Picker
@@ -123,7 +126,7 @@ Note: Phases 2 and 3 can execute in parallel (both depend only on Phase 1).
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation Fixes | 1/1 | Complete | 2026-03-25 |
-| 2. Station Autocomplete | 0/TBD | Not started | - |
+| 2. Station Autocomplete | 0/2 | Planned | - |
 | 3. Date & Time Picker | 0/TBD | Not started | - |
 | 4. Provider Credential Setup | 0/TBD | Not started | - |
 | 5. Multi-Provider Search | 0/TBD | Not started | - |
