@@ -15,6 +15,7 @@ export default defineConfig({
 		}
 	},
 	resolve: {
+		conditions: ['browser'],
 		alias: {
 			'$lib': '/src/lib',
 			'$app/navigation': '/src/lib/__mocks__/navigation.ts'
