@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-03-24)
 
 **Core value:** Users can search both train providers simultaneously, create an auto-booking task, and pay securely with encrypted card details -- end to end.
-**Current focus:** Phase 1: Foundation Fixes
+**Current focus:** Phase 2: Station Autocomplete (next up)
 
 ## Current Position
 
-Phase: 1 of 8 (Foundation Fixes)
+Phase: 2 of 8 (Station Autocomplete)
 Plan: 0 of TBD in current phase
 Status: Ready to plan
-Last activity: 2026-03-24 -- Roadmap created
+Last activity: 2026-03-25 -- Phase 1 Foundation Fixes completed
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [█░░░░░░░░░] 12%
 
 ## Performance Metrics
 
@@ -52,7 +52,7 @@ None yet.
 
 ### Blockers/Concerns
 
-- Station suggest API parameter mismatch (query vs q) must be fixed in Phase 1 before autocomplete work
+- ~~Station suggest API parameter mismatch (query vs q)~~ RESOLVED in Phase 1
 - SRT/KTX credential validation endpoint behavior is unclear (research gap from SUMMARY.md)
 
 ## Session Continuity

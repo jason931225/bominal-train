@@ -12,7 +12,7 @@ Bominal's frontend wiring milestone connects the existing SvelteKit SPA to the A
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Foundation Fixes** - Fix suggest API parameter bug and search button disabled state
+- [x] **Phase 1: Foundation Fixes** - Fix suggest API parameter bug and search button disabled state (completed 2026-03-25)
 - [ ] **Phase 2: Station Autocomplete** - Debounced autocomplete with IME handling and keyboard navigation
 - [ ] **Phase 3: Date & Time Picker** - Custom modal calendar and time band selector replacing raw inputs
 - [ ] **Phase 4: Provider Credential Setup** - Settings flow for adding/validating SRT and KTX credentials
@@ -32,7 +32,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. Search button enables as soon as departure, arrival, and date fields are populated
 **Plans:** 1 plan
 Plans:
-- [ ] 01-01-PLAN.md -- Fix suggest API parameter key and search button disabled state
+- [x] 01-01-PLAN.md -- Fix suggest API parameter key and search button disabled state
 
 ### Phase 2: Station Autocomplete
 **Goal**: Users can quickly find and select train stations by typing partial names in Korean
@@ -122,7 +122,7 @@ Note: Phases 2 and 3 can execute in parallel (both depend only on Phase 1).
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation Fixes | 0/1 | Planning complete | - |
+| 1. Foundation Fixes | 1/1 | Complete | 2026-03-25 |
 | 2. Station Autocomplete | 0/TBD | Not started | - |
 | 3. Date & Time Picker | 0/TBD | Not started | - |
 | 4. Provider Credential Setup | 0/TBD | Not started | - |
