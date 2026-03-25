@@ -30,7 +30,9 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Success Criteria** (what must be TRUE):
   1. Station suggest API returns results when user types a station name (query parameter matches backend expectation)
   2. Search button enables as soon as departure, arrival, and date fields are populated
-**Plans**: TBD
+**Plans:** 1 plan
+Plans:
+- [ ] 01-01-PLAN.md -- Fix suggest API parameter key and search button disabled state
 
 ### Phase 2: Station Autocomplete
 **Goal**: Users can quickly find and select train stations by typing partial names in Korean
@@ -120,7 +122,7 @@ Note: Phases 2 and 3 can execute in parallel (both depend only on Phase 1).
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation Fixes | 0/TBD | Not started | - |
+| 1. Foundation Fixes | 0/1 | Planning complete | - |
 | 2. Station Autocomplete | 0/TBD | Not started | - |
 | 3. Date & Time Picker | 0/TBD | Not started | - |
 | 4. Provider Credential Setup | 0/TBD | Not started | - |
