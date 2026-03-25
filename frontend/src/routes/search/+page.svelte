@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { t } from '$lib/i18n';
-	import { searchTrains, suggestStations } from '$lib/api/search';
+	import { searchTrains } from '$lib/api/search';
 	import { listCards } from '$lib/api/cards';
 	import { createTask } from '$lib/api/tasks';
 	import type {
@@ -13,7 +13,6 @@
 		SeatPreference,
 		Provider,
 		TargetTrain,
-		SuggestMatch,
 		CreateTaskInput
 	} from '$lib/types';
 	import { formatTime, slotToTimeString, formatTimeSlot } from '$lib/utils';
@@ -22,6 +21,7 @@
 	import SortableList from '$lib/components/SortableList.svelte';
 	import CardBrand from '$lib/components/CardBrand.svelte';
 	import Skeleton from '$lib/components/Skeleton.svelte';
+	import StationInput from '$lib/components/StationInput.svelte';
 
 	/* ── Types ── */
 	interface SelectedTrain {
@@ -36,14 +36,6 @@
 	let date = $state('');
 	let timeSlot = $state(12);
 	let providerFilter = $state<'Both' | 'SRT' | 'KTX'>('Both');
-
-	/* ── Station suggest state ── */
-	let depSuggestions = $state<SuggestMatch[]>([]);
-	let arrSuggestions = $state<SuggestMatch[]>([]);
-	let showDepSuggest = $state(false);
-	let showArrSuggest = $state(false);
-	let depDebounceTimer: ReturnType<typeof setTimeout> | undefined;
-	let arrDebounceTimer: ReturnType<typeof setTimeout> | undefined;
 
 	/* ── Passengers ── */
 	const passengerKinds: { type: PassengerKind; labelKey: string }[] = [
@@ -92,59 +84,6 @@
 				s.train_number === train.train_number &&
 				s.dep_time === train.dep_time
 		);
-	}
-
-	/* ── Station suggest ── */
-	function onDepInput(query: string): void {
-		departure = query;
-		clearTimeout(depDebounceTimer);
-		if (query.length < 1) {
-			depSuggestions = [];
-			showDepSuggest = false;
-			return;
-		}
-		depDebounceTimer = setTimeout(async () => {
-			try {
-				const provider = providerFilter === 'Both' ? 'SRT' : providerFilter;
-				const result = await suggestStations(provider, query);
-				depSuggestions = result.matches;
-				showDepSuggest = depSuggestions.length > 0;
-			} catch {
-				depSuggestions = [];
-			}
-		}, 150);
-	}
-
-	function onArrInput(query: string): void {
-		arrival = query;
-		clearTimeout(arrDebounceTimer);
-		if (query.length < 1) {
-			arrSuggestions = [];
-			showArrSuggest = false;
-			return;
-		}
-		arrDebounceTimer = setTimeout(async () => {
-			try {
-				const provider = providerFilter === 'Both' ? 'SRT' : providerFilter;
-				const result = await suggestStations(provider, query);
-				arrSuggestions = result.matches;
-				showArrSuggest = arrSuggestions.length > 0;
-			} catch {
-				arrSuggestions = [];
-			}
-		}, 150);
-	}
-
-	function selectDepStation(match: SuggestMatch): void {
-		departure = match.name_ko;
-		showDepSuggest = false;
-		depSuggestions = [];
-	}
-
-	function selectArrStation(match: SuggestMatch): void {
-		arrival = match.name_ko;
-		showArrSuggest = false;
-		arrSuggestions = [];
 	}
 
 	function swapStations(): void {
@@ -326,41 +265,13 @@
 	<!-- Station inputs -->
 	<GlassPanel class="mb-4 page-enter stagger-1">
 		<div class="flex items-center gap-2">
-			<!-- Departure -->
-			<div class="flex-1 relative">
-				<label class="text-xs font-medium mb-1 block" style="color: var(--color-text-tertiary)">
-					{t('search.from')}
-				</label>
-				<input
-					type="text"
-					class="w-full rounded-xl px-3 py-2.5 text-sm font-medium outline-none"
-					style="background: var(--color-bg-sunken); color: var(--color-text-primary); border: 1px solid var(--color-border-default)"
-					placeholder={t('search.select_station')}
-					value={departure}
-					oninput={(e) => onDepInput((e.target as HTMLInputElement).value)}
-					onfocus={() => { if (depSuggestions.length > 0) showDepSuggest = true; }}
-					onblur={() => setTimeout(() => { showDepSuggest = false; }, 200)}
-				/>
-				{#if showDepSuggest && depSuggestions.length > 0}
-					<ul class="absolute z-20 left-0 right-0 mt-1 glass-panel rounded-xl overflow-hidden max-h-48 overflow-y-auto">
-						{#each depSuggestions as match}
-							<li>
-								<button
-									type="button"
-									class="w-full text-left px-3 py-2.5 text-sm hover:bg-[var(--color-interactive-hover)] transition-colors"
-									style="color: var(--color-text-primary)"
-									onmousedown={() => selectDepStation(match)}
-								>
-									{match.name_ko}
-									<span class="text-xs ml-1" style="color: var(--color-text-tertiary)">
-										{match.name_en}
-									</span>
-								</button>
-							</li>
-						{/each}
-					</ul>
-				{/if}
-			</div>
+			<StationInput
+				bind:value={departure}
+				label={t('search.from')}
+				placeholder={t('search.select_station')}
+				provider={providerFilter === 'Both' ? 'SRT' : providerFilter}
+				name="dep"
+			/>
 
 			<!-- Swap button -->
 			<button
@@ -386,41 +297,13 @@
 				</svg>
 			</button>
 
-			<!-- Arrival -->
-			<div class="flex-1 relative">
-				<label class="text-xs font-medium mb-1 block" style="color: var(--color-text-tertiary)">
-					{t('search.to')}
-				</label>
-				<input
-					type="text"
-					class="w-full rounded-xl px-3 py-2.5 text-sm font-medium outline-none"
-					style="background: var(--color-bg-sunken); color: var(--color-text-primary); border: 1px solid var(--color-border-default)"
-					placeholder={t('search.select_station')}
-					value={arrival}
-					oninput={(e) => onArrInput((e.target as HTMLInputElement).value)}
-					onfocus={() => { if (arrSuggestions.length > 0) showArrSuggest = true; }}
-					onblur={() => setTimeout(() => { showArrSuggest = false; }, 200)}
-				/>
-				{#if showArrSuggest && arrSuggestions.length > 0}
-					<ul class="absolute z-20 left-0 right-0 mt-1 glass-panel rounded-xl overflow-hidden max-h-48 overflow-y-auto">
-						{#each arrSuggestions as match}
-							<li>
-								<button
-									type="button"
-									class="w-full text-left px-3 py-2.5 text-sm hover:bg-[var(--color-interactive-hover)] transition-colors"
-									style="color: var(--color-text-primary)"
-									onmousedown={() => selectArrStation(match)}
-								>
-									{match.name_ko}
-									<span class="text-xs ml-1" style="color: var(--color-text-tertiary)">
-										{match.name_en}
-									</span>
-								</button>
-							</li>
-						{/each}
-					</ul>
-				{/if}
-			</div>
+			<StationInput
+				bind:value={arrival}
+				label={t('search.to')}
+				placeholder={t('search.select_station')}
+				provider={providerFilter === 'Both' ? 'SRT' : providerFilter}
+				name="arr"
+			/>
 		</div>
 	</GlassPanel>
 
