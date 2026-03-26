@@ -7,6 +7,7 @@
 	import { auth } from '$lib/stores/auth.svelte';
 	import type { AuthResponse } from '$lib/types';
 	import GlassPanel from '$lib/components/GlassPanel.svelte';
+	import Icon from '$lib/components/Icon.svelte';
 
 	let loading = $state(false);
 	let error = $state('');
@@ -62,7 +63,7 @@
 				class="flex h-16 w-16 items-center justify-center rounded-2xl"
 				style="background-color: var(--color-brand-primary); color: white;"
 			>
-				<img src="/icons/train.svg" alt="" width="36" height="36" class="invert" aria-hidden="true" />
+				<Icon name="train" size={36} />
 			</div>
 			<h1
 				class="app-brand-wordmark bg-clip-text text-4xl font-bold tracking-tight text-transparent"
@@ -82,7 +83,7 @@
 				disabled={loading}
 				onclick={handlePasskeyLogin}
 			>
-				<img src="/icons/fingerprint.svg" alt="" width="24" height="24" class="invert" aria-hidden="true" />
+				<Icon name="fingerprint" size={24} />
 				{#if loading}
 					{t('common.loading')}
 				{:else}
@@ -101,7 +102,7 @@
 				class="lg-btn-secondary squish flex w-full items-center justify-center gap-3 rounded-2xl px-6 py-3 text-sm"
 				onclick={() => goto('/auth/login')}
 			>
-				<img src="/icons/envelope.svg" alt="" width="20" height="20" aria-hidden="true" />
+				<Icon name="envelope" size={20} />
 				{t('auth.continue_email')}
 			</button>
 

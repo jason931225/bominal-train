@@ -8,6 +8,7 @@
 	import { auth } from '$lib/stores/auth.svelte';
 	import type { AuthResponse } from '$lib/types';
 	import GlassPanel from '$lib/components/GlassPanel.svelte';
+	import Icon from '$lib/components/Icon.svelte';
 
 	let email = $state('');
 	let password = $state('');
@@ -107,11 +108,7 @@
 						onclick={() => (showPassword = !showPassword)}
 						aria-label={showPassword ? t('auth.hide_password') : t('auth.show_password')}
 					>
-						{#if showPassword}
-							<img src="/icons/eye-slash.svg" alt="" width="20" height="20" aria-hidden="true" />
-						{:else}
-							<img src="/icons/eye.svg" alt="" width="20" height="20" aria-hidden="true" />
-						{/if}
+						<Icon name={showPassword ? 'eye-slash' : 'eye'} size={20} />
 					</button>
 				</div>
 			</div>
