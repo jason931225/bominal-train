@@ -21,10 +21,10 @@ use bominal_domain::task::{
 };
 use bominal_email::EmailClient;
 use bominal_email::templates::reservation::{AlertKind, ReservationDetails};
-use bominal_provider::ktx::KtxClient;
-use bominal_provider::srt::SrtClient;
-use bominal_provider::srt::passenger::{PassengerGroup, PassengerType, WindowSeat, total_count};
-use bominal_provider::types::{ProviderError, SeatPreference as ProviderSeatPreference};
+use bominal_service::providers::ktx::KtxClient;
+use bominal_service::providers::srt::SrtClient;
+use bominal_service::providers::srt::passenger::{PassengerGroup, PassengerType, WindowSeat, total_count};
+use bominal_service::providers::types::{ProviderError, SeatPreference as ProviderSeatPreference};
 
 use bominal_domain::evervault::EvervaultConfig;
 
@@ -444,9 +444,9 @@ struct SearchTrain {
     seat_available: bool,
     standby_available: bool,
     /// SRT-specific: the raw train for reservation calls
-    srt_train: Option<bominal_provider::srt::train::SrtTrain>,
+    srt_train: Option<bominal_service::providers::srt::train::SrtTrain>,
     /// KTX-specific: the raw train for reservation calls
-    ktx_train: Option<bominal_provider::ktx::train::KtxTrain>,
+    ktx_train: Option<bominal_service::providers::ktx::train::KtxTrain>,
 }
 
 async fn search_provider(
@@ -459,7 +459,7 @@ async fn search_provider(
 ) -> SearchOutcome {
     match sessions.get_mut(&provider) {
         Some(ProviderSession::Srt { client, .. }) => {
-            let result = bominal_provider::retry_with_backoff!(
+            let result = bominal_service::retry_with_backoff!(
                 3,
                 client
                     .search_train(dep_station, arr_station, Some(travel_date), Some(departure_time), false)
@@ -485,7 +485,7 @@ async fn search_provider(
             }
         }
         Some(ProviderSession::Ktx { client, .. }) => {
-            let result = bominal_provider::retry_with_backoff!(
+            let result = bominal_service::retry_with_backoff!(
                 3,
                 client
                     .search_train(dep_station, arr_station, Some(travel_date), Some(departure_time), false)
@@ -580,14 +580,14 @@ async fn try_reserve_target(
             };
 
             let reserve_result = if train.seat_available {
-                bominal_provider::retry_with_backoff!(
+                bominal_service::retry_with_backoff!(
                     3,
                     session
                         .reserve(srt_train, passengers, seat_pref, WindowSeat::None)
                         .await
                 )
             } else {
-                bominal_provider::retry_with_backoff!(
+                bominal_service::retry_with_backoff!(
                     3,
                     session
                         .reserve_standby(srt_train, passengers, seat_pref, None)
@@ -626,7 +626,7 @@ async fn try_reserve_target(
                 None => return ReserveOutcome::ReserveFailed,
             };
 
-            let reserve_result = bominal_provider::retry_with_backoff!(
+            let reserve_result = bominal_service::retry_with_backoff!(
                 3,
                 session.reserve(ktx_train, seat_pref, psg_count).await
             );

@@ -15,7 +15,6 @@ path = "src/main.rs"
 bominal-domain = { path = "../bominal-domain" }
 bominal-db = { path = "../bominal-db" }
 bominal-email = { path = "../bominal-email" }
-bominal-provider = { path = "../bominal-provider" }
 bominal-service = { path = "../bominal-service" }
 tokio.workspace = true
 axum.workspace = true
@@ -36,7 +35,6 @@ rand.workspace = true
 rand_distr.workspace = true
 futures-util.workspace = true
 async-stream.workspace = true
-reqwest.workspace = true
 url.workspace = true
 webauthn-rs.workspace = true
 webauthn-rs-proto.workspace = true
