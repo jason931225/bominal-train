@@ -8,6 +8,7 @@ members = [
     "crates/bominal-db",
     "crates/bominal-email",
     "crates/bominal-service",
+    "crates/bominal-app",
 ]
 
 [workspace.package]
