@@ -17,7 +17,7 @@
   "auth.passkey_signin": "패스키로 로그인",
   "auth.welcome_back": "다시 오신 것을 환영합니다",
   "auth.passkey_subtitle": "패스키 또는 비밀번호로 로그인하세요",
-  "auth.continue_email": "이메일로 계속",
+  "auth.continue_email": "이메일로 로그인",
   "auth.use_passkey": "패스키로 로그인",
   "auth.sign_in": "로그인",
   "auth.create_account": "계정 만들기",
@@ -276,5 +276,8 @@
   "calendar.month_9": "9월",
   "calendar.month_10": "10월",
   "calendar.month_11": "11월",
-  "calendar.month_12": "12월"
+  "calendar.month_12": "12월",
+  "calendar.today": "오늘",
+  "calendar.year_suffix": "년",
+  "search.select_date": "날짜 선택"
 }
