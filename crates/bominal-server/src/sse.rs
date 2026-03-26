@@ -4,36 +4,27 @@
 //! JSON events whenever their tasks change status.
 //!
 //! Architecture: broadcast channel per user (lazy, created on first connect).
-//! The runner publishes events after each status transition.
+//! The worker publishes events via Valkey pub/sub; a subscriber task feeds
+//! them into the in-process EventBus for SSE delivery.
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use axum::extract::State;
 use axum::response::sse::{Event, KeepAlive, Sse};
+use fred::clients::SubscriberClient;
+use fred::prelude::*;
 use futures_util::stream::Stream;
-use serde::Serialize;
 use tokio::sync::RwLock;
 use tokio::sync::broadcast;
 use uuid::Uuid;
 
+// Re-export TaskEvent from domain so existing `use crate::sse::TaskEvent` still works.
+pub use bominal_domain::task_event::TaskEvent;
+
 use crate::error::AppError;
 use crate::extractors::AuthUser;
 use crate::state::SharedState;
-
-/// Event payload sent to SSE clients.
-#[derive(Debug, Clone, Serialize)]
-pub struct TaskEvent {
-    pub task_id: Uuid,
-    pub status: String,
-    /// Human-readable message (e.g. "Reservation confirmed for train 305")
-    pub message: String,
-    /// Attempt count at the time of the event
-    pub attempt_count: i32,
-    /// Optional reservation number (only on confirmed)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub reservation_number: Option<String>,
-}
 
 /// Channel capacity per user. Slow clients drop older events.
 const CHANNEL_CAPACITY: usize = 64;
@@ -89,6 +80,65 @@ impl EventBus {
         let mut channels = self.channels.write().await;
         channels.retain(|_, tx| tx.receiver_count() > 0);
     }
+}
+
+/// Spawn a background task that subscribes to Valkey `task_events:*` pattern
+/// and feeds received events into the in-process EventBus.
+pub fn spawn_valkey_subscriber(valkey_url: &str, event_bus: EventBus) {
+    let url = valkey_url.to_string();
+    tokio::spawn(async move {
+        if let Err(e) = run_valkey_subscriber(&url, &event_bus).await {
+            tracing::error!(error = %e, "Valkey subscriber failed");
+        }
+    });
+}
+
+/// Connect to Valkey, PSUBSCRIBE to `task_events:*`, and route messages
+/// into the EventBus.
+async fn run_valkey_subscriber(
+    valkey_url: &str,
+    event_bus: &EventBus,
+) -> anyhow::Result<()> {
+    let config = Config::from_url(valkey_url)?;
+    let subscriber = SubscriberClient::new(config, None, None, None);
+
+    let mut message_rx = subscriber.message_rx();
+
+    subscriber.init().await?;
+    subscriber.psubscribe("task_events:*").await?;
+
+    tracing::info!("Valkey subscriber connected, subscribed to task_events:*");
+
+    while let Ok(message) = message_rx.recv().await {
+        let channel = message.channel.to_string();
+        let payload: String = match message.value.convert() {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
+
+        // Parse user_id from channel name: "task_events:{uuid}"
+        let user_id = match channel.strip_prefix("task_events:") {
+            Some(id_str) => match Uuid::parse_str(id_str) {
+                Ok(id) => id,
+                Err(_) => continue,
+            },
+            None => continue,
+        };
+
+        // Parse the TaskEvent from JSON
+        let event: TaskEvent = match serde_json::from_str(&payload) {
+            Ok(e) => e,
+            Err(e) => {
+                tracing::warn!(error = %e, "Failed to parse TaskEvent from Valkey");
+                continue;
+            }
+        };
+
+        event_bus.publish(user_id, event).await;
+    }
+
+    tracing::warn!("Valkey subscriber message stream ended");
+    Ok(())
 }
 
 /// GET /api/tasks/events — SSE stream for task updates.

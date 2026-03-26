@@ -2,11 +2,11 @@
 resolver = "2"
 members = [
     "crates/bominal-server",
+    "crates/bominal-worker",
     "crates/bominal-provider",
     "crates/bominal-domain",
     "crates/bominal-db",
     "crates/bominal-email",
-    "crates/bominal-frontend",
     "crates/bominal-service",
 ]
 
@@ -25,12 +25,6 @@ axum = { version = "0.8", features = ["macros"] }
 tower = { version = "0.5", features = ["util"] }
 tower-http = { version = "0.6", features = ["trace", "request-id", "fs", "cors", "compression-gzip", "compression-br", "limit", "set-header"] }
 
-# Leptos
-leptos = { version = "0.8" }
-leptos_axum = "0.8"
-leptos_meta = "0.8"
-leptos_router = { version = "0.8" }
-
 # Database
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "derive", "uuid", "chrono", "json"] }
 
@@ -40,6 +34,8 @@ serde_json = "1"
 
 # HTTP client
 reqwest = { version = "0.13", features = ["cookies", "json", "rustls", "webpki-roots", "form"], default-features = false }
+wreq = { version = "5", features = ["cookies", "json"], default-features = false }
+wreq-util = { version = "2", features = ["emulation"], default-features = false }
 
 # Crypto
 argon2 = { version = "0.5", features = ["std"] }
@@ -64,6 +60,9 @@ rand_distr = "0.5"
 # Async streams
 futures-util = "0.3"
 async-stream = "0.3"
+
+# Valkey (Redis-compatible) client
+fred = { version = "10", features = ["subscriber-client"] }
 
 # Utilities
 uuid = { version = "1", features = ["v4", "v7", "serde"] }

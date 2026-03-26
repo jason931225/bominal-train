@@ -1,14 +1,10 @@
 [package]
-name = "bominal-server"
+name = "bominal-worker"
 version.workspace = true
 edition.workspace = true
 
-[lib]
-name = "bominal_server"
-path = "src/lib.rs"
-
 [[bin]]
-name = "bominal-server"
+name = "bominal-worker"
 path = "src/main.rs"
 
 [dependencies]
@@ -16,32 +12,15 @@ bominal-domain = { path = "../bominal-domain" }
 bominal-db = { path = "../bominal-db" }
 bominal-email = { path = "../bominal-email" }
 bominal-provider = { path = "../bominal-provider" }
-bominal-service = { path = "../bominal-service" }
 tokio.workspace = true
-axum.workspace = true
-tower.workspace = true
-tower-http.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
-metrics.workspace = true
-metrics-exporter-prometheus.workspace = true
 uuid.workspace = true
-thiserror.workspace = true
 anyhow.workspace = true
 dotenvy.workspace = true
 chrono.workspace = true
 rand.workspace = true
 rand_distr.workspace = true
-futures-util.workspace = true
-async-stream.workspace = true
-reqwest.workspace = true
-url.workspace = true
-webauthn-rs.workspace = true
-webauthn-rs-proto.workspace = true
 fred.workspace = true
-
-[dev-dependencies]
-http-body-util = "0.1"
-sqlx.workspace = true
