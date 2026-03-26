@@ -157,6 +157,7 @@
   .glass-panel {
     background: var(--lg-glass-bg);
     border: 1px solid var(--lg-glass-border);
+    border-top: 1px solid var(--lg-light-catch);
     box-shadow: var(--lg-shadow-panel);
     backdrop-filter: blur(var(--lg-glass-blur)) saturate(var(--lg-glass-saturate));
     -webkit-backdrop-filter: blur(var(--lg-glass-blur)) saturate(var(--lg-glass-saturate));
@@ -169,8 +170,10 @@
   .glass-card {
     background: var(--lg-glass-card-bg);
     border: 1px solid var(--lg-glass-border);
+    border-top: 1px solid var(--lg-light-catch-subtle);
     box-shadow: var(--lg-shadow-card);
-    backdrop-filter: blur(16px);
+    backdrop-filter: blur(16px) saturate(var(--lg-glass-saturate));
+    -webkit-backdrop-filter: blur(16px) saturate(var(--lg-glass-saturate));
     transition: background-color var(--lg-duration-normal) ease, color var(--lg-duration-normal) ease, border-color var(--lg-duration-normal) ease;
     border-radius: var(--lg-radius-md);
   }
@@ -189,19 +192,39 @@
     box-shadow: var(--lg-shadow-panel);
   }
 
+  /* ── Glass Card Active (spring press) ── */
+  .lg-glass-card-hover:active,
+  .glass-card-hover:active {
+    transform: scale(0.97);
+    transition: transform 0.1s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
   /* ── Glass Sheet (bottom sheet / modal) ── */
   .lg-glass-sheet {
-    background: var(--lg-glass-bg);
+    background: rgba(255, 255, 255, 0.75);
     border: 1px solid var(--lg-glass-border);
-    backdrop-filter: blur(var(--lg-glass-blur)) saturate(var(--lg-glass-saturate));
-    -webkit-backdrop-filter: blur(var(--lg-glass-blur)) saturate(var(--lg-glass-saturate));
+    border-top: 1px solid var(--lg-light-catch);
+    backdrop-filter: blur(24px) saturate(200%);
+    -webkit-backdrop-filter: blur(24px) saturate(200%);
     box-shadow: var(--lg-shadow-panel);
+    border-radius: 24px 24px 0 0;
   }
 
   /* ── Glass Sidebar ── */
   .lg-glass-sidebar {
     background: var(--lg-glass-bg);
     border-color: var(--lg-glass-border);
+    border-right: 1px solid var(--lg-light-catch-subtle);
+    backdrop-filter: blur(var(--lg-glass-blur)) saturate(var(--lg-glass-saturate));
+    -webkit-backdrop-filter: blur(var(--lg-glass-blur)) saturate(var(--lg-glass-saturate));
+  }
+
+  /* ── Bottom Nav glass ── */
+  .lg-bottom-nav {
+    background: var(--lg-glass-bg);
+    border: 1px solid var(--lg-glass-border);
+    border-top: 1px solid var(--lg-light-catch);
+    box-shadow: var(--lg-shadow-panel);
     backdrop-filter: blur(var(--lg-glass-blur)) saturate(var(--lg-glass-saturate));
     -webkit-backdrop-filter: blur(var(--lg-glass-blur)) saturate(var(--lg-glass-saturate));
   }
@@ -458,5 +481,48 @@
   .lg-glass-panel, .glass-panel,
   .lg-glass-card, .glass-card {
     background: var(--lg-surface-elevated);
+  }
+}
+
+/* ============================================================
+   Dark mode glass sheet override
+   ============================================================ */
+html[data-mode="dark"] .lg-glass-sheet {
+  background: rgba(28, 28, 30, 0.75);
+  border-top-color: var(--lg-light-catch);
+}
+
+/* ============================================================
+   Reduced Motion — disable mesh animation and spring transitions
+   ============================================================ */
+@media (prefers-reduced-motion: reduce) {
+  body::before {
+    animation: none !important;
+  }
+
+  .lg-glass-card-hover:hover,
+  .glass-card-hover:hover,
+  .lg-glass-card-hover:active,
+  .glass-card-hover:active,
+  .squish:active {
+    transform: none !important;
+    transition: none !important;
+  }
+
+  .page-enter {
+    animation: none !important;
+  }
+
+  .modal-enter {
+    animation: none !important;
+  }
+
+  .sheet-enter {
+    animation: none !important;
+  }
+
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none !important;
   }
 }

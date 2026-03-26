@@ -52,7 +52,7 @@
 
 {#if !isHidden}
 	<nav
-		class="lg-glass-panel fixed bottom-0 left-0 right-0 flex items-center justify-around px-2 pt-2 border-t safe-area-pb"
+		class="lg-bottom-nav fixed bottom-0 left-0 right-0 flex items-center justify-around px-2 pt-2 safe-area-pb"
 		style="z-index: 50; border-radius: 0;"
 	>
 		{#each navItems as item}

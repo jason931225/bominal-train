@@ -87,7 +87,7 @@
 	>
 		<!-- Mobile: bottom sheet -->
 		<div
-			class="lg-glass-sheet w-full md:hidden max-h-[85vh] flex flex-col rounded-t-2xl overflow-hidden sheet-enter"
+			class="lg-glass-sheet w-full md:hidden max-h-[85vh] flex flex-col overflow-hidden sheet-enter"
 			style="
 				border-bottom: none;
 				transform: {sheetTransform};
@@ -106,8 +106,8 @@
 				role="presentation"
 			>
 				<div
-					class="w-9 h-1 rounded-full"
-					style="background: var(--color-text-disabled)"
+					class="w-10 h-[5px] rounded-full"
+					style="background: var(--lg-light-catch-subtle); backdrop-filter: blur(4px);"
 				></div>
 			</div>
 

@@ -34,20 +34,32 @@
     --lg-interactive-hover: rgba(0, 0, 0, 0.03);
 
     /* Glass layers */
-    --lg-glass-bg: rgba(255, 255, 255, 0.65);
+    --lg-glass-bg: rgba(255, 255, 255, 0.68);
     --lg-glass-card-bg: rgba(255, 255, 255, 0.55);
     --lg-glass-border: rgba(255, 255, 255, 0.85);
     --lg-glass-blur: 24px;
-    --lg-glass-saturate: 180%;
+    --lg-glass-saturate: 200%;
 
-    /* Shadows */
-    --lg-shadow-panel: 0 8px 32px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.03);
-    --lg-shadow-card: 0 4px 16px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
+    /* Light-catch refraction borders */
+    --lg-light-catch: rgba(255, 255, 255, 0.92);
+    --lg-light-catch-subtle: rgba(255, 255, 255, 0.60);
 
-    /* Mesh background */
-    --lg-mesh-1: rgba(255, 42, 85, 0.15);
-    --lg-mesh-2: rgba(0, 122, 255, 0.12);
-    --lg-mesh-3: rgba(52, 199, 89, 0.10);
+    /* Shadows — layered for realistic depth */
+    --lg-shadow-panel:
+      0 0 0 1px rgba(0, 0, 0, 0.04),
+      0 1px 3px rgba(0, 0, 0, 0.03),
+      0 4px 12px rgba(0, 0, 0, 0.05),
+      0 12px 32px rgba(0, 0, 0, 0.04);
+    --lg-shadow-card:
+      0 0 0 1px rgba(0, 0, 0, 0.03),
+      0 1px 2px rgba(0, 0, 0, 0.02),
+      0 4px 12px rgba(0, 0, 0, 0.04),
+      0 8px 24px rgba(0, 0, 0, 0.03);
+
+    /* Mesh background — vibrant for glass refraction */
+    --lg-mesh-1: rgba(255, 42, 85, 0.20);
+    --lg-mesh-2: rgba(0, 122, 255, 0.18);
+    --lg-mesh-3: rgba(52, 199, 89, 0.14);
 
     /* Status */
     --lg-status-success: #34C759;
@@ -118,13 +130,25 @@
     --lg-interactive-hover: rgba(255, 255, 255, 0.05);
 
     /* Glass layers */
-    --lg-glass-bg: rgba(28, 28, 30, 0.65);
+    --lg-glass-bg: rgba(28, 28, 30, 0.70);
     --lg-glass-card-bg: rgba(44, 44, 46, 0.55);
-    --lg-glass-border: rgba(255, 255, 255, 0.12);
+    --lg-glass-border: rgba(255, 255, 255, 0.10);
 
-    /* Shadows */
-    --lg-shadow-panel: 0 8px 32px rgba(0, 0, 0, 0.60), 0 1px 2px rgba(0, 0, 0, 0.40);
-    --lg-shadow-card: 0 4px 16px rgba(0, 0, 0, 0.40), 0 1px 2px rgba(0, 0, 0, 0.25);
+    /* Light-catch refraction borders (dark mode) */
+    --lg-light-catch: rgba(255, 255, 255, 0.15);
+    --lg-light-catch-subtle: rgba(255, 255, 255, 0.08);
+
+    /* Shadows — layered dark */
+    --lg-shadow-panel:
+      0 0 0 1px rgba(0, 0, 0, 0.20),
+      0 1px 3px rgba(0, 0, 0, 0.15),
+      0 4px 12px rgba(0, 0, 0, 0.30),
+      0 12px 32px rgba(0, 0, 0, 0.25);
+    --lg-shadow-card:
+      0 0 0 1px rgba(0, 0, 0, 0.15),
+      0 1px 2px rgba(0, 0, 0, 0.12),
+      0 4px 12px rgba(0, 0, 0, 0.20),
+      0 8px 24px rgba(0, 0, 0, 0.18);
 
     /* Mesh background */
     --lg-mesh-1: rgba(10, 132, 255, 0.18);
