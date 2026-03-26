@@ -256,6 +256,8 @@
 	});
 </script>
 
+<svelte:head><title>{t('search.title')} | Bominal</title></svelte:head>
+
 <div class="page-container">
 	<!-- Title -->
 	<h1 class="text-xl font-bold mb-5 page-enter" style="color: var(--color-text-primary)">
@@ -391,7 +393,7 @@
 				<button
 					type="button"
 					class="flex-1 py-2.5 text-sm font-medium transition-all rounded-xl squish"
-					class:glass-active={providerFilter === option}
+					class:lg-active={providerFilter === option}
 					style={providerFilter === option
 						? `color: var(--color-brand-text)`
 						: `color: var(--color-text-secondary)`}
@@ -405,7 +407,7 @@
 
 	<!-- Search button -->
 	<button
-		class="btn-primary squish w-full rounded-2xl px-6 py-3.5 text-base mb-6 page-enter stagger-5"
+		class="lg-btn-primary squish w-full rounded-2xl px-6 py-3.5 text-base mb-6 page-enter stagger-5"
 		disabled={searching || !departure || !arrival || !date}
 		onclick={handleSearch}
 	>
@@ -443,8 +445,8 @@
 				{@const idx = selectionIndex(train)}
 				<button
 					type="button"
-					class="glass-card squish flex items-center gap-3 rounded-2xl px-4 py-3 text-left transition-all page-enter stagger-{Math.min(i + 1, 5)}"
-					class:glass-active={idx >= 0}
+					class="lg-glass-card squish flex items-center gap-3 rounded-2xl px-4 py-3 text-left transition-all page-enter stagger-{Math.min(i + 1, 5)}"
+					class:lg-active={idx >= 0}
 					onclick={() => toggleTrain(train)}
 				>
 					<!-- Priority badge -->
@@ -460,10 +462,8 @@
 					<!-- Provider badge -->
 					<span
 						class="shrink-0 inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-bold tracking-wider"
-						class:bg-[rgba(255,42,85,0.12)]={train.provider === 'SRT'}
-						class:text-[#FF2A54]={train.provider === 'SRT'}
-						class:bg-[rgba(0,122,255,0.12)]={train.provider === 'KTX'}
-						class:text-[#007AFF]={train.provider === 'KTX'}
+						class:lg-provider-srt={train.provider === 'SRT'}
+						class:lg-provider-ktx={train.provider === 'KTX'}
 					>
 						{train.provider}
 					</span>
@@ -499,21 +499,21 @@
 	<!-- Selection floating bar -->
 	{#if selected.length > 0 && !showReview}
 		<div class="fixed bottom-20 left-0 right-0 z-30 px-4 md:bottom-4">
-			<div class="glass-panel mx-auto flex items-center justify-between gap-3 px-5 py-3.5 sheet-enter" style="max-width: 48rem">
+			<div class="lg-glass-panel mx-auto flex items-center justify-between gap-3 px-5 py-3.5 sheet-enter" style="max-width: 48rem">
 				<span class="text-sm font-semibold" style="color: var(--color-text-primary)">
 					{selected.length} {t('selection.selected_count')}
 				</span>
 				<div class="flex items-center gap-2">
 					<button
 						type="button"
-						class="btn-glass squish rounded-xl px-4 py-2 text-sm"
+						class="lg-btn-secondary squish rounded-xl px-4 py-2 text-sm"
 						onclick={() => { selected = []; }}
 					>
 						{t('selection.clear')}
 					</button>
 					<button
 						type="button"
-						class="btn-primary squish rounded-xl px-5 py-2 text-sm"
+						class="lg-btn-primary squish rounded-xl px-5 py-2 text-sm"
 						onclick={openReview}
 					>
 						{t('selection.review')}
@@ -534,7 +534,7 @@
 		></button>
 
 		<div class="fixed inset-x-0 bottom-0 z-50 sheet-enter">
-			<div class="glass-panel mx-auto rounded-t-3xl px-5 pt-5 pb-8 safe-area-pb" style="max-width: 48rem">
+			<div class="lg-glass-panel mx-auto rounded-t-3xl px-5 pt-5 pb-8 safe-area-pb" style="max-width: 48rem">
 				<!-- Handle -->
 				<div class="flex justify-center mb-4">
 					<div class="w-10 h-1 rounded-full" style="background: var(--color-border-default)"></div>
@@ -566,7 +566,7 @@
 							<button
 								type="button"
 								class="rounded-xl px-3 py-2.5 text-sm font-medium transition-all squish"
-								class:glass-active={seatPref === option.value}
+								class:lg-active={seatPref === option.value}
 								style={seatPref === option.value
 									? 'background: var(--color-brand-primary); color: var(--color-brand-text); border: 1px solid var(--color-brand-border)'
 									: 'background: var(--color-bg-sunken); color: var(--color-text-secondary); border: 1px solid transparent'}
@@ -623,7 +623,7 @@
 									<button
 										type="button"
 										class="flex items-center gap-3 rounded-xl px-3 py-2.5 transition-all squish"
-										class:glass-active={selectedCardId === card.id}
+										class:lg-active={selectedCardId === card.id}
 										style={selectedCardId === card.id
 											? 'background: var(--color-brand-primary); border: 1px solid var(--color-brand-border)'
 											: 'background: var(--color-bg-sunken); border: 1px solid var(--color-border-default)'}
@@ -648,7 +648,7 @@
 
 				<!-- Start task button -->
 				<button
-					class="btn-primary squish w-full rounded-2xl px-6 py-3.5 text-base"
+					class="lg-btn-primary squish w-full rounded-2xl px-6 py-3.5 text-base"
 					disabled={creatingTask || selected.length === 0 || (autoPay && !selectedCardId)}
 					onclick={handleCreateTask}
 				>
