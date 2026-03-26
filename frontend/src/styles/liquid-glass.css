@@ -9,7 +9,7 @@
   :root,
   [data-product="train"] {
     /* Surface */
-    --lg-surface-bg: #F5F5F7;
+    --lg-surface-bg: #F2F2F7;
     --lg-surface-bg-end: #E5E5EA;
     --lg-surface-elevated: rgba(255, 255, 255, 0.90);
     --lg-surface-sunken: rgba(0, 0, 0, 0.04);
@@ -136,8 +136,8 @@
     --lg-status-success-bg: rgba(48, 209, 88, 0.15);
     --lg-status-error: #FF453A;
     --lg-status-error-bg: rgba(255, 69, 58, 0.15);
-    --lg-status-warning: #FFD60A;
-    --lg-status-warning-bg: rgba(255, 214, 10, 0.15);
+    --lg-status-warning: #FF9F0A;
+    --lg-status-warning-bg: rgba(255, 159, 10, 0.15);
 
     /* Range slider */
     --lg-range-track: rgba(255, 255, 255, 0.15);
