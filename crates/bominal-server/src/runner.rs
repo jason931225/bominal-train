@@ -27,9 +27,8 @@ use bominal_provider::srt::passenger::{PassengerGroup, PassengerType, WindowSeat
 use bominal_provider::types::{ProviderError, SeatPreference as ProviderSeatPreference};
 
 use bominal_domain::evervault::EvervaultConfig;
-use bominal_domain::task_event::TaskEvent;
 
-use crate::events::EventPublisher;
+use crate::sse::{EventBus, TaskEvent};
 
 // ── Provider session cache ──────────────────────────────────────────
 
@@ -97,39 +96,41 @@ async fn build_sessions(
 
 // ── Runner entry point ──────────────────────────────────────────────
 
-/// Start the task runner loop (blocking).
+/// Start the task runner as a background tokio task.
 ///
 /// Polls for queued tasks every 5 seconds and spawns a worker for each.
-pub async fn run_loop(
+pub fn spawn_runner(
     db: DbPool,
-    publisher: EventPublisher,
+    event_bus: EventBus,
     email: EmailClient,
     encryption_key: EncryptionKey,
     evervault: EvervaultConfig,
     app_base_url: String,
 ) {
-    info!("Task runner started");
-    loop {
-        if let Err(e) = poll_and_dispatch(
-            &db,
-            &publisher,
-            &email,
-            &encryption_key,
-            &evervault,
-            &app_base_url,
-        )
-        .await
-        {
-            error!(error = %e, "Task runner poll error");
+    tokio::spawn(async move {
+        info!("Task runner started");
+        loop {
+            if let Err(e) = poll_and_dispatch(
+                &db,
+                &event_bus,
+                &email,
+                &encryption_key,
+                &evervault,
+                &app_base_url,
+            )
+            .await
+            {
+                error!(error = %e, "Task runner poll error");
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
         }
-        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-    }
+    });
 }
 
 /// Atomically claim queued tasks and spawn workers.
 async fn poll_and_dispatch(
     db: &DbPool,
-    publisher: &EventPublisher,
+    event_bus: &EventBus,
     email: &EmailClient,
     encryption_key: &EncryptionKey,
     evervault: &EvervaultConfig,
@@ -139,7 +140,7 @@ async fn poll_and_dispatch(
 
     for task in tasks {
         let db = db.clone();
-        let pub_clone = publisher.clone();
+        let bus = event_bus.clone();
         let email = email.clone();
         let key = encryption_key.clone();
         let ev = evervault.clone();
@@ -148,20 +149,19 @@ async fn poll_and_dispatch(
         tokio::spawn(async move {
             info!(task_id = %task.id, provider = %task.provider, "Starting reservation worker");
 
-            pub_clone
-                .publish(
-                    task.user_id,
-                    &TaskEvent {
-                        task_id: task.id,
-                        status: "running".to_string(),
-                        message: "Reservation worker started".to_string(),
-                        attempt_count: 0,
-                        reservation_number: None,
-                    },
-                )
-                .await;
+            bus.publish(
+                task.user_id,
+                TaskEvent {
+                    task_id: task.id,
+                    status: "running".to_string(),
+                    message: "Reservation worker started".to_string(),
+                    attempt_count: 0,
+                    reservation_number: None,
+                },
+            )
+            .await;
 
-            let result = run_task(&db, &task, &pub_clone, &email, &key, &ev, &base_url).await;
+            let result = run_task(&db, &task, &bus, &email, &key, &ev, &base_url).await;
 
             if let Err(e) = result {
                 error!(task_id = %task.id, error = %e, "Task failed");
@@ -170,18 +170,17 @@ async fn poll_and_dispatch(
                 {
                     error!(task_id = %task.id, error = %db_err, "Failed to mark task as failed");
                 }
-                pub_clone
-                    .publish(
-                        task.user_id,
-                        &TaskEvent {
-                            task_id: task.id,
-                            status: "failed".to_string(),
-                            message: format!("Task failed: {e}"),
-                            attempt_count: 0,
-                            reservation_number: None,
-                        },
-                    )
-                    .await;
+                bus.publish(
+                    task.user_id,
+                    TaskEvent {
+                        task_id: task.id,
+                        status: "failed".to_string(),
+                        message: format!("Task failed: {e}"),
+                        attempt_count: 0,
+                        reservation_number: None,
+                    },
+                )
+                .await;
 
                 if task.notify_enabled {
                     send_alert_email(&db, &email, &task, AlertKind::Failed, None, &base_url).await;
@@ -202,7 +201,7 @@ async fn poll_and_dispatch(
 async fn run_task(
     db: &DbPool,
     task: &bominal_db::task::TaskRow,
-    publisher: &EventPublisher,
+    event_bus: &EventBus,
     email: &EmailClient,
     encryption_key: &EncryptionKey,
     evervault: &EvervaultConfig,
@@ -239,10 +238,10 @@ async fn run_task(
         {
             warn!(task_id = %task.id, attempts = t.attempt_count, "Max attempts reached");
             bominal_db::task::update_status(db, task.id, TaskStatus::Failed).await?;
-            publisher
+            event_bus
                 .publish(
                     task.user_id,
-                    &TaskEvent {
+                    TaskEvent {
                         task_id: task.id,
                         status: "failed".to_string(),
                         message: format!("Max attempts ({MAX_ATTEMPTS}) reached"),
@@ -335,10 +334,10 @@ async fn run_task(
                         target.provider,
                     )
                     .await?;
-                    publisher
+                    event_bus
                         .publish(
                             task.user_id,
-                            &TaskEvent {
+                            TaskEvent {
                                 task_id: task.id,
                                 status: "confirmed".to_string(),
                                 message: format!(
@@ -367,7 +366,7 @@ async fn run_task(
                             target.provider,
                             task,
                             &pnr,
-                            publisher,
+                            event_bus,
                             email,
                             app_base_url,
                         )
@@ -379,10 +378,10 @@ async fn run_task(
                 ReserveOutcome::Duplicate => {
                     warn!(task_id = %task.id, "Duplicate reservation");
                     bominal_db::task::update_status(db, task.id, TaskStatus::Failed).await?;
-                    publisher
+                    event_bus
                         .publish(
                             task.user_id,
-                            &TaskEvent {
+                            TaskEvent {
                                 task_id: task.id,
                                 status: "failed".to_string(),
                                 message: "Duplicate reservation detected".to_string(),
@@ -402,10 +401,10 @@ async fn run_task(
         // If any provider had a fatal error and auto-retry is off, fail now
         if should_fail {
             bominal_db::task::update_status(db, task.id, TaskStatus::Failed).await?;
-            publisher
+            event_bus
                 .publish(
                     task.user_id,
-                    &TaskEvent {
+                    TaskEvent {
                         task_id: task.id,
                         status: "failed".to_string(),
                         message: fail_message,
@@ -669,7 +668,7 @@ async fn try_auto_pay(
     provider: TaskProvider,
     task: &bominal_db::task::TaskRow,
     pnr: &str,
-    publisher: &EventPublisher,
+    event_bus: &EventBus,
     email: &EmailClient,
     app_base_url: &str,
 ) {
@@ -685,7 +684,7 @@ async fn try_auto_pay(
         Ok(Some(c)) => c,
         Ok(None) => {
             warn!(task_id = %task.id, card_id = %card_id, "Payment card not found for auto-pay");
-            set_awaiting_payment(db, task, pnr, publisher, "Auto-pay failed: payment card not found. Please pay manually.").await;
+            set_awaiting_payment(db, task, pnr, event_bus, "Auto-pay failed: payment card not found. Please pay manually.").await;
             return;
         }
         Err(e) => {
@@ -702,7 +701,7 @@ async fn try_auto_pay(
                     Ok(r) => r,
                     Err(e) => {
                         warn!(task_id = %task.id, error = %e, "Failed to list reservations for payment");
-                        set_awaiting_payment(db, task, pnr, publisher, &format!("Auto-pay failed: {e}. Please pay manually.")).await;
+                        set_awaiting_payment(db, task, pnr, event_bus, &format!("Auto-pay failed: {e}. Please pay manually.")).await;
                         return;
                     }
                 };
@@ -710,7 +709,7 @@ async fn try_auto_pay(
                     Some(r) => r,
                     None => {
                         warn!(task_id = %task.id, "Reservation not found in SRT list for payment");
-                        set_awaiting_payment(db, task, pnr, publisher, "Auto-pay failed: reservation not found. Please pay manually.").await;
+                        set_awaiting_payment(db, task, pnr, event_bus, "Auto-pay failed: reservation not found. Please pay manually.").await;
                         return;
                     }
                 };
@@ -739,7 +738,7 @@ async fn try_auto_pay(
                     Ok(r) => r,
                     Err(e) => {
                         warn!(task_id = %task.id, error = %e, "Failed to list reservations for payment");
-                        set_awaiting_payment(db, task, pnr, publisher, &format!("Auto-pay failed: {e}. Please pay manually.")).await;
+                        set_awaiting_payment(db, task, pnr, event_bus, &format!("Auto-pay failed: {e}. Please pay manually.")).await;
                         return;
                     }
                 };
@@ -747,7 +746,7 @@ async fn try_auto_pay(
                     Some(r) => r,
                     None => {
                         warn!(task_id = %task.id, "Reservation not found in KTX list for payment");
-                        set_awaiting_payment(db, task, pnr, publisher, "Auto-pay failed: reservation not found. Please pay manually.").await;
+                        set_awaiting_payment(db, task, pnr, event_bus, "Auto-pay failed: reservation not found. Please pay manually.").await;
                         return;
                     }
                 };
@@ -781,7 +780,7 @@ async fn try_auto_pay(
                 db,
                 task,
                 pnr,
-                publisher,
+                event_bus,
                 &format!("Auto-pay failed: {e}. Please pay manually."),
             )
             .await;
@@ -798,17 +797,17 @@ async fn set_awaiting_payment(
     db: &DbPool,
     task: &bominal_db::task::TaskRow,
     pnr: &str,
-    publisher: &EventPublisher,
+    event_bus: &EventBus,
     message: &str,
 ) {
     if let Err(e) = bominal_db::task::update_status(db, task.id, TaskStatus::AwaitingPayment).await
     {
         error!(task_id = %task.id, error = %e, "Failed to update task status to AwaitingPayment");
     }
-    publisher
+    event_bus
         .publish(
             task.user_id,
-            &TaskEvent {
+            TaskEvent {
                 task_id: task.id,
                 status: "awaiting_payment".to_string(),
                 message: message.to_string(),

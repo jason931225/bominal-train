@@ -40,7 +40,6 @@ reqwest.workspace = true
 url.workspace = true
 webauthn-rs.workspace = true
 webauthn-rs-proto.workspace = true
-fred.workspace = true
 
 [dev-dependencies]
 http-body-util = "0.1"

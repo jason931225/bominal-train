@@ -14,7 +14,6 @@ pub struct AppConfig {
     pub ev_api_key: String,
     pub ev_srt_domain: String,
     pub ev_ktx_domain: String,
-    pub valkey_url: String,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -52,8 +51,6 @@ impl AppConfig {
             ev_api_key: std::env::var("EV_API_KEY").context("EV_API_KEY is required")?,
             ev_srt_domain: std::env::var("EV_SRT_DOMAIN").context("EV_SRT_DOMAIN is required")?,
             ev_ktx_domain: std::env::var("EV_KTX_DOMAIN").context("EV_KTX_DOMAIN is required")?,
-            valkey_url: std::env::var("VALKEY_URL")
-                .unwrap_or_else(|_| "redis://127.0.0.1:6379".into()),
             environment,
         })
     }
@@ -99,7 +96,6 @@ mod tests {
             ev_api_key: "ev_key".to_string(),
             ev_srt_domain: "srt.test".to_string(),
             ev_ktx_domain: "ktx.test".to_string(),
-            valkey_url: "redis://127.0.0.1:6379".to_string(),
         }
     }
 

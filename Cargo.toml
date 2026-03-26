@@ -2,7 +2,6 @@
 resolver = "2"
 members = [
     "crates/bominal-server",
-    "crates/bominal-worker",
     "crates/bominal-provider",
     "crates/bominal-domain",
     "crates/bominal-db",
@@ -61,9 +60,6 @@ rand_distr = "0.5"
 # Async streams
 futures-util = "0.3"
 async-stream = "0.3"
-
-# Valkey (Redis-compatible) client
-fred = { version = "10", features = ["subscriber-client"] }
 
 # Utilities
 uuid = { version = "1", features = ["v4", "v7", "serde"] }

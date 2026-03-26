@@ -23,6 +23,7 @@ use crate::passkey;
 use crate::providers;
 use crate::rate_limit::RateLimiter;
 use crate::reservations;
+use crate::runner;
 use crate::search;
 use crate::sse;
 use crate::state::SharedState;
@@ -188,8 +189,15 @@ pub async fn create_router(
     // Spawn session cleanup background job
     crate::session_cleanup::spawn_cleanup(state.db.clone());
 
-    // Subscribe to Valkey pub/sub for task events from the worker process
-    crate::sse::spawn_valkey_subscriber(&config.valkey_url, state.event_bus.clone());
+    // Start the background reservation task runner
+    runner::spawn_runner(
+        state.db.clone(),
+        state.event_bus.clone(),
+        state.email.clone(),
+        state.encryption_key.clone(),
+        state.evervault.clone(),
+        config.app_base_url.clone(),
+    );
 
     let api = api_routes();
 
