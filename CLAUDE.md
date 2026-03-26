@@ -11,8 +11,7 @@
   - `bominal-db`: SQLx migrations, connection pooling
   - `bominal-domain`: Core types (User, Reservation, Payment, PasskeyCredential)
   - `bominal-email`: Resend API integration for transactional emails
-  - `bominal-provider`: Train provider integrations, HTTP client abstractions
-  - `bominal-service`: Business logic, cache patterns, event handlers
+  - `bominal-service`: Business logic, cache patterns, event handlers, provider integrations (SRT/KTX)
 - **SvelteKit Frontend** (`frontend/`):
   - `src/routes/` — Pages: auth, home, search, tasks, reservations, settings
   - `src/lib/api/` — Typed fetch client (`get<T>`, `post<T>`, etc.) with cookie auth
@@ -98,7 +97,7 @@ cargo test -p bominal-server
 - Auto-reconnection handled by browser
 
 ### Integration Testing
-- Mock provider responses in `bominal-provider/tests/`
+- Mock provider responses in `bominal-service/src/providers/` tests
 - Test isolation: use `#[tokio::test]` with transaction rollback
 - Database fixtures: `bominal-db::test::setup_pool()`
 
@@ -134,6 +133,7 @@ All under `/api/` prefix:
 
 ## Dependencies
 - **Backend**: Tokio (async), Axum (routing), Tower (middleware), SQLx (database)
+- **HTTP Clients**: wreq (SRT/KTX providers, TLS fingerprint emulation via BoringSSL), reqwest (email/general)
 - **Frontend**: SvelteKit 2.16, Svelte 5, Tailwind CSS 4, Vite 6
 - **Crypto**: Argon2 (password hashing), AES-256-GCM, WebAuthn
 - **Observability**: Tracing, Prometheus metrics, JSON structured logging
@@ -150,6 +150,7 @@ All under `/api/` prefix:
 - **Vite dev proxy**: `frontend/vite.config.ts` proxies `/api/*` and `/health` to `http://localhost:3000`. The Rust server must be running for frontend dev mode to work.
 - **Legacy `bominal-frontend` crate**: Still on disk at `crates/bominal-frontend/` but removed from workspace. Dead code — do not use.
 - **adapter-static**: SvelteKit builds to static files. No SSR at runtime — all rendering is client-side.
+- **OpenSSL/BoringSSL dual-link**: `wreq` uses BoringSSL (boring-sys2), `webauthn-rs` uses OpenSSL. The `bominal-server/build.rs` resolves the symbol conflict on macOS via `-force_load` of the system OpenSSL dylib. On Linux, the system OpenSSL 3 resolves naturally. If you see `OPENSSL_sk_*` linker errors, ensure Homebrew OpenSSL 3 is installed (`brew install openssl@3`).
 
 ## Common Tasks
 - **Add migration**: `sqlx migrate add -r <name>` in `crates/bominal-db/`
