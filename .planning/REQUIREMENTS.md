@@ -1,118 +1,146 @@
-# Requirements: Bominal
+# Requirements: Bominal Leptos SSR Migration
 
-**Defined:** 2026-03-24
-**Core Value:** Users can search both train providers simultaneously, create an auto-booking task, and pay securely with encrypted card details -- end to end.
+**Defined:** 2026-03-26
+**Core Value:** Replace the SvelteKit SPA with a Leptos 0.8 SSR application using islands architecture, faithfully porting all pages, components, i18n, and real-time features while eliminating the Node.js build dependency.
 
-## v1 Requirements
+## Migration Requirements
 
-Requirements for this milestone. Each maps to roadmap phases.
+Requirements for the SvelteKit-to-Leptos rewrite. Each maps to roadmap phases.
 
-### Search Form
+### Foundation
 
-- [ ] **SRCH-01**: Station input connects to suggest API with debounced autocomplete dropdown
-- [ ] **SRCH-02**: Station autocomplete handles Korean IME composition events (compositionend)
-- [ ] **SRCH-03**: Autocomplete dropdown supports keyboard navigation (arrow keys, enter, escape)
-- [ ] **SRCH-04**: Date picker is a modal/overlay calendar replacing raw YYYYMMDD text input
-- [ ] **SRCH-05**: Time band selection has proper UI (not just raw slider value)
-- [ ] **SRCH-06**: Search button enables when departure, arrival, and date are filled
-- [ ] **SRCH-07**: Fix suggest API parameter mismatch (frontend sends `query`, backend expects `q`)
+- [ ] **FND-01**: Delete dead `bominal-frontend` crate and clean workspace references
+- [ ] **FND-02**: Rewrite `bominal-app/Cargo.toml` with SSR/hydrate feature flags and islands architecture
+- [ ] **FND-03**: Add Leptos workspace dependencies (leptos, leptos_meta, leptos_router, leptos_axum)
+- [ ] **FND-04**: Configure cargo-leptos build system (Cargo-leptos.toml with bin/lib packages, Tailwind integration)
+- [ ] **FND-05**: Verify dual compilation: `cargo check --features ssr` and `cargo check --target wasm32-unknown-unknown --features hydrate`
 
-### Multi-Provider Search
+### Core Infrastructure
 
-- [ ] **PROV-01**: Search fires against both SRT and KTX simultaneously
-- [ ] **PROV-02**: Per-provider error isolation via Promise.allSettled (one failure doesn't block other)
-- [ ] **PROV-03**: Prompt user to add provider credentials when missing (link to settings)
-- [ ] **PROV-04**: Station name normalization across SRT and KTX providers
-- [ ] **PROV-05**: Search results display merged from both providers with provider label
+- [ ] **INFRA-01**: Port i18n system — embed ko/en/ja JSON files, reactive locale signal, cookie-based SSR locale detection
+- [ ] **INFRA-02**: Port all 8 utility functions (format_time, format_date, format_cost, etc.)
+- [ ] **INFRA-03**: Port shared types — all 20 TypeScript interfaces as Rust structs with Serialize/Deserialize
+- [ ] **INFRA-04**: Implement server functions (API layer) proxying to existing /api/ endpoints
+- [ ] **INFRA-05**: Implement state management — auth context, theme context, SSE store (client-only)
 
-### Task Management
+### Shell and Navigation
 
-- [ ] **TASK-01**: User can create a booking task from search results (selecting train + options)
-- [ ] **TASK-02**: SSE delivers real-time task status updates to the frontend
-- [ ] **TASK-03**: SSE events include granular task-specific payloads (not full list refresh)
-- [ ] **TASK-04**: Task detail view shows schedule info, provider, and current status
+- [ ] **SHELL-01**: Root App component with leptos_router, auth guard, layout branching (auth vs main)
+- [ ] **SHELL-02**: Port Sidebar (desktop) and BottomNav (mobile) as pure SSR components
+- [ ] **SHELL-03**: Active page highlighting via use_location()
 
-### Payment
+### Auth Pages
 
-- [ ] **PAY-01**: Card input form with custom-styled fields, encrypted via `evervault.encrypt()` (not UI.Card iframe)
-- [ ] **PAY-02**: Encrypted ciphertext stored on backend, never plaintext
-- [ ] **PAY-03**: Server-side validation that stored card data is valid Evervault ciphertext format
-- [ ] **PAY-04**: Card management in settings (add card, view masked number, remove card)
-- [ ] **PAY-05**: Auto-pay toggle available when creating a booking task
+- [ ] **AUTH-01**: Port auth landing page with passkey login island
+- [ ] **AUTH-02**: Port login page — email/password form island
+- [ ] **AUTH-03**: Port signup page — registration form with password strength meter island
+- [ ] **AUTH-04**: Port forgot password page
+- [ ] **AUTH-05**: Port verify page (post-signup) and add-passkey page
+- [ ] **AUTH-06**: Port verify-email (token) and reset-password pages
 
-### Settings & Polish
+### Core Application Pages
 
-- [ ] **SETT-01**: Provider credential setup flow in settings (SRT/KTX login credentials)
-- [ ] **SETT-02**: All user-facing error messages localized (no English fallbacks in Korean UI)
-- [ ] **SETT-03**: Provider credential validation on save (verify credentials work)
+- [ ] **PAGE-01**: Port home page — dashboard with active tasks, pull-to-refresh island, SSE subscription
+- [ ] **PAGE-02**: Port search page — station inputs, calendar picker, time slider, results, review sheet (multiple islands)
+- [ ] **PAGE-03**: Port tasks page — task list with tabs, swipe-to-cancel, SSE updates
+- [ ] **PAGE-04**: Port reservations page — provider filter, expandable tickets, pay/cancel/refund actions
 
-## v2 Requirements
+### Settings and Components
 
-Deferred to future release. Tracked but not in current roadmap.
+- [ ] **SETT-01**: Port settings page — provider section, card section, appearance section, logout
+- [ ] **COMP-01**: Port pure SSR components (GlassPanel, StatusChip, Skeleton, Icon, CardBrand)
+- [ ] **COMP-02**: Port interactive components as islands (BottomSheet, SelectionPrompt, TicketCard, TaskCard)
 
-### Notifications
+### Client-Only Interop
 
-- **NOTF-01**: Push notifications when task finds available seat
-- **NOTF-02**: Email notification on successful booking
+- [ ] **INTEROP-01**: Port passkey interop — WebAuthn via web-sys (navigator.credentials.get/create)
+- [ ] **INTEROP-02**: Port Evervault interop — JS SDK wrapper via wasm-bindgen
 
-### Advanced Search
+### Server Integration
 
-- **ADVS-01**: Fare comparison across providers
-- **ADVS-02**: Flexible date search (search +/- days)
-- **ADVS-03**: Saved search presets
+- [ ] **SRV-01**: Replace SPA static serving in bominal-server with leptos_axum SSR handler
+- [ ] **SRV-02**: Serve WASM bundle and static assets from cargo-leptos output directory
+- [ ] **SRV-03**: Merge SharedState with Leptos context for server function access
 
-### Monitoring
+### CSS and Build
 
-- **MNTR-01**: Granular SSE events for booking progress steps (searching, found, reserving, reserved)
-- **MNTR-02**: Task history with timeline view
+- [ ] **CSS-01**: Migrate Tailwind CSS 4 + liquid-glass.css to cargo-leptos pipeline (no npm)
+- [ ] **CSS-02**: Configure Tailwind content scanning for .rs files in view! macros
+- [ ] **BUILD-01**: Update Dockerfile for cargo-leptos + wasm32 target (no Node.js stage)
+- [ ] **BUILD-02**: Update dev-build.sh to use cargo leptos build
+
+### Cleanup
+
+- [ ] **CLEAN-01**: Remove frontend/ directory after full verification
+- [ ] **CLEAN-02**: Update CLAUDE.md and all documentation to reflect Leptos architecture
+
+## Quality Gates
+
+- [ ] **QG-01**: All 14 routes render correctly via SSR
+- [ ] **QG-02**: Interactive islands hydrate and function (forms, search, gestures)
+- [ ] **QG-03**: i18n works for all 3 locales, switchable at runtime
+- [ ] **QG-04**: SSE real-time updates work on home and tasks pages
+- [ ] **QG-05**: WASM bundle size < 500 KB gzipped
+- [ ] **QG-06**: Glass morphism design system renders identically to SvelteKit version
+- [ ] **QG-07**: No npm/Node.js required in build pipeline
 
 ## Out of Scope
 
 | Feature | Reason |
 |---------|--------|
-| Mobile native app | Web SPA only for this milestone |
-| Real-time seat availability push | Requires provider webhook support (not available) |
-| Multi-user / team accounts | Single-user focus for v1 |
-| Train schedule browsing | Only search-to-book flow, not general timetable |
-| Evervault UI.Card iframe | Using `evervault.encrypt()` on custom form fields instead |
-| Provider API rate limit handling | Defer until scale requires it |
+| New features beyond SvelteKit parity | This is a faithful port, not a feature release |
+| Backend API changes | All existing endpoints remain unchanged |
+| Direct service-layer server functions | Phase 1 uses proxy-to-/api/ approach; direct access is future optimization |
+| Mobile native app | Web only |
 
 ## Traceability
 
-Which phases cover which requirements. Updated during roadmap creation.
-
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SRCH-01 | Phase 2 | Pending |
-| SRCH-02 | Phase 2 | Pending |
-| SRCH-03 | Phase 2 | Pending |
-| SRCH-04 | Phase 3 | Pending |
-| SRCH-05 | Phase 3 | Pending |
-| SRCH-06 | Phase 1 | Pending |
-| SRCH-07 | Phase 1 | Pending |
-| PROV-01 | Phase 5 | Pending |
-| PROV-02 | Phase 5 | Pending |
-| PROV-03 | Phase 4 | Pending |
-| PROV-04 | Phase 5 | Pending |
-| PROV-05 | Phase 5 | Pending |
-| TASK-01 | Phase 6 | Pending |
-| TASK-02 | Phase 6 | Pending |
-| TASK-03 | Phase 6 | Pending |
-| TASK-04 | Phase 6 | Pending |
-| PAY-01 | Phase 7 | Pending |
-| PAY-02 | Phase 7 | Pending |
-| PAY-03 | Phase 7 | Pending |
-| PAY-04 | Phase 7 | Pending |
-| PAY-05 | Phase 7 | Pending |
-| SETT-01 | Phase 4 | Pending |
-| SETT-02 | Phase 8 | Pending |
-| SETT-03 | Phase 4 | Pending |
+| FND-01 | Phase 1 | Pending |
+| FND-02 | Phase 1 | Pending |
+| FND-03 | Phase 1 | Pending |
+| FND-04 | Phase 1 | Pending |
+| FND-05 | Phase 1 | Pending |
+| INFRA-01 | Phase 2 | Pending |
+| INFRA-02 | Phase 2 | Pending |
+| INFRA-03 | Phase 2 | Pending |
+| INFRA-04 | Phase 2 | Pending |
+| INFRA-05 | Phase 2 | Pending |
+| SHELL-01 | Phase 3 | Pending |
+| SHELL-02 | Phase 3 | Pending |
+| SHELL-03 | Phase 3 | Pending |
+| AUTH-01 | Phase 4 | Pending |
+| AUTH-02 | Phase 4 | Pending |
+| AUTH-03 | Phase 4 | Pending |
+| AUTH-04 | Phase 4 | Pending |
+| AUTH-05 | Phase 4 | Pending |
+| AUTH-06 | Phase 4 | Pending |
+| PAGE-01 | Phase 5 | Pending |
+| PAGE-02 | Phase 5 | Pending |
+| PAGE-03 | Phase 5 | Pending |
+| PAGE-04 | Phase 5 | Pending |
+| SETT-01 | Phase 6 | Pending |
+| COMP-01 | Phase 6 | Pending |
+| COMP-02 | Phase 6 | Pending |
+| INTEROP-01 | Phase 7 | Pending |
+| INTEROP-02 | Phase 7 | Pending |
+| SRV-01 | Phase 8 | Pending |
+| SRV-02 | Phase 8 | Pending |
+| SRV-03 | Phase 8 | Pending |
+| CSS-01 | Phase 9 | Pending |
+| CSS-02 | Phase 9 | Pending |
+| BUILD-01 | Phase 9 | Pending |
+| BUILD-02 | Phase 9 | Pending |
+| CLEAN-01 | Phase 10 | Pending |
+| CLEAN-02 | Phase 10 | Pending |
 
 **Coverage:**
-- v1 requirements: 24 total
-- Mapped to phases: 24
+- Migration requirements: 37 total
+- Quality gates: 7
+- Mapped to phases: 37
 - Unmapped: 0
 
 ---
-*Requirements defined: 2026-03-24*
-*Last updated: 2026-03-24 after roadmap creation*
+*Requirements defined: 2026-03-26*
+*Replaces previous SvelteKit feature-wiring requirements*
