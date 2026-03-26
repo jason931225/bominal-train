@@ -12,5 +12,7 @@ package-lock.json
 .DS_Store
 # Generated WASM bundle (built by dev-build.sh / Dockerfile)
 pkg/
+# Trunk build output for Leptos app
+crates/bominal-app/dist/
 .playwright-mcp/
 agentic-workflow-optimization-report.js
