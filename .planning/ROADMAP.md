@@ -16,8 +16,8 @@ Rewrite the bominal-train frontend from SvelteKit 2.16 SPA to Leptos 0.8 SSR wit
 - [x] **Phase 1: Foundation** - Crate setup, cargo-leptos config, workspace deps, `bominal-ui` wiring, dual compilation verified (completed 2026-03-27)
 - [x] **Phase 2: Core Infrastructure** - i18n, utils, types, server functions (API layer), state management (completed 2026-03-27)
 - [x] **Phase 3: Shell and Navigation** - Root App with router, layout, Sidebar, BottomNav (completed 2026-03-27)
-- [ ] **Phase 4: Auth Pages** - All 8 auth-related routes (landing, login, signup, forgot, verify, add-passkey, verify-email, reset-password)
-- [ ] **Phase 5: Core Pages** - Home, search, tasks, reservations (the main application)
+- [x] **Phase 4: Auth Pages** - All 8 auth-related routes (landing, login, signup, forgot, verify, add-passkey, verify-email, reset-password) (completed 2026-03-27)
+- [x] **Phase 5: Core Pages** - Home, search, tasks, reservations (the main application) (completed 2026-03-27)
 - [ ] **Phase 6: Settings and Shared Components** - Settings page, remaining SSR and island components
 - [ ] **Phase 7: Client-Only Interop** - WebAuthn passkey and Evervault card encryption via web-sys/wasm-bindgen
 - [ ] **Phase 8: Server Integration** - Replace SPA serving with leptos_axum, merge state, wire SSR handler
@@ -77,7 +77,7 @@ Plans:
   4. Forgot password sends reset email
   5. Email verification and password reset token flows work end-to-end
   6. Add-passkey page triggers WebAuthn registration
-**Plans:** 3 plans (estimated)
+**Plans:** 3/3 plans complete
 **UI hint**: yes
 
 ### Phase 5: Core Pages
@@ -89,7 +89,7 @@ Plans:
   2. Search page supports station autocomplete, date/time selection, multi-provider results
   3. Tasks page shows active/completed tabs with SSE real-time updates and swipe-to-cancel
   4. Reservations page shows tickets with provider filter and pay/cancel/refund actions
-**Plans:** 4 plans (estimated, one per page — search is the most complex)
+**Plans:** 4/4 plans complete
 **UI hint**: yes
 
 ### Phase 6: Settings and Shared Components

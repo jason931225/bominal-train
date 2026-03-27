@@ -74,12 +74,10 @@ mod tests {
             2,
         )]));
         roundtrip(&TargetTrain {
-            provider: Provider::Ktx,
             train_number: "305".into(),
             dep_time: "083000".into(),
         });
         roundtrip(&TargetTrainList(vec![TargetTrain {
-            provider: Provider::Srt,
             train_number: "101".into(),
             dep_time: "073000".into(),
         }]));
@@ -164,7 +162,7 @@ mod tests {
             discount: 0,
         });
         roundtrip(&CreateTaskInput {
-            provider: Some(Provider::Srt),
+            provider: Provider::Srt,
             departure_station: "서울".into(),
             arrival_station: "부산".into(),
             travel_date: "20260327".into(),
@@ -172,7 +170,6 @@ mod tests {
             passengers: PassengerList(vec![PassengerCount::new(PassengerKind::Adult, 1)]),
             seat_preference: SeatPreference::GeneralFirst,
             target_trains: TargetTrainList(vec![TargetTrain {
-                provider: Provider::Srt,
                 train_number: "305".into(),
                 dep_time: "083000".into(),
             }]),
@@ -186,7 +183,6 @@ mod tests {
             notify_enabled: Some(true),
             auto_retry: Some(false),
             target_trains: Some(TargetTrainList(vec![TargetTrain {
-                provider: Provider::Ktx,
                 train_number: "111".into(),
                 dep_time: "093000".into(),
             }])),
@@ -235,7 +231,6 @@ mod tests {
             passengers: PassengerList(vec![PassengerCount::new(PassengerKind::Adult, 1)]),
             seat_preference: SeatPreference::GeneralFirst,
             target_trains: TargetTrainList(vec![TargetTrain {
-                provider: Provider::Srt,
                 train_number: "305".into(),
                 dep_time: "083000".into(),
             }]),

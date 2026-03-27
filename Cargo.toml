@@ -40,6 +40,8 @@ serde_json = "1"
 
 # HTTP client
 reqwest = { version = "0.13", features = ["cookies", "json", "rustls", "webpki-roots", "form"], default-features = false }
+wreq = { version = "5", features = ["cookies", "json"], default-features = false }
+wreq-util = { version = "2", features = ["emulation"], default-features = false }
 
 # Crypto
 argon2 = { version = "0.5", features = ["std"] }

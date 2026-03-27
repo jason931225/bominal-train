@@ -2,6 +2,7 @@ pub mod api;
 mod browser;
 pub mod components;
 pub mod i18n;
+pub mod pages;
 pub mod shell_pages;
 pub mod state;
 pub mod types;
@@ -14,6 +15,8 @@ use leptos_router::{
     hooks::use_location,
     path,
 };
+
+use crate::pages::{auth, home, reservations, reset_password, search, tasks, verify_email};
 
 #[cfg(feature = "hydrate")]
 #[wasm_bindgen::prelude::wasm_bindgen]
@@ -68,19 +71,19 @@ fn AppRoutes() -> impl IntoView {
     view! {
         <Routes fallback=|| view! { <shell_pages::NotFoundPage /> }>
             <Route path=path!("/") view=shell_pages::RootRedirectPage />
-            <Route path=path!("/auth") view=shell_pages::AuthLandingPage />
-            <Route path=path!("/auth/login") view=shell_pages::LoginPage />
-            <Route path=path!("/auth/signup") view=shell_pages::SignupPage />
-            <Route path=path!("/auth/forgot") view=shell_pages::ForgotPasswordPage />
-            <Route path=path!("/auth/verify") view=shell_pages::AuthVerifyPage />
-            <Route path=path!("/auth/add-passkey") view=shell_pages::AddPasskeyPage />
-            <Route path=path!("/home") view=shell_pages::HomePage />
-            <Route path=path!("/search") view=shell_pages::SearchPage />
-            <Route path=path!("/tasks") view=shell_pages::TasksPage />
-            <Route path=path!("/reservations") view=shell_pages::ReservationsPage />
+            <Route path=path!("/auth") view=auth::SignInPage />
+            <Route path=path!("/auth/login") view=auth::LoginPage />
+            <Route path=path!("/auth/signup") view=auth::SignupPage />
+            <Route path=path!("/auth/forgot") view=auth::ForgotPage />
+            <Route path=path!("/auth/verify") view=auth::AuthVerifyPage />
+            <Route path=path!("/auth/add-passkey") view=auth::AddPasskeyPage />
+            <Route path=path!("/home") view=home::HomePage />
+            <Route path=path!("/search") view=search::SearchPage />
+            <Route path=path!("/tasks") view=tasks::TasksPage />
+            <Route path=path!("/reservations") view=reservations::ReservationsPage />
             <Route path=path!("/settings") view=shell_pages::SettingsPage />
-            <Route path=path!("/verify-email") view=shell_pages::VerifyEmailPage />
-            <Route path=path!("/reset-password") view=shell_pages::ResetPasswordPage />
+            <Route path=path!("/verify-email") view=verify_email::VerifyEmailPage />
+            <Route path=path!("/reset-password") view=reset_password::ResetPasswordPage />
         </Routes>
     }
 }

@@ -1,5 +1,7 @@
 //! Typed Leptos server functions that proxy the existing Axum `/api/...` routes.
 
+pub mod passkey;
+
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 

@@ -23,7 +23,9 @@ use bominal_email::EmailClient;
 use bominal_email::templates::reservation::{AlertKind, ReservationDetails};
 use bominal_service::providers::ktx::KtxClient;
 use bominal_service::providers::srt::SrtClient;
-use bominal_service::providers::srt::passenger::{PassengerGroup, PassengerType, WindowSeat, total_count};
+use bominal_service::providers::srt::passenger::{
+    PassengerGroup, PassengerType, WindowSeat, total_count,
+};
 use bominal_service::providers::types::{ProviderError, SeatPreference as ProviderSeatPreference};
 
 use bominal_domain::evervault::EvervaultConfig;
@@ -57,10 +59,9 @@ async fn build_sessions(
     let mut sessions = HashMap::new();
 
     for provider in target_trains.unique_providers() {
-        let cred =
-            bominal_db::provider::find_by_user_and_provider(db, user_id, provider.as_str())
-                .await?
-                .ok_or_else(|| format!("No {} credentials found", provider))?;
+        let cred = bominal_db::provider::find_by_user_and_provider(db, user_id, provider.as_str())
+            .await?
+            .ok_or_else(|| format!("No {} credentials found", provider))?;
         let password = encryption::decrypt(encryption_key, &cred.encrypted_password)?;
 
         match provider {
@@ -207,8 +208,14 @@ async fn run_task(
     evervault: &EvervaultConfig,
     app_base_url: &str,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let mut sessions =
-        build_sessions(db, task.user_id, &task.target_trains, encryption_key, evervault).await?;
+    let mut sessions = build_sessions(
+        db,
+        task.user_id,
+        &task.target_trains,
+        encryption_key,
+        evervault,
+    )
+    .await?;
 
     let seat_pref = parse_seat_preference(task.seat_preference);
     let passengers = parse_passengers(&task.passengers);
@@ -326,14 +333,8 @@ async fn run_task(
                         pnr = %pnr,
                         "Reservation confirmed!"
                     );
-                    bominal_db::task::mark_confirmed(
-                        db,
-                        task.id,
-                        &pnr,
-                        &snapshot,
-                        target.provider,
-                    )
-                    .await?;
+                    bominal_db::task::mark_confirmed(db, task.id, &pnr, &snapshot, target.provider)
+                        .await?;
                     event_bus
                         .publish(
                             task.user_id,
@@ -462,7 +463,13 @@ async fn search_provider(
             let result = bominal_service::retry_with_backoff!(
                 3,
                 client
-                    .search_train(dep_station, arr_station, Some(travel_date), Some(departure_time), false)
+                    .search_train(
+                        dep_station,
+                        arr_station,
+                        Some(travel_date),
+                        Some(departure_time),
+                        false
+                    )
                     .await
             );
             match result {
@@ -488,7 +495,13 @@ async fn search_provider(
             let result = bominal_service::retry_with_backoff!(
                 3,
                 client
-                    .search_train(dep_station, arr_station, Some(travel_date), Some(departure_time), false)
+                    .search_train(
+                        dep_station,
+                        arr_station,
+                        Some(travel_date),
+                        Some(departure_time),
+                        false
+                    )
                     .await
             );
             match result {
@@ -684,7 +697,14 @@ async fn try_auto_pay(
         Ok(Some(c)) => c,
         Ok(None) => {
             warn!(task_id = %task.id, card_id = %card_id, "Payment card not found for auto-pay");
-            set_awaiting_payment(db, task, pnr, event_bus, "Auto-pay failed: payment card not found. Please pay manually.").await;
+            set_awaiting_payment(
+                db,
+                task,
+                pnr,
+                event_bus,
+                "Auto-pay failed: payment card not found. Please pay manually.",
+            )
+            .await;
             return;
         }
         Err(e) => {
@@ -701,7 +721,14 @@ async fn try_auto_pay(
                     Ok(r) => r,
                     Err(e) => {
                         warn!(task_id = %task.id, error = %e, "Failed to list reservations for payment");
-                        set_awaiting_payment(db, task, pnr, event_bus, &format!("Auto-pay failed: {e}. Please pay manually.")).await;
+                        set_awaiting_payment(
+                            db,
+                            task,
+                            pnr,
+                            event_bus,
+                            &format!("Auto-pay failed: {e}. Please pay manually."),
+                        )
+                        .await;
                         return;
                     }
                 };
@@ -709,7 +736,14 @@ async fn try_auto_pay(
                     Some(r) => r,
                     None => {
                         warn!(task_id = %task.id, "Reservation not found in SRT list for payment");
-                        set_awaiting_payment(db, task, pnr, event_bus, "Auto-pay failed: reservation not found. Please pay manually.").await;
+                        set_awaiting_payment(
+                            db,
+                            task,
+                            pnr,
+                            event_bus,
+                            "Auto-pay failed: reservation not found. Please pay manually.",
+                        )
+                        .await;
                         return;
                     }
                 };
@@ -738,7 +772,14 @@ async fn try_auto_pay(
                     Ok(r) => r,
                     Err(e) => {
                         warn!(task_id = %task.id, error = %e, "Failed to list reservations for payment");
-                        set_awaiting_payment(db, task, pnr, event_bus, &format!("Auto-pay failed: {e}. Please pay manually.")).await;
+                        set_awaiting_payment(
+                            db,
+                            task,
+                            pnr,
+                            event_bus,
+                            &format!("Auto-pay failed: {e}. Please pay manually."),
+                        )
+                        .await;
                         return;
                     }
                 };
@@ -746,7 +787,14 @@ async fn try_auto_pay(
                     Some(r) => r,
                     None => {
                         warn!(task_id = %task.id, "Reservation not found in KTX list for payment");
-                        set_awaiting_payment(db, task, pnr, event_bus, "Auto-pay failed: reservation not found. Please pay manually.").await;
+                        set_awaiting_payment(
+                            db,
+                            task,
+                            pnr,
+                            event_bus,
+                            "Auto-pay failed: reservation not found. Please pay manually.",
+                        )
+                        .await;
                         return;
                     }
                 };
@@ -785,8 +833,15 @@ async fn try_auto_pay(
             )
             .await;
             if task.notify_enabled {
-                send_alert_email(db, email, task, AlertKind::PayFailed, Some(pnr), app_base_url)
-                    .await;
+                send_alert_email(
+                    db,
+                    email,
+                    task,
+                    AlertKind::PayFailed,
+                    Some(pnr),
+                    app_base_url,
+                )
+                .await;
             }
         }
     }
