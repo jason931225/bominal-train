@@ -1,3 +1,19 @@
+---
+gsd_state_version: 1.0
+milestone: v1.0
+milestone_name: milestone
+status: planning
+stopped_at: Phase 3 complete, Phase 4 auth pages ready to plan
+last_updated: "2026-03-27T20:07:31.775Z"
+last_activity: 2026-03-27
+progress:
+  total_phases: 10
+  completed_phases: 3
+  total_plans: 10
+  completed_plans: 7
+  percent: 30
+---
+
 # Project State
 
 ## Project Reference
@@ -5,21 +21,22 @@
 See: .planning/PROJECT.md (updated 2026-03-26)
 
 **Core value:** Replace SvelteKit SPA with Leptos 0.8 SSR (islands architecture), faithfully porting all pages, components, i18n, and real-time features while eliminating the Node.js build dependency.
-**Current focus:** Phase 1: Foundation (Leptos crate setup and build system)
+**Current focus:** Phase 4: Auth Pages (real auth flows, verify routes, passkey integration)
 
 ## Current Position
 
-Phase: 1 of 10 (Foundation)
-Plan: 0 of 2 in current phase
-Status: Ready to execute
-Last activity: 2026-03-26 -- Roadmap created for Leptos SSR migration
+Phase: 4 of 10 (auth pages)
+Plan: Discuss / planning
+Status: Ready to plan
+Last activity: 2026-03-27
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [###░░░░░░░] 30%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 0
+
+- Total plans completed: 7
 - Average duration: -
 - Total execution time: 0 hours
 
@@ -27,11 +44,14 @@ Progress: [░░░░░░░░░░] 0%
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| - | - | - | - |
+| 1 | 2 | - | - |
+| 2 | 3 | - | - |
+| 3 | 2 | - | - |
 
 **Recent Trend:**
-- Last 5 plans: -
-- Trend: -
+
+- Last 7 plans: 7 passed
+- Trend: steady
 
 *Updated after each plan completion*
 
@@ -52,6 +72,7 @@ Recent decisions affecting current work:
 - [Build]: cargo-leptos for dual SSR+WASM compilation
 - [CSS]: Tailwind standalone CLI (no npm in build pipeline)
 - [Crate]: Rewrite bominal-app in place; delete bominal-frontend
+- [UI]: Use `bominal-ui` as the canonical shared UI source across Bominal products
 
 ### Pending Todos
 
@@ -65,6 +86,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-26
-Stopped at: Phase 1 plans created, ready to execute
+Last session: 2026-03-27
+Stopped at: Phase 3 complete, Phase 4 auth pages ready to plan
 Resume file: None

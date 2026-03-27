@@ -1,109 +1,118 @@
 pub mod api;
+mod browser;
+pub mod components;
 pub mod i18n;
-pub mod pages;
-
-// =============================================================================
-// Auth context — shared across all pages
-// =============================================================================
-
-use serde::Deserialize;
-
-/// Client-side representation of the authenticated user.
-#[derive(Debug, Clone, Deserialize)]
-pub struct AuthUser {
-    pub id: String,
-    pub email: String,
-    pub name: String,
-}
-
-/// Convenience accessor for the auth context signal.
-pub fn use_auth() -> leptos::prelude::RwSignal<Option<AuthUser>> {
-    leptos::prelude::use_context::<leptos::prelude::RwSignal<Option<AuthUser>>>()
-        .expect("AuthContext not provided")
-}
-
-/// WASM entry point — replaces the #app loading div with the real app.
-#[wasm_bindgen::prelude::wasm_bindgen(start)]
-pub fn main() {
-    use leptos::prelude::*;
-    use leptos::web_sys;
-
-    // Remove the loading placeholder
-    if let Some(window) = web_sys::window()
-        && let Some(document) = window.document()
-        && let Some(loading) = document.get_element_by_id("app")
-    {
-        loading.set_inner_html("");
-    }
-    mount_to_body(App);
-}
+pub mod shell_pages;
+pub mod state;
+pub mod types;
+pub mod utils;
 
 use leptos::prelude::*;
-use leptos_router::components::*;
-use leptos_router::path;
+use leptos_meta::{Stylesheet, Title, provide_meta_context};
+use leptos_router::{
+    components::{Route, Router, Routes},
+    hooks::use_location,
+    path,
+};
 
-use crate::i18n::t;
-use crate::pages::auth;
+#[cfg(feature = "hydrate")]
+#[wasm_bindgen::prelude::wasm_bindgen]
+pub fn hydrate() {
+    leptos::mount::hydrate_islands();
+}
 
-/// Root application component with router.
+#[component]
+fn ShellChrome() -> impl IntoView {
+    let auth = state::use_auth_state();
+    let location = use_location();
+
+    let show_navigation =
+        move || auth.is_authenticated() && !shell_pages::is_public_path(&location.pathname.get());
+
+    view! {
+        <div
+            data-product="train"
+            class=move || {
+                if show_navigation() {
+                    "lg-app-shell lg-app-shell--protected"
+                } else {
+                    "lg-app-shell lg-app-shell--public"
+                }
+            }
+        >
+            <Show when=show_navigation>
+                <components::Sidebar />
+            </Show>
+
+            <main
+                class=move || {
+                    if show_navigation() {
+                        "lg-shell-main lg-shell-main--protected"
+                    } else {
+                        "lg-shell-main lg-shell-main--public"
+                    }
+                }
+            >
+                <AppRoutes />
+            </main>
+
+            <Show when=show_navigation>
+                <components::BottomNav />
+            </Show>
+        </div>
+    }
+}
+
+#[component]
+fn AppRoutes() -> impl IntoView {
+    view! {
+        <Routes fallback=|| view! { <shell_pages::NotFoundPage /> }>
+            <Route path=path!("/") view=shell_pages::RootRedirectPage />
+            <Route path=path!("/auth") view=shell_pages::AuthLandingPage />
+            <Route path=path!("/auth/login") view=shell_pages::LoginPage />
+            <Route path=path!("/auth/signup") view=shell_pages::SignupPage />
+            <Route path=path!("/auth/forgot") view=shell_pages::ForgotPasswordPage />
+            <Route path=path!("/auth/verify") view=shell_pages::AuthVerifyPage />
+            <Route path=path!("/auth/add-passkey") view=shell_pages::AddPasskeyPage />
+            <Route path=path!("/home") view=shell_pages::HomePage />
+            <Route path=path!("/search") view=shell_pages::SearchPage />
+            <Route path=path!("/tasks") view=shell_pages::TasksPage />
+            <Route path=path!("/reservations") view=shell_pages::ReservationsPage />
+            <Route path=path!("/settings") view=shell_pages::SettingsPage />
+            <Route path=path!("/verify-email") view=shell_pages::VerifyEmailPage />
+            <Route path=path!("/reset-password") view=shell_pages::ResetPasswordPage />
+        </Routes>
+    }
+}
+
+/// Phase 3 shell with router, guarded layout, and responsive navigation.
 #[component]
 pub fn App() -> impl IntoView {
-    // Provide auth context to the entire app
-    let auth_user = RwSignal::new(None::<AuthUser>);
-    let auth_checked = RwSignal::new(false);
-    provide_context(auth_user);
+    provide_meta_context();
+    provide_context(i18n::request_locale());
+    let app_state = state::provide_app_state();
 
-    // Fetch current user on mount
-    let _auth_check = LocalResource::new(move || async move {
-        match crate::api::get_silent::<AuthUser>("/api/auth/me").await {
-            Ok(resp) if resp.success => {
-                auth_user.set(resp.data);
-            }
-            _ => {
-                auth_user.set(None);
-            }
-        }
-        auth_checked.set(true);
+    let auth = app_state.auth;
+    let theme = app_state.theme;
+
+    let auth_bootstrap = Resource::new(|| (), |_| api::get_me());
+
+    Effect::new(move |_| match auth_bootstrap.get() {
+        Some(Ok(user)) => auth.set_user(user),
+        Some(Err(_)) => auth.set_user(None),
+        None => auth.loading.set(true),
+    });
+
+    Effect::new(move |_| {
+        browser::sync_theme_attrs(theme.theme.get().as_str(), theme.mode.get().as_str());
     });
 
     view! {
-        // Block rendering until auth check completes
-        {move || if !auth_checked.get() {
-            view! {
-                <div class="min-h-screen flex items-center justify-center">
-                    <p class="text-sm" style="color: var(--lg-text-tertiary);">"Bominal"</p>
-                </div>
-            }.into_any()
-        } else {
-            view! {
-                <Router>
-                    <FlatRoutes fallback=|| view! { <NotFoundPage /> }>
-                        <Route path=path!("/auth") view=auth::SignInPage />
-                        <Route path=path!("/auth/login") view=auth::LoginPage />
-                        <Route path=path!("/auth/signup") view=auth::SignupPage />
-                        <Route path=path!("/auth/forgot") view=auth::ForgotPage />
-                    </FlatRoutes>
-                </Router>
-            }.into_any()
-        }}
-    }
-}
+        <Title text="Bominal Train" />
+        <Stylesheet id="bominal-app" href="/pkg/bominal-app.css" />
 
-/// 404 page component.
-#[component]
-fn NotFoundPage() -> impl IntoView {
-    view! {
-        <div class="min-h-screen flex items-center justify-center">
-            <div class="text-center page-enter">
-                <h1 class="text-6xl font-bold" style="color: var(--lg-text-disabled);">"404"</h1>
-                <p class="mt-4 text-lg" style="color: var(--lg-text-secondary);">{t("error.not_found")}</p>
-                <a
-                    href="/auth"
-                    class="mt-6 inline-block lg-btn-primary px-6 py-3 rounded-xl text-sm"
-                >
-                    {t("error.go_home")}
-                </a>
-            </div>
-        </div>
+        <Router>
+            <ShellChrome />
+        </Router>
     }
 }

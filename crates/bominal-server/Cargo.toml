@@ -11,11 +11,18 @@ path = "src/lib.rs"
 name = "bominal-server"
 path = "src/main.rs"
 
+[features]
+default = []
+ssr = ["dep:bominal-app", "dep:leptos", "dep:leptos_axum"]
+
 [dependencies]
+bominal-app = { path = "../bominal-app", default-features = false, features = ["ssr"], optional = true }
 bominal-domain = { path = "../bominal-domain" }
 bominal-db = { path = "../bominal-db" }
 bominal-email = { path = "../bominal-email" }
 bominal-service = { path = "../bominal-service" }
+leptos = { workspace = true, optional = true }
+leptos_axum = { workspace = true, optional = true }
 tokio.workspace = true
 axum.workspace = true
 tower.workspace = true

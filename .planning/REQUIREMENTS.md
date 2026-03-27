@@ -9,25 +9,25 @@ Requirements for the SvelteKit-to-Leptos rewrite. Each maps to roadmap phases.
 
 ### Foundation
 
-- [ ] **FND-01**: Delete dead `bominal-frontend` crate and clean workspace references
-- [ ] **FND-02**: Rewrite `bominal-app/Cargo.toml` with SSR/hydrate feature flags and islands architecture
-- [ ] **FND-03**: Add Leptos workspace dependencies (leptos, leptos_meta, leptos_router, leptos_axum)
-- [ ] **FND-04**: Configure cargo-leptos build system (Cargo-leptos.toml with bin/lib packages, Tailwind integration)
-- [ ] **FND-05**: Verify dual compilation: `cargo check --features ssr` and `cargo check --target wasm32-unknown-unknown --features hydrate`
+- [x] **FND-01**: Keep `bominal-frontend` out of the active workspace/build path and clean misleading references while it remains donor code
+- [x] **FND-02**: Rewrite `bominal-app/Cargo.toml` with SSR/hydrate feature flags and islands architecture
+- [x] **FND-03**: Add Leptos workspace dependencies (leptos, leptos_meta, leptos_router, leptos_axum)
+- [x] **FND-04**: Configure cargo-leptos build system in the root `Cargo.toml` (`[[workspace.metadata.leptos]]` with bin/lib packages, Tailwind integration)
+- [x] **FND-05**: Verify dual compilation: `cargo check --features ssr` and `cargo check --target wasm32-unknown-unknown --features hydrate`
 
 ### Core Infrastructure
 
-- [ ] **INFRA-01**: Port i18n system — embed ko/en/ja JSON files, reactive locale signal, cookie-based SSR locale detection
-- [ ] **INFRA-02**: Port all 8 utility functions (format_time, format_date, format_cost, etc.)
-- [ ] **INFRA-03**: Port shared types — all 20 TypeScript interfaces as Rust structs with Serialize/Deserialize
-- [ ] **INFRA-04**: Implement server functions (API layer) proxying to existing /api/ endpoints
-- [ ] **INFRA-05**: Implement state management — auth context, theme context, SSE store (client-only)
+- [x] **INFRA-01**: Port i18n system — embed ko/en/ja JSON files, reactive locale signal, cookie-based SSR locale detection
+- [x] **INFRA-02**: Port all 8 utility functions (format_time, format_date, format_cost, etc.)
+- [x] **INFRA-03**: Port shared types — all 20 TypeScript interfaces as Rust structs with Serialize/Deserialize
+- [x] **INFRA-04**: Implement server functions (API layer) proxying to existing /api/ endpoints
+- [x] **INFRA-05**: Implement state management — auth context, theme context, SSE store (client-only)
 
 ### Shell and Navigation
 
-- [ ] **SHELL-01**: Root App component with leptos_router, auth guard, layout branching (auth vs main)
-- [ ] **SHELL-02**: Port Sidebar (desktop) and BottomNav (mobile) as pure SSR components
-- [ ] **SHELL-03**: Active page highlighting via use_location()
+- [x] **SHELL-01**: Root App component with leptos_router, auth guard, layout branching (auth vs main)
+- [x] **SHELL-02**: Port Sidebar (desktop) and BottomNav (mobile) as pure SSR components
+- [x] **SHELL-03**: Active page highlighting via use_location()
 
 ### Auth Pages
 
@@ -48,7 +48,7 @@ Requirements for the SvelteKit-to-Leptos rewrite. Each maps to roadmap phases.
 ### Settings and Components
 
 - [ ] **SETT-01**: Port settings page — provider section, card section, appearance section, logout
-- [ ] **COMP-01**: Port pure SSR components (GlassPanel, StatusChip, Skeleton, Icon, CardBrand)
+- [ ] **COMP-01**: Port pure SSR components (GlassPanel, StatusChip, Skeleton, Icon, CardBrand) using `bominal-ui` primitives/equivalents where available
 - [ ] **COMP-02**: Port interactive components as islands (BottomSheet, SelectionPrompt, TicketCard, TaskCard)
 
 ### Client-Only Interop
@@ -64,7 +64,7 @@ Requirements for the SvelteKit-to-Leptos rewrite. Each maps to roadmap phases.
 
 ### CSS and Build
 
-- [ ] **CSS-01**: Migrate Tailwind CSS 4 + liquid-glass.css to cargo-leptos pipeline (no npm)
+- [ ] **CSS-01**: Adopt `bominal-ui` ecosystem + `train`/`auth` skin CSS in the cargo-leptos pipeline (no npm)
 - [ ] **CSS-02**: Configure Tailwind content scanning for .rs files in view! macros
 - [ ] **BUILD-01**: Update Dockerfile for cargo-leptos + wasm32 target (no Node.js stage)
 - [ ] **BUILD-02**: Update dev-build.sh to use cargo leptos build
@@ -81,7 +81,7 @@ Requirements for the SvelteKit-to-Leptos rewrite. Each maps to roadmap phases.
 - [ ] **QG-03**: i18n works for all 3 locales, switchable at runtime
 - [ ] **QG-04**: SSE real-time updates work on home and tasks pages
 - [ ] **QG-05**: WASM bundle size < 500 KB gzipped
-- [ ] **QG-06**: Glass morphism design system renders identically to SvelteKit version
+- [ ] **QG-06**: Shared `bominal-ui` design system renders correctly for train and auth surfaces in Leptos
 - [ ] **QG-07**: No npm/Node.js required in build pipeline
 
 ## Out of Scope
@@ -97,19 +97,19 @@ Requirements for the SvelteKit-to-Leptos rewrite. Each maps to roadmap phases.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FND-01 | Phase 1 | Pending |
-| FND-02 | Phase 1 | Pending |
-| FND-03 | Phase 1 | Pending |
-| FND-04 | Phase 1 | Pending |
-| FND-05 | Phase 1 | Pending |
-| INFRA-01 | Phase 2 | Pending |
-| INFRA-02 | Phase 2 | Pending |
-| INFRA-03 | Phase 2 | Pending |
-| INFRA-04 | Phase 2 | Pending |
-| INFRA-05 | Phase 2 | Pending |
-| SHELL-01 | Phase 3 | Pending |
-| SHELL-02 | Phase 3 | Pending |
-| SHELL-03 | Phase 3 | Pending |
+| FND-01 | Phase 1 | Complete |
+| FND-02 | Phase 1 | Complete |
+| FND-03 | Phase 1 | Complete |
+| FND-04 | Phase 1 | Complete |
+| FND-05 | Phase 1 | Complete |
+| INFRA-01 | Phase 2 | Complete |
+| INFRA-02 | Phase 2 | Complete |
+| INFRA-03 | Phase 2 | Complete |
+| INFRA-04 | Phase 2 | Complete |
+| INFRA-05 | Phase 2 | Complete |
+| SHELL-01 | Phase 3 | Complete |
+| SHELL-02 | Phase 3 | Complete |
+| SHELL-03 | Phase 3 | Complete |
 | AUTH-01 | Phase 4 | Pending |
 | AUTH-02 | Phase 4 | Pending |
 | AUTH-03 | Phase 4 | Pending |
