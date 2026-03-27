@@ -2,12 +2,11 @@
 resolver = "2"
 members = [
     "crates/bominal-server",
-    "crates/bominal-provider",
     "crates/bominal-domain",
     "crates/bominal-db",
     "crates/bominal-email",
-    "crates/bominal-frontend",
     "crates/bominal-service",
+    "crates/bominal-app",
 ]
 
 [workspace.package]
@@ -17,6 +16,13 @@ rust-version = "1.85"
 license = "MIT"
 
 [workspace.dependencies]
+# Leptos stack
+leptos = { version = "0.8", default-features = false }
+leptos_meta = { version = "0.8", default-features = false }
+leptos_router = { version = "0.8", default-features = false }
+leptos_axum = { version = "0.8", default-features = false }
+bominal-ui = { path = "../bominal-ui", default-features = false }
+
 # Async runtime — scoped to actual usage (no "full")
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time", "net"] }
 
@@ -24,12 +30,6 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time"
 axum = { version = "0.8", features = ["macros"] }
 tower = { version = "0.5", features = ["util"] }
 tower-http = { version = "0.6", features = ["trace", "request-id", "fs", "cors", "compression-gzip", "compression-br", "limit", "set-header"] }
-
-# Leptos
-leptos = { version = "0.8" }
-leptos_axum = "0.8"
-leptos_meta = "0.8"
-leptos_router = { version = "0.8" }
 
 # Database
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "derive", "uuid", "chrono", "json"] }
@@ -66,7 +66,7 @@ futures-util = "0.3"
 async-stream = "0.3"
 
 # Utilities
-uuid = { version = "1", features = ["v4", "v7", "serde"] }
+uuid = { version = "1", features = ["v4", "v7", "serde", "js"] }
 thiserror = "2"
 anyhow = "1"
 dotenvy = "0.15"
@@ -74,8 +74,28 @@ url = "2"
 webauthn-rs = { version = "0.5", features = ["danger-allow-state-serialisation", "conditional-ui"] }
 webauthn-rs-proto = "0.5"
 
+# Big integer (DynaPath key generation)
+num-bigint = "0.4"
+num-traits = "0.2"
+
 # Testing
 proptest = "1"
+
+[[workspace.metadata.leptos]]
+name = "bominal-train"
+bin-package = "bominal-server"
+lib-package = "bominal-app"
+output-name = "bominal-app"
+site-root = "target/site"
+site-pkg-dir = "pkg"
+style-file = "crates/bominal-app/style/app.css"
+tailwind-input-file = "crates/bominal-app/style/app.css"
+tailwind-config-file = "tailwind.config.js"
+assets-dir = "crates/bominal-app/assets"
+bin-features = ["ssr"]
+bin-default-features = false
+lib-features = ["hydrate"]
+lib-default-features = false
 
 # Dev: small optimization for local crates, full optimization for dependencies
 [profile.dev]

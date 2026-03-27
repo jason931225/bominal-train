@@ -12,7 +12,6 @@ use std::sync::Arc;
 use axum::extract::State;
 use axum::response::sse::{Event, KeepAlive, Sse};
 use futures_util::stream::Stream;
-use serde::Serialize;
 use tokio::sync::RwLock;
 use tokio::sync::broadcast;
 use uuid::Uuid;
@@ -21,19 +20,8 @@ use crate::error::AppError;
 use crate::extractors::AuthUser;
 use crate::state::SharedState;
 
-/// Event payload sent to SSE clients.
-#[derive(Debug, Clone, Serialize)]
-pub struct TaskEvent {
-    pub task_id: Uuid,
-    pub status: String,
-    /// Human-readable message (e.g. "Reservation confirmed for train 305")
-    pub message: String,
-    /// Attempt count at the time of the event
-    pub attempt_count: i32,
-    /// Optional reservation number (only on confirmed)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub reservation_number: Option<String>,
-}
+// Re-export TaskEvent from domain so existing `use crate::sse::TaskEvent` still works.
+pub use bominal_domain::task_event::TaskEvent;
 
 /// Channel capacity per user. Slow clients drop older events.
 const CHANNEL_CAPACITY: usize = 64;

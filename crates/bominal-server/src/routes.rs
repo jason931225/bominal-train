@@ -4,13 +4,8 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use axum::Router;
-use axum::body::Body;
-use axum::http::{HeaderValue, Method, Request};
-use axum::response::IntoResponse;
+use axum::http::{HeaderValue, Method};
 use axum::routing::{delete, get, patch, post};
-use leptos::prelude::{provide_context, use_context};
-// Note: leptos_axum::LeptosRoutes not used — we use render_app_to_stream_with_context
-// as a GET-only fallback to avoid generate_route_list hanging at startup.
 use tower_http::compression::CompressionLayer;
 use tower_http::cors::CorsLayer;
 use tower_http::limit::RequestBodyLimitLayer;
@@ -35,7 +30,7 @@ use crate::state::SharedState;
 use crate::tasks;
 
 /// Build the API route tree. Separated from `create_router` so integration
-/// tests can mount it directly without Leptos SSR or the background runner.
+/// tests can mount it directly without the background runner.
 pub fn api_routes() -> Router<SharedState> {
     // Rate-limited auth routes (20 req/min per IP)
     let auth_limiter = RateLimiter::new(20);
@@ -154,7 +149,7 @@ pub async fn create_router(
     let email = bominal_email::EmailClient::new(&config.resend_api_key, &config.email_from);
     let encryption_key =
         bominal_domain::crypto::encryption::EncryptionKey::from_hex(&config.encryption_key)?;
-    let evervault = crate::evervault::EvervaultConfig::new(
+    let evervault = bominal_domain::evervault::EvervaultConfig::new(
         &config.ev_team_id,
         &config.ev_app_id,
         &config.ev_api_key,
@@ -179,22 +174,6 @@ pub async fn create_router(
         .build()
         .map_err(|e| anyhow::anyhow!("WebAuthn build error: {e}"))?;
 
-    // Start the background reservation task runner
-    runner::spawn_runner(
-        db.clone(),
-        event_bus.clone(),
-        email.clone(),
-        encryption_key.clone(),
-        evervault.clone(),
-        config.app_base_url.clone(),
-    );
-
-    // Minimal LeptosOptions for SSR route generation (no cargo-leptos)
-    let leptos_options = leptos::prelude::LeptosOptions::builder()
-        .output_name("bominal-app")
-        .site_addr(std::net::SocketAddr::from(([0, 0, 0, 0], config.port)))
-        .build();
-
     let state = SharedState {
         db,
         start_time,
@@ -205,78 +184,38 @@ pub async fn create_router(
         app_base_url: config.app_base_url.clone(),
         prometheus_handle,
         webauthn: Arc::new(webauthn),
-        leptos_options,
     };
 
     // Spawn session cleanup background job
     crate::session_cleanup::spawn_cleanup(state.db.clone());
 
+    // Start the background reservation task runner
+    runner::spawn_runner(
+        state.db.clone(),
+        state.event_bus.clone(),
+        state.email.clone(),
+        state.encryption_key.clone(),
+        state.evervault.clone(),
+        config.app_base_url.clone(),
+    );
+
     let api = api_routes();
 
-    // Context provider for Leptos server functions and SSR rendering
-    let sfn_db = state.db.clone();
-    let sfn_key = state.encryption_key.clone();
-    let sfn_email = state.email.clone();
-    let sfn_base_url = config.app_base_url.clone();
-    let sfn_ev_ids = bominal_frontend::EvervaultIds {
-        team_id: state.evervault.team_id.clone(),
-        app_id: state.evervault.app_id.clone(),
-    };
-    let sfn_ev_relay = bominal_frontend::EvervaultRelay {
-        srt_domain: state.evervault.srt_relay_domain.clone(),
-        ktx_domain: state.evervault.ktx_relay_domain.clone(),
-    };
-    let context_fn = move || {
-        let parts = use_context::<axum::http::request::Parts>();
-        let cookie_header = parts
-            .as_ref()
-            .and_then(|parts| parts.headers.get("cookie"))
-            .and_then(|value| value.to_str().ok());
-        let theme_prefs = bominal_frontend::theme::ThemePrefs::from_cookie_header(cookie_header);
-        let locale = bominal_frontend::i18n::locale_from_cookie_header(cookie_header);
-
-        provide_context(sfn_db.clone());
-        provide_context(sfn_key.clone());
-        provide_context(sfn_email.clone());
-        provide_context(bominal_frontend::api::auth::AppBaseUrl(
-            sfn_base_url.clone(),
-        ));
-        provide_context(sfn_ev_ids.clone());
-        provide_context(sfn_ev_relay.clone());
-        provide_context(theme_prefs);
-        provide_context(locale);
-    };
-
-    // Server function handler (POST /sfn/*)
-    let sfn_context = context_fn.clone();
-    let server_fn_handler = move |req: Request<Body>| {
-        let ctx = sfn_context.clone();
-        async move {
-            leptos_axum::handle_server_fns_with_context(ctx, req)
-                .await
-                .into_response()
-        }
-    };
-
-    // Leptos SSR page renderer — renders the SPA shell for GET requests
-    let page_renderer =
-        leptos_axum::render_app_to_stream_with_context(context_fn, bominal_frontend::app::shell);
+    // SPA static file serving: SvelteKit build output from `frontend/build/`
+    // Falls back to index.html for client-side routing.
+    let spa_dir = "frontend/build";
+    let spa_fallback = ServeFile::new(format!("{spa_dir}/index.html"));
 
     let app = Router::new()
         .nest("/api", api)
-        .route("/sfn/{*fn_name}", post(server_fn_handler))
-        .route_service(
-            "/style.css",
-            ServeFile::new("crates/bominal-frontend/style/output.css"),
-        )
-        .route_service(
-            "/interop.js",
-            ServeFile::new("crates/bominal-frontend/ts/interop.js"),
-        )
-        .nest_service("/pkg", ServeDir::new("pkg"))
         .route("/health", get(health_check))
         .route("/metrics", get(metrics_endpoint))
-        .fallback(get(page_renderer))
+        .fallback_service(
+            ServeDir::new(spa_dir)
+                .precompressed_br()
+                .precompressed_gzip()
+                .fallback(spa_fallback),
+        )
         .layer(CompressionLayer::new().gzip(true).br(true))
         .layer(RequestBodyLimitLayer::new(1_048_576)) // 1 MB
         .layer(SetResponseHeaderLayer::if_not_present(
@@ -294,7 +233,7 @@ pub async fn create_router(
         .layer(SetResponseHeaderLayer::if_not_present(
             axum::http::header::CONTENT_SECURITY_POLICY,
             HeaderValue::from_static(
-                "default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://js.evervault.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://*.evervault.com",
+                "default-src 'self'; script-src 'self' 'unsafe-inline' https://js.evervault.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://*.evervault.com",
             ),
         ))
         .layer(
