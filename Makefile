@@ -1,18 +1,13 @@
-.PHONY: css css-watch ts
+.PHONY: build release serve watch
 
-TAILWIND := $(shell command -v tailwindcss 2>/dev/null || echo "npx --yes @tailwindcss/cli")
+build:
+	cargo leptos build
 
-css:
-	$(TAILWIND) -i crates/bominal-frontend/style/main.css \
-	            -o crates/bominal-frontend/style/output.css \
-	            --content 'crates/bominal-frontend/src/**/*.rs'
+release:
+	cargo leptos build --release --precompress
 
-css-watch:
-	$(TAILWIND) -i crates/bominal-frontend/style/main.css \
-	            -o crates/bominal-frontend/style/output.css \
-	            --content 'crates/bominal-frontend/src/**/*.rs' --watch
+serve:
+	cargo leptos serve
 
-ts:
-	npx --yes esbuild crates/bominal-frontend/ts/interop.ts \
-	  --bundle --outfile=crates/bominal-frontend/ts/interop.js \
-	  --format=iife --global-name=BominalInterop
+watch:
+	cargo leptos watch

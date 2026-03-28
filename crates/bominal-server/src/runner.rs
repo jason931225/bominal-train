@@ -1,7 +1,7 @@
-//! Background reservation task runner — unified multi-provider loop.
+//! Background reservation task runner.
 //!
 //! Spawns a tokio task per active reservation that loops:
-//! 1. Search for target trains across all referenced providers
+//! 1. Search for the task's provider
 //! 2. Walk targets in priority order — first hit with available seats wins
 //! 3. If seat available -> reserve -> mark confirmed -> optional auto-pay
 //! 4. Sleep with gamma-distributed delay, retry
@@ -23,10 +23,10 @@ use bominal_email::EmailClient;
 use bominal_email::templates::reservation::{AlertKind, ReservationDetails};
 use bominal_service::providers::ktx::KtxClient;
 use bominal_service::providers::srt::SrtClient;
-use bominal_service::providers::srt::passenger::{PassengerGroup, PassengerType, WindowSeat, total_count};
+use bominal_service::providers::srt::passenger::{
+    PassengerGroup, PassengerType, WindowSeat, total_count,
+};
 use bominal_service::providers::types::{ProviderError, SeatPreference as ProviderSeatPreference};
-
-use bominal_domain::evervault::EvervaultConfig;
 
 use crate::sse::{EventBus, TaskEvent};
 
@@ -46,48 +46,45 @@ enum ProviderSession {
     },
 }
 
-/// Build authenticated sessions for every unique provider in the target list.
+/// Build an authenticated session for the task's provider.
 async fn build_sessions(
     db: &DbPool,
     user_id: uuid::Uuid,
-    target_trains: &TargetTrainList,
+    provider: TaskProvider,
     encryption_key: &EncryptionKey,
-    evervault: &EvervaultConfig,
+    evervault: &crate::evervault::EvervaultConfig,
 ) -> Result<HashMap<TaskProvider, ProviderSession>, Box<dyn std::error::Error + Send + Sync>> {
     let mut sessions = HashMap::new();
 
-    for provider in target_trains.unique_providers() {
-        let cred =
-            bominal_db::provider::find_by_user_and_provider(db, user_id, provider.as_str())
-                .await?
-                .ok_or_else(|| format!("No {} credentials found", provider))?;
-        let password = encryption::decrypt(encryption_key, &cred.encrypted_password)?;
+    let cred = bominal_db::provider::find_by_user_and_provider(db, user_id, provider.as_str())
+        .await?
+        .ok_or_else(|| format!("No {} credentials found", provider))?;
+    let password = encryption::decrypt(encryption_key, &cred.encrypted_password)?;
 
-        match provider {
-            TaskProvider::Srt => {
-                let mut client = SrtClient::with_relay(&evervault.srt_relay_domain);
-                client.login(&cred.login_id, &password).await?;
-                sessions.insert(
-                    provider,
-                    ProviderSession::Srt {
-                        client,
-                        login_id: cred.login_id,
-                        password,
-                    },
-                );
-            }
-            TaskProvider::Ktx => {
-                let mut client = KtxClient::with_relay(&evervault.ktx_relay_domain);
-                client.login(&cred.login_id, &password).await?;
-                sessions.insert(
-                    provider,
-                    ProviderSession::Ktx {
-                        client,
-                        login_id: cred.login_id,
-                        password,
-                    },
-                );
-            }
+    match provider {
+        TaskProvider::Srt => {
+            let mut client = SrtClient::with_relay(&evervault.srt_relay_domain);
+            client.login(&cred.login_id, &password).await?;
+            sessions.insert(
+                provider,
+                ProviderSession::Srt {
+                    client,
+                    login_id: cred.login_id,
+                    password,
+                },
+            );
+        }
+        TaskProvider::Ktx => {
+            let mut client = KtxClient::with_relay(&evervault.ktx_relay_domain);
+            client.login(&cred.login_id, &password).await?;
+            sessions.insert(
+                provider,
+                ProviderSession::Ktx {
+                    client,
+                    login_id: cred.login_id,
+                    password,
+                },
+            );
         }
     }
 
@@ -104,7 +101,7 @@ pub fn spawn_runner(
     event_bus: EventBus,
     email: EmailClient,
     encryption_key: EncryptionKey,
-    evervault: EvervaultConfig,
+    evervault: crate::evervault::EvervaultConfig,
     app_base_url: String,
 ) {
     tokio::spawn(async move {
@@ -133,7 +130,7 @@ async fn poll_and_dispatch(
     event_bus: &EventBus,
     email: &EmailClient,
     encryption_key: &EncryptionKey,
-    evervault: &EvervaultConfig,
+    evervault: &crate::evervault::EvervaultConfig,
     app_base_url: &str,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let tasks = bominal_db::task::claim_queued_tasks(db).await?;
@@ -194,21 +191,18 @@ async fn poll_and_dispatch(
 
 // ── Unified task loop ───────────────────────────────────────────────
 
-/// Run the reservation loop for a single task, regardless of provider mix.
-///
-/// Targets are walked in priority (ordinal) order. Each target carries its own
-/// provider, so a single task can search SRT and KTX simultaneously.
+/// Run the reservation loop for a single task.
 async fn run_task(
     db: &DbPool,
     task: &bominal_db::task::TaskRow,
     event_bus: &EventBus,
     email: &EmailClient,
     encryption_key: &EncryptionKey,
-    evervault: &EvervaultConfig,
+    evervault: &crate::evervault::EvervaultConfig,
     app_base_url: &str,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut sessions =
-        build_sessions(db, task.user_id, &task.target_trains, encryption_key, evervault).await?;
+        build_sessions(db, task.user_id, task.provider, encryption_key, evervault).await?;
 
     let seat_pref = parse_seat_preference(task.seat_preference);
     let passengers = parse_passengers(&task.passengers);
@@ -218,9 +212,9 @@ async fn run_task(
 
     info!(
         task_id = %task.id,
-        providers = ?task.target_trains.unique_providers(),
+        provider = %task.provider,
         target_count = task.target_trains.0.len(),
-        "Unified reservation loop starting"
+        "Reservation loop starting"
     );
 
     loop {
@@ -255,28 +249,25 @@ async fn run_task(
 
         bominal_db::task::record_attempt(db, task.id).await?;
 
-        // ── Search once per unique provider ─────────────────────
+        // ── Search current provider ─────────────────────────────
         let mut search_cache: HashMap<TaskProvider, SearchOutcome> = HashMap::new();
-
-        for provider in task.target_trains.unique_providers() {
-            let outcome = search_provider(
-                &mut sessions,
-                provider,
-                &task.departure_station,
-                &task.arrival_station,
-                &task.travel_date,
-                &task.departure_time,
-            )
-            .await;
-            search_cache.insert(provider, outcome);
-        }
+        let outcome = search_provider(
+            &mut sessions,
+            task.provider,
+            &task.departure_station,
+            &task.arrival_station,
+            &task.travel_date,
+            &task.departure_time,
+        )
+        .await;
+        search_cache.insert(task.provider, outcome);
 
         // ── Walk targets in priority order ──────────────────────
         let mut should_fail = false;
         let mut fail_message = String::new();
 
         for target in &task.target_trains.0 {
-            let outcome = match search_cache.get(&target.provider) {
+            let outcome = match search_cache.get(&task.provider) {
                 Some(o) => o,
                 None => continue,
             };
@@ -285,9 +276,8 @@ async fn run_task(
                 SearchOutcome::Ok(trains) => trains,
                 SearchOutcome::NoResults | SearchOutcome::NetFunnelBlocked => continue,
                 SearchOutcome::SessionExpired => {
-                    // Re-login this provider
-                    if let Err(e) = relogin_session(&mut sessions, target.provider).await {
-                        error!(task_id = %task.id, provider = %target.provider, error = %e, "Re-login failed");
+                    if let Err(e) = relogin_session(&mut sessions, task.provider).await {
+                        error!(task_id = %task.id, provider = %task.provider, error = %e, "Re-login failed");
                         bominal_db::task::update_status(db, task.id, TaskStatus::Failed).await?;
                         return Ok(());
                     }
@@ -305,9 +295,9 @@ async fn run_task(
             // Try to reserve this specific target
             let reserve_result = try_reserve_target(
                 &mut sessions,
-                target.provider,
+                task.provider,
                 &target.train_number,
-                trains,
+                &trains,
                 &passengers,
                 seat_pref,
                 psg_count,
@@ -322,18 +312,11 @@ async fn run_task(
                 } => {
                     info!(
                         task_id = %task.id,
-                        provider = %target.provider,
+                        provider = %task.provider,
                         pnr = %pnr,
                         "Reservation confirmed!"
                     );
-                    bominal_db::task::mark_confirmed(
-                        db,
-                        task.id,
-                        &pnr,
-                        &snapshot,
-                        target.provider,
-                    )
-                    .await?;
+                    bominal_db::task::mark_confirmed(db, task.id, &pnr, &snapshot).await?;
                     event_bus
                         .publish(
                             task.user_id,
@@ -342,7 +325,7 @@ async fn run_task(
                                 status: "confirmed".to_string(),
                                 message: format!(
                                     "Reservation confirmed! {} Train {} — PNR {}",
-                                    target.provider, target.train_number, pnr
+                                    task.provider, target.train_number, pnr
                                 ),
                                 attempt_count: task.attempt_count,
                                 reservation_number: Some(pnr.clone()),
@@ -363,7 +346,7 @@ async fn run_task(
                         try_auto_pay(
                             db,
                             &mut sessions,
-                            target.provider,
+                            task.provider,
                             task,
                             &pnr,
                             event_bus,
@@ -462,7 +445,13 @@ async fn search_provider(
             let result = bominal_service::retry_with_backoff!(
                 3,
                 client
-                    .search_train(dep_station, arr_station, Some(travel_date), Some(departure_time), false)
+                    .search_train(
+                        dep_station,
+                        arr_station,
+                        Some(travel_date),
+                        Some(departure_time),
+                        false
+                    )
                     .await
             );
             match result {
@@ -488,7 +477,13 @@ async fn search_provider(
             let result = bominal_service::retry_with_backoff!(
                 3,
                 client
-                    .search_train(dep_station, arr_station, Some(travel_date), Some(departure_time), false)
+                    .search_train(
+                        dep_station,
+                        arr_station,
+                        Some(travel_date),
+                        Some(departure_time),
+                        false
+                    )
                     .await
             );
             match result {
@@ -523,14 +518,14 @@ async fn relogin_session(
             login_id,
             password,
         }) => {
-            client.login(login_id, password).await?;
+            client.login(login_id.as_str(), password.as_str()).await?;
         }
         Some(ProviderSession::Ktx {
             client,
             login_id,
             password,
         }) => {
-            client.login(login_id, password).await?;
+            client.login(login_id.as_str(), password.as_str()).await?;
         }
         None => return Err(format!("No session for {provider}").into()),
     }
@@ -684,7 +679,14 @@ async fn try_auto_pay(
         Ok(Some(c)) => c,
         Ok(None) => {
             warn!(task_id = %task.id, card_id = %card_id, "Payment card not found for auto-pay");
-            set_awaiting_payment(db, task, pnr, event_bus, "Auto-pay failed: payment card not found. Please pay manually.").await;
+            set_awaiting_payment(
+                db,
+                task,
+                pnr,
+                event_bus,
+                "Auto-pay failed: payment card not found. Please pay manually.",
+            )
+            .await;
             return;
         }
         Err(e) => {
@@ -701,7 +703,14 @@ async fn try_auto_pay(
                     Ok(r) => r,
                     Err(e) => {
                         warn!(task_id = %task.id, error = %e, "Failed to list reservations for payment");
-                        set_awaiting_payment(db, task, pnr, event_bus, &format!("Auto-pay failed: {e}. Please pay manually.")).await;
+                        set_awaiting_payment(
+                            db,
+                            task,
+                            pnr,
+                            event_bus,
+                            &format!("Auto-pay failed: {e}. Please pay manually."),
+                        )
+                        .await;
                         return;
                     }
                 };
@@ -709,7 +718,14 @@ async fn try_auto_pay(
                     Some(r) => r,
                     None => {
                         warn!(task_id = %task.id, "Reservation not found in SRT list for payment");
-                        set_awaiting_payment(db, task, pnr, event_bus, "Auto-pay failed: reservation not found. Please pay manually.").await;
+                        set_awaiting_payment(
+                            db,
+                            task,
+                            pnr,
+                            event_bus,
+                            "Auto-pay failed: reservation not found. Please pay manually.",
+                        )
+                        .await;
                         return;
                     }
                 };
@@ -738,7 +754,14 @@ async fn try_auto_pay(
                     Ok(r) => r,
                     Err(e) => {
                         warn!(task_id = %task.id, error = %e, "Failed to list reservations for payment");
-                        set_awaiting_payment(db, task, pnr, event_bus, &format!("Auto-pay failed: {e}. Please pay manually.")).await;
+                        set_awaiting_payment(
+                            db,
+                            task,
+                            pnr,
+                            event_bus,
+                            &format!("Auto-pay failed: {e}. Please pay manually."),
+                        )
+                        .await;
                         return;
                     }
                 };
@@ -746,7 +769,14 @@ async fn try_auto_pay(
                     Some(r) => r,
                     None => {
                         warn!(task_id = %task.id, "Reservation not found in KTX list for payment");
-                        set_awaiting_payment(db, task, pnr, event_bus, "Auto-pay failed: reservation not found. Please pay manually.").await;
+                        set_awaiting_payment(
+                            db,
+                            task,
+                            pnr,
+                            event_bus,
+                            "Auto-pay failed: reservation not found. Please pay manually.",
+                        )
+                        .await;
                         return;
                     }
                 };
@@ -785,8 +815,15 @@ async fn try_auto_pay(
             )
             .await;
             if task.notify_enabled {
-                send_alert_email(db, email, task, AlertKind::PayFailed, Some(pnr), app_base_url)
-                    .await;
+                send_alert_email(
+                    db,
+                    email,
+                    task,
+                    AlertKind::PayFailed,
+                    Some(pnr),
+                    app_base_url,
+                )
+                .await;
             }
         }
     }
@@ -930,12 +967,10 @@ mod tests {
     fn extract_trains() {
         let trains = TargetTrainList(vec![
             bominal_domain::task::TargetTrain {
-                provider: TaskProvider::Srt,
                 train_number: "305".to_string(),
                 dep_time: "090000".to_string(),
             },
             bominal_domain::task::TargetTrain {
-                provider: TaskProvider::Ktx,
                 train_number: "101".to_string(),
                 dep_time: "100000".to_string(),
             },

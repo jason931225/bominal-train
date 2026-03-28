@@ -2,7 +2,7 @@
 
 ## What This Is
 
-Bominal is a Korean train reservation SaaS that searches for available seats across SRT and KTX providers, auto-books them, and handles payment with encrypted card details. The app has an Axum REST API backend. The frontend is being migrated from SvelteKit 2.16 SPA to Leptos 0.8 SSR with selective hydration (islands architecture), using a glass morphism design system with Korean/English/Japanese i18n.
+Bominal is a Korean train reservation SaaS that searches for available seats across SRT and KTX providers, auto-books them, and handles payment with encrypted card details. The app now runs as an Axum-served Leptos 0.8 SSR application with selective hydration, using a glass-morphism design system and Korean/English/Japanese i18n.
 
 ## Core Value
 
@@ -10,7 +10,7 @@ Users can search both train providers simultaneously, create an auto-booking tas
 
 ## Current Milestone
 
-**Leptos SSR Migration**: Replace the SvelteKit SPA with a Leptos 0.8 SSR application served directly by the Axum server. Faithful port of all 14 routes, 15 components, 283 i18n keys (ko/en/ja), SSE real-time updates, WebAuthn passkeys, and Evervault card encryption. Eliminates Node.js from the build pipeline.
+**Leptos SSR Migration**: Completed in the working tree. The Axum server now serves the Leptos app directly, all 14 routes and shared components are ported, passkey/Evervault interop is wired through the app-local browser boundary, and the build pipeline is cargo-leptos based.
 
 ## Requirements
 
@@ -29,18 +29,15 @@ Users can search both train providers simultaneously, create an auto-booking tas
 - Task runner polls and executes booking tasks
 - Evervault backend integration for card tokenization
 - AES-256-GCM encryption for provider credentials at rest
+- Leptos 0.8 SSR + islands app shell served directly from Axum
+- All 14 roadmap routes are defined in `bominal-app`
+- cargo-leptos build pipeline replaces the old JS-package-manager frontend build flow
+- Shared `bominal-ui` train/auth styling renders through the active app stylesheet
+- Final cleanup removed the obsolete `frontend/` and donor Leptos crate trees
 
 ### Active
 
-- [ ] Leptos 0.8 crate setup with islands architecture (SSR + selective hydration)
-- [ ] Faithful port of all SvelteKit pages to Leptos components
-- [ ] Server functions proxying to existing /api/ endpoints
-- [ ] i18n system ported with all 283 keys x 3 locales
-- [ ] SSE real-time updates preserved in Leptos islands
-- [ ] WebAuthn passkey interop via web-sys/wasm-bindgen
-- [ ] Evervault card encryption interop via wasm-bindgen
-- [ ] cargo-leptos build system (no npm/Node.js)
-- [ ] Tailwind CSS migration to standalone CLI
+- [ ] Milestone archival/tagging and next-milestone setup
 
 ### Out of Scope
 
@@ -51,15 +48,13 @@ Users can search both train providers simultaneously, create an auto-booking tas
 
 ## Context
 
-- **Stack**: Axum 0.8 (Rust) backend + Leptos 0.8 SSR frontend (migrating from SvelteKit) + PostgreSQL 16 + Valkey
-- **Frontend crate**: `crates/bominal-app/` (rewriting in place from CSR to SSR islands)
-- **Dead crate**: `crates/bominal-frontend/` (to be deleted — no source files, just misleading Cargo.toml)
-- **SvelteKit**: `frontend/` (being replaced, will be deleted after verification)
+- **Stack**: Axum 0.8 (Rust) backend + Leptos 0.8 SSR frontend + PostgreSQL 16 + Valkey
+- **Frontend crate**: `crates/bominal-app/` (active SSR/islands app)
 - **Providers**: SRT and KTX (Korean high-speed rail operators)
 - **Encryption**: Evervault for card tokenization, AES-256-GCM for provider API credentials
 - **Auth**: WebAuthn passkeys (primary) + email/password (fallback) + Argon2 hashing
 - **Design**: Apple-inspired glass morphism with Inter font, two themes (Glass, Clear Sky), light/dark mode
-- **Build**: Migrating from `./dev-build.sh` (npm + cargo) to `cargo leptos build` (no npm)
+- **Build**: cargo-leptos + Tailwind standalone CLI, static assets emitted to `target/site`
 
 ## Constraints
 
@@ -67,8 +62,8 @@ Users can search both train providers simultaneously, create an auto-booking tas
 - **Providers**: Must support both SRT and KTX APIs
 - **Security**: Card data must never touch our servers unencrypted (Evervault requirement)
 - **i18n**: Korean is primary language, all user-facing strings must be localized (ko/en/ja)
-- **Parity**: Every SvelteKit page and component must have a Leptos equivalent
-- **No npm**: Final build pipeline must not require Node.js
+- **Parity**: The Leptos app must preserve the migrated user flows across auth, search, tasks, reservations, and settings
+- **Rust-first build**: Final build pipeline must not require a JS package manager
 
 ## Key Decisions
 
@@ -79,7 +74,7 @@ Users can search both train providers simultaneously, create an auto-booking tas
 | cargo-leptos for build | Standard Leptos build tool, handles dual SSR+WASM | Adopted |
 | Tailwind standalone CLI (no npm) | Eliminates Node.js from build pipeline | Adopted |
 | Rewrite bominal-app in place | Existing crate has salvageable patterns | Adopted |
-| Delete bominal-frontend | Dead code, no source files | Adopted |
+| Remove donor frontend trees at migration close | Prevent stale docs/build surfaces from surviving the cutover | Adopted |
 | SvelteKit to Leptos migration | Full-stack Rust, eliminate JS toolchain, better performance | Adopted |
 | Evervault for card encryption | PCI compliance without self-hosting | Retained |
 | Multi-provider simultaneous search | Users want best available across both providers | Retained |
@@ -102,4 +97,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-26 -- Roadmap replaced for Leptos SSR migration*
+*Last updated: 2026-03-27 -- migration implementation complete, archival pending*

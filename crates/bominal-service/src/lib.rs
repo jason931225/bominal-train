@@ -1,8 +1,8 @@
 //! Bominal service layer — shared business logic for REST and Leptos server functions.
 //!
 //! This crate contains all domain operations (validate, query, encrypt, call provider)
-//! so that both the REST API (`bominal-server`) and Leptos server functions
-//! (`bominal-frontend`) delegate here instead of duplicating logic.
+//! so that both the REST API (`bominal-server`) and the Leptos app/server layer
+//! (`bominal-app`) delegate here instead of duplicating logic.
 
 pub mod auth;
 pub mod cards;

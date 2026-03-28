@@ -30,7 +30,7 @@ pub enum ServiceError {
 
     /// Provider API error (SRT/KTX).
     #[error("{0}")]
-    Provider(#[from] bominal_provider::types::ProviderError),
+    Provider(#[from] crate::providers::types::ProviderError),
 
     /// Catch-all for unexpected internal failures.
     #[error("Internal error: {0}")]

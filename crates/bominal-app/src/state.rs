@@ -149,7 +149,7 @@ fn theme_prefs_from_cookie_header(cookie_header: Option<&str>) -> (ThemeName, Th
     (theme, mode)
 }
 
-fn request_theme_prefs() -> (ThemeName, ThemeMode) {
+pub(crate) fn request_theme_prefs() -> (ThemeName, ThemeMode) {
     #[cfg(feature = "ssr")]
     {
         if let Some(parts) = use_context::<axum::http::request::Parts>() {

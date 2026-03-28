@@ -1,5 +1,7 @@
 //! Typed Leptos server functions that proxy the existing Axum `/api/...` routes.
 
+pub mod passkey;
+
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -135,10 +137,20 @@ mod ssr {
             request = request.json(body);
         }
 
-        request
+        let response = request
             .send()
             .await
-            .map_err(|error| ServerFnError::new(format!("API proxy request failed: {error}")))
+            .map_err(|error| ServerFnError::new(format!("API proxy request failed: {error}")))?;
+
+        if let Some(response_options) = use_context::<leptos_axum::ResponseOptions>() {
+            for value in response.headers().get_all(reqwest::header::SET_COOKIE) {
+                if let Ok(value) = axum::http::HeaderValue::from_bytes(value.as_bytes()) {
+                    response_options.append_header(axum::http::header::SET_COOKIE, value);
+                }
+            }
+        }
+
+        Ok(response)
     }
 
     pub(super) async fn request_json<T, B>(
@@ -186,6 +198,59 @@ mod ssr {
     }
 }
 
+#[cfg(feature = "ssr")]
+fn redirect_with_query(path: &str, params: &[(&str, String)]) {
+    let mut target = path.to_string();
+
+    if !params.is_empty() {
+        let mut serializer = url::form_urlencoded::Serializer::new(String::new());
+        for (key, value) in params {
+            serializer.append_pair(key, value);
+        }
+
+        let query = serializer.finish();
+        if !query.is_empty() {
+            target.push('?');
+            target.push_str(&query);
+        }
+    }
+
+    leptos_axum::redirect(&target);
+}
+
+#[cfg(feature = "ssr")]
+fn cleaned_error_message(error: &ServerFnError) -> String {
+    let message = error.to_string();
+    let cleaned = message
+        .strip_prefix("error running server function: ")
+        .unwrap_or(&message)
+        .trim();
+
+    if cleaned.is_empty() {
+        "Something went wrong".to_string()
+    } else {
+        cleaned.to_string()
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn redirect_with_error(path: &str, error: &ServerFnError) {
+    redirect_with_query(path, &[("error", cleaned_error_message(error))]);
+}
+
+#[cfg(feature = "ssr")]
+fn append_cookie(name: &str, value: &str) -> Result<(), ServerFnError> {
+    let response = use_context::<leptos_axum::ResponseOptions>()
+        .ok_or_else(|| ServerFnError::new("ResponseOptions not available"))?;
+
+    let cookie = format!("{name}={value}; Path=/; Max-Age=31536000; SameSite=Lax");
+    let value = axum::http::HeaderValue::from_str(&cookie)
+        .map_err(|_| ServerFnError::new("Invalid cookie value"))?;
+    response.append_header(axum::http::header::SET_COOKIE, value);
+
+    Ok(())
+}
+
 #[server(prefix = "/sfn")]
 pub async fn get_me() -> Result<Option<AuthResponse>, ServerFnError> {
     #[cfg(feature = "ssr")]
@@ -229,6 +294,28 @@ pub async fn login(email: String, password: String) -> Result<AuthResponse, Serv
 }
 
 #[server(prefix = "/sfn")]
+pub async fn login_submit(email: String, password: String) -> Result<(), ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        match login(email, password).await {
+            Ok(_) => {
+                leptos_axum::redirect("/home");
+                return Ok(());
+            }
+            Err(error) => {
+                redirect_with_error("/auth/login", &error);
+                return Ok(());
+            }
+        }
+    }
+
+    #[allow(unreachable_code)]
+    Err(ServerFnError::new(
+        "login_submit is only available during SSR",
+    ))
+}
+
+#[server(prefix = "/sfn")]
 pub async fn register(
     email: String,
     password: String,
@@ -253,6 +340,32 @@ pub async fn register(
 }
 
 #[server(prefix = "/sfn")]
+pub async fn register_submit(
+    email: String,
+    password: String,
+    display_name: String,
+) -> Result<(), ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        match register(email, password, display_name).await {
+            Ok(_) => {
+                leptos_axum::redirect("/auth/verify");
+                return Ok(());
+            }
+            Err(error) => {
+                redirect_with_error("/auth/signup", &error);
+                return Ok(());
+            }
+        }
+    }
+
+    #[allow(unreachable_code)]
+    Err(ServerFnError::new(
+        "register_submit is only available during SSR",
+    ))
+}
+
+#[server(prefix = "/sfn")]
 pub async fn forgot_password(email: String) -> Result<(), ServerFnError> {
     #[cfg(feature = "ssr")]
     {
@@ -267,6 +380,28 @@ pub async fn forgot_password(email: String) -> Result<(), ServerFnError> {
     #[allow(unreachable_code)]
     Err(ServerFnError::new(
         "forgot_password is only available during SSR",
+    ))
+}
+
+#[server(prefix = "/sfn")]
+pub async fn forgot_password_submit(email: String) -> Result<(), ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        match forgot_password(email).await {
+            Ok(()) => {
+                redirect_with_query("/auth/forgot", &[("sent", "1".to_string())]);
+                return Ok(());
+            }
+            Err(error) => {
+                redirect_with_error("/auth/forgot", &error);
+                return Ok(());
+            }
+        }
+    }
+
+    #[allow(unreachable_code)]
+    Err(ServerFnError::new(
+        "forgot_password_submit is only available during SSR",
     ))
 }
 
@@ -288,6 +423,50 @@ pub async fn reset_password(token: String, new_password: String) -> Result<(), S
     #[allow(unreachable_code)]
     Err(ServerFnError::new(
         "reset_password is only available during SSR",
+    ))
+}
+
+#[server(prefix = "/sfn")]
+pub async fn reset_password_submit(
+    token: String,
+    new_password: String,
+    confirm_password: String,
+) -> Result<(), ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        if new_password != confirm_password {
+            redirect_with_query(
+                "/reset-password",
+                &[
+                    ("token", token),
+                    ("error", "Passwords do not match.".to_string()),
+                ],
+            );
+            return Ok(());
+        }
+
+        let token_for_error = token.clone();
+        match reset_password(token, new_password).await {
+            Ok(()) => {
+                redirect_with_query("/reset-password", &[("done", "1".to_string())]);
+                return Ok(());
+            }
+            Err(error) => {
+                redirect_with_query(
+                    "/reset-password",
+                    &[
+                        ("token", token_for_error),
+                        ("error", cleaned_error_message(&error)),
+                    ],
+                );
+                return Ok(());
+            }
+        }
+    }
+
+    #[allow(unreachable_code)]
+    Err(ServerFnError::new(
+        "reset_password_submit is only available during SSR",
     ))
 }
 
@@ -328,11 +507,37 @@ pub async fn resend_verification() -> Result<(), ServerFnError> {
 }
 
 #[server(prefix = "/sfn")]
+pub async fn resend_verification_submit() -> Result<(), ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        match resend_verification().await {
+            Ok(()) => {
+                redirect_with_query(
+                    "/auth/verify",
+                    &[("notice", "Verification email resent.".to_string())],
+                );
+                return Ok(());
+            }
+            Err(error) => {
+                redirect_with_error("/auth/verify", &error);
+                return Ok(());
+            }
+        }
+    }
+
+    #[allow(unreachable_code)]
+    Err(ServerFnError::new(
+        "resend_verification_submit is only available during SSR",
+    ))
+}
+
+#[server(prefix = "/sfn")]
 pub async fn logout() -> Result<(), ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        return ssr::request_no_content::<()>(reqwest::Method::POST, "/api/auth/logout", None)
-            .await;
+        ssr::request_no_content::<()>(reqwest::Method::POST, "/api/auth/logout", None).await?;
+        leptos_axum::redirect("/auth");
+        return Ok(());
     }
 
     #[allow(unreachable_code)]
@@ -384,6 +589,38 @@ pub async fn add_provider(
 }
 
 #[server(prefix = "/sfn")]
+pub async fn add_provider_submit(
+    provider: String,
+    login_id: String,
+    password: String,
+) -> Result<(), ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        match add_provider(provider.clone(), login_id, password).await {
+            Ok(_) => {
+                redirect_with_query("/settings", &[("notice", format!("{provider} saved."))]);
+                return Ok(());
+            }
+            Err(error) => {
+                redirect_with_query(
+                    "/settings",
+                    &[(
+                        "error",
+                        format!("{provider}: {}", cleaned_error_message(&error)),
+                    )],
+                );
+                return Ok(());
+            }
+        }
+    }
+
+    #[allow(unreachable_code)]
+    Err(ServerFnError::new(
+        "add_provider_submit is only available during SSR",
+    ))
+}
+
+#[server(prefix = "/sfn")]
 pub async fn delete_provider(provider: String) -> Result<(), ServerFnError> {
     #[cfg(feature = "ssr")]
     {
@@ -398,6 +635,34 @@ pub async fn delete_provider(provider: String) -> Result<(), ServerFnError> {
     #[allow(unreachable_code)]
     Err(ServerFnError::new(
         "delete_provider is only available during SSR",
+    ))
+}
+
+#[server(prefix = "/sfn")]
+pub async fn delete_provider_submit(provider: String) -> Result<(), ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        match delete_provider(provider.clone()).await {
+            Ok(()) => {
+                redirect_with_query("/settings", &[("notice", format!("{provider} removed."))]);
+                return Ok(());
+            }
+            Err(error) => {
+                redirect_with_query(
+                    "/settings",
+                    &[(
+                        "error",
+                        format!("{provider}: {}", cleaned_error_message(&error)),
+                    )],
+                );
+                return Ok(());
+            }
+        }
+    }
+
+    #[allow(unreachable_code)]
+    Err(ServerFnError::new(
+        "delete_provider_submit is only available during SSR",
     ))
 }
 
@@ -445,6 +710,28 @@ pub async fn update_card(card_id: String, label: String) -> Result<CardInfo, Ser
 }
 
 #[server(prefix = "/sfn")]
+pub async fn update_card_submit(card_id: String, label: String) -> Result<(), ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        match update_card(card_id, label).await {
+            Ok(_) => {
+                redirect_with_query("/settings", &[("notice", "Card updated.".to_string())]);
+                return Ok(());
+            }
+            Err(error) => {
+                redirect_with_error("/settings", &error);
+                return Ok(());
+            }
+        }
+    }
+
+    #[allow(unreachable_code)]
+    Err(ServerFnError::new(
+        "update_card_submit is only available during SSR",
+    ))
+}
+
+#[server(prefix = "/sfn")]
 pub async fn delete_card(card_id: String) -> Result<(), ServerFnError> {
     #[cfg(feature = "ssr")]
     {
@@ -459,6 +746,70 @@ pub async fn delete_card(card_id: String) -> Result<(), ServerFnError> {
     #[allow(unreachable_code)]
     Err(ServerFnError::new(
         "delete_card is only available during SSR",
+    ))
+}
+
+#[server(prefix = "/sfn")]
+pub async fn delete_card_submit(card_id: String) -> Result<(), ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        match delete_card(card_id).await {
+            Ok(()) => {
+                redirect_with_query("/settings", &[("notice", "Card removed.".to_string())]);
+                return Ok(());
+            }
+            Err(error) => {
+                redirect_with_error("/settings", &error);
+                return Ok(());
+            }
+        }
+    }
+
+    #[allow(unreachable_code)]
+    Err(ServerFnError::new(
+        "delete_card_submit is only available during SSR",
+    ))
+}
+
+#[server(prefix = "/sfn")]
+pub async fn set_appearance(
+    theme: Option<String>,
+    mode: Option<String>,
+    locale: Option<String>,
+) -> Result<(), ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        if let Some(theme) = theme
+            .as_deref()
+            .and_then(crate::state::ThemeName::parse)
+            .map(crate::state::ThemeName::as_str)
+        {
+            append_cookie(crate::state::THEME_COOKIE, theme)?;
+        }
+
+        if let Some(mode) = mode
+            .as_deref()
+            .and_then(crate::state::ThemeMode::parse)
+            .map(crate::state::ThemeMode::as_str)
+        {
+            append_cookie(crate::state::MODE_COOKIE, mode)?;
+        }
+
+        if let Some(locale) = locale.as_deref() {
+            let locale = bominal_domain::i18n::Locale::from_code(locale);
+            append_cookie(crate::i18n::LOCALE_COOKIE, locale.code())?;
+        }
+
+        redirect_with_query(
+            "/settings",
+            &[("notice", "Appearance updated.".to_string())],
+        );
+        return Ok(());
+    }
+
+    #[allow(unreachable_code)]
+    Err(ServerFnError::new(
+        "set_appearance is only available during SSR",
     ))
 }
 

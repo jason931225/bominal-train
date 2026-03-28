@@ -8,4 +8,5 @@ pub mod i18n;
 pub mod reservation;
 pub mod station_search;
 pub mod task;
+pub mod task_event;
 pub mod user;
