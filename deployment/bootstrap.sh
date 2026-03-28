@@ -130,29 +130,6 @@ setup_rust() {
     ok "Rust toolchain ready"
 }
 
-# ─── Node.js (for React prototype dev + Tailwind) ────────────────────
-setup_node() {
-    info "Setting up Node.js..."
-
-    if ! command_exists node; then
-        if [ "$OS" = "macos" ]; then
-            brew install node
-        else
-            curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
-            sudo apt-get install -y -qq nodejs
-        fi
-    fi
-
-    # Install project dependencies
-    cd "$PROJECT_ROOT"
-    if [ -f package.json ] && [ ! -d node_modules ]; then
-        info "Installing npm dependencies..."
-        npm install
-    fi
-
-    ok "Node.js ready ($(node --version))"
-}
-
 # ─── Tailwind CSS v4 Standalone + Lightning CSS ──────────────────────
 setup_css_tools() {
     info "Setting up CSS tooling..."
@@ -308,8 +285,6 @@ verify() {
 
     check rustc
     check cargo
-    check node
-    check npm
     check psql
     check caddy
     check brotli
@@ -330,7 +305,7 @@ verify() {
     info "Next steps:"
     echo "  1. Review and edit .env file"
     echo "  2. Run: cargo leptos serve    (start dev server)"
-    echo "  3. Run: npm run dev           (React prototype)"
+    echo "  3. Run: cargo leptos build    (one-off local build)"
     echo ""
 }
 
@@ -345,7 +320,6 @@ main() {
     detect_os
     install_system_deps
     setup_rust
-    setup_node
     setup_css_tools
     setup_database
     setup_valkey

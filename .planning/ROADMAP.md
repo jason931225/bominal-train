@@ -18,11 +18,11 @@ Rewrite the bominal-train frontend from SvelteKit 2.16 SPA to Leptos 0.8 SSR wit
 - [x] **Phase 3: Shell and Navigation** - Root App with router, layout, Sidebar, BottomNav (completed 2026-03-27)
 - [x] **Phase 4: Auth Pages** - All 8 auth-related routes (landing, login, signup, forgot, verify, add-passkey, verify-email, reset-password) (completed 2026-03-27)
 - [x] **Phase 5: Core Pages** - Home, search, tasks, reservations (the main application) (completed 2026-03-27)
-- [ ] **Phase 6: Settings and Shared Components** - Settings page, remaining SSR and island components
-- [ ] **Phase 7: Client-Only Interop** - WebAuthn passkey and Evervault card encryption via web-sys/wasm-bindgen
-- [ ] **Phase 8: Server Integration** - Replace SPA serving with leptos_axum, merge state, wire SSR handler
-- [ ] **Phase 9: CSS and Build Pipeline** - Tailwind CSS migration (no npm), Dockerfile update, dev workflow
-- [ ] **Phase 10: Cleanup** - Remove frontend/, update documentation, final verification
+- [x] **Phase 6: Settings and Shared Components** - Settings page, remaining SSR and island components (completed 2026-03-27)
+- [x] **Phase 7: Client-Only Interop** - WebAuthn passkey and Evervault card encryption via web-sys/wasm-bindgen (completed 2026-03-27)
+- [x] **Phase 8: Server Integration** - Replace SPA serving with leptos_axum, merge state, wire SSR handler (completed 2026-03-27)
+- [x] **Phase 9: CSS and Build Pipeline** - Tailwind CSS migration (no npm), Dockerfile update, dev workflow (completed 2026-03-27)
+- [x] **Phase 10: Cleanup** - Remove frontend/, update documentation, final verification (completed 2026-03-27)
 
 ## Phase Details
 
@@ -31,7 +31,7 @@ Rewrite the bominal-train frontend from SvelteKit 2.16 SPA to Leptos 0.8 SSR wit
 **Depends on**: Nothing (first phase)
 **Requirements**: FND-01, FND-02, FND-03, FND-04, FND-05
 **Success Criteria** (what must be TRUE):
-  1. `bominal-frontend` remains outside the active cargo-leptos build path and misleading workspace references are removed
+  1. Donor frontend code remains outside the active cargo-leptos build path and misleading workspace references are removed
   2. `bominal-app/Cargo.toml` has ssr/hydrate features with islands architecture deps
   3. Workspace `[workspace.dependencies]` includes leptos, leptos_meta, leptos_router, leptos_axum
   4. Root `Cargo.toml` contains `[[workspace.metadata.leptos]]` with the correct bin-package/lib-package/feature config
@@ -100,7 +100,7 @@ Plans:
   1. Settings page has provider credential management, card management, appearance toggles, logout
   2. Pure SSR components (GlassPanel, StatusChip, Skeleton, Icon, CardBrand) render correctly
   3. Interactive components (BottomSheet, SelectionPrompt, TicketCard, TaskCard) hydrate correctly
-**Plans:** 2 plans (estimated)
+**Plans:** 2/2 plans complete
 **UI hint**: yes
 
 ### Phase 7: Client-Only Interop
@@ -111,7 +111,7 @@ Plans:
   1. Passkey login via navigator.credentials.get() works from WASM
   2. Passkey registration via navigator.credentials.create() works from WASM
   3. Evervault card encryption via JS SDK wrapper works from WASM
-**Plans:** 2 plans (estimated)
+**Plans:** 2/2 plans complete
 
 ### Phase 8: Server Integration
 **Goal**: Axum server serves Leptos SSR instead of static SvelteKit files
@@ -122,7 +122,7 @@ Plans:
   2. WASM bundle and CSS served as static assets
   3. All existing /api/ endpoints still work unchanged
   4. Server functions can access SharedState (DB pool, encryption key)
-**Plans:** 2 plans (estimated)
+**Plans:** 2/2 plans complete
 
 ### Phase 9: CSS and Build Pipeline
 **Goal**: Shared `bominal-ui` styling and the remaining CSS pipeline build without npm, Dockerfile updated, dev workflow uses cargo-leptos
@@ -133,7 +133,7 @@ Plans:
   2. Tailwind scans .rs files for class names
   3. Docker build produces working image without Node.js
   4. `cargo leptos build` replaces `./dev-build.sh`
-**Plans:** 2 plans (estimated)
+**Plans:** 2/2 plans complete
 **UI hint**: yes (visual verification of design system)
 
 ### Phase 10: Cleanup
@@ -145,7 +145,9 @@ Plans:
   2. CLAUDE.md reflects Leptos architecture
   3. No npm/Node.js references remain in build scripts
   4. All quality gates pass (QG-01 through QG-07)
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
+Plans:
+- [ ] 10-01-PLAN.md -- Remove the obsolete frontend trees, update repo/planning docs, and run the final release/build/reference verification sweep
 
 ## Dependency Graph
 
@@ -210,9 +212,9 @@ Phases 8-10 are sequential post-integration.
 | TimeSlider | Island | 5 |
 | SortableList | Island | 5 |
 | BottomSheet | Island | 6 |
-| SelectionPrompt | Island | 5 |
-| TicketCard | Island | 5 |
-| TaskCard | Island | 5 |
+| SelectionPrompt | Island | 6 |
+| TicketCard | Island | 6 |
+| TaskCard | Island | 6 |
 
 ### Key Decisions
 
@@ -223,7 +225,7 @@ Phases 8-10 are sequential post-integration.
 | cargo-leptos for build | Standard Leptos build tool, handles dual SSR+WASM compilation |
 | Tailwind standalone CLI (no npm) | Eliminates Node.js from entire build pipeline |
 | Rewrite bominal-app in place | Existing crate has salvageable patterns (i18n, API, auth context) |
-| Keep `bominal-frontend` as donor code outside the active build path | Preserve reusable prototype work without splitting the migration target |
+| Treat donor frontend code as temporary migration input only | Reuse prototype work during the port, then remove it in the final cleanup |
 | `bominal-ui` is the UI source of truth | Shared Bominal UI must stay aligned across products; train app should consume/reference the canonical crate |
 
 ---

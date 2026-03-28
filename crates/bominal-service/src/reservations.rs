@@ -146,7 +146,7 @@ pub async fn pay_with_raw_card(
 
     match provider {
         "SRT" => {
-            let mut client = bominal_provider::srt::SrtClient::with_relay(relay_domain);
+            let mut client = crate::providers::srt::SrtClient::with_relay(relay_domain);
             client.login(&login_id, &password).await?;
 
             let reservations = client.get_reservations().await?;
@@ -168,7 +168,7 @@ pub async fn pay_with_raw_card(
                 .await?;
         }
         "KTX" => {
-            let mut client = bominal_provider::ktx::KtxClient::with_relay(relay_domain);
+            let mut client = crate::providers::ktx::KtxClient::with_relay(relay_domain);
             client.login(&login_id, &password).await?;
 
             let reservations = client.get_reservations().await?;
@@ -253,7 +253,7 @@ async fn require_decrypted_credentials(
 // ── SRT implementation ──────────────────────────────────────────────
 
 async fn list_srt(login_id: &str, password: &str) -> Result<Vec<ReservationInfo>, ServiceError> {
-    let mut client = bominal_provider::srt::SrtClient::new();
+    let mut client = crate::providers::srt::SrtClient::new();
     client.login(login_id, password).await?;
 
     let reservations = client.get_reservations().await?;
@@ -285,7 +285,7 @@ async fn srt_ticket_detail(
     password: &str,
     pnr: &str,
 ) -> Result<Vec<TicketInfo>, ServiceError> {
-    let mut client = bominal_provider::srt::SrtClient::new();
+    let mut client = crate::providers::srt::SrtClient::new();
     client.login(login_id, password).await?;
 
     let tickets = client.ticket_info(pnr).await?;
@@ -305,7 +305,7 @@ async fn srt_ticket_detail(
 }
 
 async fn cancel_srt(login_id: &str, password: &str, pnr: &str) -> Result<(), ServiceError> {
-    let mut client = bominal_provider::srt::SrtClient::new();
+    let mut client = crate::providers::srt::SrtClient::new();
     client.login(login_id, password).await?;
     client.cancel(pnr).await?;
     Ok(())
@@ -323,7 +323,7 @@ async fn pay_srt(
     card_type: &str,
     relay_domain: &str,
 ) -> Result<(), ServiceError> {
-    let mut client = bominal_provider::srt::SrtClient::with_relay(relay_domain);
+    let mut client = crate::providers::srt::SrtClient::with_relay(relay_domain);
     client.login(login_id, password).await?;
 
     let reservations = client.get_reservations().await?;
@@ -350,7 +350,7 @@ async fn pay_srt(
 // ── KTX implementation ──────────────────────────────────────────────
 
 async fn list_ktx(login_id: &str, password: &str) -> Result<Vec<ReservationInfo>, ServiceError> {
-    let mut client = bominal_provider::ktx::KtxClient::new();
+    let mut client = crate::providers::ktx::KtxClient::new();
     client.login(login_id, password).await?;
 
     let reservations = client.get_reservations().await?;
@@ -382,7 +382,7 @@ async fn ktx_ticket_detail(
     password: &str,
     pnr: &str,
 ) -> Result<Vec<TicketInfo>, ServiceError> {
-    let mut client = bominal_provider::ktx::KtxClient::new();
+    let mut client = crate::providers::ktx::KtxClient::new();
     client.login(login_id, password).await?;
 
     let tickets = client.ticket_info(pnr).await?;
@@ -405,7 +405,7 @@ async fn ktx_ticket_detail(
 }
 
 async fn cancel_ktx(login_id: &str, password: &str, pnr: &str) -> Result<(), ServiceError> {
-    let mut client = bominal_provider::ktx::KtxClient::new();
+    let mut client = crate::providers::ktx::KtxClient::new();
     client.login(login_id, password).await?;
 
     let reservations = client.get_reservations().await?;
@@ -430,7 +430,7 @@ async fn pay_ktx(
     card_type: &str,
     relay_domain: &str,
 ) -> Result<(), ServiceError> {
-    let mut client = bominal_provider::ktx::KtxClient::with_relay(relay_domain);
+    let mut client = crate::providers::ktx::KtxClient::with_relay(relay_domain);
     client.login(login_id, password).await?;
 
     let reservations = client.get_reservations().await?;
@@ -455,7 +455,7 @@ async fn pay_ktx(
 }
 
 async fn refund_ktx(login_id: &str, password: &str, pnr: &str) -> Result<(), ServiceError> {
-    let mut client = bominal_provider::ktx::KtxClient::new();
+    let mut client = crate::providers::ktx::KtxClient::new();
     client.login(login_id, password).await?;
 
     let tickets = client.ticket_info(pnr).await?;

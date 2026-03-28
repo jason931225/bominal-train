@@ -13,6 +13,7 @@ pub use signup::SignupPage;
 pub use verify::AuthVerifyPage;
 
 use leptos::prelude::*;
+use serde::{Deserialize, Serialize};
 use server_fn::error::ServerFnError;
 
 use crate::i18n::t;
@@ -44,36 +45,99 @@ pub(crate) fn format_server_error(error: &ServerFnError) -> String {
         .to_string()
 }
 
-/// Main auth page (/auth) — passkey button + email/signup navigation.
-#[component]
-pub fn SignInPage() -> impl IntoView {
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+pub enum PasskeyActionKind {
+    Login,
+    Register,
+}
+
+#[island]
+pub(super) fn PasskeyActionButton(
+    kind: PasskeyActionKind,
+    class_name: String,
+    label: String,
+    loading_label: String,
+    error_fallback: String,
+    show_icon: bool,
+) -> impl IntoView {
     let (loading, set_loading) = signal(false);
     let (error, set_error) = signal(String::new());
 
-    let handle_passkey = move |_| {
+    let on_click = move |_| {
         set_loading.set(true);
         set_error.set(String::new());
+        let fallback = error_fallback.clone();
 
-        #[cfg(target_arch = "wasm32")]
-        {
-            wasm_bindgen_futures::spawn_local(async move {
-                if let Err(error) = crate::api::passkey::do_passkey_login().await {
-                    let message = error
-                        .as_string()
-                        .unwrap_or_else(|| "Passkey login failed".to_string());
-                    set_error.set(message);
-                }
-                set_loading.set(false);
-            });
-        }
+        wasm_bindgen_futures::spawn_local(async move {
+            let result = match kind {
+                PasskeyActionKind::Login => crate::api::passkey::do_passkey_login().await,
+                PasskeyActionKind::Register => crate::api::passkey::do_passkey_register().await,
+            };
 
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            set_error.set("Passkey login is only available in the browser.".to_string());
+            if let Err(error) = result {
+                let message = error.as_string().unwrap_or_else(|| fallback.clone());
+                set_error.set(message);
+            }
+
             set_loading.set(false);
-        }
+        });
     };
 
+    view! {
+        <div class="flex flex-col gap-3">
+            <button
+                type="button"
+                class=class_name
+                disabled=move || loading.get()
+                on:click=on_click
+            >
+                {show_icon.then_some(view! {
+                    <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="24"
+                        height="24"
+                        viewBox="0 0 256 256"
+                        fill="currentColor"
+                    >
+                        <path d=FINGERPRINT_ICON />
+                    </svg>
+                })}
+                {move || if loading.get() { loading_label.clone() } else { label.clone() }}
+            </button>
+
+            {move || {
+                let message = error.get();
+                if message.is_empty() {
+                    None
+                } else {
+                    Some(view! {
+                        <p class="text-sm text-center" style="color: var(--lg-error);">{message}</p>
+                    })
+                }
+            }}
+        </div>
+    }
+}
+
+#[island]
+pub(super) fn ConditionalPasskeyLogin() -> impl IntoView {
+    Effect::new(move |_| {
+        wasm_bindgen_futures::spawn_local(async move {
+            if let Err(error) = crate::api::passkey::do_conditional_passkey_login().await {
+                leptos::logging::log!(
+                    "Conditional passkey login failed: {}",
+                    error.as_string().unwrap_or_default()
+                );
+            }
+        });
+    });
+
+    view! { <></> }
+}
+
+/// Main auth page (/auth) — passkey button + email/signup navigation.
+#[component]
+pub fn SignInPage() -> impl IntoView {
     auth_shell(view! {
         <div class="lg-glass-panel flex flex-col items-center gap-6 p-6 text-center">
             <div
@@ -101,33 +165,14 @@ pub fn SignInPage() -> impl IntoView {
                 {t("auth.get_started")}
             </p>
 
-            {move || {
-                let err = error.get();
-                if err.is_empty() {
-                    None
-                } else {
-                    Some(view! {
-                        <p class="text-sm" style="color: var(--lg-error);">{err}</p>
-                    })
-                }
-            }}
-
-            <button
-                class="lg-btn-primary squish flex w-full items-center justify-center gap-3 rounded-2xl px-6 py-3.5 text-base"
-                disabled=move || loading.get()
-                on:click=handle_passkey
-            >
-                <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="24"
-                    height="24"
-                    viewBox="0 0 256 256"
-                    fill="currentColor"
-                >
-                    <path d=FINGERPRINT_ICON />
-                </svg>
-                {move || if loading.get() { t("common.loading") } else { t("auth.passkey_signin") }}
-            </button>
+            <PasskeyActionButton
+                kind=PasskeyActionKind::Login
+                class_name="lg-btn-primary squish flex w-full items-center justify-center gap-3 rounded-2xl px-6 py-3.5 text-base".to_string()
+                label=t("auth.passkey_signin").to_string()
+                loading_label=t("common.loading").to_string()
+                error_fallback="Passkey login failed".to_string()
+                show_icon=true
+            />
 
             <div class="relative w-full">
                 <div class="absolute inset-0 flex items-center">

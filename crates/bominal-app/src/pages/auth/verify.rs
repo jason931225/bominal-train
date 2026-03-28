@@ -1,6 +1,7 @@
 //! Post-signup verification handoff page.
 
 use leptos::prelude::*;
+use leptos_router::hooks::use_query_map;
 
 use crate::{api, i18n::t, state::use_auth_state};
 
@@ -11,8 +12,8 @@ const MAIL_ICON: &str = r#"M224,56v120a16,16,0,0,1-16,16H48a16,16,0,0,1-16-16V56
 #[component]
 pub fn AuthVerifyPage() -> impl IntoView {
     let auth = use_auth_state();
-    let resend_action = ServerAction::<api::ResendVerification>::new();
-    let resend_pending = resend_action.pending();
+    let query = use_query_map();
+    let resend_action = ServerAction::<api::ResendVerificationSubmit>::new();
 
     let email = move || {
         auth.user
@@ -20,6 +21,8 @@ pub fn AuthVerifyPage() -> impl IntoView {
             .map(|user| user.email)
             .unwrap_or_else(|| "your email".to_string())
     };
+    let notice = move || query.get().get("notice");
+    let error = move || query.get().get("error");
 
     auth_shell(
         view! {
@@ -63,19 +66,34 @@ pub fn AuthVerifyPage() -> impl IntoView {
                 <div
                     class="rounded-2xl border px-4 py-3 text-center text-sm font-medium"
                     style="border-color: var(--lg-warning); background: var(--lg-warning-bg); color: var(--lg-warning);"
-                >
-                    {t("auth.resend_prompt")}
-                    " "
-                    <ActionForm action=resend_action attr:class="inline">
-                        <button
-                            type="submit"
-                            class="font-semibold underline"
-                            disabled=resend_pending
-                        >
-                            {move || if resend_pending.get() { t("common.loading") } else { t("auth.resend_link") }}
-                        </button>
-                    </ActionForm>
-                </div>
+                    >
+                        {t("auth.resend_prompt")}
+                        " "
+                        <ActionForm action=resend_action attr:class="inline">
+                            <button
+                                type="submit"
+                                class="font-semibold underline"
+                            >
+                                {t("auth.resend_link")}
+                            </button>
+                        </ActionForm>
+                    </div>
+
+                {move || notice().map(|message| {
+                    view! {
+                        <div class="lg-inline-alert lg-inline-alert--success">
+                            {message}
+                        </div>
+                    }
+                })}
+
+                {move || error().map(|message| {
+                    view! {
+                        <div class="lg-inline-alert lg-inline-alert--error">
+                            {message}
+                        </div>
+                    }
+                })}
 
                 <a
                     href="/auth/add-passkey"

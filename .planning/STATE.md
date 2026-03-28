@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: Ready to plan
-stopped_at: Phase 5 complete, Phase 6 settings/shared components ready to plan
-last_updated: "2026-03-27T21:31:36.193Z"
+status: Ready for completion
+stopped_at: Phase 10 complete, milestone audit passed, archival/tagging pending
+last_updated: "2026-03-27T19:51:20-04:00"
 progress:
   total_phases: 10
-  completed_phases: 5
-  total_plans: 14
-  completed_plans: 14
+  completed_phases: 10
+  total_plans: 23
+  completed_plans: 23
 ---
 
 # Project State
@@ -18,19 +18,19 @@ progress:
 
 See: .planning/PROJECT.md (updated 2026-03-26)
 
-**Core value:** Replace SvelteKit SPA with Leptos 0.8 SSR (islands architecture), faithfully porting all pages, components, i18n, and real-time features while eliminating the Node.js build dependency.
-**Current focus:** Phase 6 — Settings and Shared Components
+**Core value:** Replace the old SPA frontend with a Leptos 0.8 SSR/islands application, preserving the product flows while eliminating the JS-package-manager build dependency.
+**Current focus:** Milestone lifecycle — archive/tag/cleanup
 
 ## Current Position
 
-Phase: 6 (Settings and Shared Components) — PLANNING
-Plan: Discuss / planning
+Phase: COMPLETE
+Plan: Lifecycle readiness confirmed (`v1.0-MILESTONE-AUDIT.md` passed)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 7
+- Total plans completed: 23
 - Average duration: -
 - Total execution time: 0 hours
 
@@ -41,6 +41,13 @@ Plan: Discuss / planning
 | 1 | 2 | - | - |
 | 2 | 3 | - | - |
 | 3 | 2 | - | - |
+| 4 | 3 | - | - |
+| 5 | 4 | - | - |
+| 6 | 2 | - | - |
+| 7 | 2 | - | - |
+| 8 | 2 | - | - |
+| 9 | 2 | - | - |
+| 10 | 1 | - | - |
 
 **Recent Trend:**
 
@@ -67,19 +74,22 @@ Recent decisions affecting current work:
 - [CSS]: Tailwind standalone CLI (no npm in build pipeline)
 - [Crate]: Rewrite bominal-app in place; delete bominal-frontend
 - [UI]: Use `bominal-ui` as the canonical shared UI source across Bominal products
+- [Interop]: Keep the Evervault card add flow behind a small browser shim in Phase 6, then formalize broader client-only interop in Phase 7
+- [Interop]: Use one app-local browser runtime asset plus `crate::browser` as the stable Rust-facing boundary for both passkeys and Evervault
+- [Server]: Serve Leptos SSR directly from Axum and use the cargo-leptos `target/site` output as the server-side static asset contract
+- [Build]: Use cargo-leptos as the canonical local and deployment build entry point, with Tailwind v4 and Docker consuming the active `bominal-app` pipeline instead of the donor frontend
+- [Cleanup]: Delete the obsolete `frontend/`, donor `crates/bominal-frontend/`, and Trunk-era shell bridge once the final release/frontend/server verification passes
 
 ### Pending Todos
 
-None yet.
+- Run milestone archive/tag/cleanup when ready to publish the finished milestone state.
 
 ### Blockers/Concerns
 
-- Leptos 0.8 islands API is relatively new; documentation may be sparse
-- WebAuthn web-sys bindings may be incomplete for PublicKeyCredential
-- Tailwind CSS 4 standalone CLI compatibility with @import "tailwindcss" syntax needs early verification
+None.
 
 ## Session Continuity
 
 Last session: 2026-03-27
-Stopped at: Phase 5 complete, Phase 6 settings/shared components ready to plan
+Stopped at: Phase 10 complete, milestone audit passed, archival/tagging pending
 Resume file: None

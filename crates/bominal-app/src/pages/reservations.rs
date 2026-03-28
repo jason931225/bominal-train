@@ -4,7 +4,7 @@ use leptos::prelude::*;
 
 use crate::{
     api,
-    components::{SseReload, StatusChip},
+    components::{Skeleton, SseReload, StatusChip},
     i18n::t,
     types::{CardInfo, ReservationInfo, TicketInfo},
     utils::{format_cost, format_date, format_time},
@@ -352,8 +352,8 @@ pub fn ReservationsPage() -> impl IntoView {
                 <section class="lg-page-card">
                     <Suspense fallback=move || view! {
                         <div class="space-y-3">
-                            <div class="lg-skeleton-line h-28"></div>
-                            <div class="lg-skeleton-line h-28"></div>
+                            <Skeleton height="h-28" />
+                            <Skeleton height="h-28" />
                         </div>
                     }>
                         {move || {

@@ -6,11 +6,14 @@ use std::time::Instant;
 use axum::Router;
 use axum::http::{HeaderValue, Method};
 use axum::routing::{delete, get, patch, post};
+use leptos::config::{Env as LeptosEnv, LeptosOptions};
+use leptos::prelude::provide_context;
+use leptos_axum::{LeptosRoutes, generate_route_list};
 use tower_http::compression::CompressionLayer;
 use tower_http::cors::CorsLayer;
 use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::request_id::{PropagateRequestIdLayer, SetRequestIdLayer};
-use tower_http::services::{ServeDir, ServeFile};
+use tower_http::services::ServeDir;
 use tower_http::set_header::SetResponseHeaderLayer;
 use tower_http::trace::TraceLayer;
 use webauthn_rs::WebauthnBuilder;
@@ -144,12 +147,13 @@ pub async fn create_router(
 ) -> anyhow::Result<Router> {
     let db = bominal_db::create_pool(&config.database_url).await?;
     let start_time = Instant::now();
+    let leptos_options = load_leptos_options(config);
 
     let event_bus = sse::EventBus::new();
     let email = bominal_email::EmailClient::new(&config.resend_api_key, &config.email_from);
     let encryption_key =
         bominal_domain::crypto::encryption::EncryptionKey::from_hex(&config.encryption_key)?;
-    let evervault = bominal_domain::evervault::EvervaultConfig::new(
+    let evervault = crate::evervault::EvervaultConfig::new(
         &config.ev_team_id,
         &config.ev_app_id,
         &config.ev_api_key,
@@ -184,6 +188,7 @@ pub async fn create_router(
         app_base_url: config.app_base_url.clone(),
         prometheus_handle,
         webauthn: Arc::new(webauthn),
+        leptos_options: leptos_options.clone(),
     };
 
     // Spawn session cleanup background job
@@ -200,21 +205,27 @@ pub async fn create_router(
     );
 
     let api = api_routes();
-
-    // SPA static file serving: SvelteKit build output from `frontend/build/`
-    // Falls back to index.html for client-side routing.
-    let spa_dir = "frontend/build";
-    let spa_fallback = ServeFile::new(format!("{spa_dir}/index.html"));
+    let site_routes = generate_route_list(bominal_app::App);
+    let app_base_url = config.app_base_url.clone();
+    let leptos_shell_options = leptos_options.clone();
+    let site_root = leptos_options.site_root.to_string();
 
     let app = Router::new()
         .nest("/api", api)
         .route("/health", get(health_check))
         .route("/metrics", get(metrics_endpoint))
+        .leptos_routes_with_context(
+            &state,
+            site_routes,
+            move || {
+                provide_context(bominal_app::api::ApiBaseUrl(app_base_url.clone()));
+            },
+            move || bominal_app::shell(leptos_shell_options.clone()),
+        )
         .fallback_service(
-            ServeDir::new(spa_dir)
+            ServeDir::new(site_root)
                 .precompressed_br()
-                .precompressed_gzip()
-                .fallback(spa_fallback),
+                .precompressed_gzip(),
         )
         .layer(CompressionLayer::new().gzip(true).br(true))
         .layer(RequestBodyLimitLayer::new(1_048_576)) // 1 MB
@@ -294,6 +305,25 @@ pub async fn create_router(
     };
 
     Ok(app)
+}
+
+fn load_leptos_options(config: &AppConfig) -> LeptosOptions {
+    leptos::config::get_configuration(None)
+        .or_else(|_| leptos::config::get_configuration(Some("Cargo.toml")))
+        .map(|conf| conf.leptos_options)
+        .unwrap_or_else(|_| {
+            LeptosOptions::builder()
+                .output_name("bominal-app")
+                .site_root("target/site")
+                .site_pkg_dir("pkg")
+                .site_addr(std::net::SocketAddr::from(([127, 0, 0, 1], config.port)))
+                .env(if config.is_production() {
+                    LeptosEnv::PROD
+                } else {
+                    LeptosEnv::DEV
+                })
+                .build()
+        })
 }
 
 async fn health_check(

@@ -9,7 +9,7 @@ use bominal_email::EmailClient;
 use webauthn_rs::Webauthn;
 
 use axum::extract::FromRef;
-use leptos::prelude::LeptosOptions;
+use leptos::config::LeptosOptions;
 
 use crate::evervault::EvervaultConfig;
 use crate::sse::EventBus;

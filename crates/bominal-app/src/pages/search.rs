@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 use crate::{
     api,
-    components::StatusChip,
+    components::{BottomSheet, SeatAvailability, SelectionPrompt, TicketCard},
     i18n::t,
     types::{
         CreateTaskInput, PassengerCount, PassengerKind, PassengerList, Provider, SeatPreference,
@@ -78,11 +78,11 @@ fn normalize_time_input(value: &str) -> Option<String> {
     }
 }
 
-fn seat_chip(label: &'static str, active: bool) -> (&'static str, &'static str) {
+fn seat_availability(active: bool) -> SeatAvailability {
     if active {
-        (label, "success")
+        SeatAvailability::Available
     } else {
-        (label, "neutral")
+        SeatAvailability::SoldOut
     }
 }
 
@@ -106,6 +106,7 @@ pub fn SearchPage() -> impl IntoView {
     let (selected_trains, set_selected_trains) = signal(Vec::<TargetTrain>::new());
     let (form_error, set_form_error) = signal(String::new());
     let (create_error, set_create_error) = signal(String::new());
+    let (review_sheet_open, set_review_sheet_open) = signal(false);
 
     let stations = Resource::new(move || provider.get(), api::list_stations);
     let cards = Resource::new(|| (), |_| api::list_cards());
@@ -198,6 +199,7 @@ pub fn SearchPage() -> impl IntoView {
     };
 
     let total_passengers = move || adult_count.get() + child_count.get() + senior_count.get();
+    let selected_count = Signal::derive(move || selected_trains.get().len());
 
     view! {
         <ProtectedPage>
@@ -544,84 +546,75 @@ pub fn SearchPage() -> impl IntoView {
                             view! {
                                 <div class="mt-5 grid gap-3">
                                     {results.into_iter().map(|train| {
-                                        let selected_now = Signal::derive({
-                                            let train = train.clone();
-                                            move || is_selected(&selected_trains.get(), &train)
-                                        });
+                                        let selected = is_selected(&selected_trains.get(), &train);
                                         let train_for_click = train.clone();
+                                        let premium = if train.special_available {
+                                            SeatAvailability::Available
+                                        } else if train.standby_available {
+                                            SeatAvailability::Limited
+                                        } else {
+                                            SeatAvailability::SoldOut
+                                        };
                                         view! {
-                                            <button
-                                                type="button"
-                                                class=move || {
-                                                    if selected_now.get() {
-                                                        "lg-result-card lg-result-card--selected"
-                                                    } else {
-                                                        "lg-result-card"
-                                                    }
-                                                }
-                                                on:click=move |_| {
-                                                    let candidate = train_selection(&train_for_click);
-                                                    set_selected_trains.update(|items| {
-                                                        if let Some(index) = items.iter().position(|item| {
-                                                            item.train_number == candidate.train_number
-                                                                && item.dep_time == candidate.dep_time
-                                                        }) {
-                                                            items.remove(index);
-                                                        } else {
-                                                            items.push(candidate.clone());
-                                                        }
-                                                    });
-                                                }
-                                            >
-                                                <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                                                    <div class="space-y-2 text-left">
-                                                        <div class="flex items-center gap-2">
-                                                            <span class="text-sm font-semibold">
-                                                                {format!("{} {}", train.provider, train.train_number)}
-                                                            </span>
-                                                            <span class="text-xs" style="color: var(--lg-text-secondary);">
-                                                                {train.train_type_name.clone()}
-                                                            </span>
-                                                        </div>
-                                                        <p class="text-base font-medium tracking-tight">
-                                                            {format!(
-                                                                "{} {} -> {} {}",
-                                                                format_time(&train.dep_time),
-                                                                train.dep_station,
-                                                                format_time(&train.arr_time),
-                                                                train.arr_station,
-                                                            )}
-                                                        </p>
-                                                    </div>
-
-                                                    <div class="flex flex-wrap items-center gap-2">
-                                                        {{
-                                                            let (general_label, general_variant) =
-                                                                seat_chip(t("seat.general"), train.general_available);
-                                                            view! {
-                                                                <StatusChip
-                                                                    label=general_label
-                                                                    variant=general_variant
-                                                                />
-                                                            }
-                                                        }}
-                                                        {{
-                                                            let (special_label, special_variant) =
-                                                                seat_chip(t("seat.special"), train.special_available);
-                                                            view! {
-                                                                <StatusChip
-                                                                    label=special_label
-                                                                    variant=special_variant
-                                                                />
-                                                            }
-                                                        }}
-                                                        <StatusChip
-                                                            label="Standby"
-                                                            variant=if train.standby_available { "warning" } else { "neutral" }
-                                                        />
-                                                    </div>
-                                                </div>
-                                            </button>
+                                            {if train.standby_available {
+                                                view! {
+                                                    <TicketCard
+                                                        train_number=format!("{} {}", train.provider, train.train_number)
+                                                        departure=train.dep_station.clone()
+                                                        arrival=train.arr_station.clone()
+                                                        dep_time=format_time(&train.dep_time)
+                                                        arr_time=format_time(&train.arr_time)
+                                                        detail_label="Type"
+                                                        detail_value=train.train_type_name.clone()
+                                                        economy=seat_availability(train.general_available)
+                                                        premium=premium
+                                                        selected=selected
+                                                        on_click=Callback::new(move |_| {
+                                                            let candidate = train_selection(&train_for_click);
+                                                            set_selected_trains.update(|items| {
+                                                                if let Some(index) = items.iter().position(|item| {
+                                                                    item.train_number == candidate.train_number
+                                                                        && item.dep_time == candidate.dep_time
+                                                                }) {
+                                                                    items.remove(index);
+                                                                } else {
+                                                                    items.push(candidate.clone());
+                                                                }
+                                                            });
+                                                        })
+                                                        status="Standby".to_string()
+                                                        status_variant="warning".to_string()
+                                                    />
+                                                }.into_any()
+                                            } else {
+                                                view! {
+                                                    <TicketCard
+                                                        train_number=format!("{} {}", train.provider, train.train_number)
+                                                        departure=train.dep_station.clone()
+                                                        arrival=train.arr_station.clone()
+                                                        dep_time=format_time(&train.dep_time)
+                                                        arr_time=format_time(&train.arr_time)
+                                                        detail_label="Type"
+                                                        detail_value=train.train_type_name.clone()
+                                                        economy=seat_availability(train.general_available)
+                                                        premium=premium
+                                                        selected=selected
+                                                        on_click=Callback::new(move |_| {
+                                                            let candidate = train_selection(&train_for_click);
+                                                            set_selected_trains.update(|items| {
+                                                                if let Some(index) = items.iter().position(|item| {
+                                                                    item.train_number == candidate.train_number
+                                                                        && item.dep_time == candidate.dep_time
+                                                                }) {
+                                                                    items.remove(index);
+                                                                } else {
+                                                                    items.push(candidate.clone());
+                                                                }
+                                                            });
+                                                        })
+                                                    />
+                                                }.into_any()
+                                            }}
                                         }
                                     }).collect::<Vec<_>>()}
                                 </div>
@@ -631,6 +624,72 @@ pub fn SearchPage() -> impl IntoView {
                     }}
                 </section>
             </section>
+
+            <SelectionPrompt
+                count=selected_count
+                on_confirm=Callback::new(move |_| set_review_sheet_open.set(true))
+                on_clear=Callback::new(move |_| set_selected_trains.set(Vec::new()))
+            />
+
+            <BottomSheet
+                open=review_sheet_open
+                on_close=Callback::new(move |_| set_review_sheet_open.set(false))
+                title="Selected trains"
+            >
+                <div class="space-y-4">
+                    {move || {
+                        let picks = selected_trains.get();
+                        if picks.is_empty() {
+                            view! {
+                                <div class="lg-empty-state">
+                                    <p>"No trains selected yet."</p>
+                                </div>
+                            }.into_any()
+                        } else {
+                            view! {
+                                <div class="space-y-2">
+                                    {picks.into_iter().enumerate().map(|(index, train)| {
+                                        view! {
+                                            <div class="lg-task-card__train-row">
+                                                <span>{format!("#{} {}", train.train_number, format_time(&train.dep_time))}</span>
+                                                <strong>{format!("Priority {}", index + 1)}</strong>
+                                            </div>
+                                        }
+                                    }).collect::<Vec<_>>()}
+                                </div>
+                            }.into_any()
+                        }
+                    }}
+
+                    <button
+                        type="button"
+                        class="lg-btn-primary w-full"
+                        disabled=move || selected_trains.get().is_empty() || create_action.pending().get()
+                        on:click=move |_| {
+                            set_create_error.set(String::new());
+
+                            if selected_trains.get_untracked().is_empty() {
+                                set_create_error.set("Select at least one train first.".to_string());
+                                return;
+                            }
+
+                            if auto_pay.get_untracked() && selected_card_id.get_untracked().is_empty() {
+                                set_create_error.set(t("search.auto_pay_card_required").to_string());
+                                return;
+                            }
+
+                            set_review_sheet_open.set(false);
+                            create_action.dispatch(());
+                        }
+                    >
+                        {move || if create_action.pending().get() {
+                            "Creating task..."
+                        } else {
+                            "Create reservation task"
+                        }}
+                    </button>
+                </div>
+            </BottomSheet>
         </ProtectedPage>
     }
 }

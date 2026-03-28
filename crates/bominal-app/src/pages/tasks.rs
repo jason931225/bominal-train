@@ -4,10 +4,9 @@ use leptos::prelude::*;
 
 use crate::{
     api,
-    components::{SseReload, StatusChip},
+    components::{SseReload, TaskCard},
     i18n::t,
-    types::{TaskInfo, TaskStatus},
-    utils::{format_date, format_time, status_variant},
+    types::TaskInfo,
 };
 
 use super::{ProtectedPage, format_server_error, is_active_task};
@@ -16,74 +15,7 @@ use super::{ProtectedPage, format_server_error, is_active_task};
 fn TaskCardRow(task: TaskInfo, active: bool, on_cancel: Callback<String>) -> impl IntoView {
     let task_id = task.id.to_string();
 
-    let card = view! {
-        <article class="lg-list-card lg-list-card--task">
-            <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                <div class="space-y-2">
-                    <div class="flex flex-wrap items-center gap-2">
-                        <span class="inline-flex items-center rounded-full border border-white/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em]" style="color: var(--lg-text-tertiary);">
-                            {task.provider.to_string()}
-                        </span>
-                        <StatusChip
-                            label=t(task.status.i18n_key())
-                            variant=status_variant(task.status)
-                        />
-                    </div>
-
-                    <h3 class="text-lg font-semibold tracking-tight">
-                        {format!("{} -> {}", task.departure_station, task.arrival_station)}
-                    </h3>
-
-                    <p class="text-sm" style="color: var(--lg-text-secondary);">
-                        {format!(
-                            "{} {} • {} {}",
-                            format_date(&task.travel_date),
-                            format_time(&task.departure_time),
-                            task.passengers.total_count(),
-                            t("task.passengers_label"),
-                        )}
-                    </p>
-
-                    <div class="flex flex-wrap items-center gap-3 text-xs" style="color: var(--lg-text-tertiary);">
-                        <span>{format!("{} {}", t("task.attempts"), task.attempt_count)}</span>
-                        <span>{format!("{} {}", t("task.notify"), if task.notify_enabled { "ON" } else { "OFF" })}</span>
-                        <span>{format!("{} {}", t("search.auto_retry"), if task.auto_retry { "ON" } else { "OFF" })}</span>
-                    </div>
-                </div>
-
-                {task.reservation_number.clone().map(|reservation_number| {
-                    view! {
-                        <a href="/reservations" class="lg-btn-secondary text-xs">
-                            {format!("PNR {}", reservation_number)}
-                        </a>
-                    }
-                })}
-            </div>
-
-            <details class="mt-4 rounded-2xl border border-white/8 bg-white/4 p-4">
-                <summary class="cursor-pointer list-none text-sm font-medium">
-                    {t("task.view_details")}
-                </summary>
-
-                <div class="mt-4 space-y-3">
-                    {task.target_trains.0.iter().enumerate().map(|(index, train)| {
-                        view! {
-                            <div class="flex items-center justify-between rounded-2xl border border-white/8 px-3 py-2 text-sm">
-                                <span class="font-medium">{format!("#{} {}", train.train_number, format_time(&train.dep_time))}</span>
-                                <span style="color: var(--lg-text-tertiary);">{format!("Priority {}", index + 1)}</span>
-                            </div>
-                        }
-                    }).collect::<Vec<_>>()}
-                </div>
-            </details>
-
-            <Show when=move || task.status == TaskStatus::AwaitingPayment>
-                <a href="/reservations" class="lg-btn-secondary mt-4 text-xs">
-                    {t("task.pay_fare")}
-                </a>
-            </Show>
-        </article>
-    };
+    let card = view! { <TaskCard task=task /> };
 
     if active {
         view! {

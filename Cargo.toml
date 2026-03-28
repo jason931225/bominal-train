@@ -92,7 +92,6 @@ site-root = "target/site"
 site-pkg-dir = "pkg"
 style-file = "crates/bominal-app/style/app.css"
 tailwind-input-file = "crates/bominal-app/style/app.css"
-tailwind-config-file = "tailwind.config.js"
 assets-dir = "crates/bominal-app/assets"
 bin-features = ["ssr"]
 bin-default-features = false

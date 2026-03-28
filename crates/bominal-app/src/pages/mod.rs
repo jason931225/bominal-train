@@ -3,6 +3,7 @@ pub mod home;
 pub mod reservations;
 pub mod reset_password;
 pub mod search;
+pub mod settings;
 pub mod tasks;
 pub mod verify_email;
 
